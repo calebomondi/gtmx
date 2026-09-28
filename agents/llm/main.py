@@ -1,0 +1,454 @@
+import time
+import json
+import random
+import re
+from langchain_qwq import ChatQwen
+from langchain_openai import ChatOpenAI
+from typing import Any, Sequence
+
+from utils.log import logger
+from config import Config
+
+cfg = Config()
+
+QWEN_MODELS = [
+    "qwen3.5-omni-plus-2026-03-15",
+    "qwen3.5-omni-flash-2026-03-15"
+]
+
+# Cheap text-only tier, for bulk mechanical work that doesn't need a flagship
+# reasoning model: distilling scraped documents, condensing the offer's own
+# material, and the other extraction/paraphrase calls. Keeping these off the
+# flagship matters for more than cost — the flagship is a large omni model, and
+# a run that routes its high-volume extraction work there is what pushes the
+# account into tokens-per-minute throttling in the first place.
+CHEAP_QWEN_MODELS = [
+    "qwen-flash",
+    "qwen-plus-2025-07-28",
+]
+
+
+def cheap_providers() -> list[tuple[str, list[str]]]:
+    """Provider ladder for bulk extraction work. Ordered cheapest-first."""
+    return [("qwen", CHEAP_QWEN_MODELS)]
+
+# (provider, model) pairs discovered to be dead (quota exhausted / auth /
+# model unavailable) for the lifetime of this process. Once a model trips one
+# of those plumbing errors we stop wasting calls on it and fall through to the
+# next model immediately.
+_DOWN_MODELS: set[tuple[str, str]] = set()
+
+# (provider, model) pairs that rejected an enabled-thinking request (e.g. the
+# omni-flash family returns 400 "thinking_budget must be a positive integer" for
+# ANY enable_thinking=True). Once learned, all calls to that model run with
+# thinking disabled so we stop paying a 400 round-trip per call.
+_NO_THINKING_MODELS: set[tuple[str, str]] = set()
+
+
+class LlmProvidersExhaustedError(RuntimeError):
+    """Every (provider, model) in the ladder failed.
+
+    Carries the failing step plus the last underlying provider error, so callersho
+    can explain the failure in plain language instead of shipping a provider
+    traceback into the UI.
+    """
+
+    def __init__(self, log_label: str, last_err: BaseException | None = None):
+        super().__init__(f"All LLM providers failed for {log_label}")
+        self.log_label = log_label
+        self.last_err = last_err
+
+
+# Provider errors that retire a model for the process: the key is bad, the model
+# is not available to this account, or access is denied. None of these clear
+# with time, so retrying is pointless.
+_RETIRED_MODEL_MARKERS = (
+    "invalid_api_key",
+    "unauthorized",
+    "permission_denied",
+    "permission denied",
+    "forbidden",
+    "access denied",
+    "error code: 401",
+    "error code: 403",
+)
+
+# Throttling. Alibaba phrases its tokens-per-minute throttle as "Allocated quota
+# exceeded", which shares the word "quota" with a genuine billing wall — so the
+# throttle is matched on its own wording rather than on a bare "quota" substring.
+# Retiring a model here is what wedged the ladder before, and the throttle always
+# arrives alongside a 429, so matching the code first is enough.
+_THROTTLE_MARKERS = (
+    "429",
+    "rate_limit",
+    "rate limit",
+    "too many requests",
+    "throttl",
+    "allocated quota exceeded",
+)
+
+# A genuine "out of credit" complaint. Deliberately credit-shaped: none of these
+# phrasings appear in a throttle, so a body that matches one really is billing.
+_BILLING_WALL_MARKERS = (
+    "insufficient_user_quota",
+    "insufficient_quota",
+    "exceeded your current quota",
+    "quota exhausted",
+    "free quota exhausted",
+    "out of credit",
+    "add funds",
+    "arrearage",
+    "billing",
+)
+
+# The prompt outgrew the model's context window. Not retriable — resending an
+# identical oversized prompt just fails identically — and it is the single most
+# actionable provider error we can get, because it means our own context
+# assembly let the run grow past what the model accepts.
+_CONTEXT_OVERFLOW_MARKERS = (
+    "range of input length",
+    "input length should be",
+    "context length",
+    "context_length_exceeded",
+    "maximum context",
+    "too many tokens",
+    "reduce the length of the messages",
+    "string too long",
+    "input is too long",
+)
+
+_MAX_RETRY_DELAY_S = 60.0
+
+# --- Throttle circuit breaker -------------------------------------------
+# A single transient 429 is worth waiting out, but a sustained one is not: with
+# both models throttled, each call would otherwise block for the full backoff
+# budget (~2min) and a 20-call run would spend half an hour failing the same
+# way. Once consecutive calls have exhausted their throttle budget without a
+# single success, trip the breaker and fail fast until a cooldown elapses, so
+# the run surfaces a real error instead of crawling.
+_THROTTLE_TRIP_THRESHOLD = 2
+_THROTTLE_COOLDOWN_S = 120.0
+_throttle_state = {"consecutive": 0, "open_until": 0.0}
+
+
+def _throttle_circuit_state() -> str:
+    """Report the breaker so callers can log why a call failed instantly."""
+    remaining = _throttle_state["open_until"] - time.monotonic()
+    if remaining > 0:
+        return f"throttled upstream, cooling down {remaining:.0f}s"
+    return "ok"
+
+
+def _note_throttle_outcome(succeeded: bool) -> None:
+    if succeeded:
+        _throttle_state["consecutive"] = 0
+        _throttle_state["open_until"] = 0.0
+        return
+    _throttle_state["consecutive"] += 1
+    if _throttle_state["consecutive"] >= _THROTTLE_TRIP_THRESHOLD:
+        _throttle_state["open_until"] = time.monotonic() + _THROTTLE_COOLDOWN_S
+        logger.warning(
+            "Throttle circuit opened after %d consecutive throttled calls; "
+            "failing fast for %.0fs",
+            _throttle_state["consecutive"], _THROTTLE_COOLDOWN_S,
+        )
+
+
+def classify_llm_error(err: BaseException) -> str:
+    """Bucket a provider error into the cases the retry ladder reacts to.
+
+    Public because the websocket endpoint reports the same failure to the user;
+    sharing one classifier is the only way the retry decision and the message
+    the user reads can be guaranteed to agree.
+
+    Ordering is load-bearing. Alibaba's throttle is a 429 whose body reads
+    "Allocated quota exceeded", so a naive ``"quota" in str(err)`` test retires a
+    perfectly healthy model on a transient rate limit — and with a one-model
+    ladder that wedges every later call in the process until it is restarted. A
+    429 is therefore always treated as a rate limit here, never as a retirement.
+    """
+    text = str(err).lower()
+    if any(marker in text for marker in _CONTEXT_OVERFLOW_MARKERS):
+        # Checked first: some providers report an oversized request with a 4xx
+        # body that also mentions quota accounting.
+        return "context_overflow"
+    if any(marker in text for marker in _THROTTLE_MARKERS):
+        return "rate_limit"
+    # Billing is checked before retirement because Alibaba returns 403 for
+    # "out of credit" as well as for "not allowed to use this model"; only the
+    # body tells them apart, and the user needs to be told which one it is.
+    if any(marker in text for marker in _BILLING_WALL_MARKERS):
+        return "billing"
+    if any(marker in text for marker in _RETIRED_MODEL_MARKERS):
+        return "auth"
+    return "other"
+
+
+def _provider_retry_after_seconds(err: BaseException) -> float | None:
+    """Read the wait the provider actually asked for, from the response header
+    when the SDK surfaced one and from the error body otherwise."""
+    headers = getattr(getattr(err, "response", None), "headers", None)
+    if headers:
+        for key in ("retry-after", "Retry-After", "x-ratelimit-reset-after"):
+            try:
+                raw = headers.get(key)
+            except Exception:
+                raw = None
+            if raw is None:
+                continue
+            try:
+                return float(str(raw).strip().rstrip("s"))
+            except (TypeError, ValueError):
+                continue
+
+    text = str(err)
+    match = re.search(
+        r"try again in ([\d.]+)\s*"
+        r"(milliseconds|millisecond|ms|minutes|minute|mins|min|seconds|second|secs|sec|s|m)?",
+        text,
+        re.IGNORECASE,
+    )
+    if match:
+        amount = float(match.group(1))
+        unit = (match.group(2) or "s").lower()
+        if unit.startswith("ms") or unit.startswith("milli"):
+            return amount / 1000.0
+        if unit.startswith("m"):
+            return amount * 60.0
+        return amount
+
+    match = re.search(r"retry[-_ ]?after[\"'\s:=]+([\d.]+)", text, re.IGNORECASE)
+    if match:
+        return float(match.group(1))
+    return None
+
+
+def _retry_delay_seconds(err: BaseException, attempt: int) -> float:
+    """How long to wait before retrying a throttled call.
+
+    Prefers the provider's own hint, because backoff guessed from a local
+    counter routinely under-waits a tokens-per-minute window and burns the whole
+    budget re-colliding with the same limit. Jittered either way: a run fires
+    many calls in bursts, and unjittered backoff just re-synchronises them.
+    """
+    hinted = _provider_retry_after_seconds(err)
+    if hinted is None:
+        hinted = 2.0 * (2 ** (attempt - 1))
+    return min(max(hinted, 0.0), _MAX_RETRY_DELAY_S) * (0.75 + random.random() * 0.5)
+
+
+def _json_from_text(text: str):
+    """Pull the first valid JSON value out of model text (handles prose,
+    markdown fences, trailing commentary)."""
+    if not text:
+        return None
+    decoder = json.JSONDecoder()
+    for key in ("{", "["):
+        idx = text.find(key)
+        while idx != -1:
+            try:
+                obj, _ = decoder.raw_decode(text[idx:])
+                return obj
+            except json.JSONDecodeError:
+                idx = text.find(key, idx + 1)
+    return None
+
+
+def _try_repair_structured(llm, messages: Sequence[Any], schema: Any):
+    """When with_structured_output's re-built schema rejects a response (weaker
+    models double-serialize nested list/dict fields as JSON strings), re-ask the
+    plain model for a single JSON object and validate against the REAL schema —
+    whose validators (e.g. _coerce_json) repair the double-serialization."""
+    try:
+        from langchain_core.messages import HumanMessage
+        schema_text = json.dumps(schema.model_json_schema(), indent=2)
+        repair_messages = list(messages) + [HumanMessage(content=(
+            "Your previous response failed schema validation. Reply ONLY with a single valid JSON "
+            "object matching the schema exactly: every list field must be a real JSON array, every "
+            "object field a real JSON object. No prose, no markdown fences, no trailing text.\n\n"
+            f"SCHEMA:\n{schema_text}"
+        ))]
+        raw = llm.invoke(repair_messages)
+        content = raw if isinstance(raw, str) else getattr(raw, "content", str(raw))
+        obj = _json_from_text(content)
+        if obj is None:
+            return None
+        return schema.model_validate(obj)
+    except Exception:
+        return None
+
+
+def _llm(
+    provider: str = "qwen",
+    model: str | None = None,
+    thinking: bool = True,
+    thinking_budget: int | None = None,
+) -> ChatQwen | ChatOpenAI:
+    if provider == "qwen":
+        m = model or QWEN_MODELS[0]
+        if (provider, m) in _NO_THINKING_MODELS:
+            # Learned to reject enable_thinking — run it non-thinking.
+            thinking = False
+            thinking_budget = None
+        logger.info("Using Qwen (%s, thinking=%s, budget=%s)", m, thinking, thinking_budget)
+        kwargs = {"enable_thinking": thinking}
+        if thinking_budget is not None:
+            # Only send an explicit budget when we have one. Passing
+            # thinking_budget=None alongside enable_thinking=True makes the
+            # omni-flash family reject the request outright, which the
+            # _NO_THINKING_MODELS learning would otherwise have to undo with a
+            # wasted 400 round-trip on every fresh process.
+            kwargs["thinking_budget"] = thinking_budget
+        return ChatQwen(
+            model=m,
+            api_key=cfg.dashscope_api_key,
+            base_url=cfg.dashscope_base_url,
+            timeout=300,
+            **kwargs,
+        )
+
+
+def invoke_structured_with_fallback(
+    messages: Sequence[Any],
+    schema: Any | None = None,
+    providers: list[tuple[str, list[str]]] | None = None,
+    log_label: str = "LLM call",
+    max_retries: int = 2,
+    thinking: bool = True,
+    thinking_budget: int | None = None,
+    rate_limit_retries: int = 5,
+):
+    """
+    Invoke an LLM across a prioritized list of (provider, [models]) pairs,
+    falling back on failure. Retries on 429/rate-limit errors with backoff.
+    If `schema` is provided, uses structured output; otherwise does a plain invoke.
+
+    Cheap extraction/paraphrase calls should pass thinking=False (or a small
+    thinking_budget) to avoid paying the thinking-model latency.
+
+    `rate_limit_retries` is deliberately larger than `max_retries`. A throttle
+    clears with time; a bad key or a retired model never will. Conflating the two
+    is what used to kill runs: two 1.5s attempts could not outlast a
+    tokens-per-minute window, and the resulting error then marked the only model
+    in the ladder permanently down.
+    """
+    if providers is None:
+        providers = [
+            ("qwen", QWEN_MODELS)
+        ]
+
+    # Sustained upstream throttling: fail fast instead of spending the full
+    # backoff budget on every remaining call in the run.
+    if _throttle_state["open_until"] > time.monotonic():
+        logger.warning(
+            "%s skipped (%s)", log_label, _throttle_circuit_state(),
+        )
+        raise LlmProvidersExhaustedError(log_label, None)
+
+    last_err = None
+    for provider, models in providers:
+        for model in models:
+            if (provider, model) in _DOWN_MODELS:
+                logger.info("%s skipping %s/%s (marked down this process)", log_label, provider, model)
+                continue
+
+            attempt = 0
+            throttles = 0
+            # Hard ceiling so no path below can spin forever.
+            budget = max(max_retries, rate_limit_retries) + 3
+
+            while attempt < budget:
+                attempt += 1
+                llm = None
+                try:
+                    llm = _llm(provider, model=model, thinking=thinking, thinking_budget=thinking_budget)
+                    if schema is not None:
+                        result = llm.with_structured_output(schema).invoke(messages)
+                    else:
+                        result = llm.invoke(messages)
+                    if result is None:
+                        raise ValueError(
+                            f"{log_label} returned None with {provider}/{model} (unexpected structured output)"
+                        )
+                    logger.info("%s succeeded with %s/%s", log_label, provider, model)
+                    _DOWN_MODELS.discard((provider, model))
+                    _note_throttle_outcome(True)
+                    if schema is None and hasattr(result, "content"):
+                        return result.content
+                    return result
+                except Exception as e:
+                    last_err = e
+                    err_str = str(e).lower()
+                    kind = classify_llm_error(e)
+                    is_thinking_reject = (
+                        thinking
+                        and ("thinking_budget" in err_str or "enable_thinking" in err_str)
+                        and ("invalid" in err_str or "positive integer" in err_str)
+                    )
+                    logger.warning(
+                        "%s failed with %s/%s (%s, attempt %d/%d): %s",
+                        log_label, provider, model, kind, attempt, budget, e,
+                    )
+                    if is_thinking_reject and (provider, model) not in _NO_THINKING_MODELS:
+                        # This model can't do thinking. Learn it and retry the
+                        # same model non-thinking immediately (bypass the ladder).
+                        _NO_THINKING_MODELS.add((provider, model))
+                        logger.info(
+                            "%s: %s/%s rejected thinking; retrying same model with thinking off",
+                            log_label, provider, model,
+                        )
+                        continue
+                    if kind == "auth":
+                        # Unusable for this key no matter how long we wait.
+                        _DOWN_MODELS.add((provider, model))
+                        break
+                    if kind == "context_overflow":
+                        # Every remaining model in the ladder has the same or a
+                        # smaller window, so falling through buys nothing and
+                        # resending the identical oversized prompt cannot help.
+                        # Fail fast with a cause the caller can explain.
+                        _note_throttle_outcome(False)
+                        logger.error(
+                            "%s: prompt exceeds %s's context window. Trim the "
+                            "accumulated interview context.",
+                            log_label, model,
+                        )
+                        break
+                    if kind == "rate_limit":
+                        throttles += 1
+                        if throttles <= rate_limit_retries:
+                            delay = _retry_delay_seconds(e, throttles)
+                            logger.info(
+                                "Rate limited on %s/%s; retry %d/%d in %.1fs",
+                                provider, model, throttles, rate_limit_retries, delay,
+                            )
+                            time.sleep(delay)
+                            continue
+                        # Budget spent. Fall through to the next model rather than
+                        # dying here, and deliberately do NOT retire this one: a
+                        # throttle says nothing about whether the model works, so
+                        # retiring it would poison the ladder for good.
+                        logger.info(
+                            "%s: %s/%s still throttled after %d waits; falling through",
+                            log_label, provider, model, throttles,
+                        )
+                        _note_throttle_outcome(False)
+                        break
+                    if kind == "billing":
+                        _DOWN_MODELS.add((provider, model))
+                        time.sleep(0.25)
+                        break
+                    # Not a plumbing failure: the model answered, it just didn't
+                    # match the schema. Try one JSON re-parse repair.
+                    if schema is not None and llm is not None and attempt < max_retries:
+                        repaired = _try_repair_structured(llm, messages, schema)
+                        if repaired is not None:
+                            logger.info(
+                                "%s repaired via JSON re-parse with %s/%s (attempt %d)",
+                                log_label, provider, model, attempt,
+                            )
+                            _DOWN_MODELS.discard((provider, model))
+                            return repaired
+                    break
+
+    raise LlmProvidersExhaustedError(log_label, last_err) from last_err

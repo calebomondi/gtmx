@@ -1,0 +1,19 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Secrets / environment
+.env
+
+# Default local SQLite database + LangGraph checkpointer. Regenerated on
+# boot by Base.metadata.create_all (backend/app/main.py). Holds real user
+# rows and checkpoint state -- never commit.
+blog.db*
+checkpoints.db*

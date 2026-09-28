@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "recipe": {
+    "name": "FastAPI app",
+    "kind": "fastapi",
+    "bootstrap": [
+      "uv sync"
+    ],
+    "build": [
+      [
+        "npx",
+        "--prefix",
+        "frontend",
+        "vite",
+        "build"
+      ]
+    ],
+    "test": [
+      [
+        ".venv/bin/python",
+        "notebook/test_analyst_e2e.py"
+      ],
+      [
+        ".venv/bin/python",
+        "notebook/test_hitl.py"
+      ]
+    ],
+    "start": ".venv/bin/uvicorn backend.app.main:app --host 0.0.0.0 --port 8000",
+    "port": 8000,
+    "readinessPath": "/docs",
+    "evidence": []
+  },
+  "updatedAt": "2026-08-29T12:32:43.859480+00:00"
+}
