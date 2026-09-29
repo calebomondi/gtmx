@@ -1,0 +1,31 @@
+{
+  "previewPort": 3000,
+  "healthPath": "/",
+  "startCommand": "docker compose -f docker-compose.base44.yml up -d",
+  "secrets": [
+    {
+      "name": "DASHSCOPE_API_KEY",
+      "description": "Alibaba DashScope API key for Qwen LLM models — the agent's primary LLM provider. Get from https://dashscope.console.aliyun.com/",
+      "requiredAtBoot": false,
+      "generatedForDevelopment": false
+    },
+    {
+      "name": "EXA_API_KEY",
+      "description": "Exa API key for web scraping/search used in market and competition research. Get from https://dashboard.exa.ai/",
+      "requiredAtBoot": false,
+      "generatedForDevelopment": false
+    },
+    {
+      "name": "TAVILY_API_KEY",
+      "description": "Tavily API key for web search in market research. Get from https://tavily.com/",
+      "requiredAtBoot": false,
+      "generatedForDevelopment": false
+    },
+    {
+      "name": "OPENAI_API_KEY",
+      "description": "OpenAI/OpenRouter API key (optional — Qwen is the default provider). Get from https://openrouter.ai/",
+      "requiredAtBoot": false,
+      "generatedForDevelopment": false
+    }
+  ]
+}
