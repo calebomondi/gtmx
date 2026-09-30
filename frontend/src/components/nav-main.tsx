@@ -16,6 +16,8 @@ import {
 import { ChevronRightIcon, PinIcon, PinOffIcon } from "lucide-react"
 import { Link, useLocation } from "react-router-dom"
 
+import { isWorkspaceActive } from "@/lib/nav-active"
+
 export interface NavWorkspaceItem {
   id: string
   title: string
@@ -65,7 +67,7 @@ export function NavMain({
                   >
                     <SidebarMenuSubButton
                       render={<Link to={subItem.url} />}
-                      isActive={location.pathname === subItem.url}
+                      isActive={isWorkspaceActive(location.pathname, subItem.id)}
                       className="min-w-0 flex-1"
                     >
                       <span className="truncate">{subItem.title}</span>

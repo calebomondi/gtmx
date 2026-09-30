@@ -1,21 +1,23 @@
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+// import {
+//   DropdownMenu,
+//   DropdownMenuContent,
+//   DropdownMenuItem,
+//   DropdownMenuSeparator,
+//   DropdownMenuTrigger,
+// } from "@/components/ui/dropdown-menu"
 import {
   SidebarGroup,
   SidebarGroupLabel,
   SidebarMenu,
-  SidebarMenuAction,
+  // SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar,
+  // useSidebar,
 } from "@/components/ui/sidebar"
-import { MoreHorizontalIcon, FolderIcon, ArrowRightIcon, Trash2Icon } from "lucide-react"
-import { useNavigate } from "react-router-dom"
+// import { MoreHorizontalIcon, FolderIcon, ArrowRightIcon, Trash2Icon } from "lucide-react"
+import { useLocation, useNavigate } from "react-router-dom"
+
+import { isNavItemActive } from "@/lib/nav-active"
 
 export function NavProjects({
   projects,
@@ -26,8 +28,9 @@ export function NavProjects({
     icon: React.ReactNode
   }[]
 }) {
-  const { isMobile } = useSidebar()
+  // const { isMobile } = useSidebar()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   // Internal routes navigate client-side so the app doesn't reload and refetch
   // every store; the placeholder "#" items keep their old anchor behaviour.
   const isInternal = (url: string) => url.startsWith("/")
@@ -52,11 +55,12 @@ export function NavProjects({
                 )
               }
               tooltip={item.name}
+              isActive={isNavItemActive(pathname, item.url)}
             >
               {item.icon}
               <span>{item.name}</span>
             </SidebarMenuButton>
-            <DropdownMenu>
+            {/* <DropdownMenu>
               <DropdownMenuTrigger
                 render={
                   <SidebarMenuAction
@@ -91,7 +95,7 @@ export function NavProjects({
                   <span>Delete Project</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
-            </DropdownMenu>
+            </DropdownMenu> */}
           </SidebarMenuItem>
         ))}
       </SidebarMenu>

@@ -5,7 +5,9 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { SquarePen, Search, Home, FolderClosed } from "lucide-react"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
+
+import { isNavItemActive } from "@/lib/nav-active"
 
 export function NavSearchNew({
   projects: _projects,
@@ -17,13 +19,17 @@ export function NavSearchNew({
   }[]
 }) {
   const navigate = useNavigate()
+  const { pathname } = useLocation()
 
+  // Search Anything is deliberately left inactive: it is a placeholder that
+  // routes to /feed, so matching it would light up alongside Home Feed.
   return (
     <SidebarGroup>
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton
             tooltip="Home Feed"
+            isActive={isNavItemActive(pathname, "/feed")}
             className="cursor-pointer"
             onClick={() => navigate("/feed")}
           >
@@ -34,6 +40,7 @@ export function NavSearchNew({
         <SidebarMenuItem>
           <SidebarMenuButton
             tooltip="New"
+            isActive={isNavItemActive(pathname, "/new")}
             className="cursor-pointer"
             onClick={() => navigate("/new")}
           >
@@ -54,6 +61,7 @@ export function NavSearchNew({
         <SidebarMenuItem>
           <SidebarMenuButton 
             tooltip="Search" 
+            isActive={isNavItemActive(pathname, "/projects")}
             className="cursor-pointer"
             onClick={() => navigate("/projects")}
           >
