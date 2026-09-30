@@ -8,10 +8,8 @@ import {
 import { WorkspaceManager } from "@/components/workspace-manager"
 // import { DotLottieReact } from '@lottiefiles/dotlottie-react'
 import { Package, Globe, Swords, UserCheck, Users } from "lucide-react"
-import {
-  SpecialistAvatarGroup,
-  type Specialist,
-} from "@/components/specialist-avatargroup"
+import { SpecialistAvatarGroup } from "@/components/specialist-avatargroup"
+import { teamToAvatarSpecialists } from "@/lib/specialists"
 import {
   Stepper,
   StepperItem,
@@ -34,7 +32,7 @@ import { useAgentRun } from '@/lib/agent-run-store'
 import { refetchWorkspaces, useWorkspaces } from '@/lib/workspaces-store'
 import { useInsights } from '@/lib/insights-store'
 import { useSession } from '@/lib/session-context'
-import type { AgentNode, SpecialistDto } from '@/lib/api'
+import type { AgentNode } from '@/lib/api'
 
 const steps = [
   {
@@ -180,32 +178,6 @@ const AgentRunProductUnderstanding = () => {
       </Stepper>
     </div>
   )
-}
-
-const SPECIALIST_BORDERS = [
-  'border-red-500',
-  'border-green-500',
-  'border-blue-500',
-  'border-amber-500',
-]
-
-function initialsFor(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return '?'
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-}
-
-function teamToAvatarSpecialists(
-  team: SpecialistDto[] | null | undefined,
-): Specialist[] {
-  if (!team) return []
-  return team.map((member, index) => ({
-    id: member.domain,
-    fallback: initialsFor(member.name),
-    tooltip: `${member.name} · ${member.role}`,
-    borderClass: SPECIALIST_BORDERS[index % SPECIALIST_BORDERS.length],
-  }))
 }
 
 export default function Workspace() {

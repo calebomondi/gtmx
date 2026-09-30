@@ -42,7 +42,10 @@ const TabsVerticalLined = ({ workspaceId }: { workspaceId?: string }) => {
   }
 
   const renderTabContent = (value: string) => {
-    if (value === 'feed') return <FeedComponent onOpenOutreach={openOutreach} />
+    if (value === 'feed')
+      return (
+        <FeedComponent workspaceId={workspaceId} onOpenOutreach={openOutreach} />
+      )
     if (value === 'outreach')
       return (
         <OutReachComponent

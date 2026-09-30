@@ -11,7 +11,10 @@ import {
 export interface Specialist {
   id: string;
   fallback: string;
-  tooltip: string;
+  /** Pre-formatted, e.g. "Product Specialist" / "GTM Specialist". */
+  domain: string;
+  name: string;
+  role: string;
   borderClass: string;
 }
 
@@ -22,14 +25,18 @@ export const AvatarImg: string[] = [
   'https://cdn.shadcnstudio.com/ss-assets/avatar/avatar-16.png'
 ]
 
-// display the fallback and tooltip in a vertical stack
+// Domain, then name, then role -- a vertical stack. The fixed tooltip width (set
+// by AvatarGroupTooltip) keeps every tooltip in a group the same size, so long
+// roles wrap instead of making the card jump around between avatars.
 function toolTip({
-  fallback,
-  tooltip,
+  domain,
+  name,
+  role,
   borderClass,
 }: {
-  fallback: string;
-  tooltip: string;
+  domain: string;
+  name: string;
+  role: string;
   borderClass: Specialist['borderClass'];
 }) {
   const backgroundClass = {
@@ -40,10 +47,11 @@ function toolTip({
   }[borderClass] ?? 'bg-amber-500';
 
   return (
-    <div className="flex flex-col items-start justify-start gap-1">
+    <div className="flex flex-col items-start gap-1">
       <div className={`h-0.5 w-0 animate-tooltip-line ${backgroundClass}`} />
-      <p>{fallback}</p>
-      <p>{tooltip}</p>
+      <p className="font-medium text-foreground">{domain}</p>
+      <p className="text-foreground">{name}</p>
+      <p className="text-muted-foreground">{role}</p>
     </div>
   );
 }
@@ -56,14 +64,15 @@ export const SpecialistAvatarGroup = (
       {specialists.map((avatar, index) => (
         <Avatar
           key={index}
-          className={`border-3 size-8 ${avatar.borderClass}`}
+          className={`border-3 size-8 ${avatar.borderClass} cursor-pointer`}
         >
           <AvatarImage src={AvatarImg[index % AvatarImg.length]} />
           <AvatarFallback>{avatar.fallback}</AvatarFallback>
           <AvatarGroupTooltip>
             {toolTip({
-              fallback: avatar.fallback,
-              tooltip: avatar.tooltip,
+              domain: avatar.domain,
+              name: avatar.name,
+              role: avatar.role,
               borderClass: avatar.borderClass,
             })}
           </AvatarGroupTooltip>

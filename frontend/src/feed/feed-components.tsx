@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   ArrowRight,
@@ -32,6 +32,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useSession } from '@/lib/session-context'
+import {
+  ensureWorkspacesLoaded,
+  useWorkspaces,
+} from '@/lib/workspaces-store'
+import { workspaceDisplayName } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
 import { removeSignal, updateSignal, useSignals } from './feed-store'
@@ -366,7 +371,7 @@ export function SectionHeader({ label, count }: { label: string; count: number }
   )
 }
 
-function EmptyFeed({ productName }: { productName: string }) {
+function EmptyFeed({ subject }: { subject: string }) {
   return (
     <div className="flex h-full min-h-64 flex-col items-center justify-center gap-4 px-6 text-center">
       <div className="relative">
@@ -383,7 +388,7 @@ function EmptyFeed({ productName }: { productName: string }) {
       </div>
       <div>
         <p className="text-sm font-medium text-foreground">
-          Agents are listening for signals on {productName}
+          Agents are listening for signals on {subject}
         </p>
         <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
           Email replies, competitor moves, ICP intent, and agent work will land here as they're
@@ -406,12 +411,29 @@ function EmptyFeed({ productName }: { productName: string }) {
 }
 
 export function FeedComponent({
+  workspaceId,
   onOpenOutreach,
 }: {
+  workspaceId?: string
   onOpenOutreach?: (contactEmail?: string) => void
 }) {
   const { product } = useSession()
-  const productName = product?.offer_name ?? 'your product/service'
+  const { workspaces } = useWorkspaces()
+
+  // The session snapshot only exists while a discovery run is fresh in memory,
+  // so on any revisit it is null. Resolve the heading from the workspace itself
+  // and fall back to the offer name only while the workspace is still loading.
+  useEffect(() => {
+    ensureWorkspacesLoaded()
+  }, [])
+
+  const workspace = workspaceId
+    ? workspaces.find((item) => item.id === workspaceId)
+    : undefined
+  const subject =
+    (workspace ? workspaceDisplayName(workspace) : null) ??
+    product?.offer_name ??
+    'your product/service'
 
   const signals = useSignals()
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -472,7 +494,7 @@ export function FeedComponent({
     <div className="flex h-[calc(100dvh-7rem)] min-h-0 flex-col">
       <div className="flex items-center justify-between gap-2 mb-5">
         <div className="flex items-center gap-2">
-          <h2 className="text-xl font-medium text-foreground">{productName} Feed</h2>
+          <h2 className="text-xl font-medium text-foreground">{subject} Feed</h2>
           {unreadCount > 0 && (
             <span className="flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-amber-500 px-1 text-xs font-medium text-amber-950">
               {unreadCount}
@@ -526,7 +548,7 @@ export function FeedComponent({
 
       <div className="mt-3 min-h-0 flex-1 overflow-y-auto pb-2">
         {!hasSignals ? (
-          <EmptyFeed productName={productName} />
+          <EmptyFeed subject={subject} />
         ) : (
           <div className="space-y-1">
             <SectionHeader label="Needs attention" count={sections.needsAttention.length} />

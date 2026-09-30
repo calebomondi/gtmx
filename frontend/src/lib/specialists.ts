@@ -18,6 +18,21 @@ function initialsFor(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
 }
 
+/** Domains that are acronyms rather than ordinary words. */
+const DOMAIN_ACRONYMS: Record<string, string> = { gtm: 'GTM' }
+
+/**
+ * "product" -> "Product Specialist". The domain arrives as a raw lowercase
+ * literal from the agent, so it needs the same title-casing the rest of the app
+ * applies to names -- except for acronyms, which stay uppercase.
+ */
+function domainLabel(domain: string): string {
+  const base =
+    DOMAIN_ACRONYMS[domain] ??
+    (domain.charAt(0).toUpperCase() + domain.slice(1))
+  return `${base} Specialist`
+}
+
 /** Convert a persisted specialist team into the avatar-group DTOs. */
 export function teamToAvatarSpecialists(
   team: SpecialistDto[] | null | undefined,
@@ -26,7 +41,9 @@ export function teamToAvatarSpecialists(
   return team.map((member, index) => ({
     id: member.domain,
     fallback: initialsFor(member.name),
-    tooltip: `${member.name} · ${member.role}`,
+    domain: domainLabel(member.domain),
+    name: member.name,
+    role: member.role,
     borderClass: SPECIALIST_BORDERS[index % SPECIALIST_BORDERS.length],
   }))
 }

@@ -43,7 +43,10 @@ function AvatarGroupTooltip({
   return (
     <AvatarGroupTooltipPrimitive
       className={cn(
-        'bg-primary text-primary-foreground z-50 w-fit rounded-md px-3 py-1.5 text-xs text-balance',
+        // Popover tokens, not primary: the app's --primary is near-black in
+        // light mode, so a primary-filled tooltip renders as a black box. This
+        // matches DropdownMenuContent -- white in light, near-black in dark.
+        'bg-popover text-popover-foreground z-50 w-64 rounded-md px-3 py-2 text-xs shadow-md ring-1 ring-foreground/10',
         className,
       )}
       {...props}
@@ -52,7 +55,7 @@ function AvatarGroupTooltip({
         {children}
       </motion.div>
       <AvatarGroupTooltipArrowPrimitive
-        className="fill-primary size-3 data-[side='bottom']:translate-y-[1px] data-[side='right']:translate-x-[1px] data-[side='left']:translate-x-[-1px] data-[side='top']:translate-y-[-1px]"
+        className="fill-popover size-3 data-[side='bottom']:translate-y-[1px] data-[side='right']:translate-x-[1px] data-[side='left']:translate-x-[-1px] data-[side='top']:translate-y-[-1px]"
         tipRadius={2}
       />
     </AvatarGroupTooltipPrimitive>
