@@ -24,17 +24,21 @@ import {
   PinOffIcon,
   PencilIcon,
   Trash2Icon,
+  FolderPlus,
+  Archive,
 } from "lucide-react"
 
 import {
   renameWorkspace,
   removeWorkspace,
   toggleWorkspacePin,
+  archiveWorkspaceAction,
 } from "@/lib/workspaces-store"
 import {
   workspaceDisplayName,
   type WorkspaceSummary,
 } from "@/lib/api"
+import { ProjectPicker } from "@/components/project-picker"
 
 const MAX_NAME_LENGTH = 100
 
@@ -50,6 +54,7 @@ export function WorkspaceManager({
   const navigate = useNavigate()
   const [renameOpen, setRenameOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [draftName, setDraftName] = useState(workspaceDisplayName(workspace))
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -101,6 +106,19 @@ export function WorkspaceManager({
     }
   }
 
+  const handleArchive = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await archiveWorkspaceAction(workspace.id)
+      navigate("/archive", { replace: true })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="flex min-w-0 items-center gap-2">
       <DropdownMenu>
@@ -134,6 +152,24 @@ export function WorkspaceManager({
               <PinIcon className="size-4" />
             )}
             {workspace.pinned ? "Unpin" : "Pin"}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="gap-2"
+            onClick={() => {
+              setError(null)
+              setPickerOpen(true)
+            }}
+          >
+            <FolderPlus className="size-4" />
+            Add to project
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="gap-2"
+            disabled={busy}
+            onClick={() => void handleArchive()}
+          >
+            <Archive className="size-4" />
+            Archive
           </DropdownMenuItem>
           <DropdownMenuItem
             className="gap-2 text-destructive focus:text-destructive"
@@ -224,6 +260,12 @@ export function WorkspaceManager({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ProjectPicker
+        workspace={workspace}
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+      />
     </div>
   )
 }

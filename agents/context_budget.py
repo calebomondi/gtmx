@@ -26,12 +26,70 @@ enough headroom that the estimate does not have to be exact.
 from __future__ import annotations
 
 import hashlib
+import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from utils.log import logger
 
 from .llm.main import cheap_providers, invoke_structured_with_fallback
+
+# -- On-disk cache persistence ------------------------------------------------
+#
+# The distill and offer-brief memo tables are pure functions of their inputs, so
+# they survive across processes: writing each new entry through to disk turns
+# repeated runs of the same offers (tests, prompt iteration) into near-free
+# reruns. The cache is not a correctness path -- a stale or missing entry just
+# costs a condensation call -- so persistence is deliberately best-effort: every
+# failure is logged and swallowed, and a corrupted file simply reloads empty.
+#
+# Two caches get files so their keys (URLs vs name+body digests) never mingle.
+_CACHE_DIR = Path(__file__).resolve().parent / ".cache"
+
+
+def _load_cache_file(name: str) -> dict[str, str]:
+    path = _CACHE_DIR / f"{name}.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            return {k: v for k, v in data.items() if isinstance(v, str)}
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        pass
+    return {}
+
+
+# Serialises the read-modify-write of a dict set plus its file write-through.
+# Distillation and offer_brief both run on thread pools, so without this two
+# workers could interleave and drop entries on the disk snapshot.
+_CACHE_LOCK = threading.Lock()
+
+
+def _cache_set(name: str, store: dict, key: str, value: str) -> None:
+    store[key] = value
+    # Write-through each new entry. This rewrites the file per entry (O(n) per
+    # write), which is a few milliseconds at this volume and buys crash safety:
+    # a killed run keeps every entry it completed.
+    try:
+        with _CACHE_LOCK:
+            path = _CACHE_DIR / f"{name}.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(store, ensure_ascii=False), encoding="utf-8")
+    except OSError as exc:
+        logger.warning("could not persist %s cache entry (%s); keeping in-memory only", name, exc)
+
+
+# Condensing the same page twice is pure waste, and a run revisits sources
+# across turns and subgraphs, so memoise on URL.
+#
+# URL-only keys (not url+focus): the original in-process cache is URL-keyed and
+# the cross-run win of a persistent cache depends on the same URL reappearing,
+# which happens across interviews and test reruns. The known simplification --
+# focus-dependent condensation, first focus wins -- is inherited from that
+# in-process design and now spans processes.
+_DISTILL_CACHE: dict[str, str] = _load_cache_file("distill")
 
 # The provider rejects prompts past 196,608 tokens. This leaves ample room for
 # the conversation transcript, the instruction blocks, and the completion, all
@@ -52,6 +110,12 @@ DISTILL_TOKEN_TARGET = 1_200
 
 # A condensed page still has to stay recognisable so the model can cite it.
 DISTILL_HARD_CAP = 1_800
+
+# Ceiling on concurrent page condenses. One search returns at most
+# `num_results` (currently 3) docs, so this is a guard against a future larger
+# result set rather than a tuning knob: unbounded fan-out against one provider
+# account is how you get throttled mid-run.
+_DISTILL_MAX_WORKERS = 4
 
 TRUNCATION_MARKER = "\n\n[... truncated to fit the model's context window ...]"
 
@@ -233,11 +297,6 @@ def _doc_block(title: str, url: str, body: str) -> str:
     return f'<Document href="{url}"/>\n{title}\n-----\n{body}\n</Document>'
 
 
-# Condensing the same page twice is pure waste, and a run revisits sources
-# across turns and subgraphs, so memoise on URL.
-_DISTILL_CACHE: dict[str, str] = {}
-
-
 def distill_document(
     doc: dict,
     focus: str,
@@ -260,7 +319,7 @@ def distill_document(
     if not text.strip():
         block = _doc_block(title, url or "unknown", "")
         if url:
-            _DISTILL_CACHE[url] = block
+            _cache_set("distill", _DISTILL_CACHE, url, block)
         return block
 
     # Short pages are already cheaper to keep than to condense, and sending
@@ -268,7 +327,7 @@ def distill_document(
     if count_tokens(text) <= target_tokens:
         block = _doc_block(title, url or "unknown", text)
         if url:
-            _DISTILL_CACHE[url] = block
+            _cache_set("distill", _DISTILL_CACHE, url, block)
         return block
 
     try:
@@ -287,14 +346,49 @@ def distill_document(
         logger.warning("%s failed for %s (%s); keeping page head instead", log_label, url, exc)
         block = _doc_block(title, url or "unknown", _truncate_to_tokens(text, DISTILL_HARD_CAP))
         if url:
-            _DISTILL_CACHE[url] = block
+            _cache_set("distill", _DISTILL_CACHE, url, block)
         return block
 
     note = (note or "").strip() or _truncate_to_tokens(text, DISTILL_HARD_CAP)
     block = _doc_block(title, url or "unknown", _truncate_to_tokens(note, DISTILL_HARD_CAP))
     if url:
-        _DISTILL_CACHE[url] = block
+        _cache_set("distill", _DISTILL_CACHE, url, block)
     return block
+
+
+def distill_documents(
+    docs: list[dict],
+    focus: str,
+    log_label: str = "distill_document",
+) -> str:
+    """Condense a search result set concurrently, preserving document order.
+
+    The pages in one search result set are independent of each other, but the
+    call sites were a lazy generator consumed by str.join, which is strictly
+    serial: three pages meant three back-to-back model round-trips where one
+    wall-clock window would do. distill_document is sync, so this fans out over a
+    thread pool rather than asyncio.
+
+    Order is preserved deliberately -- the note order is what the answering
+    model sees, and reordering sources between runs would make the same query
+    produce differently-ordered context.
+    """
+    if not docs:
+        return ""
+    if len(docs) == 1:
+        return distill_document(docs[0], focus=focus, log_label=log_label)
+
+    workers = min(len(docs), _DISTILL_MAX_WORKERS)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        notes = list(
+            pool.map(
+                lambda doc: distill_document(
+                    doc, focus=focus, log_label=log_label
+                ),
+                docs,
+            )
+        )
+    return "\n\n---\n\n".join(notes)
 
 
 _OFFER_BRIEF_SYSTEM = """You condense a scraped company/product page into a dense factual brief.
@@ -310,7 +404,7 @@ Write the brief using these rules:
 Return only the brief."""
 
 
-_OFFER_BRIEF_CACHE: dict[str, str] = {}
+_OFFER_BRIEF_CACHE: dict[str, str] = _load_cache_file("offer_brief")
 
 
 def offer_brief(
@@ -352,7 +446,7 @@ def offer_brief(
             brief = _truncate_to_tokens(body, DISTILL_HARD_CAP)
         brief = (brief or "").strip() or _truncate_to_tokens(body, DISTILL_HARD_CAP)
 
-    _OFFER_BRIEF_CACHE[digest] = brief
+    _cache_set("offer_brief", _OFFER_BRIEF_CACHE, digest, brief)
     logger.info(
         "offer_brief for %r: %d tokens -> %d tokens",
         name, count_tokens(body), count_tokens(brief),

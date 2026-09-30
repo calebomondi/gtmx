@@ -29,8 +29,8 @@ export interface StepProgress {
 }
 
 export type PhaseResults = {
-  create_specialists?: import("@/lib/api").SpecialistTeamDto
-  understand_product?: string
+  create_specialists?: import("@/lib/api").SpecialistDto[]
+  understand_offer?: string
   understand_market?: {
     market_data: NonNullable<
       Extract<
@@ -47,7 +47,7 @@ export type PhaseResults = {
   determine_icp?: Extract<
     DiscoveryPhaseDataFrame,
     { node: "determine_icp" }
-  >["icp"]
+  >["icp_data"]
 }
 
 export interface AgentRunState {
@@ -210,9 +210,9 @@ async function run(activeClient: DiscoveryClient): Promise<void> {
 function applyPhaseData(frame: DiscoveryPhaseDataFrame): void {
   const results = { ...state.phaseResults }
   if (frame.node === "create_specialists") {
-    results.create_specialists = frame.specialist_team
-  } else if (frame.node === "understand_product") {
-    results.understand_product = frame.product_domain_understanding
+    results.create_specialists = frame.specialists
+  } else if (frame.node === "understand_offer") {
+    results.understand_offer = frame.offer_domain_fit_understanding
   } else if (frame.node === "understand_market") {
     results.understand_market = {
       market_data: frame.market_data,
@@ -222,7 +222,7 @@ function applyPhaseData(frame: DiscoveryPhaseDataFrame): void {
   } else if (frame.node === "understand_competition") {
     results.understand_competition = frame.competition_data
   } else if (frame.node === "determine_icp") {
-    results.determine_icp = frame.icp
+    results.determine_icp = frame.icp_data
   }
   setState({ phaseResults: results })
 }

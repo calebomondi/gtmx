@@ -15,6 +15,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { MoreHorizontalIcon, FolderIcon, ArrowRightIcon, Trash2Icon } from "lucide-react"
+import { useNavigate } from "react-router-dom"
 
 export function NavProjects({
   projects,
@@ -26,13 +27,32 @@ export function NavProjects({
   }[]
 }) {
   const { isMobile } = useSidebar()
+  const navigate = useNavigate()
+  // Internal routes navigate client-side so the app doesn't reload and refetch
+  // every store; the placeholder "#" items keep their old anchor behaviour.
+  const isInternal = (url: string) => url.startsWith("/")
   return (
     <SidebarGroup>
       <SidebarGroupLabel>Extras</SidebarGroupLabel>
       <SidebarMenu>
         {projects.map((item) => (
           <SidebarMenuItem key={item.name}>
-            <SidebarMenuButton render={<a href={item.url} />} tooltip={item.name}>
+            <SidebarMenuButton
+              render={
+                isInternal(item.url) ? (
+                  <a
+                    href={item.url}
+                    onClick={(event) => {
+                      event.preventDefault()
+                      navigate(item.url)
+                    }}
+                  />
+                ) : (
+                  <a href={item.url} />
+                )
+              }
+              tooltip={item.name}
+            >
               {item.icon}
               <span>{item.name}</span>
             </SidebarMenuButton>

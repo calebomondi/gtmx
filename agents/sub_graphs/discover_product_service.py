@@ -224,7 +224,10 @@ def _extract_candidates(content: str, offer_name: str | None = None) -> list[str
                 kept.append(name)
         return kept, company
 
-    candidates, _ = attempt(candidates_instructions, known, thinking=True)
+    # Both passes run non-thinking. Reading a product name out of a scraped page
+    # is extraction, not deliberation, and the second pass already worked this
+    # way -- the first pass was the outlier.
+    candidates, _ = attempt(candidates_instructions, known, thinking=False)
     if not candidates:
         kept, company = attempt(candidates_instructions_second_pass, known, thinking=False)
         if kept:
@@ -854,7 +857,6 @@ def _classify_offer_type(
                 messages=[SystemMessage(content=template.format(**material))],
                 schema=OfferTypeDecision,
                 log_label="Classify Offer Type",
-                thinking=True,
             )
             or OfferTypeDecision()
         )

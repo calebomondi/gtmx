@@ -40,25 +40,19 @@ function buildRealThought(
   if (stepId === "details1") {
     const team = results.create_specialists
     if (!team) return null
-    const members = [
-      team.product_or_service_specialist,
-      team.market_specialist,
-      team.competition_specialist,
-      team.gtm_specialist,
-    ]
     return {
       title: "Assembling your specialist team",
-      items: members.map(
-        (member) => `${member.name} — ${member.role_title}: ${member.focus}`,
+      items: team.slice(0, 4).map(
+        (member) => `${member.name} — ${member.role}: ${member.description}`,
       ),
     }
   }
 
   if (stepId === "product") {
-    if (!results.understand_product) return null
+    if (!results.understand_offer) return null
     return {
       title: "Understanding your product domain",
-      items: [results.understand_product],
+      items: [results.understand_offer],
     }
   }
 

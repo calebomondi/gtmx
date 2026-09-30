@@ -52,7 +52,7 @@ const TabsVerticalLined = ({ workspaceId }: { workspaceId?: string }) => {
       )
     if (value === 'product') return <ProductComponent workspaceId={workspaceId} />
     if (value === 'competition') return <CompetitionComponent workspaceId={workspaceId} />
-    if (value === 'agent') return <AgentChat />
+    if (value === 'agent') return <AgentChat workspaceId={workspaceId} />
   }
 
   return (

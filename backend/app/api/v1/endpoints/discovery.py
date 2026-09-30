@@ -6,14 +6,18 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from langgraph.types import Command
 from sqlalchemy import select
 
-from agents.helpers import as_follow_up, as_offer_snapshot
-from agents.llm.main import LlmProvidersExhaustedError, classify_llm_error
-from agents.states import OfferSessionState, OfferDataSnapshot
+from agents.helpers import as_follow_up
+from agents.llm.main import (
+    LlmProvidersExhaustedError,
+    classify_llm_error,
+    llm_timing_report,
+)
 
 from backend.app.agents_runtime import get_agent
 from backend.app.config.settings import settings
 from backend.app.schemas.agents import DiscoveryRequest
 from backend.app.database.connect import AsyncSessionLocal
+from backend.app.naming import title_case
 from backend.app.database.models import (
     ProductFeature,
     ProductProfile,
@@ -26,32 +30,57 @@ from utils.log import logger
 
 router = APIRouter()
 
-# Top-level nodes of gtmx_agent.build_agent(), in execution order. Used to turn
-# node updates into phase frames for the workspace stepper.
+# Top-level nodes of agents.discovery_agent.build_discovery_agent(), in
+# execution order. Used to turn node updates into phase frames for the
+# workspace stepper.
 NODE_ORDER = [
-    "discover_product_service",
+    "discover_offer",
     "create_specialists",
-    "understand_product",
+    "understand_offer",
     "understand_market",
     "understand_competition",
     "determine_icp",
 ]
 
 
-def _build_initial_state(discovery_req: DiscoveryRequest) -> OfferSessionState:
+def _build_initial_state(discovery_req: DiscoveryRequest) -> dict:
+    """Seed the loose intake keys the discovery agent reads. The sub_agents
+    family carries offer_name/website_url/target_market directly on the session
+    (no OfferDataSnapshot model), so the initial input is a plain dict."""
     return {
-        "offer_snapshot": OfferDataSnapshot(
-            offer_name=discovery_req.product_name,
-            website_url=discovery_req.product_url,
-            target_geo=discovery_req.target_geo or [],
-        ),
+        "offer_name": discovery_req.product_name,
+        "website_url": discovery_req.product_url,
+        "target_market": discovery_req.target_geo or [],
+        "messages": [],
     }
 
 
-def _serialize_offer_snapshot(snapshot) -> dict | None:
-    if snapshot is None:
+def _serialize_offer_snapshot(values: dict) -> dict | None:
+    """Assemble the OfferSnapshot JSON the client expects from the agent's loose
+    state keys. The old gtmx_agent carried an OfferDataSnapshot model; the
+    discovery agent writes plain offer_* channels, so the shape is rebuilt here
+    (features/service_uniqueness are plain strings in the new schema)."""
+    offer_name = values.get("offer_name")
+    if not offer_name:
         return None
-    return as_offer_snapshot(snapshot).model_dump(mode="json")
+    return {
+        "company_name": None,
+        "offer_name": offer_name,
+        "offer_description": values.get("offer_description"),
+        "website_url": values.get("website_url"),
+        "intent": None,
+        "target_geo": list(values.get("target_market") or []),
+        "problem_solved": values.get("problem"),
+        "features": [
+            {"name": f, "description": None, "differentiator": None}
+            for f in (values.get("features") or [])
+        ],
+        "service_uniqueness": [
+            {"name": f, "description": None, "differentiator": None}
+            for f in (values.get("service_uniqueness") or [])
+        ],
+        "how_it_works": values.get("how_it_works"),
+    }
 
 
 async def _receive_answer(websocket: WebSocket) -> str | None:
@@ -82,35 +111,37 @@ async def _get_mock_user_id() -> uuid.UUID:
     return user.id
 
 
-async def _persist_workspace(snapshot, confirmed: bool) -> uuid.UUID:
-    offer = as_offer_snapshot(snapshot)
+async def _persist_workspace(values: dict, confirmed: bool) -> uuid.UUID:
+    """Persist the offer the discovery phase settled on. `values` is the
+    session state as loose keys (offer_name/website_url/problem/features: list
+    of plain strings), mapped to the ProductProfile shape."""
     user_id = await _get_mock_user_id()
-    name = (offer.offer_name or "").strip() or None
+    offer_name = (values.get("offer_name") or "").strip() or None
 
     async with AsyncSessionLocal() as db:
         async with db.begin():
             workspace = Workspace(
                 user_id=user_id,
-                name=name,
+                name=title_case(offer_name),
             )
 
             profile = ProductProfile(
                 workspace=workspace,
-                product_name=offer.offer_name,
-                product_url=offer.website_url,
-                product_description=offer.offer_description,
-                intent=offer.intent,
-                problem_solved=offer.problem_solved,
-                how_it_works=offer.how_it_works,
-                target_geo=list(offer.target_geo or []),
+                product_name=offer_name,
+                product_url=values.get("website_url"),
+                product_description=values.get("offer_description"),
+                intent=None,
+                problem_solved=values.get("problem"),
+                how_it_works=values.get("how_it_works"),
+                target_geo=list(values.get("target_market") or []),
                 confirmed=confirmed,
                 features=[
                     ProductFeature(
-                        name=feature.name or "",
-                        description=feature.description,
-                        differentiator=feature.differentiator,
+                        name=f,
+                        description=None,
+                        differentiator=None,
                     )
-                    for feature in offer.features or []
+                    for f in values.get("features") or []
                 ],
             )
 
@@ -123,14 +154,14 @@ def _build_insights(values: dict) -> dict:
     """Final run results persisted with the workspace so tabs can show real
     data after a refresh."""
     return {
-        "offer_snapshot": _serialize_offer_snapshot(values.get("offer_snapshot")),
+        "offer_snapshot": _serialize_offer_snapshot(values),
         "confirmed": bool(values.get("confirmed")),
-        "domain_understanding": values.get("product_domain_understanding"),
+        "domain_understanding": values.get("offer_domain_fit_understanding"),
         "market_fit_understanding": values.get("product_market_fit_understanding"),
         "market_data": _dump(values.get("market_data")),
         "competition_data": _dump(values.get("competition_data")),
-        "icp": _dump(values.get("icp")),
-        "specialist_team": _dump(values.get("specialist_team")),
+        "icp": _dump(values.get("icp_data")),
+        "specialists": _dump(values.get("specialists")),
         "completed_at": datetime.now(UTC).isoformat(),
     }
 
@@ -150,8 +181,9 @@ async def _persist_insights(workspace_id: uuid.UUID, insights: dict) -> None:
 
 @router.websocket("")
 async def start_product_discovery(websocket: WebSocket):
-    """Run the full GTMX agent (discovery -> specialists -> understand_product
-    -> market -> competition -> determine_icp) over a full-duplex WebSocket.
+    """Run the discovery agent (discover_offer -> specialists ->
+    understand_offer -> market -> competition -> determine_icp) over a
+    full-duplex WebSocket.
 
     The connection stays open for the whole run: every time the discovery phase
     interrupts, the question is streamed to the client, the client replies, and
@@ -186,6 +218,12 @@ async def start_product_discovery(websocket: WebSocket):
         return
 
     workspace_id: uuid.UUID | None = None
+    # understand_offer and understand_market run concurrently, so a node
+    # completing no longer implies the previous one did. Track both sets across
+    # the whole session (interrupt resumes re-enter this loop) so the stepper is
+    # driven by what has actually happened rather than by array position.
+    announced_started: set[str] = set()
+    completed: set[str] = set()
 
     try:
         input_to_agent = initial_state
@@ -205,17 +243,18 @@ async def start_product_discovery(websocket: WebSocket):
                 state = await agent.aget_state(config)
                 values = state.values if state is not None else {}
                 node_index = NODE_ORDER.index(node)
+                completed.add(node)
 
                 # Discovery finished: persist the workspace before the client
                 # navigates into it, then tell it the id.
-                if node == "discover_product_service" and workspace_id is None:
-                    snapshot = values.get("offer_snapshot")
+                if node == "discover_offer" and workspace_id is None:
+                    snapshot = _serialize_offer_snapshot(values)
                     if snapshot is None:
                         raise RuntimeError(
                             "Discovery completed without an offer snapshot."
                         )
                     workspace_id = await _persist_workspace(
-                        snapshot=snapshot,
+                        values=values,
                         confirmed=bool(values.get("confirmed")),
                     )
                     await websocket.send_json({
@@ -240,13 +279,22 @@ async def start_product_discovery(websocket: WebSocket):
                         **phase_payload,
                     })
 
-                if node_index + 1 < len(NODE_ORDER):
+                # Announce the next phase that has not begun yet. Scanning
+                # forward from the node that just finished, rather than taking
+                # index+1, is what makes this correct now that two interviews
+                # overlap: whichever finishes first hands the stepper to its
+                # sibling, which is genuinely the phase in flight.
+                for candidate in NODE_ORDER[node_index:]:
+                    if candidate in completed or candidate in announced_started:
+                        continue
+                    announced_started.add(candidate)
                     await websocket.send_json({
                         "type": "phase",
                         "session_id": session_id,
-                        "node": NODE_ORDER[node_index + 1],
+                        "node": candidate,
                         "status": "started",
                     })
+                    break
 
             if pending_interrupt is None:
                 break  # run finished
@@ -279,6 +327,11 @@ async def start_product_discovery(websocket: WebSocket):
         values = state.values if state is not None else {}
         follow_up = as_follow_up(values.get("follow_up"))
 
+        # Where the run's wall clock actually went. This is the LLM share only --
+        # Exa search and scrape time never passes through the LLM layer, so treat
+        # the gap between this total and the run duration as search/network.
+        logger.info("Discovery run LLM breakdown:\n%s", llm_timing_report())
+
         # Persist final insights before announcing completion so the client can
         # refetch them right after the `complete` frame.
         if workspace_id is not None:
@@ -294,7 +347,7 @@ async def start_product_discovery(websocket: WebSocket):
             "session_id": session_id,
             "workspace_id": str(workspace_id) if workspace_id else None,
             "confirmed": bool(values.get("confirmed")),
-            "offer_snapshot": _serialize_offer_snapshot(values.get("offer_snapshot")),
+            "offer_snapshot": _serialize_offer_snapshot(values),
             "user_replies": list(follow_up.user_replies or []),
         })
 
@@ -365,27 +418,31 @@ def _user_facing_error(err: BaseException) -> str:
     return f"{err}"
 
 
-def _dump(value) -> dict | None:
-    """Checkpoint round-trips may hand back pydantic models or plain dicts."""
+def _dump(value):
+    """Checkpoint round-trips may hand back pydantic models, plain dicts/lists
+    of models, or scalars. Recurses so a list of models (e.g. the specialist
+    team) serializes like a single model does."""
     if value is None:
         return None
     if isinstance(value, dict):
-        return value
+        return {k: _dump(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_dump(v) for v in value]
     if hasattr(value, "model_dump"):
         return value.model_dump(mode="json")
-    return None
+    return value
 
 
 def _phase_payload(node: str, values: dict) -> dict | None:
     """Extract the structured result of a finished phase for the stepper panel."""
     if node == "create_specialists":
-        team = _dump(values.get("specialist_team"))
-        return {"specialist_team": team} if team else None
-    if node == "understand_product":
-        understanding = values.get("product_domain_understanding")
+        specialists = _dump(values.get("specialists"))
+        return {"specialists": specialists} if specialists else None
+    if node == "understand_offer":
+        understanding = values.get("offer_domain_fit_understanding")
         if not understanding:
             return None
-        return {"product_domain_understanding": understanding}
+        return {"offer_domain_fit_understanding": understanding}
     if node == "understand_market":
         market = _dump(values.get("market_data"))
         if market is None:
@@ -400,6 +457,6 @@ def _phase_payload(node: str, values: dict) -> dict | None:
         competition = _dump(values.get("competition_data"))
         return {"competition_data": competition} if competition else None
     if node == "determine_icp":
-        icp = _dump(values.get("icp"))
-        return {"icp": icp} if icp else None
+        icp = _dump(values.get("icp_data"))
+        return {"icp_data": icp} if icp else None
     return None

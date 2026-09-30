@@ -5,7 +5,7 @@ from langchain_core.messages import HumanMessage, SystemMessage, get_buffer_stri
 
 from agents.llm.main import invoke_structured_with_fallback
 from agents.states import InterviewState, ProductFindings, SearchQuery
-from agents.context_budget import DEFAULT_CONTEXT_BUDGET, budget_context, distill_document
+from agents.context_budget import DEFAULT_CONTEXT_BUDGET, budget_context, distill_documents
 from agents.helpers import as_offer_snapshot, format_offer_material
 from config import Config
 from data_sources.scraping.exa import search_and_scrape
@@ -201,16 +201,13 @@ def search_web(state: InterviewState) -> dict:
     # Condense each page once, against the query that surfaced it. The note is
     # cached by URL, so later turns and later subgraphs reuse it rather than
     # re-sending (and re-paying for) the full article text on every call.
-    formatted_search_docs = "\n\n---\n\n".join(
-        distill_document(
-            doc,
-            focus=(
-                f"the technology and domain space {offer_noun}s like this operate in, "
-                f"as surfaced by this search: {search_query.search_query}"
-            ),
-            log_label="search_web:distill_product_doc",
-        )
-        for doc in search_docs
+    formatted_search_docs = distill_documents(
+        search_docs,
+        focus=(
+            f"the technology and domain space {offer_noun}s like this operate in, "
+            f"as surfaced by this search: {search_query.search_query}"
+        ),
+        log_label="search_web:distill_product_doc",
     )
 
     return {"context": [formatted_search_docs]}
@@ -265,6 +262,7 @@ def generate_aswer(state: InterviewState) -> dict:
     answer = invoke_structured_with_fallback(
         messages=[SystemMessage(content=system_message)] + messages,
         log_label="generate_answer",
+        thinking=True,
     )
     print(f"{"✅ Generated Anser" if answer else "❌ Failed to generate anser!"}")
 
@@ -447,7 +445,7 @@ def write_findings(state: InterviewState):
     }
 
 
-def build_product_graph(checkpointer: bool = True):
+def build_product_graph(checkpointer: bool = True): 
     """Build the understand-product interview loop. Compiled with a checkpointer by
     default so an interactive driver can resume interrupts; pass checkpointer=False
     when embedding this as a subgraph node in the main agent (nested subgraphs

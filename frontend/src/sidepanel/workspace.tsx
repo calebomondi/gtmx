@@ -26,6 +26,7 @@ import {
 
 import { ChainOfThoughtStack, RunCompleteBadge } from '@/chain_of_thought/thought'
 import { ChainOfThoughtResultDispaly } from '@/chain_of_thought/display'
+import { cn } from '@/lib/utils'
 import type { StepProgress } from '@/lib/agent-run-store'
 import { useAutoFollowScroll } from '@/chain_of_thought/use-auto-follow-scroll'
 import { ActualWorkspace } from '@/sidepanel/actual_workspace'
@@ -33,7 +34,7 @@ import { useAgentRun } from '@/lib/agent-run-store'
 import { refetchWorkspaces, useWorkspaces } from '@/lib/workspaces-store'
 import { useInsights } from '@/lib/insights-store'
 import { useSession } from '@/lib/session-context'
-import type { AgentNode, SpecialistTeamDto } from '@/lib/api'
+import type { AgentNode, SpecialistDto } from '@/lib/api'
 
 const steps = [
   {
@@ -80,7 +81,7 @@ const steps = [
 
 const STEP_TO_NODE: Record<string, AgentNode> = {
   details1: "create_specialists",
-  product: "understand_product",
+  product: "understand_offer",
   market: "understand_market",
   competition: "understand_competition",
   gtm: "determine_icp",
@@ -107,6 +108,7 @@ const AgentRunProductUnderstanding = () => {
 
   const finished = progress.every((entry) => entry.status === "done")
   const reachedSteps = progress.filter((entry) => entry.status !== 'pending')
+  const awaiting = run.stage === "awaiting_input"
 
   const {
     containerRef: cotScrollRef,
@@ -131,7 +133,13 @@ const AgentRunProductUnderstanding = () => {
           {steps.map((step, index) => (
             <StepperItem key={step.id} stepId={step.id} className='relative items-start'>
               <StepperTrigger className='items-start gap-2.5 pb-15 last:pb-0'>
-                <StepperIndicator>{index + 1}</StepperIndicator>
+                <StepperIndicator
+                  className={cn(
+                    awaiting && step.id === currentStepId && 'animate-pulse bg-[#FEA853] text-black',
+                  )}
+                >
+                  {index + 1}
+                </StepperIndicator>
                 <div className='text-left'>
                   <StepperTitle>{step.title}</StepperTitle>
                   <StepperDescription>{step.description}</StepperDescription>
@@ -152,6 +160,12 @@ const AgentRunProductUnderstanding = () => {
                 className='h-full w-full min-h-0 overflow-y-auto'
               >
                 <div className='w-full space-y-2'>
+                  {awaiting && (
+                    <div className='flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-600'>
+                      <span className='h-2 w-2 shrink-0 rounded-full bg-amber-500 animate-pulse' />
+                      Waiting for your input to continue…
+                    </div>
+                  )}
                   <ChainOfThoughtStack steps={reachedSteps} results={run.phaseResults} />
                   {finished && <RunCompleteBadge />}
                 </div>
@@ -183,19 +197,13 @@ function initialsFor(name: string): string {
 }
 
 function teamToAvatarSpecialists(
-  team: SpecialistTeamDto | null | undefined,
+  team: SpecialistDto[] | null | undefined,
 ): Specialist[] {
   if (!team) return []
-  const members = [
-    team.product_or_service_specialist,
-    team.market_specialist,
-    team.competition_specialist,
-    team.gtm_specialist,
-  ]
-  return members.map((member, index) => ({
+  return team.map((member, index) => ({
     id: member.domain,
     fallback: initialsFor(member.name),
-    tooltip: `${member.name} · ${member.role_title}`,
+    tooltip: `${member.name} · ${member.role}`,
     borderClass: SPECIALIST_BORDERS[index % SPECIALIST_BORDERS.length],
   }))
 }
@@ -242,7 +250,7 @@ export default function Workspace() {
 
   const headerTeam =
     (runBelongsToWorkspace ? run.phaseResults.create_specialists : undefined) ??
-    insights?.specialist_team ??
+    insights?.specialists ??
     null
   const headerSpecialists = useMemo(
     () => teamToAvatarSpecialists(headerTeam),

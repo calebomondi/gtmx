@@ -5,15 +5,15 @@ import { DotLottieReact } from '@lottiefiles/dotlottie-react'
 
 import { Button } from '@/components/ui/button'
 import { ensureWorkspacesLoaded, refetchWorkspaces, useWorkspaces } from '@/lib/workspaces-store'
+import { ensureProjectsLoaded, useProjects } from '@/lib/projects-store'
 import { cn } from '@/lib/utils'
 
 import {
   CATEGORY_META,
   RECENCY_CHIPS,
   SectionHeader,
-  splitIntoSections,
 } from '@/feed/feed-components'
-import { formatTimeAgo, isRecent, type RecencyFilter } from '@/feed/feed-types'
+import { formatTimeAgo, isRecent, type RecencyFilter, type Signal } from '@/feed/feed-types'
 
 import { removeHomeSignal, updateHomeSignal, useHomeSignals } from './home-feed-store'
 import {
@@ -46,6 +46,30 @@ function targetTabFor(signal: HomeSignal) {
   return signal.category in CATEGORY_TARGET_TAB
     ? CATEGORY_TARGET_TAB[signal.category as keyof typeof CATEGORY_TARGET_TAB]
     : 'feed'
+}
+
+const DAY_MS = 86_400_000
+
+/**
+ * Same buckets as the workspace feed, but order is preserved so the caller can
+ * apply its own priority ordering (project priority → pinned → recency).
+ */
+function splitIntoSectionsOrdered<T extends Signal>(signals: T[]) {
+  const needsAttention: T[] = []
+  const today: T[] = []
+  const earlier: T[] = []
+
+  for (const signal of signals) {
+    if (signal.hot && !signal.read) {
+      needsAttention.push(signal)
+    } else if (Date.now() - signal.timestamp < DAY_MS) {
+      today.push(signal)
+    } else {
+      earlier.push(signal)
+    }
+  }
+
+  return { needsAttention, today, earlier }
 }
 
 function HomeSignalCard({
@@ -236,24 +260,49 @@ export function HomeFeed() {
   const navigate = useNavigate()
   const signals = useHomeSignals()
   const { workspaces } = useWorkspaces()
+  const { projects } = useProjects()
   const [categoryFilter, setCategoryFilter] = useState<HomeCategoryFilter>('all')
   const [recency, setRecency] = useState<RecencyFilter>('90d')
   const [scanning, setScanning] = useState(false)
 
   useEffect(() => {
     ensureWorkspacesLoaded()
+    ensureProjectsLoaded()
   }, [])
 
   const workspaceCount = workspaces.length
   const unreadCount = useMemo(() => signals.filter((s) => !s.read).length, [signals])
 
+  // Workspaces in a priority project rank above everything else.
+  const workspaceRank = useMemo(() => {
+    const priorityProjects = new Set(
+      projects.filter((project) => project.priority).map((project) => project.id),
+    )
+    const rank = new Map<string, number>()
+    for (const workspace of workspaces) {
+      const inPriorityProject =
+        workspace.project_id !== null && priorityProjects.has(workspace.project_id)
+      rank.set(workspace.id, inPriorityProject ? 0 : 1)
+    }
+    return rank
+  }, [workspaces, projects])
+
   const filtered = useMemo(() => {
     const byCategory =
       categoryFilter === 'all' ? signals : signals.filter((s) => s.category === categoryFilter)
-    return byCategory.filter((s) => isRecent(s, recency))
-  }, [signals, categoryFilter, recency])
+    return byCategory
+      .filter((s) => isRecent(s, recency))
+      .slice()
+      .sort((a, b) => {
+        const rank =
+          (workspaceRank.get(a.workspace.id) ?? 1) - (workspaceRank.get(b.workspace.id) ?? 1)
+        if (rank !== 0) return rank
+        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+        return b.timestamp - a.timestamp
+      })
+  }, [signals, categoryFilter, recency, workspaceRank])
 
-  const sections = useMemo(() => splitIntoSections(filtered), [filtered])
+  const sections = useMemo(() => splitIntoSectionsOrdered(filtered), [filtered])
 
   const openSignal = (signal: HomeSignal) => {
     updateHomeSignal(signal.id, (s) => ({ ...s, read: true }))

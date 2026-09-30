@@ -50,9 +50,9 @@ export interface DiscoveryWorkspaceCreatedFrame {
 
 /** Top-level agent nodes, in execution order (mirrors backend NODE_ORDER). */
 export type AgentNode =
-  | "discover_product_service"
+  | "discover_offer"
   | "create_specialists"
-  | "understand_product"
+  | "understand_offer"
   | "understand_market"
   | "understand_competition"
   | "determine_icp"
@@ -66,23 +66,13 @@ export interface DiscoveryPhaseFrame {
   status: PhaseStatus
 }
 
-export interface DomainSpecialistDto {
-  domain: string
+/** A specialist on the created team (mirrors agents.sub_agents.schema_states.Specialist). */
+export interface SpecialistDto {
+  domain: "product" | "service" | "market" | "competition" | "gtm"
+  affiliation: string
   name: string
-  role_title: string
-  background: string
-  focus: string
-  region: string | null
-  language: string | null
-  operating_context: string | null
-  distinct_lens: string | null
-}
-
-export interface SpecialistTeamDto {
-  product_or_service_specialist: DomainSpecialistDto
-  market_specialist: DomainSpecialistDto
-  competition_specialist: DomainSpecialistDto
-  gtm_specialist: DomainSpecialistDto
+  role: string
+  description: string
 }
 
 export interface MarketDataDto {
@@ -135,13 +125,13 @@ export type DiscoveryPhaseDataFrame =
       type: "phase_data"
       session_id: string
       node: "create_specialists"
-      specialist_team: SpecialistTeamDto
+      specialists: SpecialistDto[]
     }
   | {
       type: "phase_data"
       session_id: string
-      node: "understand_product"
-      product_domain_understanding: string
+      node: "understand_offer"
+      offer_domain_fit_understanding: string
     }
   | {
       type: "phase_data"
@@ -160,7 +150,7 @@ export type DiscoveryPhaseDataFrame =
       type: "phase_data"
       session_id: string
       node: "determine_icp"
-      icp: IcpDto
+      icp_data: IcpDto
     }
 
 export interface DiscoveryCompleteFrame {
@@ -425,8 +415,30 @@ export interface WorkspaceSummary {
   name: string | null
   pinned: boolean
   product_name: string | null
+  project_id: string | null
+  archived: boolean
+  archived_at: string | null
   date_created: string
   last_activity: string
+}
+
+export interface ProjectDto {
+  id: string
+  user_id: string
+  name: string
+  name_key: string
+  priority: boolean
+  position: number
+  archived: boolean
+  archived_at: string | null
+  date_created: string
+  last_activity: string
+  workspace_count: number
+  archived_workspace_count: number
+}
+
+export interface ProjectDetailDto extends ProjectDto {
+  workspaces: WorkspaceSummary[]
 }
 
 export function workspaceDisplayName(workspace: WorkspaceSummary): string {
@@ -440,13 +452,48 @@ export function getCurrentUser(): Promise<CurrentUser> {
   return currentUserPromise
 }
 
-export function listWorkspaces(userId: string): Promise<WorkspaceSummary[]> {
-  return apiFetch<WorkspaceSummary[]>(`/api/v1/workspaces/user/${userId}`)
+export function listWorkspaces(
+  userId: string,
+  archived = false,
+): Promise<WorkspaceSummary[]> {
+  return apiFetch<WorkspaceSummary[]>(
+    `/api/v1/workspaces/user/${userId}${archived ? "?archived=true" : ""}`,
+  )
+}
+
+export interface ProductFeatureDto {
+  id: string
+  name: string
+  description: string | null
+  differentiator: string | null
+}
+
+export interface ProductProfileDto {
+  id: string
+  workspace_id: string
+  product_name: string | null
+  product_url: string | null
+  product_description: string | null
+  intent: string | null
+  problem_solved: string | null
+  how_it_works: string | null
+  target_geo: string[]
+  confirmed: boolean
+  features: ProductFeatureDto[]
+}
+
+/** Full workspace (includes archived ones); `product_profile` is eager-loaded. */
+export interface WorkspaceDetail extends WorkspaceSummary {
+  product_profile: ProductProfileDto | null
+}
+
+export function getWorkspace(workspaceId: string): Promise<WorkspaceDetail> {
+  return apiFetch<WorkspaceDetail>(`/api/v1/workspaces/${workspaceId}`)
 }
 
 export function updateWorkspace(
   workspaceId: string,
-  body: { name?: string; pinned?: boolean },
+  body: { name?: string; pinned?: boolean; project_id?: string | null },
 ): Promise<WorkspaceSummary> {
   return apiFetch<WorkspaceSummary>(`/api/v1/workspaces/${workspaceId}`, {
     method: "PATCH",
@@ -460,6 +507,79 @@ export function deleteWorkspace(workspaceId: string): Promise<void> {
   })
 }
 
+export function archiveWorkspace(workspaceId: string): Promise<WorkspaceSummary> {
+  return apiFetch<WorkspaceSummary>(`/api/v1/workspaces/${workspaceId}/archive`, {
+    method: "POST",
+  })
+}
+
+export function restoreWorkspace(workspaceId: string): Promise<WorkspaceSummary> {
+  return apiFetch<WorkspaceSummary>(`/api/v1/workspaces/${workspaceId}/restore`, {
+    method: "POST",
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Projects
+// ---------------------------------------------------------------------------
+
+export function listProjects(
+  userId: string,
+  archived = false,
+): Promise<ProjectDto[]> {
+  return apiFetch<ProjectDto[]>(
+    `/api/v1/projects/user/${userId}${archived ? "?archived=true" : ""}`,
+  )
+}
+
+export function createProject(userId: string, name: string): Promise<ProjectDto> {
+  return apiFetch<ProjectDto>(`/api/v1/projects/user/${userId}`, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  })
+}
+
+export function getProject(projectId: string): Promise<ProjectDetailDto> {
+  return apiFetch<ProjectDetailDto>(`/api/v1/projects/${projectId}`)
+}
+
+export function renameProject(projectId: string, name: string): Promise<ProjectDto> {
+  return apiFetch<ProjectDto>(`/api/v1/projects/${projectId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  })
+}
+
+/** Persist the two-bucket drag order (`priority` / `other` = project ids). */
+export function reorderProjects(
+  userId: string,
+  priority: string[],
+  other: string[],
+): Promise<void> {
+  return apiFetch<void>(`/api/v1/projects/user/${userId}/order`, {
+    method: "PUT",
+    body: JSON.stringify({ priority, other }),
+  })
+}
+
+export function archiveProject(projectId: string): Promise<ProjectDetailDto> {
+  return apiFetch<ProjectDetailDto>(`/api/v1/projects/${projectId}/archive`, {
+    method: "POST",
+  })
+}
+
+export function restoreProject(projectId: string): Promise<ProjectDetailDto> {
+  return apiFetch<ProjectDetailDto>(`/api/v1/projects/${projectId}/restore`, {
+    method: "POST",
+  })
+}
+
+export function deleteProject(projectId: string): Promise<void> {
+  return apiFetch<void>(`/api/v1/projects/${projectId}`, {
+    method: "DELETE",
+  })
+}
+
 /** Final discovery-run results persisted server-side when the run completes. */
 export interface WorkspaceInsights {
   offer_snapshot: OfferSnapshot | null
@@ -469,7 +589,7 @@ export interface WorkspaceInsights {
   market_data: MarketDataDto | null
   competition_data: CompetitionDataDto | null
   icp: IcpDto | null
-  specialist_team: SpecialistTeamDto | null
+  specialists: SpecialistDto[] | null
   completed_at: string | null
 }
 

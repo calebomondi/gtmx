@@ -6,7 +6,7 @@ from langchain_core.messages import HumanMessage, SystemMessage, get_buffer_stri
 
 from agents.llm.main import invoke_structured_with_fallback
 from agents.states import InterviewState, CompetitionSearchQuery, CompetitionExtraction, CompetitionFindings
-from agents.context_budget import distill_document
+from agents.context_budget import distill_documents
 from agents.helpers import as_offer_snapshot, format_offer_material
 from agents.sub_graphs.understand_product import (
     _offer_type_for,
@@ -224,18 +224,17 @@ def search_web(state: InterviewState) -> dict:
         )
     print(f"{"✅ Search complete" if docs else "❌ Search failed"} ({len(docs)} unique docs)")
 
-    # Condensed once per URL and cached; see understand_product.search_web.
-    formatted_search_docs = "\n\n---\n\n".join(
-        distill_document(
-            doc,
-            focus=(
-                f"named competitors and how the {offer_noun} stacks up against them, "
-                f"as surfaced by these searches: {queries.direct_query} / "
-                f"{queries.landscape_query}"
-            ),
-            log_label="search_web:distill_competition_doc",
-        )
-        for doc in docs
+    # Condensed once per URL and cached; see understand_product.search_web. This
+    # one fans out over 6 docs (two queries x three results), so it is the
+    # single biggest win from the concurrent helper.
+    formatted_search_docs = distill_documents(
+        docs,
+        focus=(
+            f"named competitors and how the {offer_noun} stacks up against them, "
+            f"as surfaced by these searches: {queries.direct_query} / "
+            f"{queries.landscape_query}"
+        ),
+        log_label="search_web:distill_competition_doc",
     )
 
     return {"context": [formatted_search_docs]}
@@ -296,6 +295,7 @@ def generate_aswer(state: InterviewState) -> dict:
     answer = invoke_structured_with_fallback(
         messages=[SystemMessage(content=system_message)] + messages,
         log_label="generate_competition_answer",
+        thinking=True,
     )
     print(f"{"✅ Generated answer" if answer else "❌ Failed to generate answer!"}")
 

@@ -1043,7 +1043,7 @@ function buildProductState(args: {
   return {
     product_snapshot: sessionSnapshot ?? insights?.offer_snapshot ?? null,
     product_domain_understanding:
-      phaseResults?.understand_product ??
+      phaseResults?.understand_offer ??
       insights?.domain_understanding ??
       null,
     product_market_fit_understanding:

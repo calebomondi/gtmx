@@ -330,6 +330,20 @@ class CompetitionFindings(BaseModel):
     )
 
 
+class IcpFindings(BaseModel):
+    """ICP notes + concise go-to-market understanding, from the gtm specialist.
+
+    Unlike the research stages' findings, these notes carry NO `### Sources` block
+    by design: the ICP stage is a synthesis and nothing new is retrieved, so every
+    claim is citable only by label (`[market findings]`, `[competition findings]`,
+    `[offer material]`, ...)."""
+
+    findings: str = Field(description="Detailed markdown notes laying out the offer's ideal customer profile and how it will be reached — the buyer-bearing firmographics (industries, sizes, titles) or consumer personas, the channels/communities/events where they congregate, the beachhead, messaging angles, exclusions and competitor-lead surfaces the report section has to be built from")
+    icp_understanding: str = Field(
+        description="Brief understanding of who the ideal customer is and where to reach them; target 40 words, maximum 50"
+    )
+
+
 class OfferSections(BaseModel):
     """The finished report sections, composed in one pass once every specialist has reported.
 
@@ -768,3 +782,301 @@ class OfferSessionState(TypedDict):
     name_mismatch: bool = Field(default=False, description="True when the provided product_name was not found in the scraped content and the user should be told")
     product_candidates: list[str] = Field(default_factory=list, description="Distinct product/brand names found in the scraped content, offered to the user when the provided name isn't found")
     scrape_failed: bool = Field(default=False, description="True once the user has been told that their URL could not be fetched, so re-entry skips re-scraping")
+
+
+# --- Node-led offer research (sub_agents) -----------------------------------
+#
+# Models for the node-led research pipeline, which replaces the
+# specialist-interviews-an-expert loop with explicit intelligence operations:
+# analyze -> identify gaps -> plan -> research -> evaluate -> synthesize.
+#
+# They live HERE, not in sub_agents/understand_product.py, because
+# backend/app/agents_runtime.py:38-43 derives the LangGraph checkpoint serde
+# allowlist by walking this module's members and filtering on
+# `__module__ == "agents.states"`. A model defined in the pipeline module would
+# be rejected on every checkpoint read ("Blocked deserialization") -- the same
+# failure the comment there records for BuyerType/ProductCategory.
+#
+# Naming is deliberately neutral ("offer", never "product"): this pipeline runs
+# for services and products alike, and the prompts swap `{offer_noun}` so every
+# node reads correctly for both.
+
+
+class OfferAnalysis(BaseModel):
+    """The specialist's initial mental model of the offer, built from the
+    offer's own material BEFORE any web research.
+
+    This is the structural replacement for the old interview's first question.
+    The old loop asked "what should I ask the expert?"; this asks "what do I
+    currently understand, and what do I not know?" — which is the question that
+    actually drives what to research next.
+    """
+
+    problem: str | None = Field(default=None, description="The problem the offer addresses, as the offer's own material states it")
+    solution: str | None = Field(default=None, description="How the offer solves it, in neutral terms")
+    target_users: list[str] = Field(default_factory=list, description="Who the offer is for, as stated in its own material")
+    core_features: list[str] = Field(default_factory=list, description="The offer's main features / service elements, as stated in its own material")
+    technology: list[str] = Field(default_factory=list, description="Named technologies, mechanisms or approaches the offer is built on or uses")
+    business_model: str | None = Field(default=None, description="How the offer appears to make money, if its own material states it")
+    target_markets: list[str] = Field(default_factory=list, description="Geographies the offer serves, as stated in its own material")
+    domain: str | None = Field(default=None, description="The domain/category space the offer sits in")
+    category: str | None = Field(default=None, description="The closest category name — how this domain space is conventionally labelled")
+    known_claims: list[str] = Field(
+        default_factory=list,
+        description="Concrete checkable claims the offer's own material makes — mechanisms, numbers, named systems, dates, limits",
+    )
+    unknowns: list[str] = Field(
+        default_factory=list,
+        description="What the offer's own material does NOT establish and a domain expert would be needed for",
+    )
+
+    @field_validator(
+        "target_users", "core_features", "technology", "target_markets",
+        "known_claims", "unknowns", mode="before",
+    )
+    @classmethod
+    def _coerce_list_fields(cls, v):
+        if v is None:
+            return []
+        return _coerce_json(v)
+
+
+class KnowledgeGap(BaseModel):
+    """One thing the analysis cannot answer and research could close."""
+
+    area: str = Field(description="The area of understanding this gap sits in — e.g. 'technology', 'category standards', 'deployment in <geo>'")
+    question: str = Field(description="The specific question that would close this gap")
+    why_it_matters: str = Field(description="Why answering it changes the picture of the offer — what a reader could not judge without it")
+    priority: int = Field(default=3, description="1 = highest priority, 3 = lowest. Drives which gaps become research tasks first")
+
+    @field_validator("area", "question", mode="before")
+    @classmethod
+    def _coerce_none_str(cls, v):
+        return _none_str_to_null(v)
+
+
+class GapList(BaseModel):
+    gaps: list[KnowledgeGap] = Field(default_factory=list, description="The identified knowledge gaps, most important first")
+
+    @field_validator("gaps", mode="before")
+    @classmethod
+    def _coerce_gaps(cls, v):
+        if v is None:
+            return []
+        return _coerce_json(v)
+
+
+class ResearchTask(BaseModel):
+    """A unit of planned research: one objective, backed by search queries.
+
+    A task is the smallest thing the pipeline can execute and evaluate
+    independently, which is what makes the sufficiency loop meaningful — the
+    evaluator can say "this task came back empty" without that contaminating the
+    other two.
+    """
+
+    id: str = Field(description="Short stable identifier for this task, e.g. 'standards' or 'deployment'")
+    area: str = Field(description="The knowledge-gap area this task closes")
+    objective: str = Field(description="What this task must establish — a research goal, not a search string")
+    queries: list[str] = Field(
+        default_factory=list,
+        description="2-3 independent web-search queries. NEVER include the offer's or brand's name — research the DOMAIN/CATEGORY the offer sits in, so the sources describe the category rather than the offer",
+    )
+
+    @field_validator("queries", mode="before")
+    @classmethod
+    def _coerce_queries(cls, v):
+        if v is None:
+            return []
+        return _coerce_json(v)
+
+
+class TaskList(BaseModel):
+    tasks: list[ResearchTask] = Field(default_factory=list, description="The research tasks to execute this round")
+
+    @field_validator("tasks", mode="before")
+    @classmethod
+    def _coerce_tasks(cls, v):
+        if v is None:
+            return []
+        return _coerce_json(v)
+
+
+class EvidenceClaim(BaseModel):
+    """One claim extracted from the sources, traceable to a single source.
+
+    Deliberately finer-grained than a pile of condensed documents: the point of
+    the research step is to lose the boilerplate, and a claim the synthesizer
+    can cite is more useful downstream than an article it has to re-read.
+    """
+
+    claim: str = Field(description="The specific, checkable statement the source supports")
+    evidence: str = Field(description="The supporting detail — a figure, mechanism, name or quote from the source")
+    source: str = Field(description="Full URL of the source this claim came from")
+    relevance: float = Field(default=0.5, description="How directly this claim addresses the task's objective, 0-1")
+
+
+class EvidenceList(BaseModel):
+    """All claims extracted for one research task, across all of that task's sources."""
+
+    task_id: str = Field(default="", description="Which research task these claims answer")
+    claims: list[EvidenceClaim] = Field(
+        default_factory=list,
+        description="Claims extracted from this task's sources. Empty is a legitimate and meaningful answer: it means the research found nothing supporting the objective",
+    )
+    contradictions: list[str] = Field(
+        default_factory=list,
+        description="Places where the sources disagree with each other, or with the offer's own material",
+    )
+
+    @field_validator("claims", "contradictions", mode="before")
+    @classmethod
+    def _coerce_claim_lists(cls, v):
+        if v is None:
+            return []
+        return _coerce_json(v)
+
+
+class EvidenceEvaluation(BaseModel):
+    """The sufficiency verdict for one round of research.
+
+    `sufficient` is the loop's routing signal, so it is deliberately separate
+    from `remaining_gaps`: a round can be sufficient overall while still
+    recording specific things nobody answered.
+    """
+
+    sufficient: bool = Field(default=False, description="True when this round's evidence is enough to write the offer's domain grounding")
+    confidence: Literal["high", "moderate", "low"] = Field(default="low", description="How much the evidence supports that verdict")
+    rationale: str | None = Field(default=None, description="Why that verdict — which tasks were answered and which were not")
+    remaining_gaps: list[KnowledgeGap] = Field(
+        default_factory=list,
+        description="Specific gaps this round did NOT close, in the same shape as the original gaps so the planner can re-select from them",
+    )
+
+    @field_validator("remaining_gaps", mode="before")
+    @classmethod
+    def _coerce_remaining(cls, v):
+        if v is None:
+            return []
+        return _coerce_json(v)
+
+
+class EvaluationList(BaseModel):
+    evaluations: list[EvidenceEvaluation] = Field(default_factory=list, description="One evaluation per research round so far")
+
+    @field_validator("evaluations", mode="before")
+    @classmethod
+    def _coerce_evaluations(cls, v):
+        if v is None:
+            return []
+        return _coerce_json(v)
+
+
+class OfferUnderstanding(BaseModel):
+    """The research pipeline's synthesis of the offer, before it becomes prose.
+
+    Sits between the evidence and `ProductFindings`. Keeping the two apart means
+    the structured understanding can be inspected and reused (the GTM stage
+    reads it) without re-parsing markdown, and the findings writer stays a pure
+    text-shaping step.
+    """
+
+    offer_understanding: str = Field(description="What the offer IS and how it works, end to end")
+    domain_understanding: str = Field(description="How the offer fits its domain/category space — the framing the report section leads with")
+    technology_understanding: str = Field(description="The technology/architecture the offer uses and how it works mechanically")
+    differentiation: str = Field(description="What is novel, interesting or surprising about the offer relative to its domain")
+    evidence: list[str] = Field(default_factory=list, description="The concrete evidence the synthesis rests on, each traceable to a source")
+    uncertainties: list[str] = Field(default_factory=list, description="Claims that remain thin, contested or unsupported — these must stay visible in the notes")
+    open_questions: list[str] = Field(default_factory=list, description="What this research could not answer at all")
+
+    @field_validator(
+        "evidence", "uncertainties", "open_questions", mode="before",
+    )
+    @classmethod
+    def _coerce_string_lists(cls, v):
+        if v is None:
+            return []
+        return _coerce_json(v)
+
+
+class TaskResearchBundle(BaseModel):
+    """What one research task actually retrieved.
+
+    Held per task rather than as a single undifferentiated pile of documents,
+    because `extract_evidence` evaluates one objective at a time: a task that
+    came back empty is a real, reportable finding about that objective, and it
+    would be invisible if its notes were merged with a task that succeeded.
+
+    This is also why it replaces the old `context: list` accumulator rather than
+    sitting alongside it — one copy of the research, associated with the task
+    that produced it.
+    """
+
+    task_id: str = Field(default="", description="Which research task this bundle belongs to")
+    area: str = Field(default="", description="The knowledge-gap area the task closed")
+    objective: str = Field(default="", description="What the task set out to establish")
+    round: int = Field(default=0, description="Which research round produced this bundle. Lets `extract_evidence` pick out the current round's bundles without relying on list position")
+    queries: list[str] = Field(default_factory=list, description="The queries actually issued for this task")
+    notes: str = Field(default="", description="The condensed source notes, in the <Document> shape the prompts already parse. Empty when the search failed")
+    sources: list[str] = Field(default_factory=list, description="URLs actually retrieved for this task")
+    search_failed: bool = Field(default=False, description="True when every query returned nothing usable")
+
+    @field_validator("queries", "sources", mode="before")
+    @classmethod
+    def _coerce_bundle_lists(cls, v):
+        if v is None:
+            return []
+        return _coerce_json(v)
+
+
+class OfferResearchState(TypedDict):
+    """State for the node-led offer-research subgraph.
+
+    A deliberate replacement for InterviewState, not an extension of it. The
+    old state was MessagesState-based because the interview WAS the
+    conversation; here there is no conversation at all, so `messages` is gone
+    and intelligence accumulates as structured analysis, gaps, tasks and
+    evidence instead.
+
+    That absence is load-bearing upstream: gtmx_agent.py runs this subgraph
+    concurrently with understand_market, and the comment at gtmx_agent.py:364
+    argues the two are safe to overlap because they write disjoint keys. With
+    no `messages` channel, they share nothing whatsoever, so the invariant stops
+    being an argument and becomes structural.
+    """
+
+    # --- Inputs (same shape the parent passes to the interview subgraphs) ---
+    specialist: DomainSpecialist
+    offer_snapshot: OfferDataSnapshot
+    offer_type: Optional[Literal["product", "service"]] = None
+    scraped_content: Optional[str] = None
+    section_word_count: int = 500
+
+    # --- Accumulated intelligence ---
+    context: Annotated[list, operator.add]  # seeded with the offer's own material only
+    analysis: Optional[OfferAnalysis] = None
+    gaps: Optional[GapList] = None
+    tasks: Optional[TaskList] = None
+    task_research: Annotated[list, operator.add]  # one TaskResearchBundle per task, per round
+    evidence: Annotated[list, operator.add]  # one EvidenceList per task, per round
+    evaluations: Annotated[list, operator.add]  # one EvidenceEvaluation per round
+    understanding: Optional[OfferUnderstanding] = None
+    research_log: str = ""
+
+    # --- Loop bounds ---
+    # An LLM sufficiency verdict is not a bound. Without these, a model that
+    # never says "sufficient" re-plans until LangGraph's recursion limit stops
+    # the run, which surfaces as an opaque GraphRecursionError rather than a
+    # report.
+    round: int = 0
+    max_rounds: int = 2
+
+    # --- Outbound contract ---
+    # Names are preserved verbatim: gtmx_agent.run_interview and
+    # backend/app/api/v1/endpoints/discovery.py both read these three keys, and
+    # write_sections reads the notes. Renaming them is a coordinated change
+    # across all three files, not something to smuggle into a rewrite.
+    product_findings: Optional[str] = None
+    product_domain_understanding: Optional[str] = None
+    product_complete: Optional[bool] = None
+

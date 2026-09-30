@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+
 from langgraph.graph import START, END, StateGraph
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -117,8 +119,12 @@ def _build_specialist(
 def create_specialist_team(state: OfferSessionState) -> dict:
     """Assemble the four-person specialist team grounded on the offer snapshot.
 
-    One specialist at a time — a single DomainSpecialist object is far more
-    reliably produced by the model than the 4-field team wrapper.
+    One specialist per *call* — a single DomainSpecialist object is far more
+    reliably produced by the model than the 4-field team wrapper. The four calls
+    are still independent of each other, so they run concurrently: they share
+    the same grounding, differ only in `target_domain`, and each keeps its own
+    retry loop. Serialising them cost one full model round-trip per specialist
+    for no dependency between them.
     """
     offer_type = state.get("offer") or "product"
     offer = as_offer_snapshot(state.get("offer_snapshot"))
@@ -132,11 +138,17 @@ def create_specialist_team(state: OfferSessionState) -> dict:
         target_geo=", ".join(target_geo) if target_geo else "unspecified/global",
     )
 
+    slots = _specialist_slots(offer_type)
+    with ThreadPoolExecutor(max_workers=len(slots)) as pool:
+        built = list(
+            pool.map(
+                lambda slot: _build_specialist(grounding, slot[0], slot[1]),
+                slots,
+            )
+        )
+
     team = SpecialistTeam(
-        **{
-            team_field: _build_specialist(grounding, domain, team_field)
-            for domain, team_field in _specialist_slots(offer_type)
-        }
+        **{team_field: specialist for (_, team_field), specialist in zip(slots, built)}
     )
     return {"specialist_team": team, "specilist_generation_complete": True}
 

@@ -2,6 +2,7 @@ import time
 import json
 import random
 import re
+import threading
 from langchain_qwq import ChatQwen
 from langchain_openai import ChatOpenAI
 from typing import Any, Sequence
@@ -12,8 +13,8 @@ from config import Config
 cfg = Config()
 
 QWEN_MODELS = [
-    "qwen3.5-omni-plus-2026-03-15",
-    "qwen3.5-omni-flash-2026-03-15"
+    "qwen3.6-flash-2026-04-16",
+    "qwen3.6-35b-a3b",  
 ]
 
 # Cheap text-only tier, for bulk mechanical work that doesn't need a flagship
@@ -23,7 +24,7 @@ QWEN_MODELS = [
 # a run that routes its high-volume extraction work there is what pushes the
 # account into tokens-per-minute throttling in the first place.
 CHEAP_QWEN_MODELS = [
-    "qwen-flash",
+    "qwen-flash-2025-07-28",
     "qwen-plus-2025-07-28",
 ]
 
@@ -43,6 +44,55 @@ _DOWN_MODELS: set[tuple[str, str]] = set()
 # ANY enable_thinking=True). Once learned, all calls to that model run with
 # thinking disabled so we stop paying a 400 round-trip per call.
 _NO_THINKING_MODELS: set[tuple[str, str]] = set()
+
+# Per-log_label wall-clock accounting, so a run can be attributed rather than
+# guessed at. `log_label` is the only stable identity a call site has, and it is
+# already threaded through every call. The first version of this run's cost
+# model was inferred by dividing total runtime by call count and it was wrong by
+# ~40%, because a large share of the time is Exa search/scrape, which never
+# passes through here at all -- these numbers are the LLM share only.
+_CALL_TIMING: dict[str, dict[str, float]] = {}
+_CALL_TIMING_LOCK = threading.Lock()
+
+
+def _record_call_timing(log_label: str, seconds: float, model: str) -> None:
+    # The lock is load-bearing now that distilling a page fan-out runs these
+    # calls on a thread pool: setdefault + `+=` is a read-modify-write, so
+    # concurrent calls would otherwise lose counts and skew exactly the numbers
+    # this exists to produce.
+    with _CALL_TIMING_LOCK:
+        entry = _CALL_TIMING.setdefault(
+            log_label, {"calls": 0.0, "seconds": 0.0, "model": 0.0}
+        )
+        entry["calls"] += 1
+        entry["seconds"] += seconds
+        # Keep the last model seen, not a sum: a float field is a hack, but the
+        # alternative is a second dict and this is only ever read by a debug
+        # helper.
+        entry["model"] = model
+
+
+def llm_timing_report() -> str:
+    """Human-readable LLM wall-clock breakdown, slowest label first.
+
+    Read-only, for diagnosing where a run's time goes. Not wired into the UI."""
+    with _CALL_TIMING_LOCK:
+        snapshot = {k: dict(v) for k, v in _CALL_TIMING.items()}
+    if not snapshot:
+        return "no LLM calls recorded"
+    rows = sorted(snapshot.items(), key=lambda kv: -kv[1]["seconds"])
+    total = sum(e["seconds"] for _, e in rows)
+    width = max(len(k) for k, _ in rows)
+    lines = [
+        f"LLM wall clock: {total:.1f}s across {int(sum(e['calls'] for _, e in rows))} calls",
+    ]
+    for label, e in rows:
+        pct = (e["seconds"] / total * 100) if total else 0.0
+        lines.append(
+            f"  {label:<{width}}  {e['seconds']:7.1f}s  "
+            f"({int(e['calls'])}x, avg {e['seconds'] / e['calls']:5.2f}s, {pct:4.1f}%)"
+        )
+    return "\n".join(lines)
 
 
 class LlmProvidersExhaustedError(RuntimeError):
@@ -281,7 +331,7 @@ def _try_repair_structured(llm, messages: Sequence[Any], schema: Any):
 def _llm(
     provider: str = "qwen",
     model: str | None = None,
-    thinking: bool = True,
+    thinking: bool = False,
     thinking_budget: int | None = None,
 ) -> ChatQwen | ChatOpenAI:
     if provider == "qwen":
@@ -314,7 +364,7 @@ def invoke_structured_with_fallback(
     providers: list[tuple[str, list[str]]] | None = None,
     log_label: str = "LLM call",
     max_retries: int = 2,
-    thinking: bool = True,
+    thinking: bool = False,
     thinking_budget: int | None = None,
     rate_limit_retries: int = 5,
 ):
@@ -323,8 +373,21 @@ def invoke_structured_with_fallback(
     falling back on failure. Retries on 429/rate-limit errors with backoff.
     If `schema` is provided, uses structured output; otherwise does a plain invoke.
 
-    Cheap extraction/paraphrase calls should pass thinking=False (or a small
-    thinking_budget) to avoid paying the thinking-model latency.
+    `thinking` defaults to False, so a new call site is fast by default and has
+    to argue for the latency. Measured on qwen3.6-27b with an identical prompt,
+    median of 3: thinking=False 2.37s, thinking=True 9.33s -- 3.9x. Pass
+    thinking=True only where the call actually deliberates: the interview
+    answers, the ICP reasoning, and the final section writer. Extraction,
+    classification, persona generation and summarisation of already-distilled
+    notes do not.
+
+    `thinking_budget` is not a substitute for turning thinking off. Measured at
+    1024 tokens it came out at 10.49s against 9.33s unbounded -- no saving,
+    because the cap only binds on the reasoning tail and this workload's
+    thinking is short. It also carries a real hazard: a model that rejects an
+    explicit budget is learned into _NO_THINKING_MODELS and then runs
+    non-thinking for the rest of the process, which would silently disable
+    deliberation on the very calls that asked for it.
 
     `rate_limit_retries` is deliberately larger than `max_retries`. A throttle
     clears with time; a bad key or a retired model never will. Conflating the two
@@ -362,10 +425,14 @@ def invoke_structured_with_fallback(
                 llm = None
                 try:
                     llm = _llm(provider, model=model, thinking=thinking, thinking_budget=thinking_budget)
+                    started = time.perf_counter()
                     if schema is not None:
                         result = llm.with_structured_output(schema).invoke(messages)
                     else:
                         result = llm.invoke(messages)
+                    _record_call_timing(
+                        log_label, time.perf_counter() - started, model
+                    )
                     if result is None:
                         raise ValueError(
                             f"{log_label} returned None with {provider}/{model} (unexpected structured output)"

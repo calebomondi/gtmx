@@ -8,6 +8,7 @@ class WorkspaceUpdate(BaseModel):
 	"""Partial update: only fields present in the payload are applied."""
 	name: str | None = Field(default=None, min_length=1, max_length=100)
 	pinned: bool | None = None
+	project_id: uuid.UUID | None = None
 
 
 class WorkspaceResponse(BaseModel):
@@ -18,6 +19,9 @@ class WorkspaceResponse(BaseModel):
 	name: str | None = None
 	pinned: bool = False
 	product_name: str | None = None
+	project_id: uuid.UUID | None = None
+	archived: bool = False
+	archived_at: datetime | None = None
 	date_created: datetime
 	last_activity: datetime
 
@@ -29,6 +33,9 @@ class WorkspaceResponseFull(BaseModel):
 	name: str | None = None
 	pinned: bool = False
 	product_name: str | None = None
+	project_id: uuid.UUID | None = None
+	archived: bool = False
+	archived_at: datetime | None = None
 	date_created: datetime
 	last_activity: datetime
 	product_profile: "ProductProfileResponse | None" = None
@@ -67,7 +74,7 @@ class WorkspaceInsights(BaseModel):
 	market_data: dict | None = None
 	competition_data: dict | None = None
 	icp: dict | None = None
-	specialist_team: dict | None = None
+	specialists: list | None = None
 	completed_at: str | None = None
 
 

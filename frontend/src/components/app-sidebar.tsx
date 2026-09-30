@@ -15,7 +15,7 @@ import {
   useSidebar,
   SidebarTrigger
 } from "@/components/ui/sidebar"
-import { Pin, Layers, LayoutGrid, Newspaper, Bookmark} from "lucide-react"
+import { Pin, Layers, LayoutGrid, Newspaper, Bookmark, Archive } from "lucide-react"
 import { getCurrentUser, workspaceDisplayName } from "@/lib/api"
 import {
   ensureWorkspacesLoaded,
@@ -47,6 +47,14 @@ const data = {
       url: "#",
       icon: (
         <Bookmark
+        />
+      ),
+    },
+    {
+      name: "Archive",
+      url: "/archive",
+      icon: (
+        <Archive
         />
       ),
     },

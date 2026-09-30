@@ -25,6 +25,16 @@ def _ensure_workspace_columns(sync_conn):
         sync_conn.execute(
             text("ALTER TABLE workspaces ADD COLUMN pinned BOOLEAN NOT NULL DEFAULT 0")
         )
+    if "project_id" not in columns:
+        sync_conn.execute(
+            text("ALTER TABLE workspaces ADD COLUMN project_id VARCHAR(36)")
+        )
+    if "archived" not in columns:
+        sync_conn.execute(
+            text("ALTER TABLE workspaces ADD COLUMN archived BOOLEAN NOT NULL DEFAULT 0")
+        )
+    if "archived_at" not in columns:
+        sync_conn.execute(text("ALTER TABLE workspaces ADD COLUMN archived_at DATETIME"))
     profile_columns = {
         col["name"] for col in inspector.get_columns("product_profiles")
     }

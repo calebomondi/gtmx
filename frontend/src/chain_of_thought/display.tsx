@@ -15,7 +15,7 @@ import {
 } from '@/skeletons/index'
 import { useAutoFollowScroll } from './use-auto-follow-scroll'
 import type { PhaseResults, StepProgress } from '@/lib/agent-run-store'
-import type { SpecialistTeamDto } from '@/lib/api'
+import type { SpecialistDto } from '@/lib/api'
 import { AvatarImg } from '@/components/specialist-avatargroup'
 
 const SPECIALIST_BORDERS = [
@@ -463,17 +463,11 @@ const IdealCustomer = (
   )
 }
 
-function teamToSpecialists(team: SpecialistTeamDto): SpecialistData[] {
-  const members = [
-    team.product_or_service_specialist,
-    team.market_specialist,
-    team.competition_specialist,
-    team.gtm_specialist,
-  ]
-  return members.map((member, index) => ({
+function teamToSpecialists(team: SpecialistDto[]): SpecialistData[] {
+  return team.map((member, index) => ({
     name: member.name,
-    role_title: member.role_title,
-    focus: member.focus,
+    role_title: member.role,
+    focus: member.description,
     borderClass: SPECIALIST_BORDERS[index % SPECIALIST_BORDERS.length],
   }))
 }
@@ -505,8 +499,8 @@ export function ChainOfThoughtResultDispaly({
     },
     {
       stepId: 'product',
-      done: results?.understand_product ? (
-        <ProductDomain data={results.understand_product} />
+      done: results?.understand_offer ? (
+        <ProductDomain data={results.understand_offer} />
       ) : (
         <div className="w-full max-w-md rounded-xl p-4">
           <ProductUnderstandSkeleton />

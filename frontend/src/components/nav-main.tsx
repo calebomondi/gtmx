@@ -69,30 +69,30 @@ export function NavMain({
                       className="min-w-0 flex-1"
                     >
                       <span className="truncate">{subItem.title}</span>
+                      {onTogglePin && (
+                        <button
+                          type="button"
+                          aria-label={
+                            subItem.pinned ? "Unpin workspace" : "Pin workspace"
+                          }
+                          title={
+                            subItem.pinned ? "Unpin workspace" : "Pin workspace"
+                          }
+                          onClick={(event) => {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            onTogglePin(subItem.id)
+                          }}
+                          className="ml-auto shrink-0 cursor-pointer rounded-xs p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:opacity-100 group-hover/subitem:opacity-100"
+                        >
+                          {subItem.pinned ? (
+                            <PinOffIcon className="size-3" />
+                          ) : (
+                            <PinIcon className="size-3" />
+                          )}
+                        </button>
+                      )}
                     </SidebarMenuSubButton>
-                    {onTogglePin && (
-                      <button
-                        type="button"
-                        aria-label={
-                          subItem.pinned ? "Unpin workspace" : "Pin workspace"
-                        }
-                        title={
-                          subItem.pinned ? "Unpin workspace" : "Pin workspace"
-                        }
-                        onClick={(event) => {
-                          event.preventDefault()
-                          event.stopPropagation()
-                          onTogglePin(subItem.id)
-                        }}
-                        className="ml-auto shrink-0 cursor-pointer rounded-xs p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:opacity-100 group-hover/subitem:opacity-100"
-                      >
-                        {subItem.pinned ? (
-                          <PinOffIcon className="size-3" />
-                        ) : (
-                          <PinIcon className="size-3" />
-                        )}
-                      </button>
-                    )}
                   </SidebarMenuSubItem>
                 ))}
                 {item.items?.length === 0 && (

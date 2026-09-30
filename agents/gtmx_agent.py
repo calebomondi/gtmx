@@ -284,6 +284,7 @@ def write_sections(state: OfferSessionState) -> dict:
         ],
         schema=OfferSections,
         log_label="write_sections",
+        thinking=True,
     )
 
     if sections is None:
@@ -353,8 +354,21 @@ def build_agent(checkpointer: BaseCheckpointSaver | None = None):
     # -- Edges --
     builder.add_edge(START, "discover_product_service")
     builder.add_edge("discover_product_service", "create_specialists")
+    # Product and market research are independent, so they run in the same
+    # super-step and LangGraph executes them concurrently (these are sync node
+    # functions, so it hands them to a thread pool). Competition stays strictly
+    # after both: it reads market_data and the merged message history, and a
+    # competitive analyst briefed without the market is the one thing that
+    # would cost the report its coherence.
+    #
+    # Safe to overlap because the two nodes write disjoint keys -- run_interview
+    # never touches offer_snapshot, and the only shared channel is `messages`,
+    # which OfferSessionState already reduces with add_messages (states.py:730).
+    # The per-interview turn counters are keyed on the expert's name, so they
+    # cannot collide either.
     builder.add_edge("create_specialists", "understand_product")
-    builder.add_edge("understand_product", "understand_market")
+    builder.add_edge("create_specialists", "understand_market")
+    builder.add_edge("understand_product", "understand_competition")
     builder.add_edge("understand_market", "understand_competition")
     builder.add_edge("understand_competition", "determine_icp")
     # The single section writer runs last so it can see all three specialists'
