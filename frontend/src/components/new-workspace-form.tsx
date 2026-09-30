@@ -136,7 +136,7 @@ export function NewWorkspaceForm({
           <form className="p-6 md:p-8" onSubmit={handleSubmit}>
             <FieldGroup>
               <div className="flex flex-col items-center gap-2 text-center">
-                <h1 className="text-xl font-bold">Create a product/service workspace</h1>
+                <h1 className="text-xl font-bold">Create A Workspace</h1>
                 <p className="text-balance text-muted-foreground">
                   This workspace will be dedicated to the product or service you provide information for.
                 </p>

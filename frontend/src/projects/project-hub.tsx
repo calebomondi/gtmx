@@ -47,6 +47,7 @@ import {
   renameProject,
 } from '@/lib/projects-store'
 import { ActualWorkspace } from '@/sidepanel/actual_workspace'
+import { WorkspaceManager } from '@/components/workspace-manager'
 import { useWorkspaceSpecialists } from '@/lib/specialists'
 
 export function ProjectHub() {
@@ -61,6 +62,7 @@ export function ProjectHub() {
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const [renameOpen, setRenameOpen] = useState(false)
+  const [archiveOpen, setArchiveOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [draftName, setDraftName] = useState('')
   const [busy, setBusy] = useState(false)
@@ -96,6 +98,10 @@ export function ProjectHub() {
       ? workspaceIdParam
       : undefined
 
+  const selectedWorkspace = selectedWorkspaceId
+    ? liveWorkspaces.find((w) => w.id === selectedWorkspaceId)
+    : undefined
+
   const showEmptyPick = !selectedWorkspaceId && liveWorkspaces.length > 0
 
   const handleRename = async () => {
@@ -121,14 +127,17 @@ export function ProjectHub() {
 
   const handleArchive = async () => {
     if (!project) return
+    setBusy(true)
+    setDialogError(null)
     try {
       await archiveProjectAction(project.id)
-      toast.success('Project archived', {
-        description: 'Its workspaces were archived too.',
-      })
+      setArchiveOpen(false)
       navigate('/projects', { replace: true })
+      toast.success('Project archived')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
+      setDialogError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -154,47 +163,47 @@ export function ProjectHub() {
     <div className="bg-muted flex min-h-0 flex-1 flex-col">
       {/* Sticky project header */}
       <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b bg-background/80 backdrop-blur">
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <button
-                type="button"
-                onClick={() => navigate('/projects')}
-                className="cursor-pointer text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Projects
-              </button>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbPage className="flex items-center gap-2">
-                <Folder
-                  className={cn(
-                    'size-3.5',
-                    project?.priority ? 'text-amber-500' : 'text-muted-foreground',
-                  )}
-                />
-                <span className="max-w-56 truncate font-medium">
-                  {project?.name ?? '…'}
-                </span>
-              </BreadcrumbPage>
-            </BreadcrumbItem>
-            {selectedWorkspaceId && project && (
-              <>
-                <BreadcrumbSeparator />
-                <BreadcrumbItem>
-                  <BreadcrumbPage>
-                    <span className="max-w-48 truncate text-muted-foreground">
-                      {workspaceDisplayName(
-                        liveWorkspaces.find((w) => w.id === selectedWorkspaceId) as never,
-                      )}
-                    </span>
-                  </BreadcrumbPage>
-                </BreadcrumbItem>
-              </>
-            )}
-          </BreadcrumbList>
-        </Breadcrumb>
+        <div className="flex items-center gap-2 px-4">
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <button
+                  type="button"
+                  onClick={() => navigate('/projects')}
+                  className="cursor-pointer text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  Projects
+                </button>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage className="flex items-center gap-2">
+                  <Folder
+                    className={cn(
+                      'size-3.5',
+                      project?.priority ? 'text-amber-500' : 'text-muted-foreground',
+                    )}
+                  />
+                  <span className="max-w-56 truncate font-medium">
+                    {project?.name ?? '…'}
+                  </span>
+                </BreadcrumbPage>
+              </BreadcrumbItem>
+              {selectedWorkspace && (
+                <>
+                  <BreadcrumbSeparator />
+                  <BreadcrumbItem>
+                    <WorkspaceManager
+                      workspace={selectedWorkspace}
+                      variant="breadcrumb"
+                      onWorkspaceChanged={() => void load()}
+                    />
+                  </BreadcrumbItem>
+                </>
+              )}
+            </BreadcrumbList>
+          </Breadcrumb>
+        </div>
 
         <div className="ml-auto flex items-center gap-2 px-4">
           {project?.priority && (
@@ -221,7 +230,7 @@ export function ProjectHub() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem
-                onSelect={() => {
+                onClick={() => {
                   setDialogError(null)
                   setDraftName(project?.name ?? '')
                   setRenameOpen(true)
@@ -230,12 +239,12 @@ export function ProjectHub() {
                 <Pencil className="size-4" />
                 Rename
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => void handleArchive()}>
+              <DropdownMenuItem onClick={() => setArchiveOpen(true)}>
                 <Archive className="size-4" />
                 Archive
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>
+              <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
                 <Trash2 className="size-4" />
                 Delete
               </DropdownMenuItem>
@@ -264,14 +273,14 @@ export function ProjectHub() {
           <aside className="flex w-full shrink-0 flex-col border-b md:w-72 md:border-r md:border-b-0">
             <div className="flex items-center justify-between px-4 pt-4 pb-2">
               <div>
-                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                <p className="text-xs font-medium tracking-wide text-foreground uppercase">
                   Workspaces
                 </p>
                 <p className="text-muted-foreground mt-0.5 text-xs">
                   {liveWorkspaces.length} in this project
                 </p>
               </div>
-              <Button
+              {/* <Button
                 type="button"
                 size="icon-sm"
                 variant="ghost"
@@ -279,7 +288,7 @@ export function ProjectHub() {
                 onClick={() => navigate('/new')}
               >
                 <Plus className="size-4" />
-              </Button>
+              </Button> */}
             </div>
 
             <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-4">
@@ -388,6 +397,42 @@ export function ProjectHub() {
         </DialogContent>
       </Dialog>
 
+      {/* Archive dialog */}
+      <Dialog open={archiveOpen} onOpenChange={(open) => !open && setArchiveOpen(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Archive project?</DialogTitle>
+            <DialogDescription>
+              {project && memberCount > 0 ? (
+                <>
+                  “{project.name}” will move to the archive along with its{' '}
+                  {memberCount} workspace{memberCount === 1 ? '' : 's'}. You can restore
+                  it and everything in it from the Archive page.
+                </>
+              ) : (
+                <>
+                  “{project?.name}” will move to the archive. You can restore it from
+                  the Archive page.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          {dialogError && <p className="px-4 text-xs text-destructive">{dialogError}</p>}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setArchiveOpen(false)} disabled={busy}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-[#FEA853] text-black hover:bg-[#FEA853] cursor-pointer"
+              onClick={() => void handleArchive()}
+              disabled={busy}
+            >
+              Archive
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Delete dialog */}
       <Dialog open={deleteOpen} onOpenChange={(open) => !open && setDeleteOpen(false)}>
         <DialogContent>
@@ -454,7 +499,7 @@ function WorkspaceRailItem({
       )}
     >
       {specialists.length > 0 ? (
-        <div className="relative -ml-1.5">
+        <div className="relative ml-0.5">
           <SpecialistAvatarGroup specialists={specialists} />
         </div>
       ) : (

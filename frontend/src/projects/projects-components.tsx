@@ -74,6 +74,11 @@ const COLUMN_LABEL: Record<ColumnId, { title: string; hint: string }> = {
   },
 }
 
+/** Total members, live plus already-archived -- what archiving the project takes with it. */
+function archiveCount(project: ProjectDto): number {
+  return project.workspace_count + project.archived_workspace_count
+}
+
 interface ProjectRowProps {
   project: ProjectDto
   onRename: (project: ProjectDto) => void
@@ -141,18 +146,18 @@ function ProjectRow({ project, onRename, onArchive, onDelete }: ProjectRowProps)
           <MoreHorizontal className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onSelect={() => onRename(project)}>
+          <DropdownMenuItem onClick={() => onRename(project)}>
             <Pencil className="size-4" />
             Rename
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => onArchive(project)}>
+          <DropdownMenuItem onClick={() => onArchive(project)}>
             <Archive className="size-4" />
             Archive
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"
-            onSelect={() => onDelete(project)}
+            onClick={() => onDelete(project)}
           >
             <Trash2 className="size-4" />
             Delete
@@ -228,6 +233,7 @@ export function ProjectsComponent() {
   const [createOpen, setCreateOpen] = useState(false)
   const [draftName, setDraftName] = useState('')
   const [renameTarget, setRenameTarget] = useState<ProjectDto | null>(null)
+  const [archiveTarget, setArchiveTarget] = useState<ProjectDto | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ProjectDto | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -364,14 +370,18 @@ export function ProjectsComponent() {
     }
   }
 
-  const handleArchive = async (project: ProjectDto) => {
+  const handleArchive = async () => {
+    if (!archiveTarget) return
+    setBusy(true)
+    setError(null)
     try {
-      await archiveProjectAction(project.id)
-      toast.success('Project archived', {
-        description: 'Its workspaces were archived too.',
-      })
+      await archiveProjectAction(archiveTarget.id)
+      setArchiveTarget(null)
+      toast.success('Project archived')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -438,7 +448,10 @@ export function ProjectsComponent() {
                       setDraftName(project.name)
                       setRenameTarget(project)
                     }}
-                    onArchive={(project) => void handleArchive(project)}
+                    onArchive={(project) => {
+                      setError(null)
+                      setArchiveTarget(project)
+                    }}
                     onDelete={(project) => {
                       setError(null)
                       setDeleteTarget(project)
@@ -452,7 +465,10 @@ export function ProjectsComponent() {
                       setDraftName(project.name)
                       setRenameTarget(project)
                     }}
-                    onArchive={(project) => void handleArchive(project)}
+                    onArchive={(project) => {
+                      setError(null)
+                      setArchiveTarget(project)
+                    }}
                     onDelete={(project) => {
                       setError(null)
                       setDeleteTarget(project)
@@ -505,15 +521,15 @@ export function ProjectsComponent() {
             {error && <p className="text-xs text-destructive">{error}</p>}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={busy}>
-              Cancel
-            </Button>
             <Button
-              className="bg-[#FEA853] text-black hover:bg-[#FEA853]"
+              className="bg-[#FEA853] text-black hover:bg-[#FEA853] cursor-pointer"
               onClick={() => void handleCreate()}
               disabled={busy || !draftName.trim()}
             >
               Create
+            </Button>
+            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={busy} className={'cursor-pointer'}>
+              Cancel
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -555,6 +571,44 @@ export function ProjectsComponent() {
         </DialogContent>
       </Dialog>
 
+      {/* Archive */}
+      <Dialog
+        open={archiveTarget !== null}
+        onOpenChange={(open) => !open && setArchiveTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Archive project?</DialogTitle>
+            <DialogDescription>
+              {archiveTarget && archiveCount(archiveTarget) > 0 ? (
+                <>
+                  “{archiveTarget.name}” will move to the archive along with its{' '}
+                  {archiveCount(archiveTarget)} workspace
+                  {archiveCount(archiveTarget) === 1 ? '' : 's'}. You can restore it
+                  and everything in it from the Archive page.
+                </>
+              ) : (
+                <>“{archiveTarget?.name}” will move to the archive. You can restore it
+                  from the Archive page.</>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          {error && <p className="px-4 text-xs text-destructive">{error}</p>}
+          <DialogFooter>
+            <Button
+              className="bg-[#FEA853] text-black hover:bg-[#FEA853] cursor-pointer"
+              onClick={() => void handleArchive()}
+              disabled={busy}
+            >
+              Archive
+            </Button>
+            <Button variant="outline" onClick={() => setArchiveTarget(null)} disabled={busy}>
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Delete */}
       <Dialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <DialogContent>
@@ -578,11 +632,11 @@ export function ProjectsComponent() {
           </DialogHeader>
           {error && <p className="px-4 text-xs text-destructive">{error}</p>}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={busy}>
-              Cancel
-            </Button>
             <Button variant="destructive" onClick={() => void handleDelete()} disabled={busy}>
               Delete
+            </Button>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={busy}>
+              Cancel
             </Button>
           </DialogFooter>
         </DialogContent>

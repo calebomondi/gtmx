@@ -139,7 +139,7 @@ function ProjectArchiveCard({
                 <MoreHorizontal className="size-4" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem variant="destructive" onSelect={() => onDelete(project)}>
+                <DropdownMenuItem variant="destructive" onClick={() => onDelete(project)}>
                   <Trash2 className="size-4" />
                   Delete forever
                 </DropdownMenuItem>
@@ -217,12 +217,12 @@ function WorkspaceArchiveCard({
               <MoreHorizontal className="size-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => onOpen(workspace)}>
+              <DropdownMenuItem onClick={() => onOpen(workspace)}>
                 <ExternalLink className="size-4" />
                 Open read-only
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onSelect={() => onDelete(workspace)}>
+              <DropdownMenuItem variant="destructive" onClick={() => onDelete(workspace)}>
                 <Trash2 className="size-4" />
                 Delete forever
               </DropdownMenuItem>

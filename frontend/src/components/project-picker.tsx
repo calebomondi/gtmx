@@ -131,10 +131,19 @@ export function ProjectPicker({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Add to project</DialogTitle>
+          <DialogTitle>{inProject ? "Change project" : "Add to project"}</DialogTitle>
           <DialogDescription>
-            Choose a project for “{displayName(workspace)}”. Projects group workspaces
-            from the same company.
+            {inProject ? (
+              <>
+                Move “{displayName(workspace)}” to a different project, or take it out
+                of the one it's in.
+              </>
+            ) : (
+              <>
+                Choose a project for “{displayName(workspace)}”. Projects group
+                workspaces from the same company.
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
 

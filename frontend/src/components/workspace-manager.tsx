@@ -25,6 +25,7 @@ import {
   PencilIcon,
   Trash2Icon,
   FolderPlus,
+  FolderSync,
   Archive,
 } from "lucide-react"
 
@@ -39,17 +40,28 @@ import {
   type WorkspaceSummary,
 } from "@/lib/api"
 import { ProjectPicker } from "@/components/project-picker"
+import { cn } from "@/lib/utils"
 
 const MAX_NAME_LENGTH = 100
 
 /**
  * Header control for a real workspace: shows the workspace label and offers
  * rename / pin / delete. Replaces the sample TeamSwitcher on `/workspace/:id`.
+ *
+ * `variant="breadcrumb"` shrinks the trigger so it sits inline in the project
+ * hub's breadcrumb trail. `onWorkspaceChanged` overrides the default
+ * navigate-away behaviour for archive/delete and doubles as a refetch hook --
+ * the project hub reads its workspaces from its own fetch, not the workspaces
+ * store, so it needs a nudge after rename/pin/archive/delete to stay in sync.
  */
 export function WorkspaceManager({
   workspace,
+  variant = "default",
+  onWorkspaceChanged,
 }: {
   workspace: WorkspaceSummary
+  variant?: "default" | "breadcrumb"
+  onWorkspaceChanged?: () => void
 }) {
   const navigate = useNavigate()
   const [renameOpen, setRenameOpen] = useState(false)
@@ -60,6 +72,15 @@ export function WorkspaceManager({
   const [busy, setBusy] = useState(false)
 
   const displayName = workspaceDisplayName(workspace)
+  const isBreadcrumb = variant === "breadcrumb"
+  // Keyed off the data rather than the route: a workspace that's already in a
+  // project shouldn't be offered "Add to project" on any screen.
+  const inProject = Boolean(workspace.project_id)
+
+  const openPicker = () => {
+    setError(null)
+    setPickerOpen(true)
+  }
 
   const handleRename = async () => {
     const name = draftName.trim()
@@ -76,6 +97,7 @@ export function WorkspaceManager({
     try {
       await renameWorkspace(workspace.id, name)
       setRenameOpen(false)
+      onWorkspaceChanged?.()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -87,6 +109,7 @@ export function WorkspaceManager({
     setError(null)
     try {
       await toggleWorkspacePin(workspace.id)
+      onWorkspaceChanged?.()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
@@ -98,7 +121,8 @@ export function WorkspaceManager({
     try {
       await removeWorkspace(workspace.id)
       setDeleteOpen(false)
-      navigate("/feed", { replace: true })
+      if (onWorkspaceChanged) onWorkspaceChanged()
+      else navigate("/feed", { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -111,7 +135,8 @@ export function WorkspaceManager({
     setError(null)
     try {
       await archiveWorkspaceAction(workspace.id)
-      navigate("/archive", { replace: true })
+      if (onWorkspaceChanged) onWorkspaceChanged()
+      else navigate("/archive", { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -126,7 +151,12 @@ export function WorkspaceManager({
           render={
             <Button
               variant="ghost"
-              className="h-8 min-w-0 max-w-72 gap-1.5 px-2 text-sm font-medium"
+              className={cn(
+                "min-w-0 cursor-pointer gap-1.5",
+                isBreadcrumb
+                  ? "h-6 max-w-48 px-1 text-sm font-normal text-muted-foreground hover:text-foreground"
+                  : "h-8 max-w-72 px-2 text-sm font-medium",
+              )}
             />
           }
         >
@@ -135,7 +165,7 @@ export function WorkspaceManager({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" sideOffset={6}>
           <DropdownMenuItem
-            className="gap-2"
+            className="gap-2 cursor-pointer"
             onClick={() => {
               setDraftName(displayName)
               setError(null)
@@ -145,7 +175,7 @@ export function WorkspaceManager({
             <PencilIcon className="size-4" />
             Rename
           </DropdownMenuItem>
-          <DropdownMenuItem className="gap-2" onClick={() => void handleTogglePin()}>
+          <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => void handleTogglePin()}>
             {workspace.pinned ? (
               <PinOffIcon className="size-4" />
             ) : (
@@ -153,18 +183,19 @@ export function WorkspaceManager({
             )}
             {workspace.pinned ? "Unpin" : "Pin"}
           </DropdownMenuItem>
+          {inProject ? (
+            <DropdownMenuItem className="gap-2 cursor-pointer" onClick={openPicker}>
+              <FolderSync className="size-4" />
+              Change project
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem className="gap-2 cursor-pointer" onClick={openPicker}>
+              <FolderPlus className="size-4" />
+              Add to project
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem
-            className="gap-2"
-            onClick={() => {
-              setError(null)
-              setPickerOpen(true)
-            }}
-          >
-            <FolderPlus className="size-4" />
-            Add to project
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="gap-2"
+            className="gap-2 cursor-pointer"
             disabled={busy}
             onClick={() => void handleArchive()}
           >
@@ -172,7 +203,7 @@ export function WorkspaceManager({
             Archive
           </DropdownMenuItem>
           <DropdownMenuItem
-            className="gap-2 text-destructive focus:text-destructive"
+            className="gap-2 cursor-pointer text-destructive focus:text-destructive"
             onClick={() => {
               setError(null)
               setDeleteOpen(true)
