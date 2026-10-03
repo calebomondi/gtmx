@@ -12,8 +12,8 @@ import CompetitionComponent from '@/competition/competition-components'
 
 const TAB_DEFS = [
   { name: 'Feed', value: 'feed' },
-  { name: 'Out Reach', value: 'outreach' },
-  { name: 'Product/Service', value: 'product' },
+  { name: 'Reach Out', value: 'outreach' },
+  { name: 'Offer', value: 'product' },
   { name: 'Competitors', value: 'competition' },
   { name: 'Agent', value: 'agent' },
 ]
@@ -121,7 +121,7 @@ const TabsVerticalLined = ({ workspaceId }: { workspaceId?: string }) => {
               keepMounted
               className={[
                 'col-start-1 row-start-1 data-starting-style:opacity-0 data-ending-style:opacity-0 motion-safe:data-starting-style:data-[activation-direction=up]:translate-y-[-50%] motion-safe:data-starting-style:data-[activation-direction=down]:translate-y-[50%] motion-safe:data-ending-style:data-[activation-direction=up]:translate-y-[50%] motion-safe:data-ending-style:data-[activation-direction=down]:translate-y-[-50%] [transition:opacity_175ms_ease,translate_400ms_cubic-bezier(0.22,1,0.36,1)]',
-                tabDef.value === 'agent' ? 'h-[calc(100dvh-3rem)] p-0' : 'p-4',
+                tabDef.value === 'agent' ? 'h-[calc(100dvh-3rem)] p-0' : 'px-4 pt-4',
               ].join(' ')}
             >
               {renderTabContent(tabDef.value)}

@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { Row, SectionCard, TagPills } from './product-sections'
+import { CompetitionPanel, OfferTabNav, type OfferTab } from './offer-tabs'
+
 import {
   Bot,
   ExternalLink,
@@ -14,13 +17,6 @@ import {
 
 import { Button } from '@/components/ui/button'
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -30,6 +26,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useSession } from '@/lib/session-context'
 import { useAgentRun, type PhaseResults } from '@/lib/agent-run-store'
@@ -74,81 +71,6 @@ function VerdictBadge({ verdict }: { verdict: MarketFitVerdict }) {
     >
       {verdict}
     </span>
-  )
-}
-
-function TagPills({ items }: { items: string[] }) {
-  if (items.length === 0) {
-    return <span className="text-sm text-muted-foreground italic">—</span>
-  }
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {items.map((item) => (
-        <span
-          key={item}
-          className="inline-flex items-center rounded-full bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground"
-        >
-          {item}
-        </span>
-      ))}
-    </div>
-  )
-}
-
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-[11px] inline-flex font-medium tracking-wide text-foreground uppercase">
-        <CornerRightDown className="h-3.5 w-3.5"/>
-        {label}
-      </span>
-      <div className="text-sm leading-relaxed text-muted-foreground">{value}</div>
-    </div>
-  )
-}
-
-function SectionCard({
-  icon,
-  title,
-  description,
-  onEdit,
-  children,
-}: {
-  icon: React.ReactNode
-  title: string
-  description?: string
-  onEdit?: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <Card className="">
-      <CardHeader className="flex flex-row items-start justify-between gap-2 border-b p-4 pb-3">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-500">
-            {icon}
-          </div>
-          <div className="min-w-0">
-            <CardTitle className="text-sm font-semibold">{title}</CardTitle>
-            {description && (
-              <CardDescription className="text-xs">{description}</CardDescription>
-            )}
-          </div>
-        </div>
-        {onEdit && (
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="ghost"
-            aria-label={`Edit ${title}`}
-            className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
-            onClick={onEdit}
-          >
-            <Pencil className="size-4" />
-          </Button>
-        )}
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3 p-4">{children}</CardContent>
-    </Card>
   )
 }
 
@@ -1099,7 +1021,7 @@ export function ProductComponent({ workspaceId }: { workspaceId?: string }) {
 
   const productName = state.product_snapshot?.offer_name ?? 'your product/service'
 
-  const hasContent = Boolean(
+  const hasProductContent = Boolean(
     state.product_snapshot ||
       state.product_domain_understanding ||
       state.product_market_fit_understanding ||
@@ -1111,11 +1033,56 @@ export function ProductComponent({ workspaceId }: { workspaceId?: string }) {
   const market = state.market_data
   const icp = state.icp
 
+  // The competition stage's two outputs, read live off the run when it is
+  // streaming and off the persisted insights otherwise. `swod` is the
+  // offer-vs-standard judgment; `profile` is the archetype construct and is the
+  // stage's primary output. They are siblings on the same frame, so they are
+  // read together rather than one being allowed to appear without the other.
+  const competitionRun = phaseResults?.understand_competition
+  const liveSwod = competitionRun?.swod ?? insights?.competition_data ?? null
+  const liveProfile =
+    competitionRun?.profile ?? insights?.ideal_competitor_profile ?? null
+
+  const [tab, setTab] = useState<OfferTab>('product')
+
+  // Whether the agent is still producing output for this workspace right now.
+  // Distinguishing "has not got to this stage yet" from "got there and found
+  // nothing" needs this, because in both cases the tab is empty and only one of
+  // them means the user should wait.
+  const runInFlight =
+    runBelongsToWorkspace &&
+    (run.stage === 'running' || run.stage === 'connecting')
+
+  /** A sub-tab's state: filled, decided-and-empty, or not reached yet. */
+  const readiness = (
+    hasContent: boolean,
+    reached: boolean,
+  ): boolean | null => {
+    if (hasContent) return true
+    return runInFlight && !reached ? null : false
+  }
+
+  const offerTabReadiness: Record<OfferTab, boolean | null> = {
+    product: readiness(
+      Boolean(state.product_snapshot ?? state.product_domain_understanding),
+      phaseResults?.understand_offer !== undefined,
+    ),
+    market: readiness(
+      Boolean(state.market_data ?? state.product_market_fit_understanding),
+      phaseResults?.understand_market !== undefined,
+    ),
+    competition: readiness(
+      liveProfile !== null || liveSwod !== null,
+      competitionRun !== undefined,
+    ),
+    icp: readiness(icp !== null, phaseResults?.determine_icp !== undefined),
+  }
+
   return (
     <div className="flex h-[calc(100dvh-7rem)] min-h-0 flex-col">
       <div className="flex items-center justify-between gap-2 mb-5">
         <div className="flex items-center gap-2">
-          <h2 className="text-xl font-medium text-foreground">Product/Service</h2>
+          <h2 className="text-xl font-medium text-foreground">Offer</h2>
           <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[12px] font-medium text-amber-500">
             <Bot className="size-4.5" />
             agent capture
@@ -1126,263 +1093,282 @@ export function ProductComponent({ workspaceId }: { workspaceId?: string }) {
 
       <hr className="mb-3"/>
 
-      <div className="mt-3 min-h-0 flex-1 overflow-y-auto pb-2">
-        {!hasContent ? (
-          <EmptyProduct productName={productName} />
-        ) : (
+      <Tabs
+        value={tab}
+        onValueChange={(v) => setTab(v as OfferTab)}
+        className="mt-3 flex min-h-0 flex-1 flex-col gap-3"
+      >
+        <OfferTabNav readiness={offerTabReadiness} />
+
+        <TabsContent value="product" className="min-h-0 flex-1 overflow-y-auto pb-2">
+          {!hasProductContent ? (
+            <EmptyProduct productName={productName} />
+          ) : (
+            <div className="flex flex-col gap-3">
+          <SectionCard
+            icon={<Bot className="size-4.5" />}
+            title="Agent understanding"
+            description="How the agent summarises the product/service
+          "
+          >
+            <AgentInsight
+              label="Domain understanding"
+              value={state.product_domain_understanding}
+              onEdit={() => setEditInsight('domain')}
+            />
+            <AgentInsight
+              label="Market-fit understanding"
+              value={state.product_market_fit_understanding}
+              onEdit={() => setEditInsight('market')}
+            />
+          </SectionCard>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="market" className="min-h-0 flex-1 overflow-y-auto pb-2">
           <div className="flex flex-col gap-3">
+          {snapshot && (
             <SectionCard
-              icon={<Bot className="size-4.5" />}
-              title="Agent understanding"
-              description="How the agent summarises the product/service
-            "
+              icon={<Package className="size-4" />}
+              title="Product/Service snapshot"
+              description="Captured profile of the product/service"
+              onEdit={() => setSnapshotEditOpen(true)}
             >
-              <AgentInsight
-                label="Domain understanding"
-                value={state.product_domain_understanding}
-                onEdit={() => setEditInsight('domain')}
+              <Row label="Name" value={snapshot.offer_name ?? '—'} />
+              <Row
+                label="Website"
+                value={
+                  snapshot.website_url ? (
+                    <a
+                      href={snapshot.website_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 text-amber-500 hover:text-amber-400 hover:underline"
+                    >
+                      {snapshot.website_url}
+                      <ExternalLink className="size-3" />
+                    </a>
+                  ) : (
+                    '—'
+                  )
+                }
               />
-              <AgentInsight
-                label="Market-fit understanding"
-                value={state.product_market_fit_understanding}
-                onEdit={() => setEditInsight('market')}
+              <Row
+                label="Description"
+                value={snapshot.offer_description ?? '—'}
               />
-            </SectionCard>
-
-            {snapshot && (
-              <SectionCard
-                icon={<Package className="size-4" />}
-                title="Product/Service snapshot"
-                description="Captured profile of the product/service"
-                onEdit={() => setSnapshotEditOpen(true)}
-              >
-                <Row label="Name" value={snapshot.offer_name ?? '—'} />
-                <Row
-                  label="Website"
-                  value={
-                    snapshot.website_url ? (
-                      <a
-                        href={snapshot.website_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 text-amber-500 hover:text-amber-400 hover:underline"
+              <Row label="Intent" value={snapshot.intent ?? '—'} />
+              <Row
+                label="Problem solved"
+                value={snapshot.problem_solved ?? '—'}
+              />
+              <Row
+                label="How it works"
+                value={snapshot.how_it_works ?? '—'}
+              />
+              <div className="flex flex-col gap-1">
+                <span className="text-[11px] font-medium inline-flex tracking-wide text-foreground uppercase">
+                  <CornerRightDown className="h-3.5 w-3.5"/>
+                  Features
+                </span>
+                {snapshot.features.length === 0 ? (
+                  <span className="text-sm text-muted-foreground italic">—</span>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {snapshot.features.map((feature, index) => (
+                      <div
+                        key={index}
+                        className="rounded-lg border border-primary/10 p-2"
                       >
-                        {snapshot.website_url}
-                        <ExternalLink className="size-3" />
-                      </a>
-                    ) : (
-                      '—'
-                    )
-                  }
-                />
-                <Row
-                  label="Description"
-                  value={snapshot.offer_description ?? '—'}
-                />
-                <Row label="Intent" value={snapshot.intent ?? '—'} />
-                <Row
-                  label="Problem solved"
-                  value={snapshot.problem_solved ?? '—'}
-                />
-                <Row
-                  label="How it works"
-                  value={snapshot.how_it_works ?? '—'}
-                />
-                <div className="flex flex-col gap-1">
-                  <span className="text-[11px] font-medium inline-flex tracking-wide text-foreground uppercase">
-                    <CornerRightDown className="h-3.5 w-3.5"/>
-                    Features
-                  </span>
-                  {snapshot.features.length === 0 ? (
-                    <span className="text-sm text-muted-foreground italic">—</span>
-                  ) : (
-                    <div className="flex flex-col gap-2">
-                      {snapshot.features.map((feature, index) => (
-                        <div
-                          key={index}
-                          className="rounded-lg border border-primary/10 p-2"
-                        >
-                          <p className="text-sm font-medium text-foreground">
-                            {feature.name ?? 'Untitled feature'}
+                        <p className="text-sm font-medium text-foreground">
+                          {feature.name ?? 'Untitled feature'}
+                        </p>
+                        {feature.description && (
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {feature.description}
                           </p>
-                          {feature.description && (
-                            <p className="mt-0.5 text-xs text-muted-foreground">
-                              {feature.description}
-                            </p>
-                          )}
-                          {feature.differentiator && (
-                            <p className="mt-0.5 text-xs text-amber-500/90">
-                              {feature.differentiator}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <Row label="Target geography" value={<TagPills items={snapshot.target_geo} />} />
-              </SectionCard>
-            )}
-
-            {market && (
-              <SectionCard
-                icon={<Globe className="size-4" />}
-                title="Market & fit"
-                description="Market definition and product-market fit"
-                onEdit={() => setMarketEditOpen(true)}
-              >
-                <Row label="Buyer type" value={market.buyer_type ?? '—'} />
-                <Row label="Category" value={market.category ?? '—'} />
-                <Row
-                  label="Target audience"
-                  value={market.target_audience ?? '—'}
-                />
-                <div className="flex flex-col gap-1">
-                  <span className="text-[11px] font-medium inline-flex tracking-wide text-foreground uppercase">
-                    <CornerRightDown className="h-3.5 w-3.5"/>
-                    Pricing
-                  </span>
-                  {market.pricing.length === 0 ? (
-                    <span className="text-sm text-muted-foreground italic">—</span>
-                  ) : (
-                    <div className="divide-y divide-border rounded-lg border border-primary/10">
-                      {market.pricing.map((tier) => (
-                        <div
-                          key={tier.tier}
-                          className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-0.5 px-3 py-2"
-                        >
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-foreground">
-                              {tier.tier}
-                            </p>
-                            {tier.features.length > 0 && (
-                              <p className="truncate text-xs text-muted-foreground">
-                                {tier.features.join(' · ')}
-                              </p>
-                            )}
-                          </div>
-                          <div className="text-right text-xs text-muted-foreground">
-                            <p>{tier.monthly_sub ?? '—'} /mo</p>
-                            <p>{tier.yearly_sub ?? '—'} /yr</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <Row
-                  label="Pricing source"
-                  value={
-                    market.pricing_source === 'site'
-                      ? 'From product site'
-                      : market.pricing_source === 'market_suggestion'
-                        ? 'Market suggestion'
-                        : '—'
-                  }
-                />
-                <Row
-                  label="Target geography"
-                  value={<TagPills items={market.target_geo} />}
-                />
-                <div className="flex flex-col gap-1">
-                  <span className="text-[11px] font-medium inline-flex tracking-wide text-foreground uppercase">
-                    <CornerRightDown className="h-3.5 w-3.5"/>
-                    Market fit
-                  </span>
-                  <div className="flex items-center gap-2">
-                    {market.market_fit ? (
-                      <VerdictBadge verdict={market.market_fit} />
-                    ) : (
-                      <span className="text-sm text-muted-foreground italic">—</span>
-                    )}
+                        )}
+                        {feature.differentiator && (
+                          <p className="mt-0.5 text-xs text-amber-500/90">
+                            {feature.differentiator}
+                          </p>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                  {market.market_fit_reasoning && (
-                    <p className="text-sm leading-relaxed text-muted-foreground">
-                      {market.market_fit_reasoning}
-                    </p>
-                  )}
-                </div>
-              </SectionCard>
-            )}
-
-            {icp && (
-              <SectionCard
-                icon={<UserRoundCheck className="size-4" />}
-                title="Ideal customer profile"
-                description="Who to target and how to reach them"
-                onEdit={() => setIcpEditOpen(true)}
-              >
-                <Row label="Product" value={icp.product_name ?? '—'} />
-                <Row label="Buyer type" value={icp.buyer_type ?? '—'} />
-                <Row label="Industries" value={<TagPills items={icp.industries} />} />
-                <Row
-                  label="Company sizes"
-                  value={<TagPills items={icp.company_sizes} />}
-                />
-                <Row label="Geography" value={<TagPills items={icp.geo} />} />
-                <Row
-                  label="Buyer titles"
-                  value={<TagPills items={icp.buyer_titles} />}
-                />
-                <Row
-                  label="Exclusions"
-                  value={<TagPills items={icp.exclusions} />}
-                />
-                <Row
-                  label="Pain signals"
-                  value={<TagPills items={icp.pain_signals} />}
-                />
-                <Row
-                  label="Intent keywords"
-                  value={<TagPills items={icp.intent_keywords} />}
-                />
-                <div className="flex flex-col gap-1">
-                  <span className="text-[11px] font-medium inline-flex tracking-wide text-foreground uppercase">
-                    <CornerRightDown className="h-3.5 w-3.5"/>
-                    Competitor leads
-                  </span>
-                  {icp.competitor_leads.length === 0 ? (
-                    <span className="text-sm text-muted-foreground italic">—</span>
-                  ) : (
-                    <div className="flex flex-col gap-2">
-                      {icp.competitor_leads.map((lead) => (
-                        <div
-                          key={lead.competitor_name}
-                          className="rounded-lg border border-primary/10 p-2"
-                        >
-                          <p className="text-sm font-semibold text-foreground">
-                            {lead.competitor_name}
+                )}
+              </div>
+              <Row label="Target geography" value={<TagPills items={snapshot.target_geo} />} />
+            </SectionCard>
+          )}
+          {market && (
+            <SectionCard
+              icon={<Globe className="size-4" />}
+              title="Market & fit"
+              description="Market definition and product-market fit"
+              onEdit={() => setMarketEditOpen(true)}
+            >
+              <Row label="Buyer type" value={market.buyer_type ?? '—'} />
+              <Row label="Category" value={market.category ?? '—'} />
+              <Row
+                label="Target audience"
+                value={market.target_audience ?? '—'}
+              />
+              <div className="flex flex-col gap-1">
+                <span className="text-[11px] font-medium inline-flex tracking-wide text-foreground uppercase">
+                  <CornerRightDown className="h-3.5 w-3.5"/>
+                  Pricing
+                </span>
+                {market.pricing.length === 0 ? (
+                  <span className="text-sm text-muted-foreground italic">—</span>
+                ) : (
+                  <div className="divide-y divide-border rounded-lg border border-primary/10">
+                    {market.pricing.map((tier) => (
+                      <div
+                        key={tier.tier}
+                        className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-0.5 px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-foreground">
+                            {tier.tier}
                           </p>
-                          {lead.search_queries.length > 0 && (
-                            <div className="mt-1.5 flex flex-col gap-0.5">
-                              <span className="text-[10px] tracking-wide text-muted-foreground uppercase">
-                                Search queries
-                              </span>
-                              <TagPills items={lead.search_queries} />
-                            </div>
-                          )}
-                          {lead.pain_angles.length > 0 && (
-                            <div className="mt-1.5 flex flex-col gap-0.5">
-                              <span className="text-[10px] tracking-wide text-muted-foreground uppercase">
-                                Pain angles
-                              </span>
-                              <ul className="flex list-disc flex-col gap-0.5 pl-4 text-xs text-muted-foreground">
-                                {lead.pain_angles.map((angle) => (
-                                  <li key={angle}>{angle}</li>
-                                ))}
-                              </ul>
-                            </div>
+                          {tier.features.length > 0 && (
+                            <p className="truncate text-xs text-muted-foreground">
+                              {tier.features.join(' · ')}
+                            </p>
                           )}
                         </div>
-                      ))}
-                    </div>
+                        <div className="text-right text-xs text-muted-foreground">
+                          <p>{tier.monthly_sub ?? '—'} /mo</p>
+                          <p>{tier.yearly_sub ?? '—'} /yr</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <Row
+                label="Pricing source"
+                value={
+                  market.pricing_source === 'site'
+                    ? 'From product site'
+                    : market.pricing_source === 'market_suggestion'
+                      ? 'Market suggestion'
+                      : '—'
+                }
+              />
+              <Row
+                label="Target geography"
+                value={<TagPills items={market.target_geo} />}
+              />
+              <div className="flex flex-col gap-1">
+                <span className="text-[11px] font-medium inline-flex tracking-wide text-foreground uppercase">
+                  <CornerRightDown className="h-3.5 w-3.5"/>
+                  Market fit
+                </span>
+                <div className="flex items-center gap-2">
+                  {market.market_fit ? (
+                    <VerdictBadge verdict={market.market_fit} />
+                  ) : (
+                    <span className="text-sm text-muted-foreground italic">—</span>
                   )}
                 </div>
-              </SectionCard>
-            )}
+                {market.market_fit_reasoning && (
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {market.market_fit_reasoning}
+                  </p>
+                )}
+              </div>
+            </SectionCard>
+          )}
           </div>
-        )}
-      </div>
+        </TabsContent>
+
+        <TabsContent value="competition" className="min-h-0 flex-1 overflow-y-auto pb-2">
+          <CompetitionPanel profile={liveProfile} swod={liveSwod} />
+        </TabsContent>
+
+        <TabsContent value="icp" className="min-h-0 flex-1 overflow-y-auto pb-2">
+          <div className="flex flex-col gap-3">
+          {icp && (
+            <SectionCard
+              icon={<UserRoundCheck className="size-4" />}
+              title="Ideal customer profile"
+              description="Who to target and how to reach them"
+              onEdit={() => setIcpEditOpen(true)}
+            >
+              <Row label="Product" value={icp.product_name ?? '—'} />
+              <Row label="Buyer type" value={icp.buyer_type ?? '—'} />
+              <Row label="Industries" value={<TagPills items={icp.industries} />} />
+              <Row
+                label="Company sizes"
+                value={<TagPills items={icp.company_sizes} />}
+              />
+              <Row label="Geography" value={<TagPills items={icp.geo} />} />
+              <Row
+                label="Buyer titles"
+                value={<TagPills items={icp.buyer_titles} />}
+              />
+              <Row
+                label="Exclusions"
+                value={<TagPills items={icp.exclusions} />}
+              />
+              <Row
+                label="Pain signals"
+                value={<TagPills items={icp.pain_signals} />}
+              />
+              <Row
+                label="Intent keywords"
+                value={<TagPills items={icp.intent_keywords} />}
+              />
+              <div className="flex flex-col gap-1">
+                <span className="text-[11px] font-medium inline-flex tracking-wide text-foreground uppercase">
+                  <CornerRightDown className="h-3.5 w-3.5"/>
+                  Competitor leads
+                </span>
+                {icp.competitor_leads.length === 0 ? (
+                  <span className="text-sm text-muted-foreground italic">—</span>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {icp.competitor_leads.map((lead) => (
+                      <div
+                        key={lead.competitor_name}
+                        className="rounded-lg border border-primary/10 p-2"
+                      >
+                        <p className="text-sm font-semibold text-foreground">
+                          {lead.competitor_name}
+                        </p>
+                        {lead.search_queries.length > 0 && (
+                          <div className="mt-1.5 flex flex-col gap-0.5">
+                            <span className="text-[10px] tracking-wide text-muted-foreground uppercase">
+                              Search queries
+                            </span>
+                            <TagPills items={lead.search_queries} />
+                          </div>
+                        )}
+                        {lead.pain_angles.length > 0 && (
+                          <div className="mt-1.5 flex flex-col gap-0.5">
+                            <span className="text-[10px] tracking-wide text-muted-foreground uppercase">
+                              Pain angles
+                            </span>
+                            <ul className="flex list-disc flex-col gap-0.5 pl-4 text-xs text-muted-foreground">
+                              {lead.pain_angles.map((angle) => (
+                                <li key={angle}>{angle}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </SectionCard>
+          )}
+          </div>
+        </TabsContent>
+      </Tabs>
 
       <EditTextDialog
         open={editInsight === 'domain'}

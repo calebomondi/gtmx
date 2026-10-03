@@ -52,11 +52,6 @@ PRODUCT_MARKET_DATA = MarketExtraction(
 )
 
 PRODUCT_COMPETITION_DATA = CompetitionExtraction(
-    competitors=[
-        Competitor(name="MiroMind", description="Open-weight reasoning models with verifiable audit trails.", website="https://www.miromind.ai"),
-        Competitor(name="OptimaAI", description="Enterprise agentic platform with workflow governance.", website="https://www.optimaai.example"),
-        Competitor(name="Infinitus", description="Healthcare AI agent product studio.", website="https://infinitus.ai"),
-    ],
     strengths=["On-premise, fixed-cost model"],
     weaknesses=["Undocumented hardware efficiency"],
     opportunities=["Infrastructure sovereignty in Africa"],
@@ -86,11 +81,6 @@ SERVICE_MARKET_DATA = MarketExtraction(
 )
 
 SERVICE_COMPETITION_DATA = CompetitionExtraction(
-    competitors=[
-        Competitor(name="Urban Company", description="On-demand home services marketplace covering tailoring and more.", website="https://www.urbancompany.com"),
-        Competitor(name="Tailor4Sure", description="Custom tailoring ordering platform for the Gulf.", website="https://tailor4sure.example"),
-        Competitor(name="Atlars", description="UAE tailoring services booking app.", website="https://atlars.example"),
-    ],
     strengths=["Vetted local tailor network"],
     weaknesses=["Nascent brand trust"],
     opportunities=["Fragmented atelier market"],

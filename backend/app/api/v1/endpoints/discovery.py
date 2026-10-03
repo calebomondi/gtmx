@@ -46,10 +46,14 @@ NODE_ORDER = [
 def _build_initial_state(discovery_req: DiscoveryRequest) -> dict:
     """Seed the loose intake keys the discovery agent reads. The sub_agents
     family carries offer_name/website_url/target_market directly on the session
-    (no OfferDataSnapshot model), so the initial input is a plain dict."""
+    (no OfferDataSnapshot model), so the initial input is a plain dict.
+
+    `offer_type` arrives asserted from the intake form — the agent no longer
+    classifies it, so this is the only place it enters the graph."""
     return {
         "offer_name": discovery_req.product_name,
         "website_url": discovery_req.product_url,
+        "offer_type": discovery_req.offer_type,
         "target_market": discovery_req.target_geo or [],
         "messages": [],
     }
@@ -155,11 +159,20 @@ def _build_insights(values: dict) -> dict:
     data after a refresh."""
     return {
         "offer_snapshot": _serialize_offer_snapshot(values),
+        # Persisted because the standalone get_competitors agent runs later, from
+        # the workspace, and switches its whole vocabulary on this noun ("product"
+        # vs "service"). Without it a reload would hunt a service workspace using
+        # product language.
+        "offer_type": values.get("offer_type"),
         "confirmed": bool(values.get("confirmed")),
         "domain_understanding": values.get("offer_domain_fit_understanding"),
         "market_fit_understanding": values.get("product_market_fit_understanding"),
         "market_data": _dump(values.get("market_data")),
         "competition_data": _dump(values.get("competition_data")),
+        # The archetype profile is persisted beside the SWOD, not inside it. It is
+        # the competition stage's PRIMARY output and the input the standalone
+        # get_competitors agent hunts with, so a reload must still have it.
+        "ideal_competitor_profile": _dump(values.get("ideal_competitor_profile")),
         "icp": _dump(values.get("icp_data")),
         "specialists": _dump(values.get("specialists")),
         "completed_at": datetime.now(UTC).isoformat(),
@@ -454,8 +467,22 @@ def _phase_payload(node: str, values: dict) -> dict | None:
             ),
         }
     if node == "understand_competition":
+        # Both halves of the stage's output ship together. The PROFILE is the
+        # primary one -- it is what the downstream competitor agent reads, and
+        # what the UI's archetype view renders -- but the SWOD is the part the
+        # report and the ICP consume, so neither can be dropped to save bytes.
+        #
+        # Kept as two sibling keys rather than merged into one record: they are
+        # different claims (a construct vs a judgment about the offer), and the
+        # frontend needs them separable for the same reason the backend does.
         competition = _dump(values.get("competition_data"))
-        return {"competition_data": competition} if competition else None
+        profile = _dump(values.get("ideal_competitor_profile"))
+        if competition is None and profile is None:
+            return None
+        return {
+            "competition_data": competition,
+            "ideal_competitor_profile": profile,
+        }
     if node == "determine_icp":
         icp = _dump(values.get("icp_data"))
         return {"icp_data": icp} if icp else None

@@ -50,19 +50,40 @@ interface MarketData {
   market_fit_reasoning: string | null;
 }
 
+/** The competition stage's two outputs. `profile` is the primary one: the
+ * archetype construct, which names no company by design. `swod` is the
+ * offer-vs-standard judgment. `profile` is nullable because that stage
+ * soft-fails its structured passes. */
 interface CompetitionData {
-  competitors: Array<{
-    name: string;
-    description: string;
-    website?: string | null;
-    offering?: string | null;
-    positioning?: string | null;
-    comparison?: string | null;
-  }>;
-  strengths: string[];
-  weaknesses: string[];
-  opportunities: string[];
-  differentiators: string[];
+  swod: {
+    strengths: string[];
+    weaknesses: string[];
+    opportunities: string[];
+    differentiators: string[];
+  };
+  profile: {
+    category_definition: string;
+    boundary_of_category: string[];
+    archetypes: Array<{
+      label: string;
+      archetype_description: string;
+      geography_scope: "local" | "regional" | "global" | "any";
+      business_model?: string | null;
+      typical_offering?: string | null;
+      pricing_model?: string | null;
+      customer_profile?: string | null;
+      likely_advantages: string[];
+      likely_weaknesses: string[];
+      where_to_find_them: string[];
+      confidence: "high" | "medium" | "low";
+    }>;
+    global_entry_signals: string[];
+    local_defence_signals: string[];
+    substitution_risks: string[];
+    price_anchor_range?: string | null;
+    channels: string[];
+    confidence: "high" | "medium" | "low";
+  } | null;
 }
 
 interface ICPData {
@@ -188,79 +209,102 @@ const Competition = (
       <div className="mb-2 text-start">
         <p className="text-base font-medium">Competition Landscape Understanding</p>
       </div>
-      <p className="text-muted-foreground text-base leading-relaxed text-start my-2">Key Competitors</p>
-      {data.competitors.map((competitor, index) => (
+      {/* ARCHETYPES, NOT COMPANIES. This stage names nobody by design --
+          finding real rivals is a separate agent's job -- so what it has to show
+          is the SHAPE of the threat it expects. Scope is deliberately prominent:
+          a global or regional archetype is the interesting one, and if every row
+          read "local" the geography filter would have crept back in. */}
+      <p className="text-muted-foreground text-base leading-relaxed text-start my-2">
+        {data.profile ? 'Ideal Competitor Archetypes' : 'Competitive profile unavailable'}
+      </p>
+      {data.profile?.category_definition ? (
+        <p className="text-sm text-muted-foreground text-start mb-3 leading-relaxed">
+          {data.profile.category_definition}
+        </p>
+      ) : null}
+      {data.profile?.archetypes.map((archetype, index) => (
         <div key={index} className="my-5">
           <div className="flex gap-2.5 items-center justify-start my-1">
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-medium text-muted-foreground">
-              {initialsFor(competitor.name)}
+              {initialsFor(archetype.label)}
             </span>
             <p className="text-start text-base font-medium space-x-2">
-              <span>{competitor.name}</span>
-              {competitor.website ? (
-                <a
-                  href={competitor.website}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-blue-500 underline hover:text-blue-400"
-                >
-                  {competitor.website}
-                </a>
-              ) : (
-                <span className="text-sm text-muted-foreground">Website unavailable</span>
-              )}
+              <span>{archetype.label}</span>
+              <span className="text-xs font-normal text-muted-foreground">
+                {archetype.geography_scope}
+                {archetype.confidence === 'low' ? ' · speculative' : ''}
+              </span>
             </p>
           </div>
           <Table className="mt-2">
             <TableBody>
               <TableRow>
                 <TableCell className="font-medium text-end">Description</TableCell>
-                <TableCell className="whitespace-normal text-muted-foreground text-sm text-start">{competitor.description}</TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell className="font-medium text-end">Positioning</TableCell>
-                <TableCell className="whitespace-normal text-muted-foreground text-sm text-start">{competitor.positioning}</TableCell>
+                <TableCell className="whitespace-normal text-muted-foreground text-sm text-start">{archetype.archetype_description}</TableCell>
               </TableRow>
               <TableRow>
                 <TableCell className="font-medium text-end">Offering</TableCell>
-                <TableCell className="whitespace-normal text-muted-foreground text-sm text-start ">{competitor.offering}</TableCell>
+                <TableCell className="whitespace-normal text-muted-foreground text-sm text-start ">{archetype.typical_offering}</TableCell>
               </TableRow>
               <TableRow>
-                <TableCell className="font-medium text-end">Comparison</TableCell>
-                <TableCell className="whitespace-normal text-muted-foreground text-sm text-start ">{competitor.comparison}</TableCell>
+                <TableCell className="font-medium text-end">Serves</TableCell>
+                <TableCell className="whitespace-normal text-muted-foreground text-sm text-start ">{archetype.customer_profile}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="font-medium text-end">Pricing</TableCell>
+                <TableCell className="whitespace-normal text-muted-foreground text-sm text-start ">{archetype.pricing_model}</TableCell>
+              </TableRow>
+              {/* Weaknesses first: they are the openings this offer has, and
+                  burying them under a rival's advantages would invert the point. */}
+              <TableRow>
+                <TableCell className="font-medium text-end">Where it's exposed</TableCell>
+                <TableCell className="whitespace-normal text-muted-foreground text-sm text-start ">
+                  {archetype.likely_weaknesses.length > 0 ? archetype.likely_weaknesses.join('; ') : '—'}
+                </TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="font-medium text-end">Where to look</TableCell>
+                <TableCell className="whitespace-normal text-muted-foreground text-sm text-start ">
+                  {archetype.where_to_find_them.length > 0 ? archetype.where_to_find_them.join('; ') : '—'}
+                </TableCell>
               </TableRow>
             </TableBody>
           </Table>
         </div>
       ))}
+      {data.profile && data.profile.archetypes.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-start">
+          No archetypes could be established from the research.
+        </p>
+      ) : null}
       <p className="text-muted-foreground text-base leading-relaxed text-start mt-5">Strengths</p>
       <ol className='list-inside list-decimal space-y-2 text-sm text-start'>
-        {  
-          data.strengths.map((strength) => (
+        {
+          data.swod.strengths.map((strength) => (
             <li>{strength}.</li>
           ))
         }
       </ol>
       <p className="text-muted-foreground text-base leading-relaxed text-start mt-5">Weaknesses</p>
       <ol className='list-inside list-decimal space-y-2 text-sm text-start'>
-        {  
-          data.weaknesses.map((strength) => (
+        {
+          data.swod.weaknesses.map((strength) => (
             <li>{strength}.</li>
           ))
         }
       </ol>
       <p className="text-muted-foreground text-base leading-relaxed text-start mt-5">Opportunities</p>
       <ol className='list-inside list-decimal space-y-2 text-sm text-start'>
-        {  
-          data.opportunities.map((strength) => (
+        {
+          data.swod.opportunities.map((strength) => (
             <li>{strength}.</li>
           ))
         }
       </ol>
       <p className="text-muted-foreground text-base leading-relaxed text-start mt-5">Differentiators</p>
       <ol className='list-inside list-decimal space-y-2 text-sm text-start'>
-        {  
-          data.differentiators.map((strength) => (
+        {
+          data.swod.differentiators.map((strength) => (
             <li>{strength}.</li>
           ))
         }

@@ -302,6 +302,12 @@ export function DiscoveryInterruptPicker({
           onConfirm={onAnswer}
         />
       )
+    // Retired, but deliberately still routed. The agent no longer emits this
+    // interrupt — the intake form asserts `offer_type` instead — yet a run
+    // checkpointed before that change can still resume onto one, and this
+    // picker is what App.tsx renders for it. Deleting this case would strand
+    // those threads on UnknownInterrupt. Remove it once no run can be parked
+    // on it (one release after the agent change ships).
     case "offer_type_clarification":
       return (
         <ChooseOfferType

@@ -44,6 +44,28 @@ def _ensure_workspace_columns(sync_conn):
         )
 
 
+def _ensure_competitor_columns(sync_conn):
+    """Same gap as above, for the competitors tables.
+
+    Split out rather than folded into `_ensure_workspace_columns` because it is a
+    different concern with a different failure mode: these tables are new, so
+    create_all builds them whole and this only ever runs against a database that
+    already has them from an earlier build of the same feature.
+
+    `notes` is the only column that has been added after the tables first
+    shipped. It is nullable with no default, so the ALTER is additive and
+    existing rows read back as NULL -- which is correct, since a note is
+    something the user writes and a pre-existing row has none.
+    """
+    inspector = sa_inspect(sync_conn)
+    tables = set(inspector.get_table_names())
+    if "competitors" not in tables:
+        return  # brand new database; create_all already made the full table
+    columns = {col["name"] for col in inspector.get_columns("competitors")}
+    if "notes" not in columns:
+        sync_conn.execute(text("ALTER TABLE competitors ADD COLUMN notes TEXT"))
+
+
 async def _seed_mock_user():
     """Auth is faked for now: make sure the mock signed-in user exists."""
     async with AsyncSessionLocal() as db:
@@ -66,6 +88,7 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
         await connection.run_sync(_ensure_workspace_columns)
+        await connection.run_sync(_ensure_competitor_columns)
     await _seed_mock_user()
     await agents_runtime.start_agent_runtime(settings.DATABASE_URL)
     try:

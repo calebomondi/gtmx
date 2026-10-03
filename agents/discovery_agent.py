@@ -54,7 +54,7 @@ _DETERMINE_ICP = build_icp_graph(checkpointer=False)
 _SPECIALIST_KEYS = ("specialists", "specialist_generation_complete")
 _OFFER_KEYS = ("offer_findings", "offer_domain_fit_understanding", "offer_under_complete", "tasks", "task_research")
 _MARKET_KEYS = ("market_findings", "product_market_fit_understanding", "market_data", "market_complete", "market_tasks", "market_task_research")
-_COMPETITION_KEYS = ("competition_findings", "competitive_positioning_understanding", "competition_data", "competition_complete", "competition_tasks", "competition_task_research")
+_COMPETITION_KEYS = ("competition_findings", "competitive_positioning_understanding", "ideal_competitor_profile", "competition_data", "competition_complete", "competition_tasks", "competition_task_research")
 _ICP_KEYS = ("icp_data", "icp_findings", "icp_understanding", "icp_complete")
 
 

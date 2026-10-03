@@ -253,22 +253,6 @@ def _resolve_offer_name(last_reply: str, candidates: list[str]) -> str | None:
     return None
 
 
-def _resolve_offer_type(reply: str) -> str | None:
-    """Parse a product/service clarifying answer. Returns 'product'/'service' when the
-    reply clearly names one, None when it's ambiguous or both are named (the caller can
-    fall back to the LLM's weak lean rather than guessing)."""
-    if not reply:
-        return None
-    text = reply.strip().lower()
-    if re.fullmatch(r"\d{1,2}", text):
-        return {"1": "product", "2": "service"}.get(text)
-    has_product = bool(re.search(r"\bproduct(s)?\b", text))
-    has_service = bool(re.search(r"\bservice(s)?\b", text))
-    if has_product != has_service:
-        return "product" if has_product else "service"
-    return None
-
-
 # ---------------------------------------------------------------------------
 # Schemas
 # ---------------------------------------------------------------------------
@@ -342,34 +326,6 @@ class RestProductInfo(BaseModel):
     @classmethod
     def _coerce_lists(cls, v):
         return _coerce_blank_list(v)
-
-
-class OfferTypeDecision(BaseModel):
-    """Binary product-vs-service classification. The agent must NOT guess: if the
-    evidence is ambiguous or contradicts, offer_type stays None / confident=False so
-    the node asks the user for clarity instead."""
-
-    offer_type: Optional[Literal["product", "service"]] = Field(
-        default=None,
-        description="The classified offer type; None when the evidence is genuinely ambiguous",
-    )
-    confident: bool = Field(
-        default=False,
-        description="True only when the scraped content + user replies clearly support the offer_type",
-    )
-    reasoning: Optional[str] = Field(
-        default=None,
-        description="One or two sentences of evidence behind the decision — shown to the user when asking for clarification",
-    )
-
-    @field_validator("offer_type", mode="before")
-    @classmethod
-    def _coerce_none(cls, v):
-        # qwen hands back the null offer_type as the *string* 'None' — treat that
-        # as an explicit 'unsure' signal rather than crashing pydantic.
-        if isinstance(v, str) and v.strip().lower() in ("none", "null", "unknown", "unsure", "uncertain", ""):
-            return None
-        return v
 
 
 # ---------------------------------------------------------------------------
@@ -552,115 +508,6 @@ OUTPUT
 """
 
 
-classify_offer_instructions = """
-You are classifying whether the "offer" the user wants to profile is a PRODUCT or a
-SERVICE. This is a real binary decision with downstream consequences (products get
-feature extraction, services get service-uniqueness) — so NEVER guess. When the
-evidence is genuinely ambiguous, contradictory, or insufficient, you signal that you
-are UNSURE and the agent will ask the user instead.
-
-DEFINITIONS
-- PRODUCT: a tangible or digital ARTIFACT the customer buys, owns, installs,
-  licenses, or downloads — a "thing" with fixed features, versions, and specs:
-  software, app, SaaS/platform, API, hardware/device, dataset, template/book, or a
-  physical good.
-- SERVICE: intangible WORK performed for a customer — labour, expertise, or a
-  process delivered over time to produce an outcome: consulting/coaching, design
-  or development built to order, agency work, managed/IT services, support or
-  retainers, printing or fabrication done on a customer's behalf — billed by
-  hour, project, or retainer.
-
-KEY DIFFERENTIATORS (use in this order of importance)
-1. Ownership — does the customer walk away with a thing they now own/use (product),
-   or was work merely performed for them (service)?
-2. Fixity — one fixed, replicable artifact (product), or bespoke/custom work every
-   engagement (service)?
-3. Billing — a license/subscription to a STANDARD offering (product), or a
-   quote/hourly/project/retainer for tailored work (service)?
-
-GREY AREAS — how to resolve
-- SaaS, hosted software, APIs, plugins: still PRODUCTS (licensed, replicable
-  artifacts with features), even though they are hosted.
-- Software developed SPECIFICALLY for a client: a SERVICE, even if the end result
-  is software.
-- Implementation/onboarding/training/support around a product: those are services,
-  but if the PRIMARY offering is the product, classify the product — unless the
-  user's offer IS the implementation or support service.
-- "3D printing", "manufacturing", "printing" and similar: AMBIGUOUS on their own.
-  Selling printers/machines → product; fabricating parts/goods for customers →
-  service. When the context cannot disambiguate, you are UNCERTAIN.
-- A freelancer/agency selling a standard package (e.g. a "logo design package"):
-  still a SERVICE — work performed for the client.
-- A product bundled with services: classify the PRIMARY offering the user wants to
-  profile; if both are genuinely the offer, you are UNCERTAIN.
-
-SIGNALS — evidence of each lean
-- Product lean: features/specs/versions, "buy now", "download", "install", license
-  or per-seat pricing, changelog, docs, app-store or product listing.
-- Service lean: "we do X for you", portfolio/case studies, "get a quote", "book a
-  call", consultation/consulting, hourly/day rates, retainers, methodology
-  ("how we work"), client deliverables.
-
-OUTPUT RULES
-- Decide from the offer name AND the gathered content AND the user's replies together.
-- Genuinely ambiguous, contradictory, or insufficient evidence → confident=False and
-  offer_type=None. Do NOT guess.
-- A weak lean in either direction → still set offer_type to that lean, but keep
-  confident=False so the agent asks the user to confirm.
-- confident=True ONLY when the evidence clearly and consistently supports the type.
-
-CONTEXT:
-- offer_name: {offer_name}
-- scraped content (if any):
----
-{scraped_content}
----
-- user's replies (if any):
----
-{user_replies}
----
-"""
-
-
-classify_offer_deep_instructions = """
-The first classification pass was NOT confident. Run a DEEP EVIDENCE pass: re-scan the
-material and CITE the specific signals you find before you decide. Commit to a decision
-only when the signals hold together.
-
-TASK
-1. List concrete product signals found in the material (with short verbatim fragments):
-   features/specs/version numbers, pricing or licensing ("buy", "download", "install",
-   per-seat or monthly license), changelog/docs, an app-store or product listing,
-   hardware/device language.
-2. List concrete service signals found (with short verbatim fragments): "we do X for
-   you", portfolio/case studies, "get a quote", "book a call", "consulting" /
-   "consultation", hourly/day/project/retainer billing, "our process / methodology",
-   client deliverables.
-3. Weigh the signals with the KEY DIFFERENTIATORS in order:
-   Ownership (does the customer walk away owning a replicable artifact, or was work
-   performed for them?) → Fixity (one fixed, replicable offering vs bespoke work each
-   engagement) → Billing (license/subscription to a standard offering vs
-   quote/hourly/project/retainer).
-   SaaS, hosted software, APIs and plugins are PRODUCTS. Software or fabrication built
-   to order for a client is a SERVICE.
-4. confident=True ONLY if the cited signals point CONSISTENTLY and CLEARLY one way.
-
-If the signals genuinely contradict, or the material is insufficient to tell, do NOT
-guess: offer_type=None / confident=False — the agent will ask the user.
-
-CONTEXT:
-- offer_name: {offer_name}
-- scraped content (if any):
----
-{scraped_content}
----
-- user's replies (if any):
----
-{user_replies}
----
-"""
-
-
 # ---------------------------------------------------------------------------
 # Nodes
 # ---------------------------------------------------------------------------
@@ -700,12 +547,12 @@ def scrape_website(state: DiscoverOfferState) -> Command[Literal["check_product_
     )
 
 
-def check_product_service_exist(state: DiscoverOfferState) -> Command[Literal["ask_for_clarity", "determine_offer_type", "notify_unscrappable_url"]]:
+def check_product_service_exist(state: DiscoverOfferState) -> Command[Literal["ask_for_clarity", "proceed_to_description", "notify_unscrappable_url"]]:
     """Check if the provided product/service appears in the scraped content. If not,
     extract candidate product/services found on the page and hand off to
     ask_for_clarity. If the name is present, or this is a re-entry after the
     user picked a candidate (or after they were told their URL failed), proceed to
-    determine_offer_type."""
+    proceed_to_description."""
 
     offer_name = normalize_optional_text(state.get("offer_name"))
     website_url = normalize_optional_text(state.get("website_url"))
@@ -716,7 +563,7 @@ def check_product_service_exist(state: DiscoverOfferState) -> Command[Literal["a
     # No name, or we're already past this gate (user picked a candidate last round,
     # or their URL failed and they were already told) → move on.
     if not offer_name or already_mismatched or scrape_failed:
-        return Command(goto="determine_offer_type")
+        return Command(goto="proceed_to_description")
 
     # A URL was given but we hold no content and haven't flagged it — the page
     # still needs fetching; surface that to the user (should normally never happen,
@@ -727,10 +574,10 @@ def check_product_service_exist(state: DiscoverOfferState) -> Command[Literal["a
                 update={"scrape_failed": True},
                 goto="notify_unscrappable_url",
             )
-        return Command(goto="determine_offer_type")
+        return Command(goto="proceed_to_description")
 
     if _offer_name_in_content(offer_name, scraped_content):
-        return Command(goto="determine_offer_type")
+        return Command(goto="proceed_to_description")
 
     # Name not found — extract candidates and ask for clarity
     candidates = _extract_candidates(scraped_content, offer_name=offer_name)
@@ -743,7 +590,7 @@ def check_product_service_exist(state: DiscoverOfferState) -> Command[Literal["a
 def ask_for_clarity(state: DiscoverOfferState) -> Command[Literal["check_product_service_exist"]]:
     """Interrupt the user when the provided product name was not found in the
     scraped content. The reply is routed back to check_product_service_exist which, with
-    name_mismatch now True, proceeds directly to determine_offer_type."""
+    name_mismatch now True, proceeds directly to proceed_to_description."""
 
     follow_up = as_follow_up(state.get("follow_up"))
     offer_name = normalize_optional_text(state.get("offer_name"))
@@ -835,132 +682,27 @@ def notify_unscrappable_url(state: DiscoverOfferState) -> Command[Literal["scrap
     return Command(update=update, goto="check_product_service_exist")
 
 
-def _classify_offer_type(
-    offer_name: str | None,
-    user_replies: list[str],
-    scraped_content: str | None,
-) -> OfferTypeDecision:
-    """Classify the offer as PRODUCT or SERVICE over two passes. Pass 1 applies the
-    rule-based classifier from the name/content/replies. If it cannot decide, a second
-    "deep evidence" pass forces the model to cite concrete signals before answering.
-    The classifier NEVER guesses: it marks confident=False so the node asks the user."""
-
-    material = dict(
-        offer_name=offer_name or "Not provided.",
-        scraped_content=scraped_content or "None.",
-        user_replies="\n---\n".join(user_replies) or "None so far.",
-    )
-
-    def run(template):
-        return (
-            invoke_structured_with_fallback(
-                messages=[SystemMessage(content=template.format(**material))],
-                schema=OfferTypeDecision,
-                log_label="Classify Offer Type",
-            )
-            or OfferTypeDecision()
-        )
-
-    decision = run(classify_offer_instructions)
-    if decision.offer_type and decision.confident:
-        return decision
-
-    deep = run(classify_offer_deep_instructions)
-    if deep.offer_type and deep.confident:
-        return deep
-
-    # Both passes unsure — merge a lean + reasoning trail for the user to see.
-    decision.offer_type = decision.offer_type or deep.offer_type
-    decision.reasoning = decision.reasoning or deep.reasoning
-    return decision
-
-
 def _next_after_offer_decided(state: DiscoverOfferState) -> Literal[
     "get_product_service_description", "retrieve_rest_product_service_info"
 ]:
-    """Routing after the offer type is (fully) decided. Once the user has confirmed the
-    description we jump straight to rest-extraction; otherwise we draft the description
-    first (ask_for_confirmation collects a missing name/URL if needed)."""
+    """Routing after intake. Once the user has confirmed the description we jump
+    straight to rest-extraction; otherwise we draft the description first
+    (ask_for_confirmation collects a missing name/URL if needed)."""
     return "retrieve_rest_product_service_info" if state.get("confirmed") else "get_product_service_description"
 
 
-def determine_offer_type(state: DiscoverOfferState) -> Command[Literal[
-    "ask_for_offer_clarity", "get_product_service_description", "retrieve_rest_product_service_info"
-]]:
-    """Decide whether the user's offer is a PRODUCT (tangible/digital artifact) or a
-    SERVICE (intangible work performed). Two-pass evidence-led classification, always
-    via Command routing. If both passes remain uncertain, hand off to
-    ask_for_offer_clarity — the interrupt is the LAST resort, never inline here."""
-    if state.get("offer_type") in ("product", "service"):
-        return Command(goto=_next_after_offer_decided(state))
-
-    follow_up = as_follow_up(state.get("follow_up"))
-    user_replies = list(follow_up.user_replies or [])
-    scraped_content = normalize_optional_text(state.get("scraped_content"))
-    offer_name = normalize_optional_text(state.get("offer_name"))
-    if not (offer_name or user_replies or scraped_content):
-        return Command(goto=_next_after_offer_decided(state))
-
-    decision = _classify_offer_type(offer_name, user_replies, scraped_content)
-    if decision.offer_type and decision.confident:
-        return Command(
-            update={"offer_type": decision.offer_type},
-            goto=_next_after_offer_decided(state),
-        )
-
-    # Not confident even after two passes — ask the user. Stash the lean +
-    # reasoning so ask_for_offer_clarity can present them in the question.
-    return Command(
-        update={
-            "offer_type_lean": decision.offer_type,
-            "offer_type_reasoning": decision.reasoning,
-        },
-        goto="ask_for_offer_clarity",
-    )
-
-
-def ask_for_offer_clarity(state: DiscoverOfferState) -> Command[Literal[
+def proceed_to_description(state: DiscoverOfferState) -> Command[Literal[
     "get_product_service_description", "retrieve_rest_product_service_info"
 ]]:
-    """Last resort: the agent could not classify the offer from its own material, so it
-    interrupts and asks the user directly. The reply is resolved into product/service
-    (falling back to the classifier's lean rather than guessing) and routed onward."""
+    """Route past intake to the description stage. This used to be
+    `determine_offer_type`, which classified product-vs-service from the scraped
+    content over two LLM passes and interrupted the user when undecided. The
+    intake form now asserts `offer_type`, which arrives on the session already
+    seeded, so there is nothing left to decide here and the node is pure
+    routing. Kept as an explicit node rather than folding the branch into each
+    caller so the confirmed-vs-draft decision is stated once."""
+    return Command(goto=_next_after_offer_decided(state))
 
-    follow_up = as_follow_up(state.get("follow_up"))
-    user_replies = list(follow_up.user_replies or [])
-    lean = state.get("offer_type_lean")
-    reasoning = normalize_optional_text(state.get("offer_type_reasoning"))
-    offer_name = normalize_optional_text(state.get("offer_name"))
-
-    hint = ""
-    if lean or reasoning:
-        hint = f"\n\nMy best guess is {lean or 'either'} because: {reasoning or 'no clear signal'}"
-
-    user_answer = interrupt({
-        "type": "offer_type_clarification",
-        "question": (
-            f"Is \"{offer_name or 'your offer'}\" a PRODUCT or a SERVICE?{hint}\n\n"
-            "Product = a thing users buy/own/use (software, app, device, template, …).\n"
-            "Service = work performed (consulting, design, development, printing, agency work, …)."
-        ),
-        "offer_name": offer_name,
-        "lean": lean,
-    })
-
-    resolved = _resolve_offer_type(user_answer)
-    final_type = resolved or lean or "product"
-    if final_type != resolved:
-        print(f"⚠️ Couldn't parse offer-type answer {user_answer!r}; using {final_type!r}")
-
-    update: dict = {
-        "offer_type": final_type,
-        "messages": [HumanMessage(content=user_answer)],
-        "follow_up": {
-            "follow_up_question": None,
-            "user_replies": follow_up.user_replies + [user_answer],
-        },
-    }
-    return Command(update=update, goto=_next_after_offer_decided(state))
 
 
 def get_product_service_description(state: DiscoverOfferState) -> dict:
@@ -1007,9 +749,9 @@ def get_product_service_description(state: DiscoverOfferState) -> dict:
     return update
 
 
-def ask_for_confirmation(state: DiscoverOfferState) -> Command[Literal["check_if_desc_inline", "determine_offer_type"]]:
+def ask_for_confirmation(state: DiscoverOfferState) -> Command[Literal["check_if_desc_inline", "proceed_to_description"]]:
     """Present the draft description for user confirmation. Routes to
-    determine_offer_type (marking confirmed=True) so the description-confirmed path
+    proceed_to_description (marking confirmed=True) so the description-confirmed path
     lands in rest-extraction, or to check_if_desc_inline when the user edits the draft."""
 
     follow_up = as_follow_up(state.get("follow_up"))
@@ -1051,7 +793,7 @@ def ask_for_confirmation(state: DiscoverOfferState) -> Command[Literal["check_if
     }
 
     if _pure_confirmation(user_answer):
-        return Command(update={**update, "confirmed": True}, goto="determine_offer_type")
+        return Command(update={**update, "confirmed": True}, goto="proceed_to_description")
 
     return Command(update=update, goto="check_if_desc_inline")
 
@@ -1195,8 +937,7 @@ def build_offer_discovery_graph(checkpointer: bool = True):
     agent.add_node("check_product_service_exist", check_product_service_exist)
     agent.add_node("ask_for_clarity", ask_for_clarity)
     agent.add_node("notify_unscrappable_url", notify_unscrappable_url)
-    agent.add_node("determine_offer_type", determine_offer_type)
-    agent.add_node("ask_for_offer_clarity", ask_for_offer_clarity)
+    agent.add_node("proceed_to_description", proceed_to_description)
     agent.add_node("get_product_service_description", get_product_service_description)
     agent.add_node("ask_for_confirmation", ask_for_confirmation)
     agent.add_node("check_if_desc_inline", check_if_desc_inline)
@@ -1207,16 +948,15 @@ def build_offer_discovery_graph(checkpointer: bool = True):
     # scrape_website returns Command → check_product_service_exist |
     #     notify_unscrappable_url
     # check_product_service_exist returns Command → ask_for_clarity |
-    #     determine_offer_type | notify_unscrappable_url
+    #     proceed_to_description | notify_unscrappable_url
     # ask_for_clarity returns Command → check_product_service_exist
     # notify_unscrappable_url returns Command → scrape_website |
     #     check_product_service_exist
-    # determine_offer_type returns Command → ask_for_offer_clarity |
-    #     get_product_service_description | retrieve_rest_product_service_info
-    # ask_for_offer_clarity returns Command → get_product_service_description |
+    # proceed_to_description returns Command → get_product_service_description |
     #     retrieve_rest_product_service_info
     agent.add_edge("get_product_service_description", "ask_for_confirmation")
-    # ask_for_confirmation returns Command → check_if_desc_inline | determine_offer_type
+    # ask_for_confirmation returns Command → check_if_desc_inline |
+    #     proceed_to_description
     # check_if_desc_inline returns Command → ask_for_confirmation
     agent.add_edge("retrieve_rest_product_service_info", END)
 

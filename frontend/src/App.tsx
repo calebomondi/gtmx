@@ -16,7 +16,7 @@ import { answerDiscovery, useAgentRun } from "@/lib/agent-run-store"
 
 import Workspace from './sidepanel/workspace'
 import RecentSession from './sidepanel/recent_session'
-import NewWorkspace from './sidepanel/new_workspace'
+import NewWorkspace from './sidepanel/new/new_workspace'
 import { ThemeProvider } from "@/components/theme-provider"
 import { ProjectsComponent } from "@/projects/projects-components"
 import { ProjectHub } from "@/projects/project-hub"

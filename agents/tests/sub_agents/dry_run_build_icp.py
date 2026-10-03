@@ -118,26 +118,6 @@ STATE = {
     "competitive_positioning_understanding": "storage-shaped reasoning wins on cost/cadence",
     # competitor_leads derive only from THIS set, so it must carry the names.
     "competition_data": CompetitionExtraction(
-        competitors=[
-            {
-                "name": "ThinMind",
-                "description": "a real rival",
-                "website": "https://thinmind.example",
-                "offering": "a rival offering",
-                "positioning": "positions against the offer",
-                "comparison": "rival wins on X, loses on Y",
-                "feature_flags": {},
-            },
-            {
-                "name": "Mirra",
-                "description": "another rival",
-                "website": "https://mirra.example",
-                "offering": "an on-device runtime",
-                "positioning": "positions on latency",
-                "comparison": "rival wins on price",
-                "feature_flags": {},
-            },
-        ],
         strengths=["cheap on commodity hardware"],
         weaknesses=["young ecosystem"],
         opportunities=["gap in the local market"],

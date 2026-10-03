@@ -13,7 +13,6 @@ from config import Config
 cfg = Config()
 
 QWEN_MODELS = [
-    "qwen3.6-flash-2026-04-16",
     "qwen3.6-35b-a3b",  
 ]
 
@@ -24,7 +23,6 @@ QWEN_MODELS = [
 # a run that routes its high-volume extraction work there is what pushes the
 # account into tokens-per-minute throttling in the first place.
 CHEAP_QWEN_MODELS = [
-    "qwen-flash-2025-07-28",
     "qwen-plus-2025-07-28",
 ]
 

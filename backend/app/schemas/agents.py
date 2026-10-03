@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional
+from typing import Literal, Optional
 from urllib.parse import urlparse
 
 
@@ -9,6 +9,15 @@ class DiscoveryRequest(BaseModel):
     product_name: str = Field(description="")
     product_url: str = Field(description="")
     target_geo: Optional[list[str]] = Field(default=None, description="")
+    # The user asserts this on the intake form rather than letting the agent
+    # classify it. It drives the specialist roster (create_specialists
+    # ._specialist_slots) and the offer_noun wording across the offer/market
+    # interviews, so a wrong value is expensive downstream. The default keeps
+    # older clients that send no offer_type behaving as before.
+    offer_type: Literal["product", "service"] = Field(
+        default="product",
+        description="Whether the offer is a product (a thing bought/owned/used) or a service (work performed)",
+    )
 
     @field_validator('product_url')
     @classmethod

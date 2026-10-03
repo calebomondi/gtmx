@@ -30,8 +30,16 @@ def market_context_block(market_data: MarketExtraction | None) -> str:
 
 
 def competition_context_block(competition_data: CompetitionExtraction | None) -> str:
-    """Render the competitor set so the GTM specialist can seed competitor leads
-    (accounts/audiences evaluating or using competitors are prime targets)."""
+    """Render the offer-vs-standard SWOD so the GTM specialist has the
+    competitive context behind its competitor leads (accounts/audiences
+    evaluating or using competitors are prime targets).
+
+    The named competitor list this used to render is gone from
+    CompetitionExtraction — the stage now emits archetypes, and real rivals come
+    from the standalone get_competitors agent. Named leads still reach the GTM
+    specialist through the competition FINDINGS prose, which retained the rivals
+    the research actually named.
+    """
     if not competition_data:
         return "No competition data available."
     return competition_data.model_dump_json(indent=2, exclude_none=True)

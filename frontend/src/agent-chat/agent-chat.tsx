@@ -23,25 +23,27 @@ export function AgentChat({ workspaceId }: { workspaceId?: string }) {
   return (
     <div className='flex h-full flex-col'>
       <div className='border-b px-4 py-3'>
-        <div className='flex items-center gap-2'>
-          <span aria-hidden className='size-2 rounded-full bg-emerald-500' />
-          <p className='text-sm font-medium'>GTM agent</p>
-          {scopeName && (
+        <div className='flex items-center justify-between gap-2'>
+          {/* <span aria-hidden className='size-2 rounded-full bg-emerald-500' /> */}
+          <div>
+            <p className='text-base font-medium'>{scopeName} ChatRoom</p>
+            <p className='text-sm text-muted-foreground'>
+              {scopeName
+                ? `Converse with your specialist team.`
+                : 'Converse with your specialist team.'}
+            </p>
+          </div>
+          {/* {scopeName && (
             <span className='inline-flex max-w-40 items-center gap-1 truncate rounded-full border border-primary/10 bg-muted/60 px-2 py-0.5 text-[11px] text-muted-foreground'>
               {scopeName}
             </span>
-          )}
+          )} */}
           {specialists.length > 0 && (
             <div className='relative -ml-1.5'>
               <SpecialistAvatarGroup specialists={specialists} />
             </div>
           )}
         </div>
-        <p className='mt-0.5 text-xs text-muted-foreground'>
-          {scopeName
-            ? `Your conversational product/service & GTM analyst for ${scopeName}.`
-            : 'Your conversational product/service & GTM analyst.'}
-        </p>
       </div>
       <div className='flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 text-center'>
         <div className='flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-500'>

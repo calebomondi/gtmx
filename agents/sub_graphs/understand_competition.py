@@ -17,7 +17,7 @@ from agents.sub_graphs.understand_product import (
     route_after_question,
 )
 from config import Config
-from data_sources.scraping.exa import search_and_scrape, scrape_url
+from data_sources.scraping.exa import search_and_scrape
 from utils.log import logger
 
 
@@ -308,27 +308,13 @@ the market context, and the CURRENT competitive sources, produce the structured 
 output for the {offer_noun}.
 
 The {offer_noun}'s OWN material (the block labelled "{offer_noun}'s own material") is authoritative:
-features there are the {offer_noun}'s features, and the `feature_flags` on each competitor map
-whether THAT competitor also offers each of those features. The market context tells you the
-category, buyer, and target geographies the {offer_noun} competes in — scope the competitor set
-to that market.
+it is what the strengths, weaknesses and differentiators below are measured against. The market
+context tells you the category, buyer, and target geographies — but note this record no longer
+carries a named competitor list, so the rivals you judge against are the ones the interview and
+sources actually named. Where the sources name none, judge against the category standard and
+say so.
 
 Rules:
-
-- competitors: Identify the {offer_noun}'s IDEAL competitor set — between 3 and 5 real
-  competitors (aim for 5, never fewer than 3). Each must be grounded in the research or
-  conversation:
-  * name: the real product/company name, as it appears in the sources.
-  * description: what they do and how they position, from the sources.
-  * website: their official website URL ONLY if it appears in the research/conversation;
-    otherwise null — never invent a URL.
-  * offering: key features/services they offer.
-  * positioning: how they position themselves in the market.
-  * comparison: how the {offer_noun} compares to this competitor — where it wins, where it loses.
-  * feature_flags: for each of the {offer_noun}'s features, whether this competitor also offers it.
-  Do NOT pad the list with generic names — every competitor must be real and defensible
-  from the sources. If fewer than 3 defensible competitors are found in the research,
-  return only what is defensible rather than inventing names.
 
 - strengths: where the {offer_noun} meets or beats the industry/competitive standard.
 - weaknesses: where the {offer_noun} falls short of its competitors / the industry standard.
@@ -372,40 +358,15 @@ def extract_competitors(state: InterviewState) -> dict:
         thinking=False,
     )
 
-    # Enforce the 3-5 competitor floor/ceiling even if the model over-collects.
-    competitors = list(competition_data.competitors or [])
-    competitors = competitors[:5]
-    if len(competitors) < 3:
-        print(f"⚠️ Only {len(competitors)} competitor(s) extracted — keeping defensible set, not inventing more.")
-    competition_data = competition_data.model_copy(update={"competitors": competitors})
-
-    print(f"✅ Competition data extracted: {competition_data.model_dump_json(exclude_none=True)[:1200]}")
+    # The competitor NAME LIST this used to extract here is gone from
+    # CompetitionExtraction — the research pipeline that supersedes this
+    # interview emits an IdealCompetitorProfile instead, and real verified
+    # rivals are the standalone get_competitors agent's job. What survives is
+    # the offer-vs-standard SWOD, which was always offer-relative and never
+    # depended on the list. `verify_competitors` went with it: there are no URLs
+    # left to verify.
+    print(f"✅ Competition SWOD extracted: {competition_data.model_dump_json(exclude_none=True)[:1200]}")
     return {"competition_data": competition_data}
-
-
-def verify_competitors(state: InterviewState) -> dict:
-    """URL check: attempt a light scrape of each competitor's stated website; drop
-    a competitor whose URL fails to resolve. Competitors without a URL are kept —
-    they were name/description-grounded in the sources."""
-
-    competition_data = state.get("competition_data")
-    if not competition_data:
-        return {}
-
-    kept = []
-    for comp in competition_data.competitors:
-        if comp.website:
-            try:
-                scrape_url(comp.website, Config())
-                kept.append(comp)
-            except Exception as e:
-                print(f"❌ Dropping competitor '{comp.name}' — website failed to resolve: {e}")
-        else:
-            kept.append(comp)
-
-    verified = competition_data.model_copy(update={"competitors": kept})
-    print(f"✅ Verified competitors: {len(kept)} (kept {len(competition_data.competitors) - len(kept)} with dead URLs)")
-    return {"competition_data": verified}
 
 
 competition_findings_instructions = """You are an expert competitive analyst.
@@ -540,7 +501,6 @@ def build_competition_graph(checkpointer: bool = True):
     builder.add_node("answer_question", generate_aswer)
     builder.add_node("save_interview", save_interview)
     builder.add_node("extract_competitors", extract_competitors)
-    builder.add_node("verify_competitors", verify_competitors)
     builder.add_node("write_findings", write_findings)
     # -- Edges --
     builder.add_edge(START, "seed_product_context")
@@ -557,8 +517,7 @@ def build_competition_graph(checkpointer: bool = True):
         ['ask_question', 'save_interview']
     )
     builder.add_edge("save_interview", "extract_competitors")
-    builder.add_edge("extract_competitors", "verify_competitors")
-    builder.add_edge("verify_competitors", "write_findings")
+    builder.add_edge("extract_competitors", "write_findings")
     builder.add_edge("write_findings", END)
 
     # -- Compile --

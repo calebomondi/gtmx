@@ -126,7 +126,11 @@ def create_specialist_team(state: OfferSessionState) -> dict:
     retry loop. Serialising them cost one full model round-trip per specialist
     for no dependency between them.
     """
-    offer_type = state.get("offer") or "product"
+    # `offer_type` is the channel the intake form asserts and every stage reads
+    # (offer/market interviews branch on it). `offer` is the legacy twin graph's
+    # copy of the same thing — kept as a fallback so the old entry point, which
+    # still writes that key, keeps picking the right roster.
+    offer_type = state.get("offer_type") or state.get("offer") or "product"
     offer = as_offer_snapshot(state.get("offer_snapshot"))
     target_geo = offer.target_geo or []
 

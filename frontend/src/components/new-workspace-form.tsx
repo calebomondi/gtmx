@@ -1,5 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import { useNavigate } from "react-router-dom"
+import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 
 import { cn } from "cn"
 
@@ -15,13 +22,92 @@ import { Input } from "@/components/ui/input"
 import type { Option } from "@/components/ui/multi-select"
 import MultipleSelector from "@/components/ui/multi-select"
 import { Separator } from "@/components/ui/separator"
+import { Textarea } from "@/components/ui/textarea"
 import { DiscoveryInterruptPicker } from "@/components/interrupt-panel"
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import {
+  SocialConnect,
+  type SocialPlatformId,
+} from "@/components/social-connect"
 import { COUNTRIES, normalizeCountry } from "@/lib/countries"
 import { useDiscovery } from "@/hooks/use-discovery"
+
+import { SourceToggle, type SourceMode } from '@/sidepanel/new/toggle'
+
+/**
+ * What the user is offering, asserted rather than inferred. The agent used to
+ * classify this from the scraped page over two LLM passes and interrupt when
+ * undecided; it now arrives on the session pre-seeded, so this drives the
+ * specialist roster and the downstream interview wording directly.
+ */
+type OfferType = 'product' | 'service'
+
 
 type NewWorkspaceFormProps = React.ComponentProps<"div"> & {
   isDiscovering: boolean
   setIsDiscovering: React.Dispatch<React.SetStateAction<boolean>>
+}
+
+/**
+ * Fades copy in when `swapKey` changes. Keying on the value remounts the
+ * element, so it re-runs the enter animation. Deliberately no exit variant:
+ * the label and its hint are one visual unit, and cross-fading them would
+ * briefly render the label with neither word in it.
+ */
+function SwappingText({
+  swapKey,
+  className,
+  children,
+}: {
+  swapKey: string
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <motion.span
+      key={swapKey}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+      className={cn("inline-block", className)}
+    >
+      {children}
+    </motion.span>
+  )
+}
+
+/**
+ * Tracks the natural height of `ref`'s element so a wrapper can animate to it.
+ *
+ * The wrapper's height is animated, and this reads the *inner* element, whose
+ * height is content-driven and therefore independent of the wrapper — so the
+ * two can't feed each other into a loop. Motion's `layout` prop is deliberately
+ * not used here: it animates size with `scale`, which stretches the input and
+ * label text inside the card.
+ */
+function useMeasuredHeight<T extends HTMLElement>() {
+  const ref = useRef<T | null>(null)
+  const [height, setHeight] = useState<number | null>(null)
+
+  useLayoutEffect(() => {
+    const element = ref.current
+    if (!element) return
+
+    const measure = () => {
+      const next = element.getBoundingClientRect().height
+      // Sub-pixel jitter from the spring would otherwise re-trigger itself.
+      setHeight((current) =>
+        current === null || Math.abs(current - next) > 0.5 ? next : current,
+      )
+    }
+
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+
+  return [ref, height] as const
 }
 
 export function NewWorkspaceForm({
@@ -30,8 +116,15 @@ export function NewWorkspaceForm({
   setIsDiscovering,
   ...props
 }: NewWorkspaceFormProps) {
+  const [source, setSource] = useState<SourceMode>("website")
+  const [offerType, setOfferType] = useState<OfferType>("product")
+  // +1 when moving toward "social", -1 toward "website". Drives which way the
+  // outgoing fields slide so the motion agrees with the toggle's own direction.
+  const [direction, setDirection] = useState(1)
   const [productName, setProductName] = useState("")
   const [websiteUrl, setWebsiteUrl] = useState("")
+  const [description, setDescription] = useState("")
+  const [connected, setConnected] = useState<SocialPlatformId[]>([])
   const [targetGeo, setTargetGeo] = useState<Option[]>([])
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null)
   const [confirmed, setConfirmed] = useState(false)
@@ -58,14 +151,104 @@ export function NewWorkspaceForm({
       "product_service_description_confirmation"
   const clarifyUrl =
     awaiting && currentInterrupt?.interrupt_type === "url_unscrappable"
-  const chooseType =
-    awaiting &&
-    currentInterrupt?.interrupt_type === "offer_type_clarification"
 
-  const isFormReady = useMemo(
-    () => productName.trim().length > 0 && websiteUrl.trim().length > 0,
-    [productName, websiteUrl],
-  )
+  // The social branch never reaches the offer type: with no URL to scrape and
+  // no account connected yet, the name is the business name either way.
+  const nameLabel =
+    source === "social"
+      ? "Business name"
+      : offerType === "service"
+        ? "Service name"
+        : "Product name"
+
+  // Every remaining piece of product/service-flavoured copy hangs off this one
+  // word. All of it stays to a single line on purpose: the name and URL fields
+  // sit inside the measured block, so a hint that wrapped to two lines would
+  // re-trigger the card's height animation every time the toggle moved.
+  const offerNoun = offerType === "service" ? "service" : "product"
+
+  const nameHint =
+    source === "social"
+      ? "Names your workspace, and seeds the account handles below."
+      : `Which ${offerNoun} should I focus on.`
+
+  // Mirrors the definitions the offer interview uses, so the toggle and the
+  // agent are describing the same boundary.
+  const offerTypeHint =
+    offerType === "service"
+      ? "Work performed for a customer."
+      : "A thing people buy, own or use."
+
+  // The example has to match the type or it quietly contradicts the toggle
+  // above it — a product-shaped sample under "Service" reads as a bug.
+  const socialPlaceholder =
+    offerType === "service"
+      ? "e.g. We help outdoor retailers cut inventory waste."
+      : "e.g. We make analytics dashboards for outdoor retailers."
+
+  const isFormReady = useMemo(() => {
+    if (productName.trim().length === 0) return false
+
+    return source === "website"
+      ? websiteUrl.trim().length > 0
+      : description.trim().length > 0 && connected.length > 0
+  }, [productName, websiteUrl, description, connected, source])
+
+  const togglePlatform = (id: SocialPlatformId) =>
+    setConnected((current) =>
+      current.includes(id)
+        ? current.filter((existing) => existing !== id)
+        : [...current, id],
+    )
+
+  const handleSourceChange = (next: SourceMode) => {
+    setDirection(next === "social" ? 1 : -1)
+    setSource(next)
+  }
+
+  const reduceMotion = useReducedMotion()
+  const [branchRef, branchHeight] = useMeasuredHeight<HTMLDivElement>()
+
+
+  // Tuned by feel against the ~230px branch delta, so all the pacing knobs
+  // live here rather than being scattered through the JSX.
+  //
+  // A tween, not a spring: a 230px change is far enough that a spring's
+  // settling time is a side effect of its physics rather than something you
+  // can set, and it lands around 280ms — ~820px/sec, which reads as a snap no
+  // matter how it's tuned. The long tail of this ease-out curve is what makes
+  // the movement look deliberate.
+  const EASE_OUT = [0.22, 1, 0.36, 1] as const
+  const DURATION = 0.42
+
+  // One duration, one curve, staggered on purpose. When these were independent
+  // they each settled 40-120ms apart, so the box, the content, the label and
+  // the note all landed at different moments and read as separate events
+  // instead of a single gesture.
+  const heightTransition = reduceMotion
+    ? { duration: 0 }
+    : { duration: DURATION, ease: EASE_OUT }
+
+  // The box leads, the content follows just behind its leading edge, and the
+  // outgoing content clears out fast so it isn't sitting in the way. Transitions
+  // ride on the variants because `enter` and `exit` need different ones.
+  const branchVariants = {
+    enter: (dir: number) => ({
+      opacity: 0,
+      x: reduceMotion ? 0 : dir * 20,
+      transition: reduceMotion
+        ? { duration: 0 }
+        : { duration: DURATION, ease: EASE_OUT, delay: 0.08 },
+    }),
+    center: { opacity: 1, x: 0 },
+    exit: (dir: number) => ({
+      opacity: 0,
+      x: reduceMotion ? 0 : -dir * 20,
+      transition: reduceMotion
+        ? { duration: 0 }
+        : { duration: 0.18, ease: "easeIn" as const },
+    }),
+  }
 
   useEffect(() => {
     if (clarifyUrl) {
@@ -107,6 +290,14 @@ export function NewWorkspaceForm({
       return
     }
 
+    // Social-sourced discovery has no backend yet — DiscoveryRequest requires
+    // a product_url — so this branch validates and then intentionally stops.
+    // The note under the button says as much rather than leaving the user
+    // guessing why nothing happened.
+    if (source === "social") {
+      return
+    }
+
     if (!isFormReady || isDiscovering) {
       return
     }
@@ -117,6 +308,10 @@ export function NewWorkspaceForm({
     void start({
       product_name: productName,
       product_url: websiteUrl,
+      // Sent even though the social branch can't start discovery yet: the
+      // backend default is "product", so a social workspace that ships later
+      // without this field would silently get the product specialist roster.
+      offer_type: offerType,
       target_geo:
         targetGeo.length > 0
           ? targetGeo.map((option) => normalizeCountry(option.value))
@@ -133,94 +328,268 @@ export function NewWorkspaceForm({
           The only child that paints a background clips its own corners below. */}
       <Card className="overflow-visible p-0 shadow-lg">
         <CardContent className={cn("grid p-0", isDiscovering && "md:grid-cols-2")}>
-          <form className="p-6 md:p-8" onSubmit={handleSubmit}>
-            <FieldGroup>
+          <div className="p-6 md:p-8">
+            <form  onSubmit={handleSubmit}>
               <div className="flex flex-col items-center gap-2 text-center">
                 <h1 className="text-xl font-bold">Create A Workspace</h1>
                 <p className="text-balance text-muted-foreground">
-                  This workspace will be dedicated to the product or service you provide information for.
+                  This workspace will be dedicated to the product or service you pick below.
                 </p>
               </div>
 
-              <Field>
-                <FieldLabel htmlFor="product-name">
-                  Product/service name <span className="text-[var(--destructive)]">*</span>
-                </FieldLabel>
-                <FieldDescription>Helps me know which product or service to focus on.</FieldDescription>
-                <Input
-                  id="product-name"
-                  value={productName}
-                  onChange={(event) => setProductName(event.target.value)}
-                  placeholder="e.g. Acme"
-                  required
-                  disabled={isDiscovering || clarifyUrl}
-                />
-              </Field>
+              <SourceToggle
+                value={source}
+                onValueChange={handleSourceChange}
+              />
 
-              <Field>
-                <FieldLabel htmlFor="website-url">
-                  Website URL <span className="text-[var(--destructive)]">*</span>
-                </FieldLabel>
-                <FieldDescription>
-                  {clarifyUrl
-                    ? "We couldn't fetch this page. Fix the URL to resume — everything already gathered is kept."
-                    : "The product/service page"}
-                </FieldDescription>
-                <Input
-                  id="website-url"
-                  value={websiteUrl}
-                  onChange={(event) => setWebsiteUrl(event.target.value)}
-                  placeholder="https://example.com"
-                  required
-                  disabled={isDiscovering && !clarifyUrl}
-                />
-              </Field>
-
-              <Field className="">
-                {/* No htmlFor: the multiselect renders a trigger button plus a
-                    cmdk input, so there is no element with a stable id to
-                    point at. `commandProps.label` carries the accessible name
-                    instead. */}
-                <FieldLabel>
-                  Target Geo <span className="text-xs">(optional)</span>
-                </FieldLabel>
-                <FieldDescription>Leave empty for me to decide</FieldDescription>
-                <MultipleSelector
-                  value={targetGeo}
-                  onChange={setTargetGeo}
-                  defaultOptions={COUNTRIES}
-                  commandProps={{ label: "Select target markets" }}
-                  placeholder="Select target markets"
-                  creatable
-                  hideClearAllButton
-                  hidePlaceholderWhenSelected
-                  emptyIndicator={
-                    <p className="text-center text-sm">No results found</p>
-                  }
-                  className="w-full"
-                  disabled={isDiscovering || clarifyUrl}
-                />
-              </Field>
-
-              <Field>
-                <Button
-                  type="submit"
-                  disabled={
-                    clarifyUrl
-                      ? !websiteUrl.trim()
-                      : !isFormReady || isDiscovering
-                  }
-                  className={`bg-[#FEA853] ${isDiscovering ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+              <FieldGroup>
+                {/* The name field and the source-specific fields are one
+                    measured block: switching source changes both the branch
+                    height and, via the swapping label, possibly the hint's line
+                    count. Measuring them together animates the difference in a
+                    single move. The block deliberately stops above Target Geo —
+                    the multiselect's country dropdown is `absolute` with no
+                    portal, and the `overflow-hidden` needed to clip this
+                    transition would cut it off at the card edge. */}
+                <motion.div
+                  initial={false}
+                  animate={{ height: branchHeight ?? "auto" }}
+                  transition={heightTransition}
+                  className="overflow-hidden"
                 >
-                  {clarifyUrl
-                    ? "Retry with this URL"
-                    : isDiscovering
-                    ? "Started workspace creation..."
-                    : "Create Workspace"}
-                </Button>
-              </Field>
-            </FieldGroup>
-          </form>
+                  {/* `gap-5` mirrors FieldGroup's own rhythm, which the
+                      wrapper now sits between and would otherwise double up. */}
+                  <div ref={branchRef} className="flex flex-col gap-5">
+                    <div className='flex flex-col gap-2 items-start justify-start'>
+                      <p className="text-foreground font-medium">What are you offering?</p>
+                      {/* Kept at the group's intrinsic width rather than stretched
+                          to match SourceToggle above: this is an assertion about
+                          the thing, not a mode switch between two input shapes, so
+                          it reads as an inline answer rather than a choice.
+
+                          Deliberately the plain group, not motion-toggle-group.
+                          That wrapper suppresses the button's own pressed
+                          background via `data-pressed:bg-transparent`, but
+                          toggleVariants paints the pressed state with
+                          `aria-pressed:bg-muted` — different variants, so twMerge
+                          keeps both and the winner falls out of Tailwind's
+                          variant sort order rather than intent. One background
+                          mechanism here: the button fills itself, padding and
+                          all, and `spacing={0}`'s first/last corner treatment
+                          still applies.
+
+                          `multiple` defaults to false, so this is single-select
+                          without a `type` prop — base-ui has no such prop, and
+                          passing one is silently ignored. */}
+                      <ToggleGroup
+                        value={[offerType]}
+                        onValueChange={(next) => {
+                          const [picked] = next
+                          if (picked) setOfferType(picked as OfferType)
+                        }}
+                        variant='outline'
+                        size='lg'
+                        spacing={0}
+                      >
+                        {/* Only the padding is overridden. Height and type come
+                            from `size='lg'`; re-declaring them here is how the
+                            button and its pressed background end up disagreeing
+                            about how tall the control is. */}
+                        <ToggleGroupItem value='product' className='px-4'>
+                          Product
+                        </ToggleGroupItem>
+                        <ToggleGroupItem value='service' className='px-4'>
+                          Service
+                        </ToggleGroupItem>
+                      </ToggleGroup>
+
+                      {/* The agent's own definitions, so the two words mean the
+                          same thing here as they do downstream. A wrong pick
+                          silently changes the specialist roster, which is why
+                          this line earns its space. Reserved like SourceToggle's
+                          so the card doesn't jump when it swaps. */}
+                      <p className="min-h-4 text-xs text-muted-foreground">
+                        <SwappingText swapKey={offerTypeHint}>{offerTypeHint}</SwappingText>
+                      </p>
+                    </div>
+
+                    <Field>
+                      <FieldLabel htmlFor="product-name">
+                        {/* Keyed on the rendered string, not on `source`. Both
+                            swaps can change this text at once (flipping source
+                            with service selected), and the social rows are
+                            identical for both offer types — keying on `source`
+                            alone would leave those not re-animating. */}
+                        <SwappingText swapKey={nameLabel}>{nameLabel}</SwappingText>{" "}
+                        <span className="text-[var(--destructive)]">*</span>
+                      </FieldLabel>
+                      <FieldDescription>
+                        {/* Keyed on the rendered string for the same reason as
+                            the label above: keying on `source` alone would leave
+                            this not re-animating when the offer type changes,
+                            and would double-fade the social string, which is
+                            identical for both types. */}
+                        <SwappingText swapKey={nameHint}>{nameHint}</SwappingText>
+                      </FieldDescription>
+                      <Input
+                        id="product-name"
+                        value={productName}
+                        onChange={(event) => setProductName(event.target.value)}
+                        placeholder="e.g. Acme"
+                        required
+                        disabled={isDiscovering || clarifyUrl}
+                      />
+                    </Field>
+
+                    <AnimatePresence
+                      mode="popLayout"
+                      initial={false}
+                      custom={direction}
+                    >
+                      <motion.div
+                        key={source}
+                        custom={direction}
+                        variants={branchVariants}
+                        initial="enter"
+                        animate="center"
+                        exit="exit"
+                        className="flex flex-col gap-5"
+                      >
+                        {source === "website" ? (
+                          <Field>
+                            <FieldLabel htmlFor="website-url">
+                              Website URL <span className="text-[var(--destructive)]">*</span>
+                            </FieldLabel>
+                            <FieldDescription>
+                              {clarifyUrl
+                                ? "We couldn't fetch this page. Fix the URL to resume — everything already gathered is kept."
+                                : `The ${offerNoun} page`}
+                            </FieldDescription>
+                            <Input
+                              id="website-url"
+                              value={websiteUrl}
+                              onChange={(event) => setWebsiteUrl(event.target.value)}
+                              placeholder="https://example.com"
+                              required
+                              disabled={isDiscovering && !clarifyUrl}
+                            />
+                          </Field>
+                        ) : (
+                          <>
+                            <Field>
+                              <FieldLabel htmlFor="business-description">
+                                What does your business do?{" "}
+                                <span className="text-[var(--destructive)]">*</span>
+                              </FieldLabel>
+                              <FieldDescription>
+                                A sentence or two. What you post about this is a strong signal for
+                                who your customers are.
+                              </FieldDescription>
+                              <Textarea
+                                id="business-description"
+                                value={description}
+                                onChange={(event) => setDescription(event.target.value)}
+                                placeholder={socialPlaceholder}
+                                // Fixed rather than the base `field-sizing-content`: the textarea
+                                // sits inside the measured block, so auto-growing while typing
+                                // would spring the whole card on every line and move the button
+                                // out from under the cursor.
+                                field-sizing-fixed
+                                rows={4}
+                                required
+                                disabled={isDiscovering || clarifyUrl}
+                              />
+                            </Field>
+                        
+                            <Field>
+                              {/* No htmlFor: each account is its own toggle button, so there is no
+                                  single element to point a label at. The section reads as a
+                                  group instead. */}
+                              <FieldLabel>
+                                Connect your accounts{" "}
+                                <span className="text-[var(--destructive)]">*</span>
+                              </FieldLabel>
+                              <FieldDescription>
+                                Link the accounts you post from. Connect at least one.
+                              </FieldDescription>
+                              <SocialConnect
+                                businessName={productName}
+                                connected={connected}
+                                onToggle={togglePlatform}
+                                disabled={isDiscovering || clarifyUrl}
+                              />
+                            </Field>
+                          </>
+                        )}
+                      </motion.div>
+                    </AnimatePresence>
+                  </div>
+                </motion.div>
+
+                <Field className="">
+                  {/* No htmlFor: the multiselect renders a trigger button plus a
+                      cmdk input, so there is no element with a stable id to
+                      point at. `commandProps.label` carries the accessible name
+                      instead. */}
+                  <FieldLabel>
+                    Target Geo <span className="text-xs">(optional)</span>
+                  </FieldLabel>
+                  <FieldDescription>Leave empty for me to decide</FieldDescription>
+                  <MultipleSelector
+                    value={targetGeo}
+                    onChange={setTargetGeo}
+                    defaultOptions={COUNTRIES}
+                    commandProps={{ label: "Select target markets" }}
+                    placeholder="Select target markets"
+                    creatable
+                    hideClearAllButton
+                    hidePlaceholderWhenSelected
+                    emptyIndicator={
+                      <p className="text-center text-sm">No results found</p>
+                    }
+                    className="w-full"
+                    disabled={isDiscovering || clarifyUrl}
+                  />
+                </Field>
+
+                <Field>
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      type="submit"
+                      disabled={
+                        clarifyUrl
+                          ? !websiteUrl.trim()
+                          : !isFormReady || isDiscovering
+                      }
+                      className={`bg-[#FEA853] ${isDiscovering ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                    >
+                      {clarifyUrl
+                        ? "Retry with this URL"
+                        : isDiscovering
+                        ? "Started workspace creation..."
+                        : "Create Workspace"}
+                    </Button>
+
+                    {/* Lives below the measured block, so it animates its own
+                        height rather than relying on the wrapper. */}
+                    <AnimatePresence initial={false}>
+                      {source === "social" && (
+                        <motion.p
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={reduceMotion ? { duration: 0 } : { duration: 0.3, ease: EASE_OUT }}
+                          className="overflow-hidden text-center text-xs text-muted-foreground"
+                        >
+                          Social-sourced workspaces are coming soon.
+                        </motion.p>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </Field>
+              </FieldGroup>
+            </form>
+          </div>
           <div
             className={cn(
               "relative bg-muted flex-col gap-3 overflow-hidden md:rounded-e-xl transition-all duration-300 ease-out",
@@ -255,15 +624,7 @@ export function NewWorkspaceForm({
                 }}
               />
             )}
-            {chooseType && currentInterrupt && (
-              <DiscoveryInterruptPicker
-                interrupt={currentInterrupt}
-                fallbackProductName={selectedProduct ?? productName}
-                fallbackUrl={websiteUrl}
-                onAnswer={answer}
-              />
-            )}
-            {isDiscovering && (select || confirm || chooseType) && (
+            {isDiscovering && (select || confirm) && (
               <Separator />
             )}
             <div className="grid place-items-center p-2">
@@ -277,8 +638,8 @@ export function NewWorkspaceForm({
               {stage === "awaiting_input"
                 ? "Waiting for your answer..."
                 : confirmed
-                ? `Finalizing ${(selectedProduct ?? productName) || "your product/service"} understanding`
-                : `Discovering ${(selectedProduct ?? productName) || "your product/service"} ...`}
+                ? `Finalizing ${(selectedProduct ?? productName) || `your ${offerNoun}`} understanding`
+                : `Discovering ${(selectedProduct ?? productName) || `your ${offerNoun}`} ...`}
             </span>
           </div>
         </CardContent>

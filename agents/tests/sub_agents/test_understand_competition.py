@@ -4,9 +4,13 @@ End-to-end test of the competition-understanding subgraph with REAL LLM and Exa 
 Nothing is stubbed. Each run pays for:
   - 1 planner call (thinking off, reading the offer + sibling domain/market context)
   - 3-5 tasks x 1-2 RECENCY-GATED Exa searches each, plus cheap-tier distillation
-  - 1 cheap-tier structured extraction call (thinking off) with per-competitor
-    website verification (a light scrape per stated URL)
-  - 1 findings writer call (thinking off, anchored on the structured competitor set)
+  - 1 cheap-tier structured extraction call (thinking off) returning the draft
+    Ideal Competitor Profile plus the offer's SWOD
+  - 1 cheap-tier refine call (thinking off, self-review over the draft profile)
+  - 1 findings writer call (thinking off, anchored on the refined profile)
+
+Note there are no longer per-competitor website verification scrapes: the stage
+emits archetypes, which have no URL to verify.
 
 Run all branches:
     python agents/tests/sub_agents/test_understand_competition.py
@@ -18,10 +22,11 @@ Under pytest:
 Assertions are invariants, not exact text: LLM output is nondeterministic, so we
 assert the things the design actually promises (brand-free queries, the 3-5 task
 clamp, a real research result, the two findings fields, a bounded positioning
-understanding, no fabricated source URLs, a real CompetitionExtraction with a
-bounded competitor set the writer stayed anchored on), plus competition's own
-promises: EVERY search is recency-gated and the sibling stages' Sources blocks
-(which belong to those stages' retrieved sets) never reach this run's findings.
+understanding, no fabricated source URLs, a real IdealCompetitorProfile that
+names no company and spans local plus international archetypes, and a SWOD
+record the writer stayed anchored on), plus competition's own promises: EVERY
+search is recency-gated and the sibling stages' Sources blocks (which belong to
+those stages' retrieved sets) never reach this run's findings.
 The gate is observed with a recording wrapper around search_and_scrape that
 still delegates to the real Exa call -- observation, not stubbing. Failures
 print the offending values so they are actionable.
@@ -45,7 +50,11 @@ while root != root.parent:
 sys.path.insert(0, str(root))
 
 from agents.llm.main import llm_timing_report  # noqa: E402
-from agents.states import CompetitionExtraction, MarketExtraction  # noqa: E402
+from agents.states import (  # noqa: E402
+    CompetitionExtraction,
+    IdealCompetitorProfile,
+    MarketExtraction,
+)
 from agents.sub_agents.schema_states import Specialist  # noqa: E402
 import agents.sub_agents.understand_competition as uc  # noqa: E402
 from agents.sub_agents.understand_competition import build_competition_graph  # noqa: E402
@@ -220,11 +229,14 @@ def _run_competition(offer: dict) -> tuple[dict, dict]:
     """Run the real graph once for one offer.
 
     Streams in updates mode so each node's arrival time is its wall clock --
-    including the planner's, Exa's, the distillers', the extractor's (with its
-    in-node URL verification) and the writer's without a second run. State is
-    accumulated the way the graph's channels reduce it: everything is a
-    last-value channel except competition_task_research (operator.add), which
-    is appended.
+    including the planner's, Exa's, the distillers', the extractor's, the
+    refiner's and the writer's without a second run. State is accumulated the
+    way the graph's channels reduce it: everything is a last-value channel
+    except competition_task_research (operator.add), which is appended.
+
+    Both structured nodes soft-fail, so a timing entry can be absent: a node that
+    returns `{}` still appears in the stream, but one that raised before
+    returning would not. `timings.get(node, 0.0)` in the report handles that.
     """
     initial = {k: v for k, v in offer.items() if k != "specialists"} | {
         "specialists": offer["specialists"],
@@ -341,35 +353,76 @@ def _assert_competition_run(offer: dict, result: dict) -> None:
 
     assert result.get("competition_complete") is True, f"[{noun}] completion flag not set"
 
-    # The structured competitor set is the load-bearing output. Between 1 and 5
-    # (the extractor clamps to 5 and the <3 warning is non-fatal): the test
-    # demands one real competitor, not padding.
+    # The ideal competitor profile is the load-bearing output. Between 1 and 8
+    # (the extractor clamps to MAX_ARCHETYPES and the <3 warning is non-fatal):
+    # the test demands one real archetype, not padding.
+    profile = result.get("ideal_competitor_profile")
+    assert isinstance(profile, IdealCompetitorProfile), (
+        f"[{noun}] ideal_competitor_profile is not an IdealCompetitorProfile: "
+        f"{type(profile).__name__} {profile!r}"
+    )
+    archetypes = list(profile.archetypes or [])
+    assert 1 <= len(archetypes) <= 8, (
+        f"[{noun}] profile has {len(archetypes)} archetype(s), must be 1-8"
+    )
+    for a in archetypes:
+        assert a.label.strip(), "an archetype entry has an empty label"
+        assert a.archetype_description.strip(), (
+            f"archetype {a.label!r} has an empty description"
+        )
+        assert a.geography_scope in ("local", "regional", "global", "any"), (
+            f"archetype {a.label!r} has an invalid geography_scope {a.geography_scope!r}"
+        )
+
+    # The profile must name NOBODY. This is the invariant the whole design turns
+    # on: an archetype that leaks a real company name makes the downstream
+    # competitor agent believe its search has already happened. Checked against
+    # the companies the research actually retrieved, since those are the names
+    # the model could plausibly have lifted.
+    labels_blob = " ".join(
+        f"{a.label} {a.archetype_description} {a.typical_offering or ''}" for a in archetypes
+    ).lower()
+    leaked = sorted({
+        domain.split("//", 1)[-1].split("/", 1)[0].removeprefix("www.")
+        for domain in retrieved
+        if domain.split("//", 1)[-1].split("/", 1)[0].removeprefix("www.") in labels_blob
+    })
+    assert not leaked, (
+        f"[{noun}] archetypes name real retrieved domains {leaked} -- an archetype "
+        f"describes a KIND of company, never a specific firm"
+    )
+
+    # GEO-UNBOUNDED: the profile must not collapse to only the offer's own
+    # geographies. A run whose every archetype is scoped to one place has
+    # re-introduced the target_geo filter this stage was changed to drop.
+    scopes = {a.geography_scope for a in archetypes}
+    assert scopes & {"global", "any", "regional"}, (
+        f"[{noun}] every archetype is local ({sorted(scopes)}) -- the profile must "
+        f"span local incumbents and international operators, not just the offer's market"
+    )
+
+    # The SWOD record is shipped alongside and stays usable.
     data = result.get("competition_data")
     assert isinstance(data, CompetitionExtraction), (
         f"[{noun}] competition_data is not a CompetitionExtraction: {type(data).__name__} {data!r}"
     )
-    competitors = list(data.competitors or [])
-    assert 1 <= len(competitors) <= 5, (
-        f"[{noun}] competitor set has {len(competitors)} entries, must be 1-5"
+    assert data.strengths or data.weaknesses or data.opportunities or data.differentiators, (
+        f"[{noun}] SWOD record is entirely empty"
     )
+    for f in data.strengths + data.weaknesses + data.opportunities + data.differentiators:
+        assert isinstance(f, str) and f.strip(), "SWOD entry must be a non-empty string"
 
-    # The writer was anchored on the structured set: the notes must name at least
-    # one of the extracted rivals, or the anchor did not work.
-    names = [c.name for c in competitors if c.name]
-    if names:
-        findings_lower = findings.lower()
-        echoed = [n for n in names if n.lower() in findings_lower]
-        assert echoed, (
-            f"[{noun}] writer never named any extracted competitor {names} -- "
-            f"the structured-set anchor failed"
-        )
-
-    # Every named competitor is usable for downstream consumers.
-    for c in competitors:
-        assert c.name.strip(), "a competitor entry has an empty name"
-        assert c.description.strip(), f"competitor {c.name!r} has an empty description"
-        for f in data.strengths + data.weaknesses + data.opportunities + data.differentiators:
-            assert isinstance(f, str) and f.strip(), "SWOD entry must be a non-empty string"
+    # The writer was anchored on the refined profile: the notes must engage the
+    # landscape it describes, or the anchor did not work.
+    findings_lower = findings.lower()
+    anchored = [
+        a.label for a in archetypes
+        if a.label and a.label.lower() in findings_lower
+    ]
+    assert anchored or len(archetypes) <= 2, (
+        f"[{noun}] writer engaged none of the profile archetypes "
+        f"{[a.label for a in archetypes]} -- the profile anchor failed"
+    )
 
 
 def _print_competition_report(offer: dict, result: dict, timings: dict) -> None:
@@ -380,16 +433,22 @@ def _print_competition_report(offer: dict, result: dict, timings: dict) -> None:
         print(f"    - {b.area}: {status}")
     positioning = result.get("competitive_positioning_understanding") or ""
     print(f"  positioning understanding ({len(positioning.split())} words): {positioning}")
+    profile = result.get("ideal_competitor_profile")
+    if profile is not None:
+        for a in profile.archetypes:
+            print(f"    archetype [{a.geography_scope}]: {a.label} (confidence {a.confidence})")
+        print(
+            f"  ideal_competitor_profile: {len(profile.archetypes)} archetype(s), "
+            f"confidence {profile.confidence}"
+        )
     data = result.get("competition_data")
     if data is not None:
-        for c in data.competitors:
-            print(f"    competitor: {c.name} -- {c.website or '(no website)'}")
         print(
-            f"  competition_data: {len(data.competitors)} competitor(s), "
-            f"{len(data.strengths)} strengths, {len(data.weaknesses)} weaknesses, "
+            f"  competition_data (SWOD): {len(data.strengths)} strengths, "
+            f"{len(data.weaknesses)} weaknesses, "
             f"{len(data.opportunities)} opportunities, {len(data.differentiators)} differentiators"
         )
-    for node in ("create_tasks_research", "conduct_research", "extract_competition_data", "note_down_record"):
+    for node in ("create_tasks_research", "conduct_research", "extract_competitor_profile", "refine_competitor_profile", "note_down_record"):
         print(f"  {node:22s} {timings.get(node, 0.0):6.1f}s")
     print(f"  {'total':22s} {timings['_total']:6.1f}s")
 
@@ -417,7 +476,7 @@ def _save_artifacts(offer: dict, result: dict, timings: dict, run_log_tag: str) 
             "type": offer["offer_type"],
             "stages_seconds": timings,
             "positioning_words": len((result.get("competitive_positioning_understanding") or "").split()),
-            "competitors": [c.name for c in (data.competitors if data else [])],
+            "archetypes": [a.label for a in ((result.get("ideal_competitor_profile").archetypes) if result.get("ideal_competitor_profile") else [])],
             "recency_gated_searches": len(_SEEN_RECENCY),
         }
     )

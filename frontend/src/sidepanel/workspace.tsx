@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from "react"
-import { Navigate, useParams } from "react-router-dom"
+import { Navigate, useParams, useSearchParams } from "react-router-dom"
+import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -9,7 +10,7 @@ import { WorkspaceManager } from "@/components/workspace-manager"
 // import { DotLottieReact } from '@lottiefiles/dotlottie-react'
 import { Package, Globe, Swords, UserCheck, Users } from "lucide-react"
 import { SpecialistAvatarGroup } from "@/components/specialist-avatargroup"
-import { teamToAvatarSpecialists } from "@/lib/specialists"
+import { useWorkspaceSpecialists } from "@/lib/specialists"
 import {
   Stepper,
   StepperItem,
@@ -30,9 +31,18 @@ import { useAutoFollowScroll } from '@/chain_of_thought/use-auto-follow-scroll'
 import { ActualWorkspace } from '@/sidepanel/actual_workspace'
 import { useAgentRun } from '@/lib/agent-run-store'
 import { refetchWorkspaces, useWorkspaces } from '@/lib/workspaces-store'
-import { useInsights } from '@/lib/insights-store'
 import { useSession } from '@/lib/session-context'
 import type { AgentNode } from '@/lib/api'
+
+/**
+ * Duration/easing of the header's specialist-team fade, matched to the tab
+ * transition in `actual_workspace.tsx` (`opacity .175s ease`). Keeping the two
+ * identical is what makes the handoff read as a single cross-fade rather than
+ * two unrelated transitions. Opacity only -- no translate -- because the panel
+ * slides `translate-y-[-50%]` and replicating that on a 48px header element
+ * would be absurd.
+ */
+const TEAM_FADE = { duration: 0.175, ease: 'easeOut' } as const
 
 const steps = [
   {
@@ -185,7 +195,6 @@ export default function Workspace() {
   const { workspaces } = useWorkspaces()
   const run = useAgentRun()
   const { setSession } = useSession()
-  const { insights } = useInsights(workspaceIdParam)
 
   // Fetch on mount and refetch on route changes; the store also refetches
   // when a discovery run creates a workspace and after optimistic mutations.
@@ -220,14 +229,25 @@ export default function Workspace() {
   const showStepper = runActive && runBelongsToWorkspace
   const runFailed = run.stage === "error" && runBelongsToWorkspace
 
-  const headerTeam =
-    (runBelongsToWorkspace ? run.phaseResults.create_specialists : undefined) ??
-    insights?.specialists ??
-    null
-  const headerSpecialists = useMemo(
-    () => teamToAvatarSpecialists(headerTeam),
-    [headerTeam],
-  )
+  // Same hook the agent tab uses, so the two can't disagree about who the team
+  // is (see `useSpecialistTeam`).
+  const headerSpecialists = useWorkspaceSpecialists(workspaceIdParam)
+
+  // The active tab lives in the query string, written by `actual_workspace`.
+  // Reading it here avoids lifting that state up or threading a prop through
+  // the tab component, and it survives reload/deep-link for free.
+  const [searchParams] = useSearchParams()
+  const agentTabActive = searchParams.get('tab') === 'agent'
+  const reduceMotion = useReducedMotion()
+
+  // Both non-idle states render the team somewhere else, so the header stands
+  // down for either one: the agent tab always has its own group mounted
+  // (`keepMounted`), and while a run is in flight the stepper renders one too
+  // (see `ChainOfThoughtResultDispaly`). `showStepper` is checked first
+  // because it unmounts the tab strip entirely, which leaves `?tab=agent` in
+  // the URL pointing at a tab that no longer exists -- ordering it this way
+  // keeps the header the single owner whenever nothing else is drawing.
+  const showHeaderTeam = !showStepper && !agentTabActive
 
   // Legacy /workspace (no id) has no real data — send it to the feed.
   if (!workspaceIdParam) {
@@ -250,12 +270,31 @@ export default function Workspace() {
                   </span>
                 )}
               </BreadcrumbItem>
+              {/*
+                The <li> stays mounted and only its contents swap, because a
+                conditional <li> would take the exiting child down with it and
+                the fade-out would never play. Safe here: this list renders no
+                `BreadcrumbSeparator`s, so an empty item occupies no space.
+              */}
               <BreadcrumbItem>
-                {headerSpecialists.length > 0 && (
-                  <div className="flex items-center justify-center gap-4">
-                    <SpecialistAvatarGroup specialists={headerSpecialists} />
-                  </div>
-                )}
+                <AnimatePresence initial={false}>
+                  {showHeaderTeam && headerSpecialists.length > 0 && (
+                    <motion.div
+                      key="header-team"
+                      initial={reduceMotion ? false : { opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{
+                        opacity: 0,
+                        transition: reduceMotion ? { duration: 0 } : TEAM_FADE,
+                      }}
+                      transition={TEAM_FADE}
+                    >
+                      <div className="flex items-center justify-center gap-4">
+                        <SpecialistAvatarGroup specialists={headerSpecialists} />
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>

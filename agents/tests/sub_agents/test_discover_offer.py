@@ -8,18 +8,22 @@ type-keyed table (the same table test_gtmx_agent.py uses), and resumes with
 Command(resume=...) and the same thread config until the flow completes.
 
 Each branch pays for:
-  - 1-2 offer-type classifier calls (a second deep pass only when the first is unsure)
   - 1 description-draft call (get_product_service_description)
   - 1 rest-extraction call (retrieve_rest_product_service_info)
 plus a real website scrape when the fixture carries a website_url.
 
+`offer_type` is asserted by the caller and seeded into the session up front (the
+intake form owns it; the agent no longer classifies it), so the harness feeds
+each branch's type directly, exactly as `_build_initial_state` does. Asserting
+the type still round-trips through the run is the point — it rides the session
+untouched all the way to the specialists downstream.
+
 Branches:
   - product:  real scrape of https://aphorion.co/ (HeatherDB is named on the
-              page, so the name-existence gate passes and the classifier has
-              content) -> confident product, draft, confirm.
-  - service:  URL-less ("StitchUp") -> the classifier has only a name, so the
-              flow deterministically interrupts with offer_type_clarification;
-              the harness answers "service", then confirms the description.
+              page, so the name-existence gate passes) -> draft, confirm.
+  - service:  URL-less ("StitchUp") -> nothing to scrape, so the agent asks what
+              the offer is and the harness supplies a description. Covers the
+              name-only path end to end without inventing evidence for it.
 
 Run all branches:
     python agents/tests/sub_agents/test_discover_offer.py
@@ -29,10 +33,10 @@ Under pytest:
     pytest agents/tests/sub_agents/test_discover_offer.py
 
 Assertions are invariants, not exact text (LLM output is nondeterministic): the
-flow reached the end, offer_type matches the branch, confirmed is True, the
-description is real prose (no 'None'/'N/A' placeholders), the extraction fields
-are the right shapes, and every interrupt that fired was auto-answered and
-recorded in follow_up.user_replies AND messages. Failures name the offender.
+flow reached the end, the seeded offer_type survived the run, confirmed is True,
+the description is real prose (no 'None'/'N/A' placeholders), the extraction
+fields are the right shapes, and every interrupt that fired was auto-answered
+and recorded in follow_up.user_replies AND messages. Failures name the offender.
 """
 
 import json
@@ -61,19 +65,33 @@ _OUT_DIR = Path(__file__).resolve().parent / "_out" / "discover_offer"
 
 # ---------------------------------------------------------------------------
 # Fixtures. One branch drives a real scrape; the other is deliberately URL-less
-# so the classifier must give up and the flow interrupts for the type.
+# so the run has no evidence of its own and the agent has to ask. `offer_type` is
+# an input here — asserted by the caller and carried on the session — not
+# something the graph is expected to decide.
+#
+# `description` is what a user would supply when the agent asks what the offer
+# is. It is only consulted by the branch with nothing to scrape: with no URL and
+# no content there is genuinely nothing to draft from, and asking the user is the
+# correct behaviour (ask_for_confirmation's "tell me about your product/service"
+# prompt) rather than something to paper over in the fixture.
 # ---------------------------------------------------------------------------
 
 PRODUCT_OFFER = {
     "offer_name": "HeatherDB",
     "website_url": "https://aphorion.co/",
-    "offer_type_answer": "product",
+    "offer_type": "product",
+    "description": None,
 }
 
 SERVICE_OFFER = {
     "offer_name": "StitchUp",
     "website_url": None,
-    "offer_type_answer": "service",
+    "offer_type": "service",
+    "description": (
+        "StitchUp is an alterations and repair shop. Customers bring in garments "
+        "that need hemming, mending, resizing, or zipper replacement, and the shop "
+        "handles the work while they wait."
+    ),
 }
 
 BRANCHES = {"product": PRODUCT_OFFER, "service": SERVICE_OFFER}
@@ -88,13 +106,18 @@ def _answer_for(payload: dict, branch: str) -> str:
     """Map an interrupt payload to a deterministic reply (mirrors
     test_gtmx_agent.py's resolve_answer)."""
     ptype = (payload or {}).get("type")
+
+    # A confirmation interrupt with no draft isn't a confirmation at all — the
+    # agent has nothing to draft from and is asking what the offer is. Answering
+    # "yes" there strands the run, so supply the branch's description instead.
+    if ptype == "product_service_description_confirmation" and not payload.get("draft"):
+        return BRANCHES[branch]["description"] or "yes"
+
     auto = {
         "offer_name_mismatch": "1",          # pick the first candidate found
         "url_unscrappable": "continue",      # work from the name/description
         "product_service_description_confirmation": "yes",
     }
-    if ptype == "offer_type_clarification":
-        return BRANCHES[branch]["offer_type_answer"]
     return auto.get(ptype, "yes")
 
 
@@ -114,6 +137,9 @@ def _run_intake(branch: str) -> tuple[dict, dict, list[dict]]:
     initial = {
         "offer_name": offer["offer_name"],
         "website_url": offer["website_url"],
+        # Seeded the way _build_initial_state seeds it, so the run exercises the
+        # same path the intake form drives in production.
+        "offer_type": offer["offer_type"],
         "messages": [],
     }
 
@@ -169,8 +195,11 @@ def _jsonable(v):
 
 def _assert_intake_run(branch: str, final: dict, interrupt_log: list[dict]) -> None:
     """The invariants this intake flow promises. Each failure names the offender."""
-    noun = BRANCHES[branch]["offer_type_answer"]
+    noun = BRANCHES[branch]["offer_type"]
 
+    # Nothing writes offer_type any more, so this is purely a passthrough check:
+    # the seeded value has to survive every node untouched, because
+    # create_specialists reads it off the same session.
     assert final.get("offer_type") == noun, (
         f"[{branch}] offer_type {final.get('offer_type')!r} must equal {noun!r}"
     )
@@ -212,7 +241,7 @@ def _print_intake_report(branch: str, final: dict, timings: dict, interrupt_log:
     print(f"  problem: {final.get('problem')}")
     print(f"  interrupts answered: {[(e['type'], e['answer']) for e in interrupt_log]}")
     for node in (
-        "scrape_website", "check_product_service_exist", "determine_offer_type",
+        "scrape_website", "check_product_service_exist", "proceed_to_description",
         "get_product_service_description", "ask_for_confirmation",
         "retrieve_rest_product_service_info",
     ):

@@ -253,15 +253,145 @@ class MarketExtraction(BaseModel):
         return v
 
 
+class CompetitorArchetype(BaseModel):
+    """One archetype inside an IdealCompetitorProfile.
+
+    A CONSTRUCT, not a claim about a named company. "Regional incumbent
+    undercutting on price" is a design artifact we invented to describe the
+    shape of a rival; it makes no assertion that any specific firm exists. That
+    is what licenses the profile to be aggressive — coverage over caution.
+
+    It is the exact inverse of `Competitor`, which IS a set of factual claims
+    about a real, verified company. Do not let the two drift together: the
+    get_competitors agent must source every one of its fields or say it found
+    nothing, and the archetype carries no such obligation.
+    """
+
+    label: str = Field(
+        description="Short archetype name, e.g. 'Regional incumbent', 'Global entrant', 'DIY substitute'"
+    )
+    archetype_description: str = Field(
+        description="Concretely what this kind of competitor is and how it operates"
+    )
+    geography_scope: Literal["local", "regional", "global", "any"] = Field(
+        default="any",
+        description="Where this archetype operates. 'local' incumbents defend a specific market; 'global' entrants operate locally without being headquartered there",
+    )
+    business_model: str | None = Field(default=None, description="How this kind of competitor makes money")
+    typical_offering: str | None = Field(default=None, description="What it typically sells or does")
+    pricing_model: str | None = Field(default=None, description="How it typically charges")
+    customer_profile: str | None = Field(default=None, description="Whom it serves")
+    likely_advantages: list[str] = Field(
+        default_factory=list,
+        description="Where this kind of competitor would beat the offer",
+    )
+    likely_weaknesses: list[str] = Field(
+        default_factory=list,
+        description="Where this kind of competitor would be vulnerable to the offer",
+    )
+    where_to_find_them: list[str] = Field(
+        default_factory=list,
+        description="Search surfaces, directories or query shapes where real instances of this archetype would be found — the hunting ground for the get_competitors agent",
+    )
+    confidence: Literal["high", "medium", "low"] = Field(
+        default="low",
+        description="How well the evidence supports this archetype",
+    )
+
+    @field_validator("confidence", "geography_scope", mode="before")
+    @classmethod
+    def _coerce_enum_none(cls, v):
+        if isinstance(v, str):
+            return _none_str_to_null(v.strip().lower())
+        return v
+
+    @field_validator(
+        "likely_advantages", "likely_weaknesses", "where_to_find_them", mode="before"
+    )
+    @classmethod
+    def _coerce_nested_json_fields(cls, v):
+        return _coerce_json(v)
+
+
+class IdealCompetitorProfile(BaseModel):
+    """The competition stage's primary structured output: a description of what
+    a perfect competitor to this offer looks like, derived from the stage's
+    research but NOT constrained to the offer's target geographies.
+
+    Two deliberate properties:
+
+    1. IT NAMES NOBODY. The stage researches the landscape but emits archetypes,
+       not companies. Finding real rivals is `get_competitors.py`'s job, which
+       runs separately and accumulates them over time.
+    2. IT IS NOT GEO-BOUND. A global player shipping into the offer's market is
+       a live competitor regardless of where it is headquartered, so the profile
+       deliberately spans local incumbents and international entrants.
+
+    Everything here is a construct, so the usual "only state what the sources
+    support" discipline applies to the SWOD record beside it, not to this model.
+    """
+
+    category_definition: str = Field(
+        default="",
+        description="What counts as a competitor in this category, and what the boundary is",
+    )
+    boundary_of_category: list[str] = Field(
+        default_factory=list,
+        description="Adjacent things that are NOT competitors — substitutes, complements, upstream suppliers",
+    )
+    archetypes: list[CompetitorArchetype] = Field(
+        default_factory=list,
+        description="4-6 archetypes spanning local incumbents, regional players and global entrants",
+    )
+    global_entry_signals: list[str] = Field(
+        default_factory=list,
+        description="What a foreign entrant would attack this market with, and why it could win",
+    )
+    local_defence_signals: list[str] = Field(
+        default_factory=list,
+        description="What local incumbents defend with, and why entrants struggle against them",
+    )
+    substitution_risks: list[str] = Field(
+        default_factory=list,
+        description="Non-company alternatives buyers may choose instead — DIY, spreadsheets, an in-house build, doing nothing",
+    )
+    price_anchor_range: str | None = Field(
+        default=None, description="Observed price band across the landscape, when the research supports one"
+    )
+    channels: list[str] = Field(
+        default_factory=list,
+        description="How competitors in this category reach buyers — the routes a rival already owns",
+    )
+    confidence: Literal["high", "medium", "low"] = Field(
+        default="low",
+        description="How well the research supports this profile overall",
+    )
+
+    @field_validator("confidence", "category_definition", mode="before")
+    @classmethod
+    def _coerce_enum_none(cls, v):
+        if isinstance(v, str):
+            return _none_str_to_null(v.strip().lower())
+        return v
+
+    @field_validator("archetypes", mode="before")
+    @classmethod
+    def _coerce_nested_json_fields(cls, v):
+        return _coerce_json(v)
+
+
 class CompetitionExtraction(BaseModel):
     """Structured competitive output produced by the understand_competition
-    subgraph: the product's ideal competitor set plus how the product stacks up
-    against them (strengths/weaknesses/opportunities/differentiators)."""
+    subgraph: how the product stacks up against the competitive standard
+    (strengths/weaknesses/opportunities/differentiators).
 
-    competitors: list[Competitor] = Field(
-        default_factory=list,
-        description="Between 3 and 5 real competitors, each grounded in the research sources with a website URL when found",
-    )
+    It used to carry `competitors: list[Competitor]`, a named list built here.
+    That moved to `IdealCompetitorProfile` (as archetypes) and to the standalone
+    get_competitors agent (as real, verified rows) — see the module note in
+    understand_competition.py. The SWOD fields survived the move unchanged
+    because they were always offer-vs-category, never offer-vs-named-rival.
+    """
+
     strengths: list[str] = Field(
         default_factory=list,
         description="Where the product meets or beats the industry standard",
@@ -275,6 +405,38 @@ class CompetitionExtraction(BaseModel):
         description="Market/category gaps the product could exploit",
     )
     differentiators: list[str] = Field(default_factory=list)
+
+
+class CompetitionRecord(BaseModel):
+    """Wrapper for the competition extractor's single classification pass.
+
+    The extractor reads one evidence set and emits two different kinds of thing
+    from it: the archetype profile (a construct, refined by the next node) and
+    the offer-vs-standard SWOD (a judgment, shipped as-is). They are bundled
+    here purely so one `invoke_structured_with_fallback` call can return both;
+    the node unpacks them into their own state channels immediately.
+    """
+
+    profile: IdealCompetitorProfile = Field(
+        default_factory=IdealCompetitorProfile,
+        description="The draft Ideal Competitor Profile, refined by the following node",
+    )
+    swod: CompetitionExtraction = Field(
+        default_factory=CompetitionExtraction,
+        description="Where the offer meets or beats the competitive standard, and where it does not",
+    )
+
+    @field_validator("profile", "swod", mode="before")
+    @classmethod
+    def _coerce_nested_models(cls, v):
+        # A model asked for a nested object sometimes returns the inner object
+        # as a JSON string. Unwrap it rather than failing the whole record.
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (ValueError, TypeError):
+                return v
+        return v
 
 
 class OfferDataSnapshot(BaseModel):
@@ -416,7 +578,7 @@ class InterviewState(MessagesState):
     market_findings: Optional[str] = Field(default=None, description="Market research notes from the market specialist, composed into the report's market section at the end of the run")
     competition_findings: Optional[str] = Field(default=None, description="Competitive-landscape research notes from the competition specialist, composed into the report's competition section at the end of the run")
     market_data: Optional[MarketExtraction] = Field(default=None, description="Structured market definition + product-market fit produced by the understand_market interview")
-    competition_data: Optional[CompetitionExtraction] = Field(default=None, description="Structured competitor set + how the product stacks up, produced by the understand_competition interview")
+    competition_data: Optional[CompetitionExtraction] = Field(default=None, description="Structured offer-vs-standard SWOD produced by the understand_competition interview. The named competitor list it used to carry now lives in ideal_competitor_profile (as archetypes) and, for real verified rivals, in the standalone get_competitors agent")
     product_complete: Optional[bool] = Field(default=None, description="Set True by the understand-product subgraph's terminal node as it completes")
     market_complete: Optional[bool] = Field(default=None, description="Set True by the understand-market subgraph's terminal node as it completes")
     competition_complete: Optional[bool] = Field(default=None, description="Set True by the understand-competition subgraph's terminal node as it completes")
@@ -771,7 +933,7 @@ class OfferSessionState(TypedDict):
     competitive_positioning_understanding: Optional[str] = Field(default=None, description="")
     go_to_market_understanding: Optional[str] = Field(default=None, description="")
     market_data: Optional[MarketExtraction] = Field(default=None, description="Structured market definition + product-market fit produced by the understand_market interview")
-    competition_data: Optional[CompetitionExtraction] = Field(default=None, description="Structured competitor set + how the product stacks up, produced by the understand_competition interview")
+    competition_data: Optional[CompetitionExtraction] = Field(default=None, description="Structured offer-vs-standard SWOD produced by the understand_competition interview. The named competitor list it used to carry now lives in ideal_competitor_profile (as archetypes) and, for real verified rivals, in the standalone get_competitors agent")
     icp: Optional[ICP] = Field(default=None, description="Ideal Customer Profile produced by the account-discovery (GTM) subgraph")
     accounts: Optional[AccountList] = Field(default=None, description="Target accounts + contacts found by the account-discovery (GTM) subgraph")
 

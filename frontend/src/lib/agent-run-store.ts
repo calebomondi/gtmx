@@ -40,10 +40,20 @@ export type PhaseResults = {
     >
     product_market_fit_understanding: string | null
   }
-  understand_competition?: Extract<
-    DiscoveryPhaseDataFrame,
-    { node: "understand_competition" }
-  >["competition_data"]
+  /** The competition stage's two outputs, kept as ONE object because they
+   * always arrive on the same frame. `swod` is the offer-vs-standard judgment;
+   * `profile` is the archetype construct that names no company. `profile` may be
+   * null: the stage soft-fails its structured passes. */
+  understand_competition?: {
+    swod: Extract<
+      DiscoveryPhaseDataFrame,
+      { node: "understand_competition" }
+    >["competition_data"]
+    profile: Extract<
+      DiscoveryPhaseDataFrame,
+      { node: "understand_competition" }
+    >["ideal_competitor_profile"]
+  }
   determine_icp?: Extract<
     DiscoveryPhaseDataFrame,
     { node: "determine_icp" }
@@ -220,7 +230,13 @@ function applyPhaseData(frame: DiscoveryPhaseDataFrame): void {
         frame.product_market_fit_understanding,
     }
   } else if (frame.node === "understand_competition") {
-    results.understand_competition = frame.competition_data
+    // Kept as one object so a consumer cannot read the SWOD without noticing the
+    // profile is right there beside it -- they are the same stage's output and
+    // the profile is the primary one.
+    results.understand_competition = {
+      swod: frame.competition_data,
+      profile: frame.ideal_competitor_profile,
+    }
   } else if (frame.node === "determine_icp") {
     results.determine_icp = frame.icp_data
   }

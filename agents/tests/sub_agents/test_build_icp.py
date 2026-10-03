@@ -10,9 +10,13 @@ synthesis (see the module docstring for build_icp.py). Each run pays for:
 
 Four branches cover every cell of the offer_type x buyer_type matrix, each a
 DISTINCT offer (so the same brand never contradicts itself) with a real GTM
-specialist, canned sibling findings whose Sources blocks must be stripped, and a
-canned CompetitionExtraction whose competitors are REAL companies -- the
-`competitor_leads` must derive only from that set.
+specialist, canned sibling findings whose Sources blocks must be stripped, a
+canned CompetitionExtraction SWOD, and a canned IdealCompetitorProfile.
+
+`competitor_leads` must derive from the [competition findings] PROSE, which
+names real companies. That is the only place names enter now: the competition
+stage stopped emitting a structured name list, so the profile beside the SWOD
+names nobody and cannot source a lead on its own.
 
 Run all branches:
     python agents/tests/sub_agents/test_build_icp.py
@@ -25,7 +29,7 @@ Assertions are invariants, not exact text: LLM output is nondeterministic, so we
 assert the things the design actually promises -- the buyer-type verdict matches
 the market stage's, the emphasis carried (firmographics for B2B, personas +
 channels for B2C), the industry clamp at 3, competitor leads derived only from
-the real competitor set, findings free of any `### Sources` block and of any
+the rivals the findings prose names, findings free of any `### Sources` block and of any
 URL (nothing was retrieved, so any URL is a fabrication), a bounded 1-50 word
 understanding, the completion flag, and refine_icp actually ran. Failures print
 the offending values so they are actionable.
@@ -49,7 +53,13 @@ while root != root.parent:
 sys.path.insert(0, str(root))
 
 from agents.llm.main import llm_timing_report  # noqa: E402
-from agents.states import CompetitionExtraction, ICP, MarketExtraction  # noqa: E402
+from agents.states import (  # noqa: E402
+    CompetitionExtraction,
+    CompetitorArchetype,
+    ICP,
+    IdealCompetitorProfile,
+    MarketExtraction,
+)
 from agents.sub_agents.schema_states import Specialist  # noqa: E402
 import agents.sub_agents.build_icp as icp  # noqa: E402
 from agents.sub_agents.build_icp import build_icp_graph  # noqa: E402
@@ -140,36 +150,141 @@ PRODUCT_B2B_OFFER = {
     ),
     "competitive_positioning_understanding": "storage-shaped reasoning wins on cost/cadence",
     "competition_data": CompetitionExtraction(
-        competitors=[
-            {
-                "name": "Ollama",
-                "description": "local model-runner with strong developer ergonomics",
-                "offering": "desktop/server runtime for open-weight models",
-                "positioning": "runs models locally for free",
-                "comparison": "wins on distribution and community; loses on reasoning depth",
-                "feature_flags": {},
-            },
-            {
-                "name": "llama.cpp",
-                "description": "minimal C/C++ inference runtime for commodity hardware",
-                "offering": "efficient local inference library",
-                "positioning": "the open baseline for on-device inference",
-                "comparison": "wins on footprint; loses on reasoning/storage design",
-                "feature_flags": {},
-            },
-            {
-                "name": "Groq",
-                "description": "cloud LPU inference with very low latency",
-                "offering": "high-speed cloud inference",
-                "positioning": "speed on demand, cloud-hosted",
-                "comparison": "wins on latency; loses on on-device privacy and cost at scale",
-                "feature_flags": {},
-            },
-        ],
         strengths=["runs on commodity hardware with a storage-shaped core"],
         weaknesses=["young ecosystem and few local integrations"],
         opportunities=["enterprise builders seek on-device privacy with competitive reasoning"],
         differentiators=["storage-shaped reasoning rather than parameter scale"],
+    ),
+    "ideal_competitor_profile": IdealCompetitorProfile(
+        category_definition=(
+            "Any runtime or service that lets a team run an LLM on hardware it already "
+            "owns, plus the cloud inference APIs bought as the alternative."
+        ),
+        boundary_of_category=[
+            "Model providers selling weights rather than runtimes -- upstream, not a rival",
+            "GPU resellers -- a cost input, not a substitute for the runtime",
+        ],
+        archetypes=[
+            CompetitorArchetype(
+                label="Open-source local runtime",
+                archetype_description=(
+                    "Free, permissively-licensed runtimes that execute open-weight models on a "
+                    "laptop or server. Distribution is word of mouth and package managers; "
+                    "there is no sales motion and no support contract."
+                ),
+                geography_scope="global",
+                business_model="free / donation-funded",
+                typical_offering="a model runner plus a small CLI",
+                pricing_model="zero marginal cost, no paid tier",
+                customer_profile="individual developers and hobby clusters",
+                likely_advantages=[
+                    "zero cost removes the budget conversation entirely",
+                    "ubiquitous install base and community support",
+                ],
+                likely_weaknesses=[
+                    "no reasoning-quality layer above raw sampling",
+                    "no commercial accountability or SLA",
+                ],
+                where_to_find_them=[
+                    "GitHub 'local LLM runtime' repositories",
+                    "Hacker News threads on running models locally",
+                ],
+                confidence="high",
+            ),
+            CompetitorArchetype(
+                label="Specialised open inference library",
+                archetype_description=(
+                    "Low-level C/C++ inference libraries that industry engineers embed when "
+                    "footprint and throughput on commodity hardware matter more than "
+                    "ergonomics. Competent teams build on these directly."
+                ),
+                geography_scope="global",
+                business_model="open source, commercial support upsell",
+                typical_offering="an embeddable inference library with quantisation support",
+                pricing_model="free library, paid enterprise support",
+                customer_profile="performance-sensitive engineering teams",
+                likely_advantages=[
+                    "best-in-class footprint and throughput",
+                    "the default substrate other tools are built on",
+                ],
+                likely_weaknesses=[
+                    "steep integration cost for average teams",
+                    "no retrieval or reasoning layer of its own",
+                ],
+                where_to_find_them=[
+                    "GitHub 'llama.cpp alternative' / quantisation repositories",
+                    "engineering blog posts on inference optimisation",
+                ],
+                confidence="high",
+            ),
+            CompetitorArchetype(
+                label="Global cloud inference provider",
+                archetype_description=(
+                    "Hyperscaler and specialist-LPU APIs selling low-latency inference as a "
+                    "metered service. Operates locally through a regional cloud region "
+                    "without being headquartered in the buyer's market."
+                ),
+                geography_scope="global",
+                business_model="usage-metered API plus reserved-capacity contracts",
+                typical_offering="a hosted inference endpoint with published latency SLAs",
+                pricing_model="per-token, with committed-use discounts",
+                customer_profile="production teams prioritising latency over unit cost",
+                likely_advantages=[
+                    "published latency SLAs and elastic capacity",
+                    "buys into the budget where cloud already has a line item",
+                ],
+                likely_weaknesses=[
+                    "per-token cost scales badly at high steady-state volume",
+                    "every prompt leaves the customer's infrastructure",
+                ],
+                where_to_find_them=[
+                    "cloud AI provider pricing pages",
+                    "inference-provider comparison blogs",
+                ],
+                confidence="medium",
+            ),
+            CompetitorArchetype(
+                label="In-house or DIY build",
+                archetype_description=(
+                    "Platform teams assembling their own serving stack from open components "
+                    "plus a managed vector store. Not a purchase decision at all -- the most "
+                    "dangerous competitor because it costs nothing but engineering time."
+                ),
+                geography_scope="any",
+                business_model="not applicable -- internal cost centre",
+                typical_offering="a bespoke pipeline maintained in-house",
+                pricing_model="engineering time and infrastructure spend",
+                customer_profile="resourced platform teams at larger firms",
+                likely_advantages=[
+                    "full control over data residency and latency",
+                    "no vendor lock-in to argue about",
+                ],
+                likely_weaknesses=[
+                    "sustains maintenance burden indefinitely",
+                    "reinforces the status quo reasoning this offer displaces",
+                ],
+                where_to_find_them=[
+                    "engineering blogs on 'we built our own inference stack'",
+                    "in-house platform team job postings naming the stack",
+                ],
+                confidence="medium",
+            ),
+        ],
+        global_entry_signals=[
+            "A global API provider opening a regional cloud region undercuts local latency claims without local headcount.",
+            "Open-weight releases let an unfunded entrant ship a credible runtime for free within weeks.",
+        ],
+        local_defence_signals=[
+            "Incumbents win on relationships, local-language data and procurement familiarity rather than model quality.",
+            "Regulatory or data-residency requirements keep buyers with locally-hosted operators.",
+        ],
+        substitution_risks=[
+            "Calling a hosted general-purpose LLM API directly and writing the retrieval glue in-house.",
+            "Not shipping an LLM feature at all and absorbing the workflow manually.",
+        ],
+        price_anchor_range="zero for open runtimes; per-token for hosted APIs",
+        channels=["GitHub and developer communities", "technical blogs and launch posts"],
+        confidence="high",
     ),
 }
 
@@ -242,36 +357,144 @@ PRODUCT_B2C_OFFER = {
     ),
     "competitive_positioning_understanding": "local-first privacy wins where cloud companions are distrusted",
     "competition_data": CompetitionExtraction(
-        competitors=[
-            {
-                "name": "Replika",
-                "description": "consumer AI companion with millions of downloads",
-                "offering": "cloud-hosted companion chat with memory",
-                "positioning": "an AI friend that remembers you",
-                "comparison": "wins on polish and emotional attachment; loses on data privacy",
-                "feature_flags": {},
-            },
-            {
-                "name": "Character.AI",
-                "description": "consumer platform for chatting with AI characters",
-                "offering": "character-based chat on the cloud",
-                "positioning": "the open-ended character platform",
-                "comparison": "wins on breadth of personas; loses on personal memory and privacy",
-                "feature_flags": {},
-            },
-            {
-                "name": "Perplexity",
-                "description": "AI answer engine with a mobile app",
-                "offering": "search-answer assistant",
-                "positioning": "answers with sources",
-                "comparison": "wins on factual answers; loses on companionship and local memory",
-                "feature_flags": {},
-            },
-        ],
         strengths=["genuinely local, so promises of privacy are structurally true"],
         weaknesses=["no brand, no community, small distribution"],
         opportunities=["creator-led distrust of cloud companions is a live audience signal"],
         differentiators=["on-device memory as a privacy feature, not a footnote"],
+    ),
+    "ideal_competitor_profile": IdealCompetitorProfile(
+        category_definition=(
+            "Any consumer-facing AI companion or assistant that a person talks to daily for "
+            "company, entertainment or practical help -- whether or not it markets itself as "
+            "a companion."
+        ),
+        boundary_of_category=[
+            "General search engines with an AI answer box -- they capture the same query but not the relationship",
+            "Utility chatbots embedded in banking or telco apps -- narrow scope, incumbent distribution",
+        ],
+        archetypes=[
+            CompetitorArchetype(
+                label="Cloud-first emotional companion",
+                archetype_description=(
+                    "Subscription apps that host a large language model in the cloud and "
+                    "position on attachment: the product is the relationship, the memory is "
+                    "the moat, and the user pays to keep it. Strong consumer marketing, "
+                    "consistent global availability, no local presence anywhere."
+                ),
+                geography_scope="global",
+                business_model="freemium subscription with paid memory/persona tiers",
+                typical_offering="cloud-hosted chat with persistent memory and custom avatars",
+                pricing_model="free tier, roughly $10-20/month for the paid tier",
+                customer_profile="younger consumers who form emotional attachment to assistants",
+                likely_advantages=[
+                    "massive brand awareness and app-store presence",
+                    "tuned specifically for emotional retention",
+                ],
+                likely_weaknesses=[
+                    "every message is a data breach waiting to happen and users now know it",
+                    "cloud cost forces the aggressive upsell that damages trust",
+                ],
+                where_to_find_them=[
+                    "app store top charts in the AI category",
+                    "'best AI companion' listicles",
+                ],
+                confidence="high",
+            ),
+            CompetitorArchetype(
+                label="Character-platform swarm",
+                archetype_description=(
+                    "User-generated platforms where anyone can build and share a bot, so the "
+                    "catalog is effectively infinite and the marketing is the community. "
+                    "Headquartered in the US, operated worldwide, monetised through a share "
+                    "of subscriptions and purchases."
+                ),
+                geography_scope="global",
+                business_model="platform take-rate on in-app purchases",
+                typical_offering="a user-creatable character marketplace with image and voice generation",
+                pricing_model="free to use, pay per generated image or voice pack",
+                customer_profile="roleplay and fandom communities, heavily US and European",
+                likely_advantages=[
+                    "the catalogue is a growth engine no competitor can match",
+                    "creators bring their own audiences",
+                ],
+                likely_weaknesses=[
+                    "safety incidents are a recurring reputational liability",
+                    "the catalogue is mostly novelty, so retention is shallow",
+                ],
+                where_to_find_them=[
+                    "'character AI' roleplay communities",
+                    "app store 'entertainment' charts",
+                ],
+                confidence="high",
+            ),
+            CompetitorArchetype(
+                label="Answer-engine assistant",
+                archetype_description=(
+                    "Search products that answer questions conversationally and have grown "
+                    "into assistant-shaped products with memory and scheduled actions. Not a "
+                    "companion by positioning, but competes for the same daily habit slot."
+                ),
+                geography_scope="global",
+                business_model="advertising plus premium subscription",
+                typical_offering="conversational answers with citations, memory and agents",
+                pricing_model="free with ads, paid tier for higher limits",
+                customer_profile="professionals and students using it for utility",
+                likely_advantages=[
+                    "search distribution already in place",
+                    "grounded answers, so factual reliability is a genuine edge",
+                ],
+                likely_weaknesses=[
+                    "utility framing produces no emotional bond",
+                    "no private personal context by default",
+                ],
+                where_to_find_them=[
+                    "'AI assistant' product reviews",
+                    "search-engine app category pages",
+                ],
+                confidence="medium",
+            ),
+            CompetitorArchetype(
+                label="Platform-bundled assistant",
+                archetype_description=(
+                    "The assistant shipped free with a phone or an operating system. The most "
+                    "underrated competitor for a consumer assistant: no download, no "
+                    "subscription, and already present on the device."
+                ),
+                geography_scope="global",
+                business_model="loss leader funded by hardware or platform revenue",
+                typical_offering="a bundled assistant with OS-level context access",
+                pricing_model="included with the device",
+                customer_profile="every owner of that platform, across all income levels",
+                likely_advantages=[
+                    "default on the device, so it wins by presence not quality",
+                    "deep system permissions a third-party app cannot get",
+                ],
+                likely_weaknesses=[
+                    "deliberately shallow memory and personality",
+                    "reads as an assistant to a command, not a companion",
+                ],
+                where_to_find_them=[
+                    "OS feature pages and default-assistant settings",
+                    "tech press coverage of bundled AI features",
+                ],
+                confidence="high",
+            ),
+        ],
+        global_entry_signals=[
+            "A US platform shipping a free bundled assistant into low-connectivity markets where paid subscriptions will not convert.",
+            "Open-weight models small enough to run on a mid-range phone make a local companion free to distribute.",
+        ],
+        local_defence_signals=[
+            "Offline-first local processing is a structural advantage no cloud service can copy without abandoning its business model.",
+            "Local-language conversation quality is hard for a global model to match without local data and local review.",
+        ],
+        substitution_risks=[
+            "Messaging a friend instead, now that group chats carry most socialising.",
+            "A plain notes app with a search box, if the user's need is memory rather than conversation.",
+        ],
+        price_anchor_range="free to roughly $20/month; the paid tier is the category anchor",
+        channels=["app stores", "creator-led YouTube and TikTok demos", "listicle SEO"],
+        confidence="high",
     ),
 }
 
@@ -343,36 +566,144 @@ SERVICE_B2B_OFFER = {
     ),
     "competitive_positioning_understanding": "contract-level Gulf outfitting beats global workwear generalists",
     "competition_data": CompetitionExtraction(
-        competitors=[
-            {
-                "name": "Cintas",
-                "description": "global managed uniform and facility services provider",
-                "offering": "managed workwear programs",
-                "positioning": "one vendor for uniforms nationwide",
-                "comparison": "wins on scale and coverage; loses on Gulf-specific craftsmanship",
-                "feature_flags": {},
-            },
-            {
-                "name": "Aramark",
-                "description": "global facilities and uniform services company",
-                "offering": "managed uniform and linen services",
-                "positioning": "end-to-end facility services",
-                "comparison": "wins on bundled contracts; loses on fit quality and tailoring depth",
-                "feature_flags": {},
-            },
-            {
-                "name": "Engelbert Strauss",
-                "description": "premium workwear manufacturer with a strong brand",
-                "offering": "premium workwear catalogue",
-                "positioning": "durable, premium workwear",
-                "comparison": "wins on garment quality; loses on managed measurement and SLAs",
-                "feature_flags": {},
-            },
-        ],
         strengths=["Gulf-native fitting network and real replacement SLAs"],
         weaknesses=["smaller footprint than the global vendors"],
         opportunities=["hospitality brands want a single accountable Gulf outfitter"],
         differentiators=["measure-and-make at contract level, not off-the-shelf workwear"],
+    ),
+    "ideal_competitor_profile": IdealCompetitorProfile(
+        category_definition=(
+            "Any provider that supplies, fits and maintains employee workwear or uniforms as "
+            "a managed service -- including the vendor the employer already has a contract "
+            "with, whether or not that contract is being renewed."
+        ),
+        boundary_of_category=[
+            "Plain promotional-embroidered T-shirt printers -- one-off orders, no ongoing program",
+            "Retailers selling individual garments -- a purchase, not a managed outfitting relationship",
+        ],
+        archetypes=[
+            CompetitorArchetype(
+                label="Global managed-uniform giant",
+                archetype_description=(
+                    "US- and Europe-headquartered firms running route-based delivery and "
+                    "per-wearer rental programs across tens of countries, sold to national "
+                    "hospitality, food and logistics accounts. Enormous scale and route "
+                    "density, and correspondingly little presence in most Gulf markets."
+                ),
+                geography_scope="global",
+                business_model="per-wearer rental subscription plus one-time programme fees",
+                typical_offering="measured sizing, embroidery, pickup and repair routes",
+                pricing_model="per employee per week, tiered by volume",
+                customer_profile="multi-site employers with hundreds of uniformed staff",
+                likely_advantages=[
+                    "route density makes delivery economics unbeatable in a dense market",
+                    "existing multi-year contracts are the real moat",
+                ],
+                likely_weaknesses=[
+                    "Gulf coverage is thin enough that service quality drops",
+                    "programmes are designed for volume, not for hospitality headcount",
+                ],
+                where_to_find_them=[
+                    "uniform rental RFPs and tender awards",
+                    "hospitality procurement case studies",
+                ],
+                confidence="high",
+            ),
+            CompetitorArchetype(
+                label="Regional laundry-and-uniform consolidator",
+                archetype_description=(
+                    "Gulf incumbents that grew out of laundry services and bolted uniform "
+                    "rental onto an existing pickup-and-delivery network. Strong local "
+                    "relationships and labour familiarity, weaker at the fitting and styling "
+                    "layer."
+                ),
+                geography_scope="regional",
+                business_model="bundled laundry and uniform rental contracts",
+                typical_offering="laundry plus workwear rental with existing delivery routes",
+                pricing_model="per-item or per-wearer, discounted inside a bundle",
+                customer_profile="Gulf hospitality groups and facilities operators",
+                likely_advantages=[
+                    "already trusted and already on site",
+                    "bundling makes the price hard to undercut",
+                ],
+                likely_weaknesses=[
+                    "garment fit and styling are not their competence",
+                    "the laundry dependency caps the service ambition",
+                ],
+                where_to_find_them=[
+                    "Gulf laundry-service provider lists",
+                    "hospitality-group supplier announcements",
+                ],
+                confidence="medium",
+            ),
+            CompetitorArchetype(
+                label="Premium workwear manufacturer",
+                archetype_description=(
+                    "Heritage European brands selling quality garments direct, with strong "
+                    "retail and dealer networks. They compete for the budget when a company "
+                    "buys individual items, but do not offer fitting, sizing or servicing."
+                ),
+                geography_scope="global",
+                business_model="garment margin through retail, dealers and e-commerce",
+                typical_offering="premium workwear garments, sold by the piece",
+                pricing_model="per garment, premium bands",
+                customer_profile="buyers who care about garment quality over programme management",
+                likely_advantages=[
+                    "genuine product-quality reputation",
+                    "brand recognition with end users, which matters for hospitality",
+                ],
+                likely_weaknesses=[
+                    "no managed service, so the employer still owns the problem",
+                    "per-garment buying does not scale across staff turnover",
+                ],
+                where_to_find_them=[
+                    "workwear brand 'about' and dealer pages",
+                    "premium workwear review sites",
+                ],
+                confidence="medium",
+            ),
+            CompetitorArchetype(
+                label="In-house uniform store",
+                archetype_description=(
+                    "Hospitality groups running their own shop fitting staff, buying blanks "
+                    "and embroidering in house. No vendor relationship at all, and often "
+                    "cheaper on paper -- but the labour is invisible until turnover bites."
+                ),
+                geography_scope="local",
+                business_model="internal cost centre",
+                typical_offering="an on-site or near-site fitting counter",
+                pricing_model="garment cost plus staff time",
+                customer_profile="large multi-property operators",
+                likely_advantages=[
+                    "total control of stock and timing",
+                    "no vendor margin at all",
+                ],
+                likely_weaknesses=[
+                    "cannot absorb a sudden headcount surge",
+                    "turnover-driven repeat business is nobody's job",
+                ],
+                where_to_find_them=[
+                    "hotel-group annual reports mentioning in-house uniforms",
+                    "hospitality recruitment posts for 'uniform store' roles",
+                ],
+                confidence="low",
+            ),
+        ],
+        global_entry_signals=[
+            "A global vendor signing a Gulf hospitality group to build route density before a local competitor can.",
+            "On-demand laundry platforms extending from consumer garments into staff uniforms.",
+        ],
+        local_defence_signals=[
+            "Measured fittings and a named account manager are relationship-locked and hard for a global vendor to staff locally.",
+            "Gulf-specific sizing and climate-appropriate fabrics require local knowledge.",
+        ],
+        substitution_risks=[
+            "Buying plain stock garments and managing replacements in-house.",
+            "Letting staff source their own workwear and reimbursing the cost.",
+        ],
+        price_anchor_range="per-wearer per-week, quoted against global programme contracts",
+        channels=["enterprise procurement and RFPs", "hospitality trade press", "sales-led direct outreach"],
+        confidence="high",
     ),
 }
 
@@ -444,36 +775,144 @@ SERVICE_B2C_OFFER = {
     ),
     "competitive_positioning_understanding": "48-hour guaranteed fittings beats laundry-app alterations",
     "competition_data": CompetitionExtraction(
-        competitors=[
-            {
-                "name": "Washmen",
-                "description": "Dubai on-demand laundry and dry-cleaning app",
-                "offering": "pickup laundry with alterations add-ons",
-                "positioning": "your laundry, app-scheduled",
-                "comparison": "wins on laundry habit and brand; loses on tailoring depth",
-                "feature_flags": {},
-            },
-            {
-                "name": "DryBy",
-                "description": "Dubai on-demand laundry and alterations service",
-                "offering": "24h laundry and alteration pickup",
-                "positioning": "fast pickup, clean results",
-                "comparison": "wins on speed brand; loses on fitted garments and guarantee",
-                "feature_flags": {},
-            },
-            {
-                "name": "Timpson",
-                "description": "UK high-street tailoring, repairs and key-cutting chain",
-                "offering": "in-store tailoring and garment repair",
-                "positioning": "a key cutter that also fixes everything",
-                "comparison": "wins on ubiquity in the UK; loses on Gulf presence and delivery",
-                "feature_flags": {},
-            },
-        ],
         strengths=["vetted tailor network with a real fit guarantee"],
         weaknesses=["young brand, small local footprint"],
         opportunities=["laundry apps have conditioned Gulf consumers to on-demand pickup"],
         differentiators=["48-hour garment-level guarantee, not just a wash-and-fold habit"],
+    ),
+    "ideal_competitor_profile": IdealCompetitorProfile(
+        category_definition=(
+            "Any consumer service a person uses without a live conversation to get clothes "
+            "made, altered, repaired or laundered -- apps, drop-off counters and delivery "
+            "routes alike."
+        ),
+        boundary_of_category=[
+            "Local bespoke tailors reached only by appointment -- no pickup, no delivery, no convenience layer",
+            "Dry-cleaning and ironing services with no alteration capability",
+        ],
+        archetypes=[
+            CompetitorArchetype(
+                label="On-demand laundry app with alterations",
+                archetype_description=(
+                    "Dubai-built consumer apps that built the pickup-and-deliver laundry habit "
+                    "and have since added an alterations line. The closest thing to a direct "
+                    "rival: same door-to-door promise, same city, same customer."
+                ),
+                geography_scope="local",
+                business_model="per-order pricing with membership subscriptions",
+                typical_offering="laundry, ironing and increasingly garment alterations",
+                pricing_model="per kilogram or per order, with monthly plans",
+                customer_profile="time-poor dual-income households in Gulf cities",
+                likely_advantages=[
+                    "the doorstep habit is already established",
+                    "operational density in exactly these neighbourhoods",
+                ],
+                likely_weaknesses=[
+                    "laundry logistics are a poor fit for fittings",
+                    "no measurement expertise to differentiate on",
+                ],
+                where_to_find_them=[
+                    "Gulf laundry app app-store listings",
+                    "'doorstep laundry Dubai' local directories",
+                ],
+                confidence="high",
+            ),
+            CompetitorArchetype(
+                label="High-street alteration and repair chain",
+                archetype_description=(
+                    "UK heritage retail chain running physical alteration and repair shops "
+                    "with same-day service. Sets the expectation of what drop-and-collect "
+                    "convenience means, and is now testing Gulf outposts -- a credible future "
+                    "entrant even though it is not yet a serious local rival."
+                ),
+                geography_scope="global",
+                business_model="per-item service fees across physical locations",
+                typical_offering="walk-in alterations, repairs, hemming and dry cleaning",
+                pricing_model="per item, priced at the counter",
+                customer_profile="walk-in customers who want it done today",
+                likely_advantages=[
+                    "a trained alteration counter as the entire business",
+                    "brand trust that transfers across markets",
+                ],
+                likely_weaknesses=[
+                    "fixed locations lose to door-to-door on convenience",
+                    "no vetting, no quality guarantee, no custom capability",
+                ],
+                where_to_find_them=[
+                    "store locators and 'first store in the Middle East' press coverage",
+                    "alteration-chain franchise pages",
+                ],
+                confidence="medium",
+            ),
+            CompetitorArchetype(
+                label="Marketplace of vetted tailors",
+                archetype_description=(
+                    "Two-sided platforms connecting consumers to independent tailors and "
+                    "alteration workers, handling discovery, payment and dispute resolution. "
+                    "Not a service operator itself, which is exactly the gap an operator "
+                    "with a quality guarantee can exploit."
+                ),
+                geography_scope="local",
+                business_model="commission on each job, plus promoted listings",
+                typical_offering="a directory of tailors with booking and payment",
+                pricing_model="take-rate per job plus listing fees",
+                customer_profile="price-comparison shoppers who value choice over consistency",
+                likely_advantages=[
+                    "supply is infinite and onboarding is frictionless",
+                    "already owns the discovery moment",
+                ],
+                likely_weaknesses=[
+                    "quality varies and the marketplace disclaims it",
+                    "no guarantee, no recurring relationship",
+                ],
+                where_to_find_them=[
+                    "tailoring marketplace app listings in Gulf markets",
+                    "'book a tailor online' local search results",
+                ],
+                confidence="medium",
+            ),
+            CompetitorArchetype(
+                label="Neighbourhood tailor workshop",
+                archetype_description=(
+                    "Owner-operated alteration shops with a walk-in counter and a WhatsApp "
+                    "number. The default incumbent for anyone who already knows one, and "
+                    "untouchable on price -- the substitution threat rather than a rival."
+                ),
+                geography_scope="local",
+                business_model="cash trade on labour time",
+                typical_offering="in-person alterations and bespoke tailoring",
+                pricing_model="per item, quoted in person",
+                customer_profile="customers who already have a relationship",
+                likely_advantages=[
+                    "personal trust and unlimited custom capability",
+                    "no platform or delivery overhead",
+                ],
+                likely_weaknesses=[
+                    "inconsistent quality and no recourse",
+                    "hours are narrow and there is no pickup",
+                ],
+                where_to_find_them=[
+                    "local business directories and map listings",
+                    "neighbourhood social media groups",
+                ],
+                confidence="high",
+            ),
+        ],
+        global_entry_signals=[
+            "A UK alteration chain's first Gulf stores, importing the drop-and-collect habit before a local rival owns it.",
+            "A regional laundry platform adding a full bespoke tailoring line to its logistics.",
+        ],
+        local_defence_signals=[
+            "A vetted network with a real fit guarantee cannot be undercut by an individual workshop on anything except price.",
+            "Delivery density in a specific neighbourhood compounds, and incumbents cannot match a route that already passes every door.",
+        ],
+        substitution_risks=[
+            "Buying ready-made garments that fit, so no alteration is needed at all.",
+            "A neighbourhood tailor the customer already trusts, reached by walking in.",
+        ],
+        price_anchor_range="per garment for alterations; per order for on-demand services",
+        channels=["mobile app stores", "neighbourhood word of mouth", "local search and directories"],
+        confidence="high",
     ),
 }
 
@@ -491,6 +930,19 @@ FIXTURE_COMPETITORS = {
     "product_b2c": {"Replika", "Character.AI", "Perplexity"},
     "service_b2b": {"Cintas", "Aramark", "Engelbert Strauss"},
     "service_b2c": {"Washmen", "DryBy", "Timpson"},
+}
+
+# Real, famous rivals in each branch's category that are deliberately ABSENT from
+# its canned [competition findings]. The ICP stage has no retrieved set, so any
+# of these appearing in its notes was imported from the model's own memory rather
+# than sourced from the session -- an unsourced competitor claim, which is the
+# failure the sourcing brief exists to prevent. Kept to names a model would
+# plausibly reach for unprompted, so a hit is a real leak and not a coincidence.
+FIXTURE_ABSENT_COMPETITORS = {
+    "product_b2b": {"LangChain", "vLLM", "Hugging Face", "OpenAI", "Google Gemini"},
+    "product_b2c": {"ChatGPT", "Claude", "Gemini", "Meta AI", "Snapchat"},
+    "service_b2b": {"UniFirst", "Alsco", "Apparel Unlimited"},
+    "service_b2c": {"Reneepress", "Pressly", "In-Phouse"},
 }
 
 # Every canned sibling Sources URL the run must never leak or re-cite. The ICP
@@ -565,7 +1017,12 @@ def _assert_icp_run(offer: dict, result: dict) -> None:
     assert isinstance(data, ICP), (
         f"[{branch}] icp_data is not an ICP: {type(data).__name__} {data!r}"
     )
-    assert data.buyer_type == expected_buyer, (
+    # ICP.buyer_type is a free-form str, not the BuyerType enum, so the model
+    # legitimately answers "B2B" — which is how this module's own instructions
+    # spell it. The fixture is unwrapped to the enum's lowercase value above, so
+    # compare case-insensitively: the verdict is what is under test, not its
+    # casing.
+    assert (data.buyer_type or "").strip().lower() == str(expected_buyer).strip().lower(), (
         f"[{branch}] buyer_type {data.buyer_type!r} must match the market stage's "
         f"{expected_buyer!r}"
     )
@@ -582,11 +1039,12 @@ def _assert_icp_run(offer: dict, result: dict) -> None:
         assert data.buyer_personas, f"[{branch}] B2C profile missing buyer_personas"
         assert data.target_channels, f"[{branch}] B2C profile missing target_channels"
 
-    # competitor_leads derive ONLY from the canned CompetitionExtraction. The
-    # set is real companies; an invented name fails the subset check.
+    # competitor_leads derive ONLY from the rivals the [competition findings]
+    # prose names. The structured side (SWOD + archetype profile) names nobody
+    # by construction, so an invented name here fails the subset check below.
     leads = list(data.competitor_leads or [])
     known = {_norm(n) for n in FIXTURE_COMPETITORS[branch]}
-    assert leads, f"[{branch}] no competitor leads derived from a 3-competitor set"
+    assert leads, f"[{branch}] no competitor leads derived from the findings prose"
     for lead in leads:
         ln = _norm(lead.competitor_name)
         assert any(ln in kn or kn in ln for kn in known), (
@@ -613,14 +1071,25 @@ def _assert_icp_run(offer: dict, result: dict) -> None:
     for leaked in ALL_SIBLING_SOURCES:
         assert leaked not in findings, f"[{branch}] sibling-stage Source URL leaked into findings: {leaked}"
 
-    # The writer was anchored on the structured record AND the competitor set:
-    # at least one real competitor must survive into the notes, or the anchor
-    # did not hold.
+    # Sourcing discipline on rival names. This assertion used to require the
+    # writer to ECHO the structured competitor set, which proved the set anchor
+    # held. That set is gone -- the competition stage emits an archetype profile
+    # that names nobody -- so echoing it is no longer a property the writer owes
+    # anything, and requiring it would only test whether it felt like mentioning
+    # a rival.
+    #
+    # What the stage still promises is the inverse and the stronger claim: a rival
+    # it names must come from the canned [competition findings], never from the
+    # model's own memory. So each branch lists well-known rivals that are
+    # DELIBERATELY absent from its canned findings. Naming one is the model
+    # importing an unsourced competitor from outside the session -- exactly the
+    # failure the brief was rewritten to prevent.
     findings_lower = findings.lower()
-    echoed = [n for n in FIXTURE_COMPETITORS[branch] if n.lower() in findings_lower]
-    assert echoed, (
-        f"[{branch}] writer never named any fixture competitor "
-        f"{sorted(FIXTURE_COMPETITORS[branch])} -- the structured-set anchor failed"
+    unsourced = [n for n in FIXTURE_ABSENT_COMPETITORS[branch] if n.lower() in findings_lower]
+    assert not unsourced, (
+        f"[{branch}] findings named rivals absent from the canned competition "
+        f"findings {unsourced} -- competitor names must be sourced from the "
+        f"session, not recalled"
     )
 
     understanding = result.get("icp_understanding") or ""

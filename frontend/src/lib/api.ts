@@ -1,7 +1,19 @@
+// Types for the competitor endpoints come from the competition module rather
+// than being redeclared here, so the client shape and the render shape cannot
+// drift into two definitions of the same company.
+import type {
+  Competitor,
+  CompetitorList,
+  CompetitorRun,
+  CompetitorRunStart,
+} from '@/competition/competition-types'
+
 export interface DiscoveryRequest {
   product_name: string
   product_url: string
   target_geo?: string[]
+  /** Asserted by the user on the intake form. The agent no longer classifies it. */
+  offer_type?: 'product' | 'service'
 }
 
 export interface SnapshotFeature {
@@ -84,17 +96,44 @@ export interface MarketDataDto {
   market_fit_reasoning: string | null
 }
 
-export interface CompetitorDto {
-  name: string
-  description: string
-  website?: string | null
-  offering?: string | null
-  positioning?: string | null
-  comparison?: string | null
+/** One archetype in the ideal competitor profile.
+ *
+ * A CONSTRUCT, not a company: "Regional incumbent undercutting on price" makes
+ * no claim that any firm exists. That is why it has no name and no website, and
+ * why the profile is allowed to be aggressive. It is the exact inverse of
+ * `CompetitorDto`, which is a set of sourced claims about a verified real firm. */
+export interface CompetitorArchetypeDto {
+  label: string
+  archetype_description: string
+  geography_scope: "local" | "regional" | "global" | "any"
+  business_model?: string | null
+  typical_offering?: string | null
+  pricing_model?: string | null
+  customer_profile?: string | null
+  likely_advantages: string[]
+  likely_weaknesses: string[]
+  where_to_find_them: string[]
+  confidence: "high" | "medium" | "low"
 }
 
+/** The competition stage's primary output: what a perfect competitor looks
+ * like here, deliberately not geo-bounded, naming nobody. */
+export interface IdealCompetitorProfileDto {
+  category_definition: string
+  boundary_of_category: string[]
+  archetypes: CompetitorArchetypeDto[]
+  global_entry_signals: string[]
+  local_defence_signals: string[]
+  substitution_risks: string[]
+  price_anchor_range?: string | null
+  channels: string[]
+  confidence: "high" | "medium" | "low"
+}
+
+/** The offer-vs-standard SWOD. It used to carry a `competitors: CompetitorDto[]`
+ * name list; that moved to the archetype profile and, for real verified rivals,
+ * to the standalone competitor agent. */
 export interface CompetitionDataDto {
-  competitors: CompetitorDto[]
   strengths: string[]
   weaknesses: string[]
   opportunities: string[]
@@ -145,6 +184,7 @@ export type DiscoveryPhaseDataFrame =
       session_id: string
       node: "understand_competition"
       competition_data: CompetitionDataDto
+      ideal_competitor_profile: IdealCompetitorProfileDto | null
     }
   | {
       type: "phase_data"
@@ -583,11 +623,17 @@ export function deleteProject(projectId: string): Promise<void> {
 /** Final discovery-run results persisted server-side when the run completes. */
 export interface WorkspaceInsights {
   offer_snapshot: OfferSnapshot | null
+  /** Asserted at intake, not classified by the agent. Persisted because the
+   * competitor agent runs later from the workspace and hunts in this noun. */
+  offer_type: 'product' | 'service' | null
   confirmed: boolean
   domain_understanding: string | null
   market_fit_understanding: string | null
   market_data: MarketDataDto | null
   competition_data: CompetitionDataDto | null
+  /** Persisted beside the SWOD so a reload still has the stage's primary output.
+   * The competitors tab reads it; the competitor agent consumes it server-side. */
+  ideal_competitor_profile: IdealCompetitorProfileDto | null
   icp: IcpDto | null
   specialists: SpecialistDto[] | null
   completed_at: string | null
@@ -599,4 +645,102 @@ export function getWorkspaceInsights(
   return apiFetch<{ insights: WorkspaceInsights | null }>(
     `/api/v1/workspaces/${workspaceId}/insights`,
   ).then((body) => body.insights)
+}
+
+// ---------------------------------------------------------------------------
+// Competitors
+// ---------------------------------------------------------------------------
+// Seven endpoints, and two of them are on `/runs` rather than `/{id}`. The
+// literal path segments are declared first on the server for the same reason —
+// a `/{competitor_id}` route would otherwise shadow them for any method that
+// accepts a path param. The order here does not matter, but keeping the run
+// endpoints grouped apart from the item endpoints does.
+
+/** Start a competitor hunt.
+ *
+ * 202 rather than 200 when a run is already in flight: the server reuses the
+ * pending run instead of starting a second one, so the response's `run` is not
+ * necessarily the one this call began. `already_tracked` is how many rows this
+ * run found were already on the list. */
+export function startCompetitorRun(
+  workspaceId: string,
+): Promise<CompetitorRunStart> {
+  return apiFetch<CompetitorRunStart>(
+    `/api/v1/workspaces/${workspaceId}/competitors/runs`,
+    { method: "POST" },
+  )
+}
+
+export function getCompetitorRun(
+  workspaceId: string,
+  runId: string,
+): Promise<CompetitorRun> {
+  return apiFetch<CompetitorRun>(
+    `/api/v1/workspaces/${workspaceId}/competitors/runs/${runId}`,
+  )
+}
+
+export function listCompetitorRuns(
+  workspaceId: string,
+  limit = 20,
+): Promise<CompetitorRun[]> {
+  return apiFetch<{ runs: CompetitorRun[] }>(
+    `/api/v1/workspaces/${workspaceId}/competitors/runs?limit=${limit}`,
+  ).then((body) => body.runs)
+}
+
+export function listCompetitors(workspaceId: string): Promise<CompetitorList> {
+  return apiFetch<CompetitorList>(
+    `/api/v1/workspaces/${workspaceId}/competitors`,
+  )
+}
+
+/** Add a competitor by URL and let the agent derive the rest.
+ *
+ * `deep_research: false` skips the follow-up site read, for the case where the
+ * user just wants the row on the list. It returns 200 rather than 201 when the
+ * company is already tracked — the resource was not created, and a caller
+ * treating 201 as "this is new" would show a false confirmation. */
+export function addCompetitor(
+  workspaceId: string,
+  input: { website: string; name?: string; deep_research?: boolean },
+): Promise<Competitor> {
+  return apiFetch<Competitor>(
+    `/api/v1/workspaces/${workspaceId}/competitors`,
+    { method: "POST", body: JSON.stringify(input) },
+  )
+}
+
+/** Edit a competitor.
+ *
+ * Narrow on purpose: the request schema is `extra="forbid"` and carries only
+ * user-owned fields plus `notes`. A client cannot write `strengths` or
+ * `pricing` here, so an edit from this tab cannot replace researched findings
+ * with invented ones. */
+export function updateCompetitor(
+  workspaceId: string,
+  competitorId: string,
+  patch: {
+    name?: string | null
+    website?: string | null
+    target_customers?: string | null
+    headquarters?: string | null
+    geography_scope?: string | null
+    notes?: string | null
+  },
+): Promise<Competitor> {
+  return apiFetch<Competitor>(
+    `/api/v1/workspaces/${workspaceId}/competitors/${competitorId}`,
+    { method: "PATCH", body: JSON.stringify(patch) },
+  )
+}
+
+export function deleteCompetitor(
+  workspaceId: string,
+  competitorId: string,
+): Promise<void> {
+  return apiFetch<void>(
+    `/api/v1/workspaces/${workspaceId}/competitors/${competitorId}`,
+    { method: "DELETE" },
+  )
 }

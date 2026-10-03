@@ -6,14 +6,54 @@ interview, borrowed from the offer and market pipelines:
 
     create_tasks_research      -> plan 3-5 competition research objectives
     conduct_research           -> run them, one bundle of evidence per objective
-    extract_competition_data   -> the structured competitor set + SWOD (soft-fail)
+    extract_competitor_profile -> the draft ideal competitor profile + the offer's SWOD (soft-fail)
+    refine_competitor_profile  -> self-review pass over the profile (soft-fail)
     note_down_record           -> write the competitive notes + positioning view
 
 Deliberately LINEAR, for the same reason the offer and market stages are: the
-pipeline's product is the findings + positioning understanding, a hard cost
-bound is worth more here than marginal depth, and every extra round multiplies
-Exa calls and distillation. There is no re-planning loop and no sufficiency
-gate.
+pipeline's product is the findings + positioning understanding + profile, a hard
+cost bound is worth more here than marginal depth, and every extra round
+multiplies Exa calls and distillation. There is no re-planning loop and no
+sufficiency gate.
+
+WHAT THIS STAGE DOES NOT DO: name competitors. It used to emit a
+`competitors: list[Competitor]` -- 3-5 real, URL-verified rivals -- and that list
+is gone. The stage now emits `IdealCompetitorProfile`, a set of ARCHETYPES
+describing what a perfect competitor to this offer looks like, and finding real
+companies is the standalone `get_competitors.py` agent's job, which runs
+separately per workspace and accumulates rivals over time. Two consequences
+follow from that split, and both are deliberate:
+
+  - The stage got CHEAPER. It used to probe each named competitor's website
+    with a live scrape (`verify_competitors`, up to 5 Exa calls per run). An
+    archetype has no URL to verify, so that loop is gone entirely. The one
+    extra LLM call this stage pays for the refine pass is more than covered.
+  - The stage got GEO-UNBOUNDED. Scoping to the offer's target geographies was
+    correct when the output was "the rivals this offer actually faces here".
+    It is wrong now, because a global player shipping into the offer's market is
+    a live competitor from anywhere. `target_geo` is therefore CONTEXT, never a
+    filter: the planner and extractor hunt local incumbents AND international
+    entrants, and every instruction that used to narrow by geography now widens
+    instead.
+
+THE PROFILE IS A CONSTRUCT. An archetype ("regional incumbent undercutting on
+price") is something we invented to describe the shape of a rival; it asserts
+nothing about any real firm. That is what licenses the profile to be
+AGGRESSIVE -- 4-6 archetypes spanning the whole threat surface, speculative but
+labelled confidence, no sourcing obligation. It is the exact inverse of
+`Competitor`, which is a set of factual claims about a verified real company and
+must be sourced or dropped. Keep the two epistemics apart; if
+`get_competitors.py` ever inherits the "be aggressive" instruction from this
+stage, it will start inventing pain signals.
+
+The graph runs EXTRACT BEFORE WRITER -- deliberately the reverse of the market
+stage. In the market stage the structured verdict is a judgment, so the
+extractor was anchored to the narrative. Here the structured PROFILE is the
+load-bearing output the downstream competitor agent reads, so the writer is
+anchored on it. The refine node sits between them, mirroring `build_icp`'s
+create -> refine -> narrate discipline: the profile is finalized and
+self-reviewed BEFORE the writer is anchored on it, so the notes describe the
+profile that actually shipped rather than the first draft.
 
 THE DEFININING FEATURE: the competition expert is given the market AND the
 domain to reason with. Competition only makes sense with both in hand -- the
@@ -42,19 +82,15 @@ first) degrades gracefully.
 Search is STRICTLY brand-free, the same invariant the offer and market stages
 carry. The interview-era stage let the direct-competitor query name the offer
 ("X competitors"); this pipeline does not, because the planner now has enough
-context to scope the competitor set by category + geography, and
-"alternatives to X" pages are the least trustworthy surface on the internet.
-Name-free category queries surface the same real rivals without the SEO junk.
+context to scope the landscape by category alone, and "alternatives to X" pages
+are the least trustworthy surface on the internet. Name-free category queries
+surface the same real rivals without the SEO junk.
 
 The graph runs EXTRACT BEFORE WRITER -- deliberately the reverse of the market
 stage. In the market stage the structured verdict is a judgment, so the
-extractor was anchored to the narrative. Here the structured COMPETITOR SET is
-a fact list, the load-bearing output ICP and the report consume, so the writer
-is anchored on it: the notes name the same rivals the structured set names,
-never additions the research didn't support. The extract node also mirrors the
-interview's verify_competitors step in-process: each competitor website is
-probed with a light scrape and hard failures are dropped (soft-fail, never
-crashes the run).
+extractor was anchored to the narrative. Here the structured PROFILE is the
+load-bearing output the downstream competitor agent reads, so the writer is
+anchored on it rather than the other way round.
 
 RECENCY is inherited from the market stage: every search passes
 `start_published_date = today - Config().market_recency_days` (default 365) --
@@ -64,10 +100,10 @@ a thin one.
 
 The single cosplayed expert is the competition specialist, selected out of
 `specialists` by `Specialist.domain == "competition"` (see
-`_competition_specialist_for`). The `extract_competition_data` node SOFT-FAILS
-like the market stage's extractor: the narrative findings are the pipeline's
-product, and losing the structured competitor set must not sink a run whose
-notes are already written.
+`_competition_specialist_for`). BOTH the extract and refine nodes SOFT-FAIL like
+the market stage's extractor: the narrative findings are the pipeline's
+product, and losing the structured profile must not sink a run whose notes are
+already written.
 """
 
 import re
@@ -81,8 +117,13 @@ from langchain_core.messages import SystemMessage
 from config import Config
 from agents.llm.main import invoke_structured_with_fallback
 from agents.context_budget import _truncate_to_tokens, budget_context, distill_documents
-from agents.states import CompetitionExtraction, CompetitionFindings, TaskResearchBundle
-from data_sources.scraping.exa import search_and_scrape, scrape_url
+from agents.states import (
+    CompetitionFindings,
+    CompetitionRecord,
+    IdealCompetitorProfile,
+    TaskResearchBundle,
+)
+from data_sources.scraping.exa import search_and_scrape
 
 from .schema_states import CompetitionSessionState, ResearchTask, Specialist, TaskList
 from .understand_offer import (
@@ -134,10 +175,109 @@ WRITER_NOTES_TOKEN_CAP = 800
 # bounded without losing the substance the competition expert needs.
 SIBLING_FINDINGS_TOKEN_CAP = 800
 
+# The profile is asked for 4-6 archetypes and the clamp is the hard stop, same
+# philosophy as MAX_RESEARCH_TASKS above. The ceiling is generous relative to
+# the ask because an archetype is cheap (no search, no URL verification) and
+# breadth is the point -- a wide threat surface is what the consuming agent
+# needs. The floor only warns; padding a thin profile would be worse than
+# shipping it short.
+MAX_ARCHETYPES = 8
+MIN_ARCHETYPES = 3
+
 
 def _recency_cutoff(days: int) -> str:
     """ISO date (YYYY-MM-DD) for the oldest source the competition research may use."""
     return (date.today() - timedelta(days=days)).isoformat()
+
+
+def _brand_patterns(state: CompetitionSessionState) -> list[re.Pattern[str]]:
+    """Regexes matching the offer's own name in a search query, worst-first.
+
+    The FULL NAME is the brand, and it is what must never be searched -- so that
+    is what gets matched, whitespace-flexibly so a query cannot dodge it by
+    reformatting the name.
+
+    Individual sub-tokens are matched ONLY for a single-word name, where the one
+    token IS the brand. Splitting a multi-word name is a trap: "Acme Vector DB"
+    tokenizes to acme/vector/db, and stripping "vector" destroys the category
+    noun out of every honest query about vector databases. A generic word inside
+    a brand name is not a brand, and only the whole phrase identifies this offer.
+    """
+    name = (state.get("offer_name") or "").strip()
+    if not name:
+        return []
+    tokens = [t for t in re.split(r"[^\w]+", name.lower()) if t]
+    if not tokens:
+        return []
+    phrase = r"\s+".join(re.escape(t) for t in tokens)
+    patterns = [re.compile(rf"\b{phrase}\b", re.IGNORECASE)]
+    if len(tokens) == 1:
+        # A one-word brand is often written with a suffix the model adds
+        # ("AuraPod Pro"), so match the stem too. Multi-word names get no such
+        # treatment: their trailing word may be a category noun.
+        if len(tokens[0]) > 3:
+            patterns.append(re.compile(rf"\b{re.escape(tokens[0])}\w{{0,6}}\b", re.IGNORECASE))
+    return patterns
+
+
+def _scrub_brand(query: str, brand_patterns: list[re.Pattern[str]]) -> str:
+    """Remove the offer's own name from a query, keeping the category words.
+
+    The planner is instructed to stay brand-free and usually does, but it slips:
+    a real run emitted "alternatives to StitchUp" despite an explicit rule, and
+    "alternatives to X" is exactly the comparison-list SEO surface the rule
+    exists to avoid. Enforcing it here rather than trusting the prompt makes the
+    invariant structural.
+
+    Two cleanups run with the brand strip, because removing a name can leave
+    behind a query that is still a comparison, or no query at all:
+
+    - the connective that needed the name ("alternatives to", "vs") goes too,
+      since deleting only the name leaves "on-demand tailoring app" reading as a
+      comparison it no longer names;
+    - a query that was NOTHING BUT the comparison ("StitchUp competitors") is
+      returned empty, and the caller drops it. Left alone it would search for
+      the single word "competitors" and return the SEO junk the rule exists to
+      avoid. Emptiness is a real outcome here, which is why the return type is
+      the scrubbed query or "" and never the input unchanged.
+    """
+    if not brand_patterns:
+        return query
+    scrubbed = query
+    for pattern in brand_patterns:
+        scrubbed = pattern.sub("", scrubbed)
+    # Only the residue of an actual removal gets the cleanup below. A query that
+    # never named the offer is left byte-for-byte alone -- even a bare "pricing"
+    # is a legitimate thing to search for, and it is not this function's job to
+    # second-guess query quality it did not break.
+    if scrubbed == query:
+        return query
+    scrubbed = _BRAND_CONNECTIVE.sub(" ", scrubbed)
+    scrubbed = re.sub(r"\s{2,}", " ", scrubbed).strip(" -,&")
+    if scrubbed and all(word in _DEGENERATE_HEADS for word in scrubbed.lower().split()):
+        return ""
+    return scrubbed
+
+
+# Connectives that only make sense when a brand name is attached to them, in
+# either order ("alternatives to X" and "X competitors" both occur).
+_BRAND_CONNECTIVE = re.compile(
+    r"\b(alternatives?\s+to|competitors?\s+(?:to|of|for)|versus|vs\.?|compared?\s+(?:to|with))\b",
+    re.IGNORECASE,
+)
+
+# What a query is left holding when the name was all it had. Searching for these
+# alone is worse than not searching: "competitors" returns the comparison-list
+# SEO that made the brand-free rule worth having. Not a general stopword list --
+# a short check for a query that is now pure competitive plumbing.
+_DEGENERATE_HEADS = frozenset(
+    {
+        "competitor", "competitors", "competing", "competition",
+        "alternative", "alternatives", "alternative", "alts",
+        "vs", "versus", "compare", "compared", "comparison", "reviews", "review",
+        "pricing", "price", "prices", "options", "best",
+    }
+)
 
 
 # Matches the report-writer convention: the harness-appended Sources block is
@@ -173,17 +313,28 @@ def _market_context_block(state: CompetitionSessionState) -> str:
     """The structured market context -- interview-faithful.
 
     The interview-era _market_context_block rendered MarketExtraction JSON to
-    scope the competitor set (category, buyer, geos, pricing). The pipeline
-    carries the same block so a session that ran the market stage first scopes
-    identically.
+    scope the competitive landscape (category, buyer, geos, pricing). The
+    pipeline carries the same block so a session that ran the market stage first
+    reads identically.
+
+    The header matters: `geo` in that JSON is where the OFFER sells, not where
+    its competitors live, and the two stopped being the same thing when this
+    stage stopped naming rivals. An explicit note keeps the model from reading
+    the market's geos as a filter on the landscape.
     """
     market = state.get("market_data")
     if market is None:
         return (
-            "No structured market data available -- scope the competitor set to "
-            "the offer/category and its target geographies alone."
+            "No structured market data available -- scope the landscape to the "
+            "offer and its category alone, and still look beyond the offer's "
+            "own geographies for competitors."
         )
-    return market.model_dump_json(indent=2, exclude_none=True)
+    return (
+        "NOTE: `geo` below is where the OFFER intends to sell. It is NOT a "
+        "filter on who competes -- competitors headquartered elsewhere but "
+        "operating in this market are in scope.\n\n"
+        + market.model_dump_json(indent=2, exclude_none=True)
+    )
 
 
 def _competition_specialist_for(state: CompetitionSessionState) -> Optional[Specialist]:
@@ -207,13 +358,27 @@ def _competition_specialist_for(state: CompetitionSessionState) -> Optional[Spec
     return specialists[0]
 
 
-def _competitor_names(state: CompetitionSessionState) -> str:
-    """The structured competitor set the writer must stay grounded on."""
-    data = state.get("competition_data")
-    names = [c.name for c in (data.competitors or []) if c.name] if data else []
-    if names:
-        return ", ".join(names)
-    return "(the extractor produced no competitor set -- ground the notes in the research alone)"
+def _profile_anchors(state: CompetitionSessionState) -> str:
+    """The archetype profile the writer must stay grounded on.
+
+    Replaces the old `_competitor_names`, which handed the writer a
+    comma-joined list of real company names to describe. The writer no longer
+    gets a name list -- it gets the archetypes that shipped, so its notes and
+    the profile the downstream competitor agent consumes cannot describe
+    different landscapes.
+    """
+    profile = state.get("ideal_competitor_profile")
+    if profile is None:
+        return (
+            "(no ideal competitor profile was produced -- ground the notes in "
+            "the research alone)"
+        )
+    lines = []
+    for archetype in profile.archetypes or []:
+        lines.append(f"- {archetype.label} ({archetype.geography_scope}): {archetype.archetype_description}")
+    if profile.category_definition:
+        lines.insert(0, f"Category boundary: {profile.category_definition}")
+    return "\n".join(lines) if lines else "(the profile carries no archetypes -- ground the notes in the research alone)"
 
 
 create_tasks_instructions = """
@@ -225,8 +390,9 @@ YOUR LENS
 You are the competition specialist. You understand this {offer_noun}'s category,
 its buyers and its target geographies -- you have that context in front of you
 -- and you know the {offer_noun} itself from its own material. Before you can
-say who its REAL rivals are, how they position, and where the {offer_noun} wins
-and loses against them, you need evidence you do not have yet.
+say what a REAL rival looks like here, how that kind of rival positions, and
+where the {offer_noun} wins and loses against it, you need evidence you do not
+have yet.
 
 OFFER
 - name          : {offer_name}
@@ -245,19 +411,33 @@ Use them to scope your research -- and do NOT plan tasks that re-research them.)
 {sibling_context}
 
 GOAL
-Plan the research that identifies the {offer_noun}'s real competitive landscape
-in the target geographies -- the rivals that actually compete for this buyer in
-this category, how they position, what they charge, where their customers hurt,
-and where the landscape leaves room for the {offer_noun}. You are planning, not
-answering. Nothing has been searched yet, and the results come back to you
-afterwards for you to read.
+Plan the research that maps this {offer_noun}'s real competitive landscape --
+the kinds of company that actually compete for this buyer in this category, how
+they position, what they charge, where their customers hurt, and where the
+landscape leaves room for the {offer_noun}. You are planning, not answering.
+Nothing has been searched yet, and the results come back to you afterwards for
+you to read.
+
+GEOGRAPHY IS NOT A BOUNDARY. The {offer_noun}'s target geographies are where it
+intends to SELL. They are not where its competitors live. A company headquartered
+in another country that sells into this market competes just as hard as a local
+one, and in many categories that is where the most dangerous rivals come from.
+Research BOTH:
+- local and regional incumbents defending this specific market, and
+- international players already operating in or adjacent to it, including the
+  ones a global brand field would put on a local buyer.
+If a task can only be answered by looking outside the offer's own geographies,
+that is a reason to plan it, not a reason to skip it.
 
 Each task is ONE objective that a set of public web sources could genuinely
 settle, in an area such as:
-- who the real rivals are in this category within the target geographies -- the
-  direct competitors and substitutes that would actually take this business
-- how each rival positions and what they offer: their messaging, their product
-  or service scope, and their publicly stated pricing, funding and traction
+- the KINDS of company that compete in this category -- direct rivals,
+  substitutes, and the local incumbents a buyer would default to
+- how rival companies position and what they offer: their messaging, their
+  product or service scope, and their publicly stated pricing, funding and
+  traction
+- foreign or global entrants into this market: who they are, how they enter,
+  what they charge, and whether local buyers actually adopt them
 - where rival customers hurt: complaints, churn reasons, gaps the rivals leave
   open (pain signals)
 - how the {offer_noun} compares to those rivals on the things the market context
@@ -284,17 +464,22 @@ RULES
 2. Give each task exactly 2 independent queries, ordered most specific first. The
    second is the broad fallback, used only if the specific one returns nothing, so
    it should be broad enough to always return something.
-3. NEVER put the {offer_noun}'s name or its brand in a query. Research the
-   CATEGORY and the GEOGRAPHY, so the sources describe the rivals rather than
-   this {offer_noun} or its own marketing claims. "Who competes in <category> in
-   <geo>" finds the same rivals that "X competitors" would -- without the
-   comparison-list SEO junk.
-4. Scope queries to the target geographies where they are known, because the
-   competitive landscape differs by geography.
+3. NEVER put the {offer_noun}'s name or its brand in a query. Not "alternatives
+   to {offer_name}", not "{offer_name} competitors", not the brand in any casing
+   or with any suffix. This is checked, and a violating query is rewritten before
+   it is ever searched. Research the CATEGORY instead, so the sources describe
+   the rivals rather than this {offer_noun} or its own marketing claims.
+   "Who competes in <category>" finds the same rivals that "X competitors"
+   would -- without the comparison-list SEO junk, which is the whole reason for
+   the rule.
+4. Do NOT narrow queries to the offer's target geographies. Name the category and
+   the kind of rival you want instead; add a geography only when the COMPETITOR
+   is defined by it (a city-level service business, say). Where you do name one,
+   cover at least one task aimed at international operators of this category.
 5. Every objective is a research goal, not a search string. It must be specific
    enough that "this task came back with nothing" is itself a meaningful finding.
-6. Do not assert what you will find, and do not invent competitors or facts. You
-   are choosing what to look up.
+6. Do not assert what you will find, and do not invent rivals or facts. You are
+   choosing what to look up.
 
 Return only the structured task list. No commentary.
 """
@@ -314,14 +499,18 @@ by someone who will also have the domain and market analyses in hand, so:
 - Write NOTES, not report prose. No report title, no "# Heading" scaffolding.
 - Be specific and evidence-dense. Another writer cannot recover what you leave
   out, but they can trim what you hand them.
-- Keep every concrete claim: named competitors, their positioning, pricing,
-  funding and traction figures, dates, feature gaps and geographies. Those are
-  what get cited downstream.
+- Keep every concrete claim: the rivals the research actually names, their
+  positioning, pricing, funding and traction figures, dates, feature gaps, and
+  where each one operates. Those are what get cited downstream, and the named
+  ones are what seed the downstream competitor agent's search.
 - Be brief. These notes are conclusions plus the claims that evidence them, not a
   ledger of everything retrieved. Cut reasoning bridges, elaboration, and anything
   the report writer can recover from the sibling stages. When in doubt, leave it
   out.
 - Name only rivals the research actually supports. Never infer or invent one.
+  This does NOT mean the notes must be archetype-only -- naming real rivals here
+  is correct and valuable, because a named rival with a source is evidence, and
+  the stage that finds competitors later will read this prose.
 - Say plainly where the evidence is thin, estimated or may be dated. Do not
   smooth over a gap.
 
@@ -337,10 +526,13 @@ Four kinds of material are in front of you, and they are not interchangeable:
    rivals, but cite them by LABEL -- "[domain findings]" or "[market findings]"
    -- never by a bracketed number.
 
-3. The STRUCTURED COMPETITOR SET below is the extracted, verified list of real
-   rivals from this same evidence. This is the load-bearing set: ground your
-   notes in it. Do not add rivals that are not in it unless a retrieved source
-   clearly names one, and do not drop the names it includes.
+3. The IDEAL COMPETITOR PROFILE below is the archetype profile built from this
+   same evidence: the KINDS of company that would compete against this
+   {offer_noun}, spanning local incumbents through international entrants. This
+   is the load-bearing structure: ground your notes in it, and do not describe a
+   landscape that contradicts it. It names no companies by design, so it does
+   not constrain which real rivals you may mention -- a retrieved source naming
+   one is always allowed, and you should.
 
 4. The RESEARCH BUNDLES, one per research objective, describe the rivals
    directly: who competes, how they position, what they charge, where they fall
@@ -349,8 +541,8 @@ Four kinds of material are in front of you, and they are not interchangeable:
 SPECIALIST LENS
 {specialist_lens}
 
-STRUCTURED COMPETITOR SET
-{competitor_set}
+IDEAL COMPETITOR PROFILE
+{profile_anchors}
 
 CITATIONS
 Every inline citation must be a bracketed number from this list:
@@ -376,13 +568,17 @@ MATERIAL AND RESEARCH
    rivals. Do not blur the two into a single undifferentiated account.
 
 2. Organise the notes with markdown sub-headers of your choosing (###). Cover:
-- the competitive landscape: the principal rivals this {offer_noun} actually
-  faces in the target geographies, scoped to the market context
+- the competitive landscape: the kinds of company that compete against this
+  {offer_noun}, and the real rivals the research named, covering BOTH local
+  incumbents and international players operating in this market
 - rival by rival: positioning, offering, and publicly stated pricing, funding
-  and traction where the research supports it
+  and traction where the research supports it, and where each rival operates
+- foreign entrants specifically: who is already selling into this market from
+  abroad, and what the local incumbents do about it
 - a comparison of the {offer_noun} to its real rivals: where it beats them,
   where it falls short, and what is genuinely unique about it
-- strengths, weaknesses, opportunities and gaps relative to the named set
+- strengths, weaknesses, opportunities and gaps relative to the archetype
+  profile
 - which research areas returned evidence, and which returned little or nothing
 - an explicit competitive positioning VERDICT for the {offer_noun}: strongly
   differentiated, moderately differentiated, weakly differentiated, or unclear
@@ -406,45 +602,131 @@ framing.
 extract_instructions = """
 You are an expert competitive analyst.
 
-Classify the COMPETITIVE EVIDENCE in front of you into the structured
-CompetitionExtraction record: the {offer_noun}'s ideal competitor set and how it
-stacks up against them. This is a classification task, not a research task:
-everything you need is in the material below, and none of it is to be invented.
+Read the COMPETITIVE EVIDENCE in front of you and build two things: an
+`IdealCompetitorProfile` describing the KINDS of company that would compete
+against this {offer_noun}, and a SWOD record of how the {offer_noun} stacks up
+against the competitive standard.
+
+This is a classification task over evidence you already hold, not a research
+task. Nothing here is to be invented, and nothing here is a claim about a real
+company.
 
 {context}
 
-Rules:
-- competitors: identify the ideal competitor set -- between 3 and 5 real rivals
-  (aim for 5, never fewer than 3 unless the research simply does not support
-  them). Each must be grounded in the research:
-  * name: the real product/company name, as it appears in the sources.
-  * description: what they do and how they position, from the sources.
-  * website: their official website URL ONLY if it appears in the research;
-    otherwise use an empty string -- never invent a URL.
-  * offering: key features/services they offer, from the sources.
-  * positioning: how they position themselves in the market.
-  * comparison: how the {offer_noun} compares to this competitor -- where it
-    wins, where it loses.
-  * feature_flags: for each of the {offer_noun}'s features (from its OWN
-    material block), whether this competitor also offers it -- a real JSON
-    object mapping feature name to true/false.
-  Do NOT pad the list with generic names -- every competitor must be real and
-  defensible from the sources. Scope the set to the market the context
-  describes (category, buyer, geographies): rivals from unrelated markets do
-  not belong.
-- strengths: where the {offer_noun} meets or beats the competitive standard.
-- weaknesses: where the {offer_noun} falls short of its rivals / the standard.
-- opportunities: gaps in the competitive landscape the {offer_noun} could
-  exploit.
-- differentiators: things that genuinely set the {offer_noun} apart from the
-  competitors named.
-- Only state what the sources actually support. If an area is genuinely thin,
-  return an empty list rather than inventing claims.
+THE PROFILE NAMES NOBODY -- AND THAT IS THE POINT
+The profile is a CONSTRUCT: a set of archetypes describing the shape of a
+perfect competitor. You are NOT producing a list of companies. A later, separate
+agent searches the web for real firms matching these archetypes; your job is to
+tell it what to look for. So:
+- Never put a real company name in an archetype. Write "regional incumbent
+  undercutting on price", not "Acme undercutting on price". An archetype that
+  names a real firm is a bug.
+- The archetypes SHOULD be specific and opinionated. This is the one place in
+  the pipeline where you are expected to be aggressive: a vague profile is worth
+  nothing to the agent that consumes it. Reach for the archetype a strategist
+  would actually worry about.
 
-JSON discipline: every list field must be a real JSON array and every object
-field (feature_flags) a real JSON object -- no double-serialized strings. For
-optional string fields that do not apply, use an empty string ""; never null
-and never omit the key. This record is validated against a strict schema.
+BE AGGRESSIVE AND SPAN THE WHOLE THREAT SURFACE
+Aim for 4-6 archetypes (never fewer than 3 unless the evidence is genuinely
+empty). Cover the range deliberately rather than three variations on one idea:
+- local incumbents defending this specific market
+- regional players from neighbouring markets
+- INTERNATIONAL competitors -- companies headquartered abroad that sell into
+  this market. Do not skip these because the offer's target geographies are
+  local. Where a global brand would put a local buyer is exactly the threat the
+  profile exists to name.
+- premium/niche specialists attacking the same buyer from a different angle
+- indirect and substitute threats: adjacent products, in-house builds, DIY
+  workarounds, or simply doing nothing
+
+Rules for each archetype:
+- label: a short name for the KIND of company, e.g. "Regional incumbent",
+  "Global SaaS entrant", "DIY substitute".
+- archetype_description: concretely what this kind of competitor is and how it
+  operates. Two or three sentences, specific enough to be recognisable.
+- geography_scope: "local", "regional", "global" or "any". Be honest about which.
+- business_model / typical_offering / pricing_model / customer_profile: how it
+  makes money, what it sells, how it charges, and whom it serves.
+- likely_advantages: where THIS KIND of competitor would beat the {offer_noun}.
+- likely_weaknesses: where this kind of competitor would be VULNERABLE to the
+  {offer_noun}. These are the openings worth having.
+- where_to_find_them: search surfaces, directories or query shapes where real
+  instances of this archetype would be found. Be practical -- this is the
+  hunting ground the next agent will use, so "Google" is useless and
+  "regional dental practice directories, '<service> <city>'" is useful.
+- confidence: "high", "medium" or "low" -- how well the evidence supports this
+  archetype. Mark a speculative archetype "low" rather than dropping it or
+  inflating it.
+
+Profile-level fields:
+- category_definition: what counts as a competitor in this category.
+- boundary_of_category: adjacent things that are NOT competitors -- substitutes,
+  complements, upstream suppliers. Keeps the next agent from chasing the wrong
+  firms.
+- global_entry_signals: what a foreign entrant would attack this market with,
+  and why it could win.
+- local_defence_signals: what local incumbents defend with, and why entrants
+  struggle against them.
+- substitution_risks: non-company alternatives a buyer may choose instead.
+- price_anchor_range: the observed price band across the landscape, when the
+  evidence supports one. Empty string otherwise.
+- channels: how competitors in this category reach buyers -- the routes a rival
+  already owns.
+- confidence: overall, how well the research supports this profile.
+
+SWOD (the `swod` object) -- these ARE claims about the offer, so ground them in
+the evidence and return an empty list rather than inventing:
+- strengths: where the {offer_noun} meets or beats the competitive standard.
+- weaknesses: where it falls short of the standard.
+- opportunities: gaps in the landscape the {offer_noun} could exploit.
+- differentiators: what genuinely sets it apart.
+
+JSON discipline: every list field must be a real JSON array -- no
+double-serialized strings. For optional string fields that do not apply, use an
+empty string ""; never null and never omit the key. The record is validated
+against a strict schema.
+"""
+
+
+refine_instructions = """
+You are an expert competitive strategist reviewing a draft Ideal Competitor
+Profile for a {offer_noun}.
+
+A separate agent will later search the web for real companies matching these
+archetypes. Your job is to make that profile the one you would actually want to
+hand it. Review the draft critically and return an improved version.
+
+WHAT GOOD LOOKS LIKE
+- SPANS the threat surface. Local incumbents AND international entrants AND at
+  least one substitute or indirect threat. A profile of three variations on
+  "local competitor" is a failure, not caution.
+- Each archetype earns its place: distinct, recognisable, and genuinely a
+  competitor for THIS buyer. Merge any two that describe the same kind of
+  company. Split any that are doing two different jobs.
+- SPECIFIC. "Regional incumbent undercutting on price" is useful; "a
+  competitor" is not.
+- `where_to_find_them` is actionable. This is the field the next agent acts on.
+  Directories, marketplaces, trade associations, review sites and query shapes
+  beat abstract categories.
+- `likely_weaknesses` are real openings, not restated advantages. If a weakness
+  is something the {offer_noun} also has, it is not a weakness of this archetype.
+- `confidence` is honest. Mark a speculative archetype "low". Do not inflate
+  confidence to make the profile look authoritative, and do not delete a
+  speculative archetype to make the profile look tidy -- a labelled guess is
+  worth more to the consumer of this profile than a confident nothing.
+
+WHAT TO FIX
+- Collapse archetypes that overlap; split ones that are incoherent.
+- Fill any field left empty that the evidence supports.
+- Add a missing archetype if the threat surface has an obvious hole.
+- Correct any archetype that drifted into naming a real company. Archetypes
+  describe KINDS of company, never specific firms -- naming one is the single
+  most important error to catch, because a named archetype makes the consumer
+  believe the search has already happened.
+- Keep `category_definition` and `boundary_of_category` tight; they are what
+  keeps the next agent from chasing the wrong companies.
+
+Return only the corrected profile. Same schema, no commentary.
 """
 
 
@@ -514,11 +796,28 @@ def create_tasks_research(state: CompetitionSessionState) -> dict:
     )
 
     tasks = list(plan.tasks or [])[:MAX_RESEARCH_TASKS]
-    print(f"create_tasks_research: planned {len(tasks)} competition research task(s)")
-    for i, task in enumerate(tasks, start=1):
+
+    # Brand-free search is an INVARIANT, not a request. The planner is told not
+    # to name the offer and usually complies, but it slips -- a real run emitted
+    # "alternatives to StitchUp" despite an explicit rule, and "alternatives to
+    # X" is precisely the comparison-list SEO surface the rule exists to avoid.
+    # Scrubbing here, once, at the single point every task flows through, makes
+    # the guarantee structural instead of probabilistic: no later stage can emit
+    # a branded query because none survives this line.
+    brand_patterns = _brand_patterns(state)
+    scrubbed_tasks = []
+    for task in tasks:
+        queries = [_scrub_brand(q, brand_patterns) for q in (task.queries or [])]
+        queries = [q for q in queries if q]
+        if queries != list(task.queries or []):
+            print(f"create_tasks_research: scrubbed the offer's brand out of a query in '{task.area}'")
+        scrubbed_tasks.append(task.model_copy(update={"queries": queries}))
+
+    print(f"create_tasks_research: planned {len(scrubbed_tasks)} competition research task(s)")
+    for i, task in enumerate(scrubbed_tasks, start=1):
         print(f"  {i}. {task.area} ({len(task.queries or [])} queries)")
 
-    return {"competition_tasks": plan.model_copy(update={"tasks": tasks})}
+    return {"competition_tasks": plan.model_copy(update={"tasks": scrubbed_tasks})}
 
 
 def _research_one(task: ResearchTask) -> TaskResearchBundle:
@@ -587,9 +886,11 @@ def _research_one(task: ResearchTask) -> TaskResearchBundle:
         docs,
         focus=(
             f"Condense for the research objective: {task.objective} "
-            f"(competition area: {area}). Keep named competitors, positioning, "
-            f"pricing, funding, traction, dates and geographies. Report what the "
-            f"rivals do, not opinions."
+            f"(competition area: {area}). Keep the kinds of company that compete "
+            f"here, their positioning, pricing, funding, traction, dates, and "
+            f"WHERE each one operates -- headquarters and operating market "
+            f"separately, since a foreign operator selling locally is a distinct "
+            f"and important case. Report what rivals do, not opinions."
         ),
         log_label=f"conduct_research:{area}",
     )
@@ -648,24 +949,25 @@ def conduct_research(state: CompetitionSessionState) -> dict:
     return {"competition_task_research": bundles}
 
 
-def extract_competition_data(state: CompetitionSessionState) -> dict:
-    """Classify the competitive evidence into the structured CompetitionExtraction
-    record: the 3-5 competitor set plus the offer's SWOD.
+def extract_competitor_profile(state: CompetitionSessionState) -> dict:
+    """Read the competitive evidence and emit the DRAFT ideal competitor profile
+    plus the offer's SWOD.
 
     A cheap-tier classification pass (thinking off) over the same evidence the
-    writer reasons from, with two interview-faithful hardening behaviours
-    in-node:
+    writer reasons from. One LLM call returns both halves via `CompetitionRecord`,
+    because they come from a single reading of the evidence and splitting them
+    would double the cost for no gain. They land in separate state channels.
 
-    - the competitor set is clamped to 5 (the schema hint is a suggestion; this
-      is the hard stop), with a warning -- never padding -- when the evidence
-      supports fewer than 3;
-    - each competitor's stated website is probed with a light scrape (the
-      interview's verify_competitors step): hard failures are dropped, and
-      name-grounded competitors without a URL are kept.
+    The URL-verification loop this node used to run is GONE. It probed each named
+    competitor's website with a live scrape (up to 5 Exa calls per run) and
+    dropped the ones that failed -- sensible when the output was a list of real
+    companies whose dead links would propagate downstream, and pure waste now
+    that an archetype has no URL to verify. That deletion is why adding the
+    refine node below did not make this stage more expensive overall.
 
     SOFT-FAILS on purpose, like the market stage's extractor: the narrative
-    findings are the pipeline's product, and losing the structured competitor
-    set must not sink a run whose notes are already written.
+    findings are the pipeline's product, and losing the structured profile must
+    not sink a run whose notes are already written.
     """
     bundles = list(state.get("competition_task_research") or [])
     context = _competition_context(state, bundles)
@@ -675,62 +977,107 @@ def extract_competition_data(state: CompetitionSessionState) -> dict:
     )
 
     try:
-        extraction = invoke_structured_with_fallback(
+        record = invoke_structured_with_fallback(
             messages=[
                 SystemMessage(content=system_message),
-                SystemMessage(content="Extract the structured competitive record now."),
+                SystemMessage(content="Build the ideal competitor profile and the SWOD now."),
             ],
-            schema=CompetitionExtraction,
-            log_label="extract_competition_data",
+            schema=CompetitionRecord,
+            log_label="extract_competitor_profile",
             # Closed-schema classification of evidence already in hand --
             # exactly the cheap-tier workload llm/main.py's thinking gate
             # reserves for thinking-off calls.
             thinking=False,
         )
     except Exception as exc:  # noqa: BLE001 - soft-fail by design, see docstring
-        print(f"extract_competition_data: failed ({exc}); competition_data left unset")
+        print(f"extract_competitor_profile: failed ({exc}); profile + competition_data left unset")
         return {}
 
-    # Hard ceiling on the set the schema suggests. Same philosophy as
-    # MAX_RESEARCH_TASKS: a schema hint is a suggestion, the clamp is the bound.
-    competitors = list(extraction.competitors or [])[:5]
-    if len(competitors) < 3:
+    profile = record.profile
+    # Hard ceiling on the archetype count. Same philosophy as MAX_RESEARCH_TASKS:
+    # a schema hint is a suggestion, the clamp is the bound. The floor only warns
+    # -- a thin profile is thin evidence, and padding it would be worse than
+    # shipping it short.
+    archetypes = list(profile.archetypes or [])[:MAX_ARCHETYPES]
+    profile = profile.model_copy(update={"archetypes": archetypes})
+    if len(archetypes) < MIN_ARCHETYPES:
         print(
-            f"extract_competition_data: only {len(competitors)} competitor(s) "
+            f"extract_competitor_profile: only {len(archetypes)} archetype(s) "
             f"extracted -- keeping the defensible set, not inventing more"
         )
-
-    # The interview's verify_competitors step, kept in-node: a competitor whose
-    # stated website hard-fails to scrape is dropped (its URL would propagate
-    # into ICP-facing data as a dead link). Name-grounded competitors without a
-    # URL are kept -- they were grounded in the sources, not the link.
-    cfg = Config()
-    kept = []
-    for comp in competitors:
-        if comp.website:
-            try:
-                scrape_url(comp.website, cfg)
-                kept.append(comp)
-            except Exception as exc:  # noqa: BLE001 - per-competitor, soft
-                print(f"extract_competition_data: dropping {comp.name!r} -- website failed to resolve: {exc}")
-        else:
-            kept.append(comp)
-
-    extraction = extraction.model_copy(update={"competitors": kept})
     print(
-        f"extract_competition_data: {len(kept)} verified competitor(s) "
-        f"({len(competitors) - len(kept)} dropped for dead URLs)"
+        f"extract_competitor_profile: {len(archetypes)} archetype(s) "
+        f"({sum(1 for a in archetypes if a.geography_scope == 'global')} global), "
+        f"{len(record.swod.strengths)} strength(s)"
     )
-    return {"competition_data": extraction}
+    return {
+        "ideal_competitor_profile": profile,
+        "competition_data": record.swod,
+    }
+
+
+def refine_competitor_profile(state: CompetitionSessionState) -> dict:
+    """Self-review pass over the draft profile.
+
+    Mirrors `build_icp`'s create -> refine -> narrate discipline, applied to the
+    stage's primary output: the profile is finalized BEFORE the writer is
+    anchored on it, so the notes describe the profile that shipped rather than
+    the first draft. Without this the writer reads a draft whose overlapping or
+    missing archetypes it then faithfully describes.
+
+    SOFT-FAILS, and SOFT-FAILS BY KEEPING THE DRAFT. A failed refine must not
+    discard a profile the extractor already produced, so the except branch
+    returns `{}` and the draft stands rather than being cleared.
+    """
+    profile = state.get("ideal_competitor_profile")
+    if profile is None:
+        print("refine_competitor_profile: no draft profile to refine, skipping")
+        return {}
+
+    system_message = refine_instructions.format(offer_noun=_offer_noun(state))
+
+    try:
+        refined = invoke_structured_with_fallback(
+            messages=[
+                SystemMessage(content=system_message),
+                SystemMessage(content=f"Draft profile under review:\n\n{profile.model_dump_json(indent=2, exclude_none=True)}"),
+                SystemMessage(content="Return the corrected profile now."),
+            ],
+            schema=IdealCompetitorProfile,
+            log_label="refine_competitor_profile",
+            # Same cheap-tier gate as the other three pipelines' structured
+            # passes: this is critique of an in-hand artifact, not open-ended
+            # reasoning that justifies the flagship thinking cost.
+            thinking=False,
+        )
+    except Exception as exc:  # noqa: BLE001 - soft-fail by design, see docstring
+        print(f"refine_competitor_profile: failed ({exc}); keeping the draft profile")
+        return {}
+
+    refined = refined.model_copy(
+        update={"archetypes": list(refined.archetypes or [])[:MAX_ARCHETYPES]}
+    )
+
+    # A refine pass that returned an empty profile is a regression, not an
+    # improvement -- the reviewer's job was to fix a draft, not delete it.
+    if not refined.archetypes:
+        print("refine_competitor_profile: returned no archetypes; keeping the draft profile")
+        return {}
+
+    print(
+        f"refine_competitor_profile: {len(profile.archetypes or [])} draft "
+        f"archetype(s) -> {len(refined.archetypes)} refined"
+    )
+    return {"ideal_competitor_profile": refined}
 
 
 def note_down_record(state: CompetitionSessionState) -> dict:
-    """Read the offer's own material, the sibling context, the structured
-    competitor set and every competition bundle; write the notes.
+    """Read the offer's own material, the sibling context, the refined
+    archetype profile and every competition bundle; write the notes.
 
-    Runs AFTER the extractor -- deliberately the reverse of the market stage --
-    so the writer is anchored on the verified competitor set: the notes name
-    the same rivals, and the positioning verdict can be judged against them.
+    Runs AFTER extract AND refine -- deliberately the reverse of the market
+    stage -- so the writer is anchored on the profile that actually shipped,
+    and the positioning verdict is judged against it.
 
     Fails loudly. These fields are the pipeline's core product, and a
     half-written synthesis that still sets `competition_complete` would let the
@@ -755,7 +1102,7 @@ def note_down_record(state: CompetitionSessionState) -> dict:
         offer_noun=offer_noun,
         offer_nouns=_offer_nouns(state),
         specialist_lens=lens,
-        competitor_set=_competitor_names(state),
+        profile_anchors=_profile_anchors(state),
         auditable_sources=auditable_sources,
         context=context,
         word_count=COMPETITION_FINDINGS_WORD_COUNT,
@@ -826,11 +1173,15 @@ def note_down_record(state: CompetitionSessionState) -> dict:
 
 
 def build_competition_graph(checkpointer: bool = True):
-    """create_tasks_research -> conduct_research -> extract_competition_data -> note_down_record.
+    """create_tasks_research -> conduct_research -> extract_competitor_profile
+    -> refine_competitor_profile -> note_down_record.
 
     Extract runs BEFORE the writer (deliberately the reverse of the market
-    graph): the structured competitor set is the load-bearing fact list, and
-    the writer is anchored on it rather than the other way round. No
+    graph): the structured profile is the load-bearing output the downstream
+    competitor agent reads, and the writer is anchored on it rather than the
+    other way round. Refine sits between them so the writer is anchored on the
+    FINAL profile, not the draft -- the create -> refine -> narrate discipline
+    build_icp applies internally, here applied across the stage boundary. No
     conditional edges and no cycles, on purpose. See the module docstring.
     """
     builder = StateGraph(CompetitionSessionState)
@@ -838,14 +1189,16 @@ def build_competition_graph(checkpointer: bool = True):
     # -- Nodes --
     builder.add_node("create_tasks_research", create_tasks_research)
     builder.add_node("conduct_research", conduct_research)
-    builder.add_node("extract_competition_data", extract_competition_data)
+    builder.add_node("extract_competitor_profile", extract_competitor_profile)
+    builder.add_node("refine_competitor_profile", refine_competitor_profile)
     builder.add_node("note_down_record", note_down_record)
 
     # -- Edges --
     builder.add_edge(START, "create_tasks_research")
     builder.add_edge("create_tasks_research", "conduct_research")
-    builder.add_edge("conduct_research", "extract_competition_data")
-    builder.add_edge("extract_competition_data", "note_down_record")
+    builder.add_edge("conduct_research", "extract_competitor_profile")
+    builder.add_edge("extract_competitor_profile", "refine_competitor_profile")
+    builder.add_edge("refine_competitor_profile", "note_down_record")
     builder.add_edge("note_down_record", END)
 
     return builder.compile()

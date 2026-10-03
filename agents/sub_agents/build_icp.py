@@ -14,13 +14,13 @@ subgraph and completed in the idiom of the offer/market/competition pipelines:
 DELIBERATELY NO RESEARCH. The ICP is the GTM specialist's judgment derived from
 what the session already knows: who buys and what they pay (market findings +
 structured market context), who else wins this business and where their
-customers hurt (competition findings + structured competitor set), and what the
+customers hurt (competition findings, which name the real rivals, plus the
+structured SWOD and archetype profile), and what the
 offer IS (offer material + domain findings). The account-discovery stage
 immediately downstream does the reach research -- it searches the target
 channels/communities/events/industries this profile names. Re-researching the
 buyer here would duplicate that stage and pay for synthesis the ICP cannot
-out-source. The absence of `icp_tasks`/`icp_task_research` in
-`IcpSessionState`, of a recency gate, and of a `### Sources` block on the notes
+out-source. The absence of `icp_tasks`/`icp_task_research` in`IcpSessionState`, of a recency gate, and of a `### Sources` block on the notes
 is therefore structural, not an oversight: nothing is retrieved in this stage,
 so there is nothing to gate and nothing honest to cite by number. Every claim in
 the findings is citable only by LABEL (`[offer material]`, `[market findings]`,
@@ -219,15 +219,42 @@ with the adoption lens a product buyer uses:
 
 
 def _competition_context_block(state: IcpSessionState) -> str:
-    """The structured competition context (interview-faithful): CompetitionExtraction
-    JSON when the competition stage has produced it, otherwise a pointer."""
-    comp = state.get("competition_data")
-    if comp is None:
-        return (
-            "No structured competition data available -- competitor_leads must stay "
-            "empty rather than invented."
+    """The structured competition context: the offer-vs-standard SWOD plus, when
+    the competition stage produced one, the ideal competitor profile.
+
+    The SWOD used to arrive with a `competitors` list attached and was rendered
+    whole; that list is gone from the stage, so the block is now assembled from
+    two channels that say different things. The profile names no companies, so
+    it cannot source a `competitor_lead` — it supplies the query shapes and
+    likely weaknesses those leads are shaped around, and the real names come
+    from the [competition findings] prose instead.
+    """
+    swod = state.get("competition_data")
+    profile = state.get("ideal_competitor_profile")
+
+    parts = []
+    if swod is not None:
+        parts.append(
+            "### OFFER VS. COMPETITIVE STANDARD (SWOD)\n"
+            + swod.model_dump_json(indent=2, exclude_none=True)
         )
-    return comp.model_dump_json(indent=2, exclude_none=True)
+    else:
+        parts.append(
+            "### OFFER VS. COMPETITIVE STANDARD (SWOD)\n"
+            "(not available -- the competition stage has not run)"
+        )
+    if profile is not None:
+        parts.append(
+            "### IDEAL COMPETITOR PROFILE (ARCHETYPES)\n"
+            "Describes KINDS of company that compete here; names none.\n"
+            + profile.model_dump_json(indent=2, exclude_none=True)
+        )
+    else:
+        parts.append(
+            "### IDEAL COMPETITOR PROFILE (ARCHETYPES)\n"
+            "(not available -- competitor_leads must stay empty rather than invented.)"
+        )
+    return "\n\n".join(parts)
 
 
 def _icp_context(state: IcpSessionState) -> str:
@@ -312,11 +339,15 @@ FIELDS
   "evaluate", "switch from", "compare", "rollout"), so searches stay grounded in buying intent.
 - `messaging_angles`: opening angles/hooks — how to first engage the audience in each channel.
 - `beachhead`: one line naming the segment/channel to attack first.
-- `competitor_leads`: derive ONE lead per real competitor from the [competition context] /
-  [competition findings] — use their exact name, generate 1-2 web queries that surface
+- `competitor_leads`: derive ONE lead per real competitor NAMED IN THE
+  [competition findings] prose — use their exact name, generate 1-2 web queries that surface
   accounts/audiences evaluating or reviewing them, and derive concrete `pain_angles` from
-  what the competitive research found their customers complain about. Never invent a
-  competitor that is not in the competition context.
+  what the competitive research found their customers complain about. The structured
+  [competition context] no longer contains a name list (the competition stage emits an
+  archetype profile instead), so the prose is your only source of real names — but the
+  profile's `where_to_find_them` and `likely_weaknesses` are where your queries and pain
+  angles get their shape. Never invent a competitor that no retrieved source named, and
+  never pad the list: if the prose named no rivals, an empty list is the correct answer.
 
 Drive the profile through your distinctive lens, and keep it anchored to the
 geographies where this {offer_noun} actually operates.
@@ -360,8 +391,14 @@ REVIEW RULES
    firmographics (`industries`, `company_sizes`, `buyer_titles`) carry the weight.
    Don't let a weak emphasis cripple the profile.
 4. Industry discipline: no more than 3 industries — the tightest defensible set wins.
-5. `competitor_leads` must come only from the competition context; never invent
-   competitors or pain angles the research did not report.
+5. `competitor_leads` — CORRECT them, do not clear them. The draft's leads were
+   derived from the [competition findings] prose, and a lead whose `name` appears
+   in that prose is grounded and MUST be kept: fix its queries or `pain_angles`
+   if they drifted, but do not delete a lead just because the structured
+   [competition context] beside it carries no name list (it no longer does — the
+   competition stage emits an archetype profile instead). Drop a lead only when
+   its name appears NOWHERE in the findings prose, and never invent a name or a
+   pain angle the prose does not report.
 6. Keep `geo` aligned to the market stage's target markets.
 7. Expand `target_channels` with concrete names/typed placeholders +
    `audience_fit` + `first_angle` so account discovery can actually search them.

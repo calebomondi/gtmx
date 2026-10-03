@@ -74,12 +74,22 @@ function buildRealThought(
   if (stepId === "competition") {
     const competition = results.understand_competition
     if (!competition) return null
-    const items: ReactNode[] = competition.competitors.map(
-      (competitor) =>
-        `Tracking ${competitor.name}${competitor.website ? ` (${competitor.website})` : ""}`,
+    // Archetypes, not companies. This stage names nobody on purpose -- finding
+    // real rivals is a separate agent's job -- so the compact thought view lists
+    // the KINDS of competitor it expects to find, with the scope that makes the
+    // span legible ("global" is the interesting part: local-only would mean the
+    // geography filter came back).
+    const profile = competition.profile
+    const items: ReactNode[] = (profile?.archetypes ?? []).map(
+      (archetype) => `${archetype.label} (${archetype.geography_scope})`,
     )
-    if (competition.differentiators.length > 0) {
-      items.push(`Differentiators: ${competition.differentiators.join(", ")}`)
+    if (competition.swod.differentiators.length > 0) {
+      items.push(`Differentiators: ${competition.swod.differentiators.join(", ")}`)
+    }
+    // The stage soft-fails its structured passes, so an empty item list is a
+    // real outcome. Say which half is missing rather than rendering a blank card.
+    if (items.length === 0) {
+      items.push("Competitive profile not established")
     }
     return { title: "Scanning the competitive landscape", items }
   }

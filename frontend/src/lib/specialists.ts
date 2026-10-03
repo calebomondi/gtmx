@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 
 import type { Specialist } from '@/components/specialist-avatargroup'
 import { ensureInsightsLoaded, useInsights } from '@/lib/insights-store'
+import { useAgentRun } from '@/lib/agent-run-store'
 import type { SpecialistDto } from '@/lib/api'
 
 const SPECIALIST_BORDERS = [
@@ -48,14 +49,40 @@ export function teamToAvatarSpecialists(
   }))
 }
 
+/**
+ * The one place that decides which specialist team a workspace has. The live
+ * run's `create_specialists` phase result wins, because it is the freshest
+ * answer and is the only one available while the run is still going; the
+ * persisted insights are the fallback once the run is over or the user has
+ * reloaded the page.
+ *
+ * Every surface that shows the team (workspace header, agent chat, project hub)
+ * reads through here on purpose. They previously disagreed: the header
+ * consulted the live run while the agent chat read insights only, so opening
+ * the agent tab could show *fewer* avatars than the header right above it.
+ */
+export function useSpecialistTeam(
+  workspaceId: string | undefined,
+): SpecialistDto[] | null {
+  const { insights } = useInsights(workspaceId)
+  const run = useAgentRun()
+  // `run.workspaceId` is `string | null`, so an absent `workspaceId` (the
+  // legacy `/workspace` route) never matches here and falls through cleanly.
+  const live =
+    run.workspaceId !== null && run.workspaceId === workspaceId
+      ? run.phaseResults.create_specialists
+      : undefined
+  return live ?? insights?.specialists ?? null
+}
+
 /** Specialist avatars for one workspace (lazily fetched via insights). */
 export function useWorkspaceSpecialists(workspaceId: string | undefined): Specialist[] {
-  const { insights } = useInsights(workspaceId)
   useEffect(() => {
     if (workspaceId) ensureInsightsLoaded(workspaceId)
   }, [workspaceId])
-  return useMemo(
-    () => teamToAvatarSpecialists(insights?.specialists),
-    [insights],
-  )
+  const team = useSpecialistTeam(workspaceId)
+  // Keyed on the resolved team rather than on `insights`, so the live-run
+  // branch can actually invalidate this instead of being masked by an
+  // unchanged insights object.
+  return useMemo(() => teamToAvatarSpecialists(team), [team])
 }

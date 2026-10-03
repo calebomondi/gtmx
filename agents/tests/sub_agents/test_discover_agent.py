@@ -11,10 +11,14 @@ thread until the whole DAG finishes:
     discover_offer -> create_specialists -> [understand_offer ∥ understand_market]
         -> understand_competition -> determine_icp
 
-Each run pays for the intake classifier/draft/rest calls, the four-specialist
+Each run pays for the intake draft/rest calls, the four-specialist
 creation, and the full offer + market (parallel) + competition + ICP pipelines:
 a plazer + 3-5 research tasks x Exa searches + distillation + a writer for each
 of the three research stages, and the ICP stage's create/refine/note calls.
+
+`offer_type` is asserted by the caller and seeded into the session up front — the
+intake form owns it and the agent no longer classifies it — so the harness feeds
+it directly, exactly as `_build_initial_state` does.
 
 Run:
     python agents/tests/sub_agents/test_discover_agent.py
@@ -47,6 +51,7 @@ from agents.llm.main import llm_timing_report  # noqa: E402
 from agents.states import (  # noqa: E402
     CompetitionExtraction,
     ICP,
+    IdealCompetitorProfile,
     MarketExtraction,
 )
 from agents import discovery_agent  # noqa: E402
@@ -72,7 +77,7 @@ TOP_LEVEL_NODES = (
 PRODUCT_OFFER = {
     "offer_name": "HeatherDB",
     "website_url": "https://aphorion.co/",
-    "offer_type_answer": "product",
+    "offer_type": "product",
 }
 
 BRANCHES = {"product": PRODUCT_OFFER}
@@ -83,15 +88,13 @@ BRANCHES = {"product": PRODUCT_OFFER}
 # ---------------------------------------------------------------------------
 
 
-def _answer_for(payload: dict, branch: str) -> str:
+def _answer_for(payload: dict) -> str:
     ptype = (payload or {}).get("type")
     auto = {
         "offer_name_mismatch": "1",
         "url_unscrappable": "continue",
         "product_service_description_confirmation": "yes",
     }
-    if ptype == "offer_type_clarification":
-        return BRANCHES[branch]["offer_type_answer"]
     return auto.get(ptype, "yes")
 
 
@@ -110,6 +113,9 @@ def _run_discovery(branch: str) -> tuple[dict, dict, list[dict], float]:
     initial = {
         "offer_name": offer["offer_name"],
         "website_url": offer["website_url"],
+        # Seeded the way _build_initial_state seeds it, so the run exercises the
+        # same path the intake form drives in production.
+        "offer_type": offer["offer_type"],
         "messages": [],
     }
 
@@ -135,7 +141,7 @@ def _run_discovery(branch: str) -> tuple[dict, dict, list[dict], float]:
             break
 
         payload = interrupts[0].value
-        answer = _answer_for(payload, branch)
+        answer = _answer_for(payload)
         interrupt_log.append({"type": payload.get("type"), "answer": answer})
         print(f"  [interrupt] {payload.get('type')} -> {answer!r}")
         state = Command(resume=answer)
@@ -165,9 +171,12 @@ def _sources_block(findings: str) -> bool:
 
 
 def _assert_discovery_run(branch: str, final: dict, interrupt_log: list[dict], node_times: dict) -> None:
-    noun = BRANCHES[branch]["offer_type_answer"]
+    noun = BRANCHES[branch]["offer_type"]
 
     # -- Intake completed and landed in the loose keys --
+    # Nothing writes offer_type any more, so this is a passthrough check: the
+    # seeded value has to survive the whole agent, since create_specialists reads
+    # it off the same session to build the specialist roster.
     assert final.get("offer_type") == noun, (
         f"[{branch}] offer_type {final.get('offer_type')!r} must equal {noun!r}"
     )
@@ -210,11 +219,25 @@ def _assert_discovery_run(branch: str, final: dict, interrupt_log: list[dict], n
     assert isinstance(final.get("competition_data"), CompetitionExtraction), (
         f"[{branch}] competition_data not a CompetitionExtraction"
     )
+    # The competition stage's PRIMARY output is the archetype profile, not the
+    # SWOD record. It must survive the _COMPETITION_KEYS fold back into the
+    # aggregate state, or the downstream competitor agent has nothing to hunt.
+    profile = final.get("ideal_competitor_profile")
+    assert isinstance(profile, IdealCompetitorProfile), (
+        f"[{branch}] ideal_competitor_profile "
+        f"{type(profile).__name__} is not IdealCompetitorProfile"
+    )
+    assert profile.archetypes, f"[{branch}] ideal_competitor_profile has no archetypes"
+    # Geo-unbounded is the whole point of the change: an all-local profile means
+    # the target_geo filter came back.
+    assert {a.geography_scope for a in profile.archetypes} & {"global", "regional", "any"}, (
+        f"[{branch}] every archetype is local -- the profile must span "
+        f"international operators too"
+    )
     assert isinstance(final.get("icp_data"), ICP), (
         f"[{branch}] icp_data {type(final.get('icp_data')).__name__} is not ICP"
     )
     assert final["market_data"].target_audience, f"[{branch}] market_data missing target_audience"
-    assert final["competition_data"].competitors, f"[{branch}] competition_data missing competitors"
 
     # -- Every top-level stage actually ran --
     missing = [n for n in TOP_LEVEL_NODES if n not in node_times]

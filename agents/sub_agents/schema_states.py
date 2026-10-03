@@ -7,16 +7,18 @@ from langgraph.graph.message import add_messages
 
 # TaskResearchBundle is deliberately imported from the canonical module rather
 # than redefined here. Every model that reaches a LangGraph checkpoint has to be
-# allowlisted by module, and backend/app/agents_runtime.py:38-43 derives that
-# allowlist by reflecting over `agents.states` and filtering on
-# `__module__ == "agents.states"`. A bundle defined in this file would carry
-# `__module__ == "agents.sub_agents.schema_states"`, land outside the
-# allowlist, and log "Blocked deserialization" on every checkpoint read -- the
-# same failure the comment there records for BuyerType/ProductCategory.
+# allowlisted by module. backend/app/agents_runtime.py derives that allowlist by
+# reflecting over BOTH `agents.states` and this module, keeping a class only when
+# its `__module__` equals the module it was found in -- so a model DEFINED here is
+# allowlisted under `agents.sub_agents.schema_states`, and one merely IMPORTED
+# here is not (which is why this import list must not be mistaken for the
+# allowlist). Defining a duplicate here instead of importing it would work, but
+# would give the same class two identities and two checkpoint representations.
 from agents.states import (
     CompetitionExtraction,
     FollowUp,
     ICP,
+    IdealCompetitorProfile,
     IcpFindings,
     MarketExtraction,
     TaskResearchBundle,
@@ -212,8 +214,6 @@ class DiscoverOfferState(TypedDict):
     scrape_failed: bool = False
     name_mismatch: bool = False
     product_candidates: List[str] = Field(description="")
-    offer_type_lean: Optional[str] = None
-    offer_type_reasoning: Optional[str] = None
     confirmed: bool = False
 
 
@@ -318,7 +318,7 @@ class CompetitionSessionState(TypedDict):
     offer_domain_fit_understanding: Optional[str] = Field(default=None, description="The domain stage's fit understanding")
     market_findings: Optional[str] = Field(default=None, description="The market stage's research notes (Sources block stripped at use)")
     product_market_fit_understanding: Optional[str] = Field(default=None, description="The market stage's fit understanding")
-    market_data: Optional[MarketExtraction] = Field(default=None, description="The market stage's structured extraction, used to scope the competitor set")
+    market_data: Optional[MarketExtraction] = Field(default=None, description="The market stage's structured extraction, used to scope the competitive landscape")
 
     # --Research plan and its results--
     # `competition_task_research` is this pipeline's only accumulator, kept
@@ -335,10 +335,19 @@ class CompetitionSessionState(TypedDict):
     competitive_positioning_understanding: Optional[str] = Field(default=None, description="Brief standalone synthesis of how the offer is positioned vs. its real competitors; target 40 words, maximum 50")
 
     # --Structured extraction--
-    # The competitor set + SWOD the gtmx consumers (ICP, competition briefing)
-    # read. Soft-fail with in-node competitor URL verification, exactly like the
-    # interview-era extract_competitors/verify_competitors pair.
-    competition_data: Optional[CompetitionExtraction] = Field(default=None, description="Structured competitor set + strengths/weaknesses/opportunities/differentiators")
+    # The stage's PRIMARY structured output: an archetype profile of what a
+    # perfect competitor looks like, deliberately not geo-bounded and naming no
+    # one. It replaced a `competitors: list[Competitor]` field on
+    # CompetitionExtraction; finding real, verified rivals is the standalone
+    # get_competitors agent's job. Soft-fail with in-node handling, exactly
+    # where the interview-era extract_competitors/verify_competitors pair used
+    # to, so a lost profile cannot sink a run whose notes are already written.
+    ideal_competitor_profile: Optional[IdealCompetitorProfile] = Field(default=None, description="The refined Ideal Competitor Profile: category boundary + local/regional/global archetypes, no named companies")
+
+    # The offer-vs-standard SWOD the gtmx consumers (ICP, competition briefing)
+    # read, kept as its own record because it is a judgment about the offer
+    # rather than a description of the landscape.
+    competition_data: Optional[CompetitionExtraction] = Field(default=None, description="Structured strengths/weaknesses/opportunities/differentiators for the offer against the competitive standard")
 
     # --Completion--
     competition_complete: bool = Field(default=False, description="")
@@ -394,7 +403,8 @@ class IcpSessionState(TypedDict):
     market_data: Optional[MarketExtraction] = Field(default=None, description="The market stage's structured extraction; its buyer_type branches the whole profile")
     competition_findings: Optional[str] = Field(default=None, description="The competition stage's research notes (Sources block stripped at use)")
     competitive_positioning_understanding: Optional[str] = Field(default=None, description="The competition stage's positioning understanding")
-    competition_data: Optional[CompetitionExtraction] = Field(default=None, description="The competition stage's structured competitor set + SWOD; competitor_leads derive only from it")
+    ideal_competitor_profile: Optional[IdealCompetitorProfile] = Field(default=None, description="The competition stage's archetype profile — names no one, so it cannot seed a named competitor_lead on its own")
+    competition_data: Optional[CompetitionExtraction] = Field(default=None, description="The competition stage's offer-vs-standard SWOD. competitor_leads derive from the research PROSE plus the archetype profile's where_to_find_them, never from a name list this stage no longer emits")
 
     # --Structured synthesis--
     # The load-bearing output account discovery reads. Drafted (create_icp),
@@ -472,7 +482,8 @@ class DiscoverySessionState(DiscoverOfferState):
     competitive_positioning_understanding: Optional[str] = Field(default=None, description="Brief standalone synthesis of how the offer is positioned vs. its real competitors; target 40 words, maximum 50")
 
     # --Structured extraction--
-    competition_data: Optional[CompetitionExtraction] = Field(default=None, description="Structured competitor set + strengths/weaknesses/opportunities/differentiators")
+    ideal_competitor_profile: Optional[IdealCompetitorProfile] = Field(default=None, description="The refined Ideal Competitor Profile: category boundary + local/regional/global archetypes, no named companies")
+    competition_data: Optional[CompetitionExtraction] = Field(default=None, description="Structured strengths/weaknesses/opportunities/differentiators for the offer against the competitive standard")
 
     # --Completion--
     competition_complete: bool = Field(default=False, description="")
@@ -483,3 +494,277 @@ class DiscoverySessionState(DiscoverOfferState):
     icp_understanding: Optional[str] = Field(default=None, description="Brief standalone synthesis of who the ICP is and where to reach them; target 40 words, maximum 50")
     icp_complete: bool = Field(default=False, description="")
 
+
+
+# ============================================================================
+# COMPETITOR AGENT (get_competitors) -- the epistemic inverse of the competition
+# stage.
+#
+# `IdealCompetitorProfile` above is a CONSTRUCT: "the regional incumbent
+# undercutting on price" makes no claim that any firm exists, which is exactly
+# why it may be aggressive and needs no sourcing. Everything in this section is
+# the opposite -- a claim that a NAMED, REAL company exists and does these
+# things. So the models here are shaped around provenance rather than coverage:
+#
+#   - `CandidateFinding.website` is nullable and a null means the candidate is
+#     DROPPED, because a firm with no findable public site cannot be verified.
+#   - `SourcedFinding` requires `evidence`, so an unsourced assertion about a
+#     real company is unrepresentable rather than merely discouraged.
+#   - `CompetitorProfile.unsourced_fields` names what research could not
+#     establish, so the UI says "not found" instead of rendering a blank that
+#     reads as a finding.
+#
+# The two standards must not blur. In particular the competition stage's "be
+# aggressive, construct freely" instruction has NO place in this agent: an
+# invented weakness attributed to a real named company is a factual error about
+# an identifiable business, not a hypothesis.
+# ============================================================================
+
+
+class CompetitorHuntTask(BaseModel):
+	"""One search assignment: hunt for firms matching one archetype."""
+
+	archetype_label: str = Field(description="The archetype from the ideal profile being hunted")
+	geography_scope: str = Field(
+		description="local | regional | global | any -- carried through so the "
+		"verdict survives to the profile"
+	)
+	objective: str = Field(description="What this task is trying to find")
+	queries: list[str] = Field(
+		default_factory=list,
+		description="Search queries. Must never name the offer itself -- a query "
+		"like 'alternatives to us' returns listicles, not the rivals",
+	)
+
+
+class CompetitorHuntPlan(BaseModel):
+	tasks: list[CompetitorHuntTask] = Field(default_factory=list)
+
+
+class CandidateFinding(BaseModel):
+	"""A firm the hunt turned up, with the evidence that it exists."""
+
+	name: str = Field(description="The company's own name as it brands itself")
+	website: Optional[str] = Field(
+		default=None,
+		description="The company's public website, as it appeared in a retrieved "
+		"source. NULL MEANS DROP: the brief tracks only firms with a findable "
+		"public site, and a candidate whose site could not be read is a "
+		"candidate we cannot verify.",
+	)
+	evidence_urls: list[str] = Field(
+		default_factory=list,
+		description="Retrieved pages that named this company and showed its site. "
+		"Empty is permitted -- a site read off a directory listing still counts -- "
+		"but a name with no traceable origin is a hallucination risk and the "
+		"planner prompt says so.",
+	)
+	why_it_might_match: Optional[str] = Field(
+		default=None,
+		description="One line on why this firm looks like the archetype. A guess "
+		"flagged as a guess, so the screening stage can drop it if it cannot hold up",
+	)
+	geography_hint: Optional[str] = Field(
+		default=None, description="Where the source suggests the firm is based"
+	)
+
+
+class CompetitorHuntBundle(BaseModel):
+	"""What one hunt task found, with the sources behind it."""
+
+	archetype_label: str = ""
+	geography_scope: str = "any"
+	candidates: list[CandidateFinding] = Field(default_factory=list)
+	search_failed: bool = Field(default=False)
+	queries: list[str] = Field(default_factory=list)
+	sources: list[dict] = Field(default_factory=list)
+
+
+class SourcedFinding(BaseModel):
+	"""One claim about a real company, with the proof attached.
+
+	`evidence` is required, not optional. A weakness or a complaint attributed to
+	a named business is a factual assertion about an identifiable company, and an
+	unsourced one is simply a fabrication with extra steps.
+	"""
+
+	text: str = Field(description="The claim, in one line")
+	evidence: str = Field(
+		description="A quote or close paraphrase from a retrieved source showing "
+		"the claim is real. Never a paraphrase of a paraphrase",
+	)
+	source_url: Optional[str] = Field(
+		default=None, description="The page the evidence came from"
+	)
+
+
+class CompetitorSocial(BaseModel):
+	kind: Literal["website", "instagram", "tiktok", "x", "linkedin", "github", "other"] = Field(
+		description="The network. The brief asks for Instagram, TikTok, X and "
+		"LinkedIn; website and github are included because they turn up alongside "
+		"them and a competitor's repo is often its most honest page",
+	)
+	value: str = Field(description="The full profile URL, or the handle if that is all that was found")
+	confidence: Literal["high", "medium", "low"] = Field(
+		default="medium",
+		description="How sure we are the link belongs to THIS company. A handle "
+		"found next to the company name is medium; one read off the company's own "
+		"site is high",
+	)
+
+
+class CompetitorProfile(BaseModel):
+	"""A verified real company, profiled with per-field provenance.
+
+	The inverse of `CompetitorArchetype`. Every field is a claim about a real
+	firm, so the model carries the evidence for each one and names the fields
+	research could not establish.
+	"""
+
+	name: str
+	website: str = Field(description="Required. A firm with no public site is not tracked")
+	description: Optional[str] = Field(default=None, description="What the company does, in its own framing")
+	offering: Optional[str] = Field(default=None, description="The product or service actually sold")
+	positioning: Optional[str] = Field(default=None, description="How it claims to differ")
+	business_model: Optional[str] = Field(default=None)
+	pricing: Optional[str] = Field(
+		default=None,
+		description="Published pricing or its absence. 'No public pricing' is a "
+		"finding; leave null only if pricing was not researched at all",
+	)
+
+	target_customers: Optional[str] = Field(default=None, description="Whom they serve")
+	headquarters: Optional[str] = Field(default=None)
+	geography_scope: Optional[str] = Field(
+		default=None,
+		description="local | regional | global | any -- the local-vs-foreign "
+		"verdict, carried from the archetype that found them and corrected "
+		"against their own site",
+	)
+
+	comparison: Optional[str] = Field(
+		default=None,
+		description="How the user's own offer compares to this firm, on the axes "
+		"the competitor profile establishes",
+	)
+	matched_archetype: Optional[str] = Field(
+		default=None, description="Which archetype of the ideal profile this firm turned out to be"
+	)
+
+	strengths: list[SourcedFinding] = Field(default_factory=list)
+	weaknesses: list[SourcedFinding] = Field(default_factory=list)
+	# Opportunities are a DIFFERENT kind of claim from weaknesses above, and the
+	# brief is explicit that they must exist even with no pain signals at all --
+	# better quality, faster, cheaper. So they are not sourced facts ABOUT the
+	# competitor; they are openings derived from cited facts about them plus the
+	# user's offer. Keeping them in their own field stops a derived opening from
+	# being read as a sourced observation.
+	opportunities: list[str] = Field(default_factory=list)
+	notable_customers: list[str] = Field(default_factory=list)
+
+	pain_signals: list[SourcedFinding] = Field(
+		default_factory=list,
+		description="Specific, evidenced complaints. Empty is a legitimate and "
+		"common outcome -- it is not the same as 'they have no problems'",
+	)
+	customer_sentiment: list[SourcedFinding] = Field(
+		default_factory=list,
+		description="What customers say about them overall. Separate from pain "
+		"signals because a well-loved firm can still beat us on price",
+	)
+
+	tracking_sources: list[CompetitorSocial] = Field(default_factory=list)
+
+	evidence: dict[str, list[str]] = Field(
+		default_factory=dict,
+		description="{field_name: [source_url, ...]} -- which retrieved page backs "
+		"which claim. This is the audit trail for every other field",
+	)
+	unsourced_fields: list[str] = Field(
+		default_factory=list,
+		description="Field names research could NOT establish. The UI renders "
+		"these as 'not found' rather than as empty space",
+	)
+
+
+class CompetitorProfileBatch(BaseModel):
+	profiles: list[CompetitorProfile] = Field(default_factory=list)
+
+
+class CompetitorRunOutcome(BaseModel):
+	"""What one run did, in the shape the API records on the run row."""
+
+	candidates_seen: int = 0
+	found: int = 0
+	dropped: int = 0
+	dropped_reasons: dict[str, int] = Field(
+		default_factory=dict,
+		description="{reason: count}. 'no_public_website' is expected to dominate: "
+		"that is the brief's filter working, not a lossy run",
+	)
+
+
+class CompetitorSessionState(TypedDict):
+	"""The standalone competitor hunt, as a hunt -> screen -> profile pipeline.
+
+	Deliberately not part of the discovery spine's state. This agent runs on its
+	own, from a workspace, after discovery has already finished, and re-runs as
+	often as the user likes. Two consequences shape the state:
+
+	1. It reads its offer and its archetype profile OUT OF THE DATABASE rather
+	   than inheriting them on the session. The discovery checkpoint cannot help
+	   it: that thread id is minted per WebSocket connection, so nothing maps a
+	   finished run to the workspace a later request comes in on.
+
+	2. There is no Sources-bearing findings channel, unlike every research stage
+	   in the spine. Nothing here is written for a human to read as prose; the
+	   sources are kept structured (per-candidate `sources`, per-field `evidence`)
+	   because every claim in this stage has to be auditable, which prose notes
+	   are not.
+	"""
+
+	# -- Inputs, hydrated from the workspace's product profile --
+	# offer_type decides the noun the prompts use ("product" vs "service"), the
+	# same switch the rest of the codebase reads, so a service workspace is
+	# hunted in service language without a second toggle.
+	offer_type: Optional[Literal["product", "service"]] = None
+	offer_name: str = Field(description="")
+	offer_description: str = Field(description="")
+	problem: str | None = Field(default=None, description="The problem the offer addresses")
+	solution: str | None = Field(default=None, description="How the offer solves it")
+	features: list[str] = Field(default_factory=list, description="Differentiators, used to judge how the offer compares to a rival")
+	# The offer's own site, so a run can recognise the user and refuse to file
+	# them as their own competitor.
+	own_website: str | None = Field(default=None, description="The offer's own website, for self-exclusion")
+
+	# -- The shape being hunted for --
+	# A dict as persisted, not a validated IdealCompetitorProfile: it arrives
+	# from the insights JSON blob. _archetype_rows() tolerates both shapes.
+	ideal_competitor_profile: Optional[dict] = Field(
+		default=None,
+		description="The competition stage's archetype profile. Archetypes only -- "
+		"it names no company, so it can only say what to look FOR",
+	)
+
+	# -- Pipeline channels --
+	competitor_hunt_tasks: List[CompetitorHuntTask] = Field(
+		default_factory=list, description="One search assignment per archetype"
+	)
+	competitor_hunt_bundles: List[CompetitorHuntBundle] = Field(
+		default_factory=list, description="Per-task candidates plus the sources they came from"
+	)
+	# Screening output. A plain dict rather than a model because the screen also
+	# carries the retrieved sources forward, and the dataclasses.asdict call a
+	# model dump would give is not worth the schema surface.
+	competitor_survivors: List[dict] = Field(
+		default_factory=list, description="Candidates that survived the website filter, deduplicated"
+	)
+	competitor_profiles: List[CompetitorProfile] = Field(
+		default_factory=list, description="Sourced profiles, built only for survivors"
+	)
+	competitor_outcome: Optional[CompetitorRunOutcome] = Field(
+		default=None,
+		description="What the run screened and kept. Carries the DROP reasons, "
+		"because a run keeping 3 of 40 is the filter working and has to be "
+		"reportable as such",
+	)

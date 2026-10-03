@@ -140,7 +140,7 @@ def main():
 
         competition_data = result.get("competition_data")
         if competition_data:
-            print(f"\nEXTRACTED COMPETITION DATA:")
+            print(f"\nEXTRACTED COMPETITION SWOD:")
             print(competition_data.model_dump_json(indent=2, exclude_none=True))
 
         findings = result.get("competition_findings") or ""
@@ -152,15 +152,20 @@ def main():
             print(f"\nCOMPETITIVE POSITIONING UNDERSTANDING:\n{positioning_understanding}")
 
         expert_answers = sum(1 for m in messages if getattr(m, "name", None) == "expert")
-        n_competitors = len(competition_data.competitors) if competition_data else 0
+        # This legacy twin no longer emits a named competitor list -- it produces
+        # the offer-vs-standard SWOD only (see sub_graphs/understand_competition.py).
+        # Real rivals are the standalone get_competitors agent's job.
+        has_swod = competition_data is not None and any(
+            getattr(competition_data, f, None)
+            for f in ("strengths", "weaknesses", "opportunities", "differentiators")
+        )
         complete = (
             expert_answers > 0
-            and competition_data is not None
-            and 3 <= n_competitors <= 5
+            and has_swod
             and bool(findings.strip())
             and bool((positioning_understanding or "").strip())
         )
-        print("\n" + ("✅ Competition interview + extraction (3-5 competitors) + notes + positioning synthesis complete." if complete else "❌ Interview, extraction, notes, or synthesis incomplete."))
+        print("\n" + ("✅ Competition interview + SWOD extraction + notes + positioning synthesis complete." if complete else "❌ Interview, extraction, notes, or synthesis incomplete."))
 
     except KeyboardInterrupt:
         print("\n⌨️ Cancelled.")

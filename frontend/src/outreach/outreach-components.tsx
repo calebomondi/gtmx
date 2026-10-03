@@ -413,9 +413,9 @@ export function OutReachComponent({ focusEmail = null, onFocusHandled }: OutReac
 
   return (
     <div className="flex h-[calc(100dvh-7rem)] min-h-0 flex-col">
-      <div className="flex items-center justify-between gap-2 mb-5">
+      <div className="flex items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2">
-          <h2 className="text-xl font-medium text-foreground">Out Reach</h2>
+          <h2 className="text-xl font-medium text-foreground">Reach Out</h2>
           {unreadCount > 0 && (
             <span className="flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-amber-500 px-1 text-xs font-medium text-amber-950">
               {unreadCount}
