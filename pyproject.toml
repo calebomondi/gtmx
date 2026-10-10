@@ -35,3 +35,22 @@ dependencies = [
     "supabase>=2.31.0",
     "uvicorn[standard]>=0.34.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["agents/tests", "backend/tests"]
+python_files = ["test_*.py"]
+# Live tests hit real LLM / search / scraping APIs: slow, cost money, need keys.
+# Excluded by default; run them with `uv run pytest -m live`.
+addopts = "-m 'not live' -p no:cacheprovider"
+markers = [
+    "live: calls real external APIs (LLM, Exa, BrightData); opt-in with -m live",
+]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"

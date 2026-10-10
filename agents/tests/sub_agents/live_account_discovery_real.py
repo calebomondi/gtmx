@@ -2,7 +2,7 @@
 
 Run:
     PYTHONPATH=/home/mokuaxv/gtmx2/gtmx .venv/bin/python \
-        agents/tests/sub_agents/test_account_discovery_real.py
+        agents/tests/sub_agents/live_account_discovery_real.py
 """
 import sys
 from pathlib import Path

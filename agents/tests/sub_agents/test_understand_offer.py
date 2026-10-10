@@ -11,7 +11,7 @@ Run all branches:
 Run one branch:
     python agents/tests/sub_agents/test_understand_offer.py product
 Under pytest:
-    pytest agents/tests/sub_agents/test_understand_offer.py
+    pytest -m live agents/tests/sub_agents/test_understand_offer.py
 
 Assertions are invariants, not exact text: LLM output is nondeterministic, so we
 assert the things the design actually promises (brand-free queries, the 3-5 task
@@ -45,6 +45,10 @@ sys.path.insert(0, str(root))
 from agents.llm.main import llm_timing_report  # noqa: E402
 from agents.sub_agents.schema_states import Specialist  # noqa: E402
 from agents.sub_agents.discover.understand_offer import build_product_graph  # noqa: E402
+import pytest
+
+# Real LLM + web calls: opt-in with `uv run pytest -m live`.
+pytestmark = pytest.mark.live
 
 _OUT_DIR = Path(__file__).resolve().parent / "_out"
 

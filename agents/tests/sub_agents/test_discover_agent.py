@@ -23,7 +23,7 @@ it directly, exactly as `_build_initial_state` does.
 Run:
     python agents/tests/sub_agents/test_discover_agent.py
 Under pytest:
-    pytest agents/tests/sub_agents/test_discover_agent.py
+    pytest -m live agents/tests/sub_agents/test_discover_agent.py
 
 Assertions are invariants, not exact text: every stage's completion flag is set,
 the three research stages carry a ### Sources block and the ICP stage is pure
@@ -56,6 +56,10 @@ from agents.states import (  # noqa: E402
 )
 from agents import discovery_agent  # noqa: E402
 from langgraph.types import Command  # noqa: E402
+import pytest
+
+# Real LLM + web calls: opt-in with `uv run pytest -m live`.
+pytestmark = pytest.mark.live
 
 _OUT_DIR = Path(__file__).resolve().parent / "_out" / "discover_agent"
 

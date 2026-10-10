@@ -16,7 +16,7 @@ Branches:
              NO interrupt fires at all.
 
 Run: python agents/tests/sub_agents/test_discover_offer_manual.py
-Under pytest: pytest agents/tests/sub_agents/test_discover_offer_manual.py
+Under pytest: pytest -m live agents/tests/sub_agents/test_discover_offer_manual.py
 """
 
 import json
@@ -40,6 +40,10 @@ from agents.sub_agents.discover.discover_offer_manual import (  # noqa: E402
     build_manual_offer_discovery_graph,
 )
 from langgraph.types import Command  # noqa: E402
+import pytest
+
+# Real LLM + web calls: opt-in with `uv run pytest -m live`.
+pytestmark = pytest.mark.live
 
 _OUT_DIR = Path(__file__).resolve().parent / "_out" / "discover_offer_manual"
 
