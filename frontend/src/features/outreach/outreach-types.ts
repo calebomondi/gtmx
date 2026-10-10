@@ -1,15 +1,14 @@
-import { Hash, MessagesSquare } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+
+import type { OutreachMessageDto } from '@/lib/api'
 
 export type ChannelGlyph = LucideIcon | string
 
-export type Channel = 'email' | 'linkedin' | 'slack' | 'discord'
+export type Channel = 'email' | 'linkedin'
 
 export const CHANNELS: Record<Channel, ChannelMeta> = {
-  email: { key: 'email', label: 'Email', icon: '/gmail.svg', connected: true },
-  linkedin: { key: 'linkedin', label: 'LinkedIn', icon: '/linkedin.svg', connected: true },
-  slack: { key: 'slack', label: 'Slack', icon: Hash, connected: false },
-  discord: { key: 'discord', label: 'Discord', icon: MessagesSquare, connected: false },
+  email: { key: 'email', label: 'Email', icon: '/gmail.svg' },
+  linkedin: { key: 'linkedin', label: 'LinkedIn', icon: '/linkedin.svg' },
 }
 
 export type MessageDirection = 'inbound' | 'outbound'
@@ -28,7 +27,6 @@ export interface ChannelMeta {
   key: Channel
   label: string
   icon: ChannelGlyph
-  connected: boolean
 }
 
 export interface Connection {
@@ -124,4 +122,40 @@ export function matchContactEmail(
         ),
     ) ?? null
   )
+}
+
+const FOLDER_OF: Record<OutreachMessageDto['status'], ConversationFolder> = {
+  draft: 'drafts',
+  sending: 'sent',
+  sent: 'sent',
+  failed: 'bounces',
+}
+
+/** One outreach message is one conversation until reply sync exists. */
+export function toConversation(dto: OutreachMessageDto): Conversation {
+  const at = Date.parse(dto.sent_at ?? dto.updated_at)
+  return {
+    id: dto.id,
+    channel: dto.channel,
+    contact: {
+      id: dto.account_id ?? dto.id,
+      name: dto.recipient_name || dto.recipient_company,
+      company: dto.recipient_company,
+      email: dto.recipient_address ?? undefined,
+    },
+    messages: [{
+      id: dto.id,
+      conversationId: dto.id,
+      channel: dto.channel,
+      direction: 'outbound',
+      subject: dto.subject ?? undefined,
+      body: dto.body,
+      timestamp: at,
+      status: dto.status === 'sending' ? 'sent' : dto.status,
+    }],
+    folder: FOLDER_OF[dto.status],
+    unread: false,
+    hot: false,
+    lastActivityAt: at,
+  }
 }

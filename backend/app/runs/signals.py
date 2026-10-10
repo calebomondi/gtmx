@@ -15,6 +15,7 @@ _KIND_LABEL = {
     "competitors": "Competitor research",
     "accounts": "Account discovery",
     "competitor_research": "Competitor profiling",
+    "outreach_drafts": "Outreach drafting",
 }
 _MAX_ACCOUNT_SIGNALS = 5
 
@@ -83,6 +84,18 @@ async def accounts_found(run_id: uuid.UUID) -> None:
             summary=(a.why_reach_out or a.why_selected or [a.industry or ""])[0],
             reason="Matches your ideal customer profile.", source_url=a.website,
         ) for a in rows]
+    await _emit(build)
+
+
+async def outreach_drafted(run_id: uuid.UUID, count: int) -> None:
+    async def build(db):
+        run = await db.get(models.Run, run_id)
+        return [signal_service.build(
+            user_id=run.user_id, workspace_id=run.workspace_id, run_id=run_id, category="outbound",
+            title=f"{count} outreach draft{'s' if count != 1 else ''} ready", entity="Outreach",
+            summary="Review, edit and approve them in Reach Out. Nothing is sent without you.",
+            reason="You asked the agent to draft outreach.",
+        )] if count else []
     await _emit(build)
 
 

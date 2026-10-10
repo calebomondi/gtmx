@@ -10,10 +10,13 @@ from datetime import UTC, datetime
 from backend.app.account_runner import run_account_discovery_for_workspace
 from backend.app.competitor_runner import research_competitor_site, run_competitor_discovery
 from backend.app.database import models
+from agents.concurrency import ContextThreadPoolExecutor
 from agents.pipelines.chat import workspace_chat
+from agents.pipelines.outreach import draft_messages
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.runs import events, signals
 from backend.app.services import chat as chat_service
+from backend.app.services import outreach as outreach_service
 from backend.app.services.runs import set_run_fields
 
 
@@ -56,9 +59,47 @@ async def chat(run_id: uuid.UUID, workspace_id: uuid.UUID, params: dict) -> None
     await _finish(run_id, {"message_id": str(message.id)})
 
 
+_DRAFT_WORKERS = 4
+
+
+async def outreach_drafts(run_id: uuid.UUID, workspace_id: uuid.UUID, params: dict) -> None:
+    """Draft one message per selected account; the user reviews every one."""
+    channel, sender = params["channel"], params.get("sender") or ""
+    async with AsyncSessionLocal() as db:
+        run = await db.get(models.Run, run_id)
+        accounts = await outreach_service.accounts_for_drafting(
+            db, workspace_id, [uuid.UUID(a) for a in params["account_ids"]],
+        )
+        context = await outreach_service.offer_context(db, workspace_id)
+    targets = [(a, *outreach_service.recipient_for(a, channel)) for a in accounts]
+
+    def write(target):
+        account, name, _address = target
+        return draft_messages.draft(channel, context, outreach_service.account_brief(account, name), sender)
+
+    def draft_all():
+        with ContextThreadPoolExecutor(max_workers=_DRAFT_WORKERS) as pool:
+            return list(pool.map(write, targets))
+    drafts = await asyncio.to_thread(draft_all)
+
+    async with AsyncSessionLocal() as db:
+        db.add_all([
+            models.OutreachMessage(
+                workspace_id=workspace_id, user_id=run.user_id, account_id=account.id, run_id=run_id,
+                channel=channel, recipient_name=name, recipient_company=account.name,
+                recipient_address=address, subject=d.subject or None, body=d.body,
+            )
+            for (account, name, address), d in zip(targets, drafts)
+        ])
+        await db.commit()
+    await _finish(run_id, {"drafted": len(drafts)})
+    await signals.outreach_drafted(run_id, len(drafts))
+
+
 EXECUTORS: dict[str, Callable[[uuid.UUID, uuid.UUID, dict], Awaitable[None]]] = {
     "competitors": competitors,
     "accounts": accounts,
     "competitor_research": competitor_research,
     "chat": chat,
+    "outreach_drafts": outreach_drafts,
 }

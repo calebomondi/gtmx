@@ -1,12 +1,15 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { DotLottieReact } from '@lottiefiles/dotlottie-react'
 import {
   AlertTriangle,
   Check,
+  Copy,
+  Loader2,
   Mail,
-  Paperclip,
   PenLine,
+  Sparkles,
+  Trash2,
   Link,
   Pin,
   Reply,
@@ -30,6 +33,16 @@ import {
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
+import {
+  deleteOutreachMessage,
+  draftOutreach,
+  listAccounts,
+  listOutreach,
+  sendOutreachMessage,
+  updateOutreachMessage,
+  type OutreachMessageDto,
+} from '@/lib/api'
 
 import { AgentConnectionsDialog } from './agent-connections-dialog'
 import AccountsComponent from './accounts-components'
@@ -41,12 +54,12 @@ import {
   latestMessage,
   matchContactEmail,
   snippetFor,
+  toConversation,
   type Channel,
   type ChannelFilter,
   type Conversation,
   type MessageStatus,
   type OutreachFilter,
-  type OutreachMessage,
 } from './outreach-types'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -218,54 +231,92 @@ function SectionHeader({ label, count }: { label: string; count: number }) {
   )
 }
 
-function MessageBubble({ message }: { message: OutreachMessage }) {
-  const outbound = message.direction === 'outbound'
-  const status = STATUS_META[message.status]
-
-  return (
-    <div className={cn('flex w-full flex-col', outbound ? 'items-end' : 'items-start')}>
-      <div
-        className={cn(
-          'max-w-[85%] rounded-xl border px-3 py-2 text-sm leading-relaxed',
-          outbound
-            ? 'border-amber-500/20 bg-amber-500/10 text-foreground'
-            : 'border-primary/10 bg-muted/60 text-foreground',
-        )}
-      >
-        <p className="whitespace-pre-wrap break-words">{message.body}</p>
-      </div>
-      <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground">
-        <span>{formatRelativeTime(message.timestamp)}</span>
-        <span className="inline-flex items-center gap-1">
-          {status.icon}
-          {status.label}
-        </span>
-      </div>
-    </div>
-  )
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
 }
 
+/** Review, edit and approve one outreach message. Email sends through the
+ *  user's Gmail on this button only; LinkedIn is copied and sent by hand. */
 function ThreadModal({
-  conversation,
+  workspaceId,
+  message,
   open,
   onOpenChange,
-  onSendReply,
+  onChanged,
+  onDeleted,
 }: {
-  conversation: Conversation | null
+  workspaceId?: string
+  message: OutreachMessageDto | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSendReply: (conversationId: string, body: string) => void
+  onChanged: (message: OutreachMessageDto) => void
+  onDeleted: (messageId: string) => void
 }) {
-  const [replyText, setReplyText] = useState('')
-  const channel = conversation ? CHANNELS[conversation.channel] : null
+  const [subject, setSubject] = useState('')
+  const [body, setBody] = useState('')
+  const [address, setAddress] = useState('')
+  const [busy, setBusy] = useState<null | 'save' | 'send' | 'delete'>(null)
 
   useEffect(() => {
-    if (!open) {
-      setReplyText('')
-    }
-  }, [open, conversation?.id])
+    if (!message) return
+    setSubject(message.subject ?? '')
+    setBody(message.body)
+    setAddress(message.recipient_address ?? '')
+  }, [message])
 
-  if (!conversation || !channel) return null
+  if (!message || !workspaceId) return null
+  const channel = CHANNELS[message.channel]
+  const editable = message.status === 'draft' || message.status === 'failed'
+  const dirty = subject !== (message.subject ?? '') || body !== message.body || address !== (message.recipient_address ?? '')
+
+  const save = async (): Promise<OutreachMessageDto> => {
+    const saved = await updateOutreachMessage(workspaceId, message.id, {
+      subject: message.channel === 'email' ? subject : undefined,
+      body,
+      recipient_address: message.channel === 'email' ? address : undefined,
+    })
+    onChanged(saved)
+    return saved
+  }
+
+  const act = async (kind: 'save' | 'send' | 'delete') => {
+    setBusy(kind)
+    try {
+      if (kind === 'delete') {
+        await deleteOutreachMessage(workspaceId, message.id)
+        onDeleted(message.id)
+        onOpenChange(false)
+        return
+      }
+      if (dirty) await save()
+      if (kind === 'save') {
+        toast.success('Draft saved')
+        return
+      }
+      const sent = await sendOutreachMessage(workspaceId, message.id)
+      onChanged(sent)
+      if (sent.status === 'sent') {
+        toast.success(`Sent to ${sent.recipient_address}`)
+        onOpenChange(false)
+      } else {
+        toast.error(sent.error ?? 'The message was not sent.')
+      }
+    } catch (err) {
+      toast.error(errorText(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const copy = async () => {
+    try {
+      if (dirty) await save()
+      await navigator.clipboard.writeText(body)
+      toast.success('Copied — paste it into LinkedIn')
+    } catch (err) {
+      toast.error(errorText(err))
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -273,13 +324,12 @@ function ThreadModal({
         <DialogHeader className="border-b">
           <div className="flex items-center gap-3">
             <Avatar size="lg">
-              <AvatarFallback>{initialsFor(conversation.contact.name)}</AvatarFallback>
+              <AvatarFallback>{initialsFor(message.recipient_name || message.recipient_company)}</AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <DialogTitle className="truncate">{conversation.contact.name}</DialogTitle>
+              <DialogTitle className="truncate">{message.recipient_name || message.recipient_company}</DialogTitle>
               <DialogDescription className="truncate">
-                {conversation.contact.company}
-                {conversation.contact.email ? ` · ${conversation.contact.email}` : ''}
+                {message.recipient_company} · {editable ? 'Draft — review before sending' : `Sent ${message.sent_at ? formatRelativeTime(Date.parse(message.sent_at)) : ''}`}
               </DialogDescription>
             </div>
             <div className="flex items-center gap-1 rounded-full bg-muted/70 px-2 py-1 text-[10px] font-medium text-muted-foreground">
@@ -290,45 +340,127 @@ function ThreadModal({
         </DialogHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-4">
-          {conversation.messages.map((message) => (
-            <MessageBubble key={message.id} message={message} />
-          ))}
+          {message.status === 'failed' && message.error && (
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" /> {message.error}
+            </div>
+          )}
+          {message.channel === 'email' && (
+            <>
+              <Input value={address} disabled={!editable} onChange={(e) => setAddress(e.target.value)} placeholder="Recipient email" />
+              <Input value={subject} disabled={!editable} onChange={(e) => setSubject(e.target.value)} placeholder="Subject" />
+            </>
+          )}
+          <Textarea value={body} disabled={!editable} onChange={(e) => setBody(e.target.value)} className="min-h-56 resize-y" />
+          {message.channel === 'linkedin' && (
+            <p className="text-xs text-muted-foreground">LinkedIn doesn't allow apps to send messages: copy this and send it from LinkedIn.</p>
+          )}
         </div>
 
-        <DialogFooter className="border-t">
-          <div className="flex w-full flex-col gap-2">
-            <div className="flex items-center gap-2">
-              <Textarea
-                value={replyText}
-                onChange={(event) => setReplyText(event.target.value)}
-                placeholder="Write a reply…"
-                className="min-h-20 resize-none"
-              />
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <Button
-                type="button"
-                size="icon-sm"
-                variant="ghost"
-                className="cursor-pointer text-muted-foreground"
-              >
-                <Paperclip className="size-4" />
+        {editable && (
+          <DialogFooter className="border-t">
+            <div className="flex w-full items-center justify-between gap-2">
+              <Button type="button" size="sm" variant="ghost" className="cursor-pointer text-muted-foreground hover:text-destructive" disabled={busy !== null} onClick={() => void act('delete')}>
+                <Trash2 className="size-3.5" /> Delete
               </Button>
-              <Button
-                type="button"
-                size="sm"
-                className="cursor-pointer bg-amber-500 text-amber-950 hover:bg-amber-400 hover:text-amber-950"
-                disabled={!replyText.trim()}
-                onClick={() => {
-                  onSendReply(conversation.id, replyText.trim())
-                  setReplyText('')
-                }}
-              >
-                <Send className="size-3.5" />
-                Send
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button type="button" size="sm" variant="outline" className="cursor-pointer" disabled={busy !== null || !dirty} onClick={() => void act('save')}>
+                  Save
+                </Button>
+                {message.channel === 'email' ? (
+                  <Button type="button" size="sm" className="cursor-pointer bg-amber-500 text-amber-950 hover:bg-amber-400 hover:text-amber-950" disabled={busy !== null || !body.trim() || !address.trim() || !subject.trim()} onClick={() => void act('send')}>
+                    {busy === 'send' ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />} Approve & send
+                  </Button>
+                ) : (
+                  <Button type="button" size="sm" className="cursor-pointer bg-amber-500 text-amber-950 hover:bg-amber-400 hover:text-amber-950" onClick={() => void copy()}>
+                    <Copy className="size-3.5" /> Copy message
+                  </Button>
+                )}
+              </div>
             </div>
+          </DialogFooter>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Draft one message per account the user selected for outreach. */
+function DraftDialog({
+  workspaceId,
+  open,
+  onOpenChange,
+  onStarted,
+}: {
+  workspaceId?: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onStarted: () => void
+}) {
+  const [selected, setSelected] = useState<string[] | null>(null)
+  const [channel, setChannel] = useState<Channel>('email')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    if (!open || !workspaceId) return
+    setSelected(null)
+    listAccounts(workspaceId)
+      .then((list) => setSelected(list.accounts.filter((a) => a.selected).map((a) => a.id)))
+      .catch(() => setSelected([]))
+  }, [open, workspaceId])
+
+  const start = async () => {
+    if (!workspaceId || !selected?.length) return
+    setBusy(true)
+    try {
+      await draftOutreach(workspaceId, selected.slice(0, 25), channel)
+      toast.success('Drafting started — drafts appear here in a minute')
+      onStarted()
+      onOpenChange(false)
+    } catch (err) {
+      toast.error(errorText(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Draft outreach</DialogTitle>
+          <DialogDescription>
+            The agent writes one personalized message per selected account. You review every one — nothing is sent without you.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-3 px-4 pb-2 text-sm">
+          {selected === null ? (
+            <p className="text-muted-foreground">Loading accounts…</p>
+          ) : selected.length === 0 ? (
+            <p className="text-muted-foreground">No accounts selected yet. Open Accounts, mark the ones to reach, then come back.</p>
+          ) : (
+            <p>{selected.length} selected account{selected.length === 1 ? '' : 's'}{selected.length > 25 ? ' (the first 25 will be drafted)' : ''}.</p>
+          )}
+          <div className="flex gap-2">
+            {ENABLED_CHANNELS.map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setChannel(key)}
+                className={cn(
+                  'inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium',
+                  channel === key ? 'border-amber-500 bg-amber-500 text-amber-950' : 'border-border text-muted-foreground',
+                )}
+              >
+                <ChannelGlyph icon={CHANNELS[key].icon} className="size-3.5" /> {CHANNELS[key].label}
+              </button>
+            ))}
           </div>
+        </div>
+        <DialogFooter>
+          <Button type="button" size="sm" disabled={busy || !selected?.length} onClick={() => void start()} className="cursor-pointer bg-amber-500 text-amber-950 hover:bg-amber-400">
+            {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />} Draft messages
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -342,7 +474,32 @@ export interface OutReachComponentProps {
 }
 
 export function OutReachComponent({ focusEmail = null, onFocusHandled, workspaceId }: OutReachComponentProps) {
-  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [messages, setMessages] = useState<OutreachMessageDto[]>([])
+  const [drafting, setDrafting] = useState(false)
+  const [draftOpen, setDraftOpen] = useState(false)
+  const conversations = useMemo<Conversation[]>(() => messages.map(toConversation), [messages])
+
+  const refresh = useCallback(async () => {
+    if (!workspaceId) return
+    try {
+      const list = await listOutreach(workspaceId)
+      setMessages(list.messages)
+      setDrafting(list.drafting_run !== null)
+    } catch {
+      // keep what we have; the next refresh retries
+    }
+  }, [workspaceId])
+
+  useEffect(() => {
+    void refresh()
+  }, [refresh])
+
+  // While the agent drafts, poll until the drafts land.
+  useEffect(() => {
+    if (!drafting) return
+    const timer = window.setInterval(() => void refresh(), 4000)
+    return () => window.clearInterval(timer)
+  }, [drafting, refresh])
   const [filter, setFilter] = useState<OutreachFilter>('all')
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>('all')
   const [query, setQuery] = useState('')
@@ -401,7 +558,7 @@ export function OutReachComponent({ focusEmail = null, onFocusHandled, workspace
     [conversations],
   )
 
-  const activeThread = conversations.find((c) => c.id === threadConversationId) ?? null
+  const activeMessage = messages.find((m) => m.id === threadConversationId) ?? null
 
   useEffect(() => {
     if (focusEmail) {
@@ -416,29 +573,8 @@ export function OutReachComponent({ focusEmail = null, onFocusHandled, workspace
   }, [focusEmail])
 
   const openThread = (id: string) => {
-    setConversations((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, unread: false } : c)),
-    )
     setThreadConversationId(id)
     setThreadOpen(true)
-  }
-
-  const sendReply = (id: string, body: string) => {
-    setConversations((prev) =>
-      prev.map((c) => {
-        if (c.id !== id) return c
-        const message: OutreachMessage = {
-          id: `msg-${Date.now()}`,
-          conversationId: id,
-          channel: c.channel,
-          direction: 'outbound',
-          body,
-          timestamp: Date.now(),
-          status: 'sent',
-        }
-        return { ...c, messages: [...c.messages, message], lastActivityAt: Date.now() }
-      }),
-    )
   }
 
   return (
@@ -453,6 +589,16 @@ export function OutReachComponent({ focusEmail = null, onFocusHandled, workspace
           )}
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            className="cursor-pointer bg-amber-500 text-amber-950 hover:bg-amber-400"
+            disabled={drafting}
+            onClick={() => setDraftOpen(true)}
+          >
+            {drafting ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+            {drafting ? 'Drafting…' : 'Draft outreach'}
+          </Button>
           <Button
             type="button"
             size="sm"
@@ -612,10 +758,21 @@ export function OutReachComponent({ focusEmail = null, onFocusHandled, workspace
       </div>
 
       <ThreadModal
-        conversation={activeThread}
+        workspaceId={workspaceId}
+        message={activeMessage}
         open={threadOpen}
         onOpenChange={setThreadOpen}
-        onSendReply={sendReply}
+        onChanged={(updated) => setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)))}
+        onDeleted={(id) => setMessages((prev) => prev.filter((m) => m.id !== id))}
+      />
+      <DraftDialog
+        workspaceId={workspaceId}
+        open={draftOpen}
+        onOpenChange={setDraftOpen}
+        onStarted={() => {
+          setDrafting(true)
+          void refresh()
+        }}
       />
       <AgentConnectionsDialog
         open={connectOpen}
