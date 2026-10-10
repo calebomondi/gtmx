@@ -47,6 +47,9 @@ async def user_from_token(token: str) -> Optional[AuthUser]:
     if suser is None:
         return None
 
+    if supabase_admin.is_suspended(getattr(suser, "banned_until", None)):
+        return None  # an access token outlives a ban by up to an hour; refuse it now
+
     try:
         uid = uuid.UUID(str(suser.id))
     except (ValueError, AttributeError, TypeError):

@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 
 from langgraph.types import Command
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.llm import main as llm
 from backend.app.database import models
@@ -25,7 +26,7 @@ from backend.app.runs.errors import user_facing_error
 from backend.app.schemas.agents import DiscoveryRequest
 from backend.app.services import limits
 from backend.app.services import runs as run_service
-from backend.app.services.errors import ConflictError, InvalidInputError
+from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError
 from backend.app.services.runs import TERMINAL_STATUSES, set_run_fields
 from config import settings
 from utils.log import logger
@@ -118,15 +119,28 @@ async def answer(user_id: uuid.UUID, run_id: uuid.UUID, text: str) -> None:
 async def cancel(user_id: uuid.UUID, run_id: uuid.UUID) -> models.Run:
     async with AsyncSessionLocal() as db:
         run = await run_service.get_owned(db, user_id, run_id)
-        if run.status in TERMINAL_STATUSES:
-            return run
-        run.status = "cancelled"
-        run.finished_at = datetime.now(UTC)
-        await db.commit()
-    task = _tasks.pop(run_id, None)
+        return await _cancel(db, run, "Run cancelled.")
+
+
+async def cancel_any(run_id: uuid.UUID, message: str) -> models.Run:
+    """Cancel any user's run. Admin-only: callers are behind require_admin."""
+    async with AsyncSessionLocal() as db:
+        run = await db.get(models.Run, run_id)
+        if run is None:
+            raise NotFoundError("Run not found")
+        return await _cancel(db, run, message)
+
+
+async def _cancel(db: AsyncSession, run: models.Run, message: str) -> models.Run:
+    if run.status in TERMINAL_STATUSES:
+        return run
+    run.status = "cancelled"
+    run.finished_at = datetime.now(UTC)
+    await db.commit()
+    task = _tasks.pop(run.id, None)
     if task is not None:
         task.cancel()
-    await events.publish(run_id, "cancelled", {"message": "Run cancelled."})
+    await events.publish(run.id, "cancelled", {"message": message})
     return run
 
 

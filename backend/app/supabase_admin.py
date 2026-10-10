@@ -2,6 +2,8 @@
 Used to verify access tokens and to manage users' app_metadata (admin role).
 Never expose this key or client to a browser."""
 
+from datetime import UTC, datetime
+
 from supabase import AsyncClient, acreate_client
 
 from config import settings
@@ -20,3 +22,10 @@ async def get_client() -> AsyncClient:
 
 def is_admin(app_metadata: dict | None) -> bool:
     return (app_metadata or {}).get("role") == ADMIN_ROLE
+
+
+def is_suspended(banned_until) -> bool:
+    """Suspension is a Supabase ban; `banned_until` arrives as str or datetime."""
+    if isinstance(banned_until, str):
+        banned_until = datetime.fromisoformat(banned_until.replace("Z", "+00:00"))
+    return banned_until is not None and banned_until > datetime.now(UTC)

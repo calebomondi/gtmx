@@ -10,7 +10,7 @@ from sqlalchemy.pool import NullPool
 
 from backend.app import supabase_admin
 from backend.app.services import admin as admin_service
-from backend.tests.helpers import make_user
+from backend.tests.helpers import FakeSupabase, make_user
 from config import settings
 
 API = "/api/v1"
@@ -26,21 +26,6 @@ def test_admin_is_allowed(client):
     response = client.get(f"{API}/admin/me")
     assert response.status_code == 200
     assert response.json()["email"] == "boss@example.com"
-
-
-class FakeSupabase:
-    """Just enough of supabase.auth.admin for bootstrap_admins."""
-
-    def __init__(self, users):
-        self.users = {u.id: u for u in users}
-        self.auth = SimpleNamespace(admin=self)
-
-    async def list_users(self, page, per_page):
-        items = list(self.users.values())
-        return items[(page - 1) * per_page: page * per_page]
-
-    async def update_user_by_id(self, uid, attributes):
-        self.users[uid].app_metadata = attributes["app_metadata"]
 
 
 def _user(email, app_metadata):

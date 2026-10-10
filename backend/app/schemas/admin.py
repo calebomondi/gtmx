@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 from typing import Generic, TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend.app.schemas.signals import SignalResponse
 
@@ -128,3 +128,32 @@ class AdminUserDetail(AdminUserRow):
 class AdminSignalRow(SignalResponse):
     user_id: uuid.UUID
     user_email: str | None = None
+
+
+class QuotaRow(BaseModel):
+    kind: str
+    default_cap: int
+    override: int | None = None
+
+
+class QuotaUpdate(BaseModel):
+    kind: str
+    daily_cap: int | None = Field(ge=0, le=10_000, description="null removes the override")
+
+
+class SuspendRequest(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class AuditRow(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    actor_id: uuid.UUID | None
+    actor_email: str | None
+    action: str
+    target_type: str
+    target_id: str | None
+    before: dict | None
+    after: dict | None
+    created_at: datetime

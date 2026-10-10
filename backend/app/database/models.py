@@ -609,6 +609,23 @@ class AdminAuditLog(Base):
     )
 
 
+class UserQuota(Base):
+    """An admin's per-user override of one run kind's daily cap. No row means
+    the default from settings applies."""
+
+    __tablename__ = "user_quotas"
+    __table_args__ = (UniqueConstraint("user_id", "kind", name="uq_user_quotas_user_id_kind"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    daily_cap: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(),
+        onupdate=lambda: datetime.now(UTC), nullable=False,
+    )
+
+
 class Run(Base):
     """One agent run, owned by the server rather than by any connection.
 
@@ -626,7 +643,7 @@ class Run(Base):
     workspace_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("workspaces.id", ondelete="SET NULL"), nullable=True, index=True,
     )
-    # discovery | competitors | accounts | ... (backend.app.runs.kinds.RunKind)
+    # backend.app.runs.kinds.RunKind
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     # pending | running | awaiting_input | completed | failed | cancelled
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
