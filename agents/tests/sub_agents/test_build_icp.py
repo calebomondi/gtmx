@@ -61,8 +61,8 @@ from agents.states import (  # noqa: E402
     MarketExtraction,
 )
 from agents.sub_agents.schema_states import Specialist  # noqa: E402
-import agents.sub_agents.build_icp as icp  # noqa: E402
-from agents.sub_agents.build_icp import build_icp_graph  # noqa: E402
+import agents.sub_agents.discover.build_icp as icp  # noqa: E402
+from agents.sub_agents.discover.build_icp import build_icp_graph  # noqa: E402
 
 _OUT_DIR = Path(__file__).resolve().parent / "_out"
 
@@ -85,9 +85,9 @@ _OUT_DIR = Path(__file__).resolve().parent / "_out"
 # --- product x b2b ---
 PRODUCT_B2B_OFFER = {
     "offer_type": "product",
-    "offer_name": "MirosVB",
+    "offer_name": "HeatherDB",
     "offer_description": (
-        "MirosVB is a reasoning paradigm that enhances AI systems with intuition, creativity, "
+        "HeatherDB is a reasoning paradigm that enhances AI systems with intuition, creativity, "
         "and lateral thinking capabilities by leveraging storage-shaped intelligence rather "
         "than relying on massive computational power."
     ),
@@ -122,7 +122,7 @@ PRODUCT_B2B_OFFER = {
     "offer_findings": (
         "### On-device AI reasoning systems\neffective runtimes split context from "
         "parameters: a small reasoning core paired with a large retrieval-shaped index. "
-        "MirosVB sits in this category: retrieval-shaped memory rather than parameter scale.\n"
+        "HeatherDB sits in this category: retrieval-shaped memory rather than parameter scale.\n"
         "\n### Sources\n[1] https://domain-mirosvb.example"
     ),
     "offer_domain_fit_understanding": "sits in the retrieval-shaped on-device reasoning category",
@@ -291,9 +291,9 @@ PRODUCT_B2B_OFFER = {
 # --- product x b2c ---
 PRODUCT_B2C_OFFER = {
     "offer_type": "product",
-    "offer_name": "AuraPod",
+    "offer_name": "Cloud of Associations",
     "offer_description": (
-        "AuraPod is a private, on-device AI companion app for consumers: a lightweight "
+        "Cloud of Associations is a private, on-device AI companion app for consumers: a lightweight "
         "assistant that runs entirely on the phone, learns from the user's own notes, and "
         "never uploads personal data to a cloud model."
     ),
@@ -501,26 +501,26 @@ PRODUCT_B2C_OFFER = {
 # --- service x b2b ---
 SERVICE_B2B_OFFER = {
     "offer_type": "service",
-    "offer_name": "StitchCorp",
+    "offer_name": "Engineering and Innovation Consultancy",
     "offer_description": (
-        "StitchCorp is a managed tailoring and staff-attire service for companies: "
-        "measure-and-make uniform outfitting, bulk alterations, and replacement SLAs for "
-        "hotels, airlines and retail chains in the Gulf."
+        "Engineering and Innovation Consultancy provides end-to-end R&D services for hardware and software: "
+        "from initial concept and feasibility studies through prototyping, pilot deployment, mass manufacturing, "
+        "and ongoing aftermarket support for startups and corporations in Kenya and East Africa."
     ),
-    "target_market": ["UAE", "Saudi Arabia"],
-    "problem": "Hospitality and retail groups struggle with staff uniforms: inconsistent tailors, slow replacements, and no single accountable vendor.",
-    "solution": "A managed outfitting platform with on-site measurement teams, quality-scored fittings, and contracted replacement SLAs.",
-    "target_users": ["hotel operations directors", "facilities managers", "retail chain buyers"],
+    "target_market": ["Kenya"],
+    "problem": "Hardware startups in Kenya often struggle to move from concept to a manufacturable product because they lack an end-to-end engineering partner.",
+    "solution": "A single consultancy that supports feasibility, prototyping, pilot deployment, mass manufacturing, and aftermarket support.",
+    "target_users": ["hardware startup founders", "product innovation leads", "CTO/VP Engineering at corporations"],
     "features": [],
     "service_uniqueness": [
-        "On-site measurement teams",
-        "Contract replacement SLAs",
-        "Quality guarantee on fit",
+        "End-to-end hardware and software R&D support",
+        "Local prototyping and testing labs in/near Kenya",
+        "Aftermarket and manufacturability optimisation for East African clients",
     ],
     "how_it_works": (
-        "Corporate clients sign an outfitting contract; StitchCorp sends measurement teams "
-        "on-site, manufactures with vetted tailors, and handles re-fits and replacements "
-        "under an SLA per item class."
+        "Clients engage initially for needs assessment and feasibility; the team prototypesin-house, "
+        "then pilot-benchmarks, and finally coordinates mass manufacturing. Aftermarket support covers "
+        "maintenance, analytics, and product iteration."
     ),
     "specialists": [
         Specialist(
@@ -553,7 +553,7 @@ SERVICE_B2B_OFFER = {
         buyer_type="b2b",
         category="service",
         target_audience="hotel operations directors, facilities managers, retail chain buyers",
-        target_geo=["UAE", "Saudi Arabia"],
+        target_geo=["Kenya"],
         category_conventions="contract uniform outfitting with replacement SLAs",
         market_demand="hospitality groups standardising staff attire across sites",
         growth_outlook="growing",
@@ -710,9 +710,9 @@ SERVICE_B2B_OFFER = {
 # --- service x b2c ---
 SERVICE_B2C_OFFER = {
     "offer_type": "service",
-    "offer_name": "StitchUp",
+    "offer_name": "Notion",
     "offer_description": (
-        "StitchUp is an on-demand tailoring service connecting customers with vetted local "
+        "Notion is an on-demand tailoring service connecting customers with vetted local "
         "tailors for fittings, alterations, and custom garments, with delivery and quality guarantees."
     ),
     "target_market": ["UAE", "Saudi Arabia"],

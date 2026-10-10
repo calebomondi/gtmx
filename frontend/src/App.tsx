@@ -21,8 +21,13 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { ProjectsComponent } from "@/projects/projects-components"
 import { ProjectHub } from "@/projects/project-hub"
 import { ArchiveComponent } from "@/archive/archive-components"
+import { AccountsComponent } from "@/connected-accounts/accounts-component"
 import { ArchivedWorkspace } from "@/archive/archived-workspace"
 import { HomeFeed } from "@/home-feed/home-feed-components"
+import AuthPage from "@/auth/auth-component"
+import AuthCallback from "@/auth/auth-callback"
+import ForgotPasswordPage from "@/auth/forgot-password"
+import UpdatePasswordPage from "@/auth/update-password"
 
 /**
  * Interrupts surface inline inside the /new form's right-hand panel; on every
@@ -80,6 +85,40 @@ function AppLayout() {
 }
 
 const router = createBrowserRouter([
+  { path: '/auth', element: <Navigate to="/auth/login" replace /> },
+  { path: '/auth/callback', element: <AuthCallback /> },
+  {
+    path: '/auth/forgot-password',
+    element: (
+      <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+        <ForgotPasswordPage />
+      </ThemeProvider>
+    ),
+  },
+  {
+    path: '/auth/update-password',
+    element: (
+      <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+        <UpdatePasswordPage />
+      </ThemeProvider>
+    ),
+  },
+  {
+    path: '/auth/login',
+    element: (
+      <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+        <AuthPage />
+      </ThemeProvider>
+    ),
+  },
+  {
+    path: '/auth/signup',
+    element: (
+      <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+        <AuthPage />
+      </ThemeProvider>
+    ),
+  },
   {
     path: '/',
     element: <AppLayout />,
@@ -97,6 +136,7 @@ const router = createBrowserRouter([
       },
       { path: 'feed', element: <HomeFeed /> },
       { path: 'archive', element: <ArchiveComponent /> },
+      { path: 'accounts', element: <AccountsComponent /> },
       { path: 'archive/workspace/:workspace_id', element: <ArchivedWorkspace /> },
     ],
   },

@@ -1,15 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
+import { DotLottieReact } from '@lottiefiles/dotlottie-react'
 import {
   AlertTriangle,
   Check,
   Mail,
   Paperclip,
   PenLine,
+  Link,
   Pin,
-  Plus,
   Reply,
   Search,
   Send,
+  UsersIcon,
   X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -17,7 +20,6 @@ import type { LucideIcon } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   Dialog,
   DialogContent,
@@ -28,6 +30,9 @@ import {
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+
+import { AgentConnectionsDialog } from './agent-connections-dialog'
+import AccountsComponent from './accounts-components'
 
 import {
   CHANNELS,
@@ -333,17 +338,45 @@ function ThreadModal({
 export interface OutReachComponentProps {
   focusEmail?: string | null
   onFocusHandled?: () => void
+  workspaceId?: string
 }
 
-export function OutReachComponent({ focusEmail = null, onFocusHandled }: OutReachComponentProps) {
+export function OutReachComponent({ focusEmail = null, onFocusHandled, workspaceId }: OutReachComponentProps) {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [filter, setFilter] = useState<OutreachFilter>('all')
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>('all')
   const [query, setQuery] = useState('')
   const [threadConversationId, setThreadConversationId] = useState<string | null>(null)
   const [threadOpen, setThreadOpen] = useState(false)
-  const [composeOpen, setComposeOpen] = useState(false)
-  const [composeTo, setComposeTo] = useState('')
+  const [connectOpen, setConnectOpen] = useState(false)
+  const [showAccounts, setShowAccounts] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const accountsBoxRef = useRef<HTMLDivElement>(null)
+  const [accountsFill, setAccountsFill] = useState<number | null>(null)
+
+  // Measure the vertical space left below the header so the accounts card
+  // occupies the whole available height (and its list scrolls inside).
+  useLayoutEffect(() => {
+    if (!showAccounts) return
+    const update = () => {
+      const root = rootRef.current
+      const box = accountsBoxRef.current
+      if (!root || !box) return
+      const available = Math.max(
+        160,
+        // 12px kept back for the gap below the card (formerly the box's mb-3).
+        Math.round(root.getBoundingClientRect().bottom - box.getBoundingClientRect().top - 12),
+      )
+      setAccountsFill(available)
+    }
+    update()
+    window.addEventListener('resize', update)
+    return () => {
+      window.removeEventListener('resize', update)
+      // Force a fresh measurement the next time the card is opened.
+      setAccountsFill(null)
+    }
+  }, [showAccounts])
 
   const filtered = useMemo(() => {
     let list = conversations
@@ -376,9 +409,6 @@ export function OutReachComponent({ focusEmail = null, onFocusHandled }: OutReac
       if (match) {
         setThreadConversationId(match.id)
         setThreadOpen(true)
-      } else {
-        setComposeTo(focusEmail)
-        setComposeOpen(true)
       }
       onFocusHandled?.()
     }
@@ -412,7 +442,7 @@ export function OutReachComponent({ focusEmail = null, onFocusHandled }: OutReac
   }
 
   return (
-    <div className="flex h-[calc(100dvh-7rem)] min-h-0 flex-col">
+    <div ref={rootRef} className="flex h-[calc(100dvh-7rem)] min-h-0 flex-col">
       <div className="flex items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2">
           <h2 className="text-xl font-medium text-foreground">Reach Out</h2>
@@ -422,22 +452,60 @@ export function OutReachComponent({ focusEmail = null, onFocusHandled }: OutReac
             </span>
           )}
         </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="cursor-pointer"
-          onClick={() => {
-            setComposeTo('')
-            setComposeOpen(true)
-          }}
-        >
-          <Plus className="size-3.5" />
-          Compose
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="cursor-pointer"
+            onClick={() => setShowAccounts((v) => !v)}
+          >
+            <UsersIcon className="size-3.5" />
+            Accounts
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="cursor-pointer"
+            onClick={() => setConnectOpen(true)}
+          >
+            <Link className="size-3.5" />
+            Connect
+          </Button>
+        </div>
       </div>
 
-      <div className="mt-3 flex flex-col gap-2">
+      <AnimatePresence mode="wait" initial={false}>
+        {showAccounts && (
+          <motion.div
+            key="accounts"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: accountsFill ?? 0, opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25, ease: 'easeInOut' }}
+            className="overflow-hidden"
+          >
+            <div ref={accountsBoxRef} className="relative flex h-full min-h-0 flex-col">
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Close accounts"
+                className="absolute right-3 top-3 z-10 cursor-pointer text-muted-foreground hover:text-foreground"
+                onClick={() => setShowAccounts(false)}
+              >
+                <X className="size-4" />
+              </Button>
+              <AccountsComponent workspaceId={workspaceId} />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {!showAccounts && (
+        <>
+          <div className="mt-3 flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-1.5 mb-2">
           {FOLDER_CHIPS.map((chip) => (
             <button
@@ -492,11 +560,19 @@ export function OutReachComponent({ focusEmail = null, onFocusHandled }: OutReac
       <div className="mt-3 min-h-0 flex-1 overflow-y-auto pb-2">
         {filtered.length === 0 ? (
           <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 text-center px-4">
-            <Mail className="size-6 text-muted-foreground" />
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-500">
+              <DotLottieReact
+                src="/empty.lottie"
+                loop
+                autoplay
+                onError={() => {}}
+                className="w-full h-auto"
+              />
+            </div>
             <p className="text-sm text-muted-foreground">
               {query.trim()
                 ? 'No conversations match your search.'
-                : 'No conversations here yet. Compose your first message to get started.'}
+                : 'No conversations here yet. Connect a channel to start reaching out.'}
             </p>
           </div>
         ) : (
@@ -541,188 +617,13 @@ export function OutReachComponent({ focusEmail = null, onFocusHandled }: OutReac
         onOpenChange={setThreadOpen}
         onSendReply={sendReply}
       />
-      <ComposeModal
-        open={composeOpen}
-        onOpenChange={setComposeOpen}
-        prefilledTo={composeTo}
-        onSend={(contactName, toAddress, channel, subject, body) => {
-          const conversationsWithThread =
-            conversations.filter((c) => c.contact.email?.toLowerCase() === toAddress.toLowerCase())
-              .length > 0
-          if (!conversationsWithThread) {
-            const newConversation: Conversation = {
-              id: `conv-${Date.now()}`,
-              channel,
-              contact: {
-                id: `contact-${Date.now()}`,
-                name: contactName || toAddress,
-                company: '—',
-                email: toAddress,
-              },
-              folder: 'sent',
-              messages: [
-                {
-                  id: `msg-${Date.now()}`,
-                  conversationId: `conv-${Date.now()}`,
-                  channel,
-                  direction: 'outbound',
-                  subject,
-                  body,
-                  timestamp: Date.now(),
-                  status: 'sent',
-                },
-              ],
-              unread: false,
-              hot: false,
-              lastActivityAt: Date.now(),
-            }
-            setConversations((prev) => [...prev, newConversation])
-          }
-          setComposeOpen(false)
-        }}
+      <AgentConnectionsDialog
+        open={connectOpen}
+        onOpenChange={setConnectOpen}
       />
+        </>
+      )}
     </div>
-  )
-}
-
-function ComposeModal({
-  open,
-  onOpenChange,
-  prefilledTo,
-  onSend,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  prefilledTo: string
-  onSend: (
-    contactName: string,
-    toAddress: string,
-    channel: Channel,
-    subject: string,
-    body: string,
-  ) => void
-}) {
-  const [to, setTo] = useState('')
-  const [channel, setChannel] = useState<Channel>('email')
-  const [subject, setSubject] = useState('')
-  const [body, setBody] = useState('')
-
-  useEffect(() => {
-    if (open) {
-      setTo(prefilledTo)
-      setChannel('email')
-      setSubject('')
-      setBody('')
-    }
-  }, [open, prefilledTo])
-
-  const canSend = to.trim().length > 0 && body.trim().length > 0
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader className="border-b">
-          <DialogTitle className="text-base">New message</DialogTitle>
-          <DialogDescription>Send via a connected account</DialogDescription>
-        </DialogHeader>
-
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="compose-to" className="text-xs font-medium">
-              To
-            </Label>
-            <Input
-              id="compose-to"
-              value={to}
-              onChange={(event) => setTo(event.target.value)}
-              placeholder="person@company.com"
-              className="h-8 text-sm"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium text-foreground">Channel</span>
-            <div className="flex gap-1.5">
-              {ENABLED_CHANNELS.map((key) => {
-                const meta = CHANNELS[key]
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setChannel(key)}
-                    className={cn(
-                      'inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
-                      channel === key
-                        ? 'bg-amber-500 text-amber-950'
-                        : 'bg-muted/50 text-muted-foreground hover:bg-muted',
-                    )}
-                  >
-                    <ChannelGlyph icon={meta.icon} className="size-3.5" />
-                    {meta.label}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {channel === 'email' && (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="compose-subject" className="text-xs font-medium">
-                Subject
-              </Label>
-              <Input
-                id="compose-subject"
-                value={subject}
-                onChange={(event) => setSubject(event.target.value)}
-                placeholder="Re: quick intro"
-                className="h-8 text-sm"
-              />
-            </div>
-          )}
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="compose-body" className="text-xs font-medium">
-              Message
-            </Label>
-            <Textarea
-              id="compose-body"
-              value={body}
-              onChange={(event) => setBody(event.target.value)}
-              placeholder="Write your message…"
-              className="min-h-32 resize-none"
-            />
-          </div>
-        </div>
-
-        <DialogFooter className="border-t">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                size="icon-sm"
-                variant="ghost"
-                className="cursor-pointer text-muted-foreground"
-              >
-                <Paperclip className="size-4" />
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                className="cursor-pointer bg-amber-500 text-amber-950 hover:bg-amber-400 hover:text-amber-950"
-                disabled={!canSend}
-                onClick={() => {
-                  const contactName = to.split('@')[0].replace(/[._-]/g, ' ')
-                  onSend(contactName, to.trim(), channel, subject.trim(), body.trim())
-                }}
-              >
-                <Send className="size-3.5" />
-                Send
-              </Button>
-            </div>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   )
 }
 

@@ -12,6 +12,7 @@ import {
   type ProjectDto,
 } from "@/lib/api"
 import { refetchWorkspaces } from "@/lib/workspaces-store"
+import { supabase } from "@/lib/supabase"
 
 export interface ProjectsState {
   /** Live projects, bucketed by `priority` (does not include archived). */
@@ -54,6 +55,11 @@ export function useProjects(): ProjectsState {
 export async function refetchProjects(): Promise<void> {
   setState({ loading: true, error: null })
   try {
+    const { data } = await supabase.auth.getSession()
+    if (!data.session) {
+      setState({ projects: [], archivedProjects: [], loading: false, error: null })
+      return
+    }
     const user = await getCurrentUser()
     const [projects, archivedProjects] = await Promise.all([
       listProjects(user.id),

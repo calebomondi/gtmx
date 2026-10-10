@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from backend.app.api.v1.endpoints import competitors, discovery, projects, users, workspaces
+from backend.app.api.v1.endpoints import accounts, competitors, discovery, projects, users, workspaces
 
 api_router = APIRouter()
 
@@ -12,3 +12,4 @@ api_router.include_router(workspaces.router, prefix="/workspaces", tags=["worksp
 # workspaces.router. Separate because these rows accumulate across agent runs --
 # the opposite of the replace-whole-blob lifecycle the insights endpoints serve.
 api_router.include_router(competitors.router, prefix="/workspaces", tags=["competitors"])
+api_router.include_router(accounts.router, prefix="/workspaces", tags=["accounts"])

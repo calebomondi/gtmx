@@ -48,8 +48,8 @@ sys.path.insert(0, str(root))
 from agents.llm.main import llm_timing_report  # noqa: E402
 from agents.states import MarketExtraction  # noqa: E402
 from agents.sub_agents.schema_states import Specialist  # noqa: E402
-import agents.sub_agents.understand_market as um  # noqa: E402
-from agents.sub_agents.understand_market import build_market_graph  # noqa: E402
+import agents.sub_agents.discover.understand_market as um  # noqa: E402
+from agents.sub_agents.discover.understand_market import build_market_graph  # noqa: E402
 
 _OUT_DIR = Path(__file__).resolve().parent / "_out"
 
@@ -78,20 +78,19 @@ um.search_and_scrape = _recording_search
 
 PRODUCT_OFFER = {
     "offer_type": "product",
-    "offer_name": "MirosVB",
+    "offer_name": "HeatherDB",
     "offer_description": (
-        "MirosVB is a reasoning paradigm that enhances AI systems with intuition, creativity, "
-        "and lateral thinking capabilities by leveraging storage-shaped intelligence rather "
-        "than relying on massive computational power."
+        "HeatherDB is a self-organizing, natively intelligent database that functions as a memory substrate "
+        "where data itself becomes the model, eliminating the need for model weights, retraining, or GPUs."
     ),
-    "target_market": ["Nigeria", "Kenya", "Ghana"],
+    "target_market": ["Africa", "Middle East"],
     "problem": "General-purpose LLMs need enormous compute for reasoning that a storage-shaped design could do far more cheaply.",
     "solution": "A storage-shaped reasoning paradigm: an episodic knowledge index paired with a compact reasoning core.",
     "target_users": ["AI research teams", "on-device AI product builders"],
     "features": [
-        "Storage-shaped reasoning core",
-        "Episodic knowledge index",
-        "Efficient inference on commodity hardware",
+        "Self-organizing memory substrate",
+        "Model ingestion",
+        "Commodity hardware compatibility",
     ],
     "service_uniqueness": [],
     "how_it_works": (
@@ -115,24 +114,25 @@ PRODUCT_OFFER = {
 
 SERVICE_OFFER = {
     "offer_type": "service",
-    "offer_name": "StitchUp",
+    "offer_name": "Engineering and Innovation Consultancy",
     "offer_description": (
-        "StitchUp is an on-demand tailoring service connecting customers with vetted local "
-        "tailors for fittings, alterations, and custom garments, with delivery and quality guarantees."
+        "Engineering and Innovation Consultancy provides end-to-end R&D services that guide hardware and software "
+        "projects from initial concept and feasibility studies through prototyping, pilot deployment, mass "
+        "manufacturing, and ongoing aftermarket support."
     ),
-    "target_market": ["UAE", "Saudi Arabia"],
-    "problem": "Reliable tailoring in Gulf cities means knowing a private tailor, waiting weeks, and hoping the result fits.",
-    "solution": "A vetted local tailor network with in-home pickup and delivery, quality-scored fittings and a satisfaction guarantee.",
-    "target_users": ["busy professionals", "e-commerce sellers needing garment alterations"],
+    "target_market": ["Kenya", "Africa", "Emerging markets"],
+    "problem": "The complexity and fragmentation of bringing hardware products to market, specifically the need for integrated R&D, prototyping, manufacturing, and support that accounts for the operating realities of emerging markets.",
+    "solution": "A structured hardware/software engineering lifecycle from consultancy to manufacturing.",
+    "target_users": ["Startups", "Hardware innovators", "Emerging-market SMEs"],
     "features": [],
     "service_uniqueness": [
-        "Vetted tailor network",
-        "Quality guarantee on fit",
-        "48-hour pickup and delivery",
+        "Integrated R&D and manufacturing",
+        "Expertise in emerging-market operating realities",
+        "Aftermarket support",
     ],
     "how_it_works": (
-        "Customers book a fitting online; a vetted tailor is dispatched with a measuring kit, "
-        "garments are altered or made to order, and are delivered back within 48 hours under a fit guarantee."
+        "Clients receive end-to-end consultancy from feasibility and prototyping through pilots, "
+        "mass manufacturing, and post-deployment support."
     ),
     "specialists": [
         Specialist(

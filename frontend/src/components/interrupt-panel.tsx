@@ -36,20 +36,37 @@ function SelectProduct({
   return (
     <div className="flex flex-col gap-2 justify-center items-center h-full">
       <div className="text-center text-md">
-        <p>I couldn't find <span className="font-semibold">"{product_name}"</span> anywhere on the page you shared <span className="font-semibold">({product_url})</span>. Here's what I found mentioned there:</p>
-        <span className="text-sm text-balance text-muted-foreground">Select one to proceed</span>
+        <p>I couldn't find <span className="font-semibold">"{product_name}"</span> anywhere on the page you shared <span className="font-semibold">({product_url})</span>. {products.length > 0 ? "Here's what I found mentioned there:" : "Is it listed there under a different name, or should I focus on something else?"}</p>
+        {products.length > 0 && <span className="text-sm text-balance text-muted-foreground">Select one to proceed</span>}
       </div>
-      <div className="grid gap-1 md:max-w-1/2">
-        {
-          products.map((item, index) => (
-            <ButtonGroup key={`${item}-${index}`}>
-              <Button size="icon" variant="ghost" onClick={() => onSelect(String(index+1))}>{index+1}</Button>
-              <ButtonGroupSeparator />
-              <Button variant="outline" className="cursor-pointer" onClick={() => onSelect(item)}>{item}</Button>
-            </ButtonGroup>
-          ))
-        }
-      </div>
+      {products.length > 0 ? (
+        <div className="grid gap-1 md:max-w-1/2">
+          {
+            products.map((item, index) => (
+              <ButtonGroup key={`${item}-${index}`}>
+                <Button size="icon" variant="ghost" onClick={() => onSelect(String(index+1))}>{index+1}</Button>
+                <ButtonGroupSeparator />
+                <Button variant="outline" className="cursor-pointer" onClick={() => onSelect(item)}>{item}</Button>
+              </ButtonGroup>
+            ))
+          }
+        </div>
+      ) : (
+        <form
+          className="flex w-full max-w-xl items-center gap-2 mt-4"
+          onSubmit={(event) => {
+            event.preventDefault()
+            const target = (event.currentTarget.elements.namedItem('reply') as HTMLInputElement)
+            const trimmed = target.value.trim()
+            if (trimmed) onSelect(trimmed)
+          }}
+        >
+          <Input name="reply" placeholder="Enter name or say 'continue' to proceed" autoFocus />
+          <Button type="submit" className="bg-[#FEA853] cursor-pointer">
+            Send
+          </Button>
+        </form>
+      )}
     </div>
   )
 }

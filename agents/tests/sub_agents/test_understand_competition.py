@@ -56,8 +56,8 @@ from agents.states import (  # noqa: E402
     MarketExtraction,
 )
 from agents.sub_agents.schema_states import Specialist  # noqa: E402
-import agents.sub_agents.understand_competition as uc  # noqa: E402
-from agents.sub_agents.understand_competition import build_competition_graph  # noqa: E402
+import agents.sub_agents.discover.understand_competition as uc  # noqa: E402
+from agents.sub_agents.discover.understand_competition import build_competition_graph  # noqa: E402
 
 _OUT_DIR = Path(__file__).resolve().parent / "_out"
 
@@ -89,25 +89,24 @@ uc.search_and_scrape = _recording_search
 # into the findings and the fabrication scan fails.
 # ---------------------------------------------------------------------------
 
-SIBLING_DOMAIN_SOURCE = "https://domain-mirosvb.example"
-SIBLING_MARKET_SOURCE = "https://market-mirosvb.example"
+SIBLING_DOMAIN_SOURCE = "https://domain-heatherdb.example"
+SIBLING_MARKET_SOURCE = "https://market-heatherdb.example"
 
 PRODUCT_OFFER = {
     "offer_type": "product",
-    "offer_name": "MirosVB",
+    "offer_name": "HeatherDB",
     "offer_description": (
-        "MirosVB is a reasoning paradigm that enhances AI systems with intuition, creativity, "
-        "and lateral thinking capabilities by leveraging storage-shaped intelligence rather "
-        "than relying on massive computational power."
+        "HeatherDB is a self-organizing, natively intelligent database that functions as a memory substrate "
+        "where data itself becomes the model, eliminating the need for model weights, retraining, or GPUs."
     ),
-    "target_market": ["Nigeria", "Kenya", "Ghana"],
+    "target_market": ["Africa", "Middle East"],
     "problem": "General-purpose LLMs need enormous compute for reasoning that a storage-shaped design could do far more cheaply.",
     "solution": "A storage-shaped reasoning paradigm: an episodic knowledge index paired with a compact reasoning core.",
     "target_users": ["AI research teams", "on-device AI product builders"],
     "features": [
-        "Storage-shaped reasoning core",
-        "Episodic knowledge index",
-        "Efficient inference on commodity hardware",
+        "Self-organizing memory substrate",
+        "Model ingestion",
+        "Commodity hardware compatibility",
     ],
     "service_uniqueness": [],
     "how_it_works": (
@@ -118,9 +117,9 @@ PRODUCT_OFFER = {
     "specialists": [
         Specialist(
             domain="competition",
-            name="Kofi Mensah",
+            name="Kwame Asante",
             role="Principal Competitive Analyst",
-            affiliation="Accra Competitive Intelligence Desk",
+            affiliation="West Africa AI Market Desk",
             description=(
                 "Charts the on-device and small-model AI reasoning landscape in West and East "
                 "Africa: who actually ships, how they position, what they charge, and where "
@@ -128,11 +127,11 @@ PRODUCT_OFFER = {
             ),
         ),
     ],
-    # -- Canned sibling stage outputs (Sources blocks must be stripped at use) --
+    # -- Backend sibling outputs (Sources stripped at use) --
     "offer_findings": (
         "### On-device AI reasoning systems\neffective runtimes split context from "
         "parameters: a small reasoning core paired with a large retrieval-shaped index. "
-        "MirosVB sits in this category: retrieval-shaped memory rather than parameter scale.\n"
+        "HeatherDB sits in this category: retrieval-shaped memory rather than parameter scale.\n"
         f"\n### Sources\n[1] {SIBLING_DOMAIN_SOURCE}"
     ),
     "offer_domain_fit_understanding": "sits in the retrieval-shaped on-device reasoning category",
@@ -147,7 +146,7 @@ PRODUCT_OFFER = {
         buyer_type="b2b",
         category="other",
         target_audience="AI research teams and on-device product builders",
-        target_geo=["Nigeria", "Kenya", "Ghana"],
+        target_geo=["Africa", "Middle East"],
         category_conventions="small-model runtimes on commodity hardware; per-deployment licensing",
         market_demand="growing interest in on-device reasoning to cut inference cost",
         growth_outlook="growing",
@@ -159,39 +158,39 @@ SIBLING_MARKET_SOURCE_S = "https://market-stitchup.example"
 
 SERVICE_OFFER = {
     "offer_type": "service",
-    "offer_name": "StitchUp",
+    "offer_name": "Engineering and Innovation Consultancy",
     "offer_description": (
-        "StitchUp is an on-demand tailoring service connecting customers with vetted local "
-        "tailors for fittings, alterations, and custom garments, with delivery and quality guarantees."
+        "Engineering and Innovation Consultancy provides end-to-end R&D services that guide hardware and software "
+        "projects from initial concept and feasibility studies through prototyping, pilot deployment, mass "
+        "manufacturing, and ongoing aftermarket support."
     ),
-    "target_market": ["UAE", "Saudi Arabia"],
-    "problem": "Reliable tailoring in Gulf cities means knowing a private tailor, waiting weeks, and hoping the result fits.",
-    "solution": "A vetted local tailor network with in-home pickup and delivery, quality-scored fittings and a satisfaction guarantee.",
-    "target_users": ["busy professionals", "e-commerce sellers needing garment alterations"],
+    "target_market": ["Kenya", "Africa", "Emerging markets"],
+    "problem": "The complexity and fragmentation of bringing hardware products to market, specifically the need for integrated R&D, prototyping, manufacturing, and support that accounts for the operating realities of emerging markets.",
+    "solution": "A structured hardware/software engineering lifecycle from consultancy to manufacturing.",
+    "target_users": ["Startups", "Hardware innovators", "Emerging-market SMEs"],
     "features": [],
     "service_uniqueness": [
-        "Vetted tailor network",
-        "Quality guarantee on fit",
-        "48-hour pickup and delivery",
+        "Integrated R&D and manufacturing",
+        "Expertise in emerging-market operating realities",
+        "Aftermarket support",
     ],
     "how_it_works": (
-        "Customers book a fitting online; a vetted tailor is dispatched with a measuring kit, "
-        "garments are altered or made to order, and are delivered back within 48 hours under a fit guarantee."
+        "Clients receive end-to-end consultancy from feasibility and prototyping through pilots, "
+        "mass manufacturing, and post-deployment support."
     ),
     "specialists": [
         Specialist(
             domain="competition",
-            name="Fatima Al-Rashid",
+            name="Njeri Wanjiru",
             role="Principal Competitive Analyst",
-            affiliation="Dubai Consumer Services Intelligence",
+            affiliation="East Africa Hardware Innovation Desk",
             description=(
-                "Maps the on-demand services and tailoring landscape in Gulf cities: the "
-                "established ateliers, the delivery-managed alternatives, what they charge "
-                "and where their customers defect."
+                "Maps the regional engineering-consultancy and contract-manufacturing landscape: "
+                "how local and international players position, what startups actually pay, and "
+                "where trust breaks down."
             ),
         ),
     ],
-    # -- Canned sibling stage outputs (Sources blocks must be stripped at use) --
     "offer_findings": (
         "### On-demand tailoring services\nquality rests on the tailor, the fitting process "
         "and the delivery guarantee; the Gulf has strong local artisans but no standardised "
@@ -207,12 +206,12 @@ SERVICE_OFFER = {
     ),
     "product_market_fit_understanding": "fits the premium on-demand services market in Gulf cities",
     "market_data": MarketExtraction(
-        buyer_type="b2c",
+        buyer_type="b2b",
         category="service",
-        target_audience="busy professionals and e-commerce sellers",
-        target_geo=["UAE", "Saudi Arabia"],
-        category_conventions="home pickup/delivery at a premium; satisfaction guarantee expected",
-        market_demand="growing comfort with on-demand home services",
+        target_audience="Startups, hardware innovators, and emerging-market SMEs",
+        target_geo=["Kenya", "Africa", "Emerging markets"],
+        category_conventions="fixed-fee plus milestone engagements; quality gates expected",
+        market_demand="High demand for integrated R&D and local prototyping",
         growth_outlook="growing",
     ),
 }

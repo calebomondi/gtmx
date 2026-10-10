@@ -61,7 +61,7 @@ _RUN = {"names": ["Acme Vector"]}
 def _install_agent_stubs():
 	import data_sources.scraping.exa as exa
 
-	import agents.sub_agents.get_competitors as gc
+	import agents.sub_agents.competitors.get_competitors as gc
 
 	exa.search_and_scrape = lambda *a, **k: [
 		{"url": "https://directory.example/list", "title": "Rivals", "text": "canned"}
@@ -289,7 +289,7 @@ async def main() -> None:
 	)
 
 	# -- the preserved-field guard actually fires -------------------------
-	from agents.sub_agents.get_competitors import row_values_from_profile
+	from agents.sub_agents.competitors.get_competitors import row_values_from_profile
 
 	poisoned = row_values_from_profile(
 		CompetitorProfile(name="X", website="https://x.com")

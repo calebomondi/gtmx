@@ -12,7 +12,6 @@ import type { LucideIcon } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from 'cn'
 
 import type { IdealCompetitorProfileDto } from '@/lib/api'
@@ -75,33 +74,48 @@ export function OfferTabNav({
    * empty rather than silently blank. `null` means "not decided" -- the run has
    * not reached it -- which is a different state from "decided, nothing found". */
   readiness,
+  value,
+  onTabChange,
 }: {
   readiness: Record<OfferTab, boolean | null>
+  value: OfferTab
+  onTabChange: (value: OfferTab) => void
 }) {
   return (
-    <TabsList variant="line" className="w-full justify-start gap-1">
+    <div className="flex flex-wrap items-center gap-1.5">
       {OFFER_TABS.map(({ value: tabValue, label, icon: Icon }) => {
         const state = readiness[tabValue]
+        const active = value === tabValue
         return (
-          <TabsTrigger key={tabValue} value={tabValue} className="flex-none gap-1.5 px-3">
+          <button
+            key={tabValue}
+            type="button"
+            onClick={() => onTabChange(tabValue)}
+            className={cn(
+              'cursor-pointer rounded-full border px-2.5 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5',
+              active
+                ? 'border-amber-500 bg-amber-500 text-amber-950'
+                : 'border-border bg-secondary text-secondary-foreground hover:bg-accent hover:text-accent-foreground',
+            )}
+          >
             <Icon className="size-3.5" />
             {label}
             {state === false && (
               <span
-                className="size-1.5 rounded-full bg-muted-foreground/40"
+                className="size-1.5 rounded-full bg-current/40"
                 aria-label="nothing found here yet"
               />
             )}
             {state === null && (
               <span
-                className="size-1.5 animate-pulse rounded-full bg-amber-500/60"
+                className="size-1.5 animate-pulse rounded-full bg-current/40"
                 aria-label="the agent has not reached this stage yet"
               />
             )}
-          </TabsTrigger>
+          </button>
         )
       })}
-    </TabsList>
+    </div>
   )
 }
 

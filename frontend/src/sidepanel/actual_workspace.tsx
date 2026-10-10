@@ -51,6 +51,7 @@ const TabsVerticalLined = ({ workspaceId }: { workspaceId?: string }) => {
         <OutReachComponent
           key={`${focus.email ?? 'none'}:${focus.nonce}`}
           focusEmail={focus.nonce > 0 ? focus.email : null}
+          workspaceId={workspaceId}
         />
       )
     if (value === 'product') return <ProductComponent workspaceId={workspaceId} />

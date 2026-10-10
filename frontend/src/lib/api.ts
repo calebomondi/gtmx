@@ -14,6 +14,9 @@ export interface DiscoveryRequest {
   target_geo?: string[]
   /** Asserted by the user on the intake form. The agent no longer classifies it. */
   offer_type?: 'product' | 'service'
+  offer_description?: string
+  /** Which intake path the backend should run: scrape the URL, or work from the description. */
+  source?: 'website' | 'manual'
 }
 
 export interface SnapshotFeature {
@@ -41,6 +44,7 @@ export type DiscoveryInterruptType =
   | "url_unscrappable"
   | "offer_type_clarification"
   | "product_service_description_confirmation"
+  | "offer_details_followup"
 
 export interface DiscoveryInterruptFrame {
   type: "interrupt"
@@ -256,12 +260,16 @@ export class DiscoveryClient implements AsyncIterable<DiscoveryFrame> {
     socket.onclose = () => this.settle()
   }
 
-  static connect(
+  static async connect(
     request: DiscoveryRequest,
     options: { timeoutMs?: number; url?: string; signal?: AbortSignal } = {},
   ): Promise<DiscoveryClient> {
     const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
-    const url = options.url ?? discoverySocketUrl()
+    const baseUrl = options.url ?? discoverySocketUrl()
+    const token = await getAccessToken()
+    const url = token
+      ? `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`
+      : baseUrl
 
     return new Promise<DiscoveryClient>((resolve, reject) => {
       if (options.signal?.aborted) {
@@ -413,14 +421,18 @@ export class ApiError extends Error {
   }
 }
 
+import { getAccessToken } from "@/lib/supabase"
+
 async function apiFetch<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
+  const token = await getAccessToken()
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...init.headers,
     },
   })
@@ -442,11 +454,9 @@ async function apiFetch<T>(
 
 export interface CurrentUser {
   id: string
-  name: string
-  email: string
+  name: string | null
+  email: string | null
   avatar_url: string | null
-  joined: string
-  last_activity: string
 }
 
 export interface WorkspaceSummary {
@@ -487,8 +497,18 @@ export function workspaceDisplayName(workspace: WorkspaceSummary): string {
 
 let currentUserPromise: Promise<CurrentUser> | null = null
 
+export function clearCurrentUserCache(): void {
+  currentUserPromise = null
+}
+
 export function getCurrentUser(): Promise<CurrentUser> {
-  currentUserPromise ??= apiFetch<CurrentUser>("/api/v1/users/me")
+  currentUserPromise ??= apiFetch<CurrentUser>("/api/v1/users/me").catch((err) => {
+    // Never memoize a failure: a transient 401/500 would otherwise poison the
+    // cache for the rest of the page session and workspaces/projects would
+    // look empty even after the server recovers.
+    currentUserPromise = null
+    throw err
+  })
   return currentUserPromise
 }
 
@@ -684,9 +704,9 @@ export function listCompetitorRuns(
   workspaceId: string,
   limit = 20,
 ): Promise<CompetitorRun[]> {
-  return apiFetch<{ runs: CompetitorRun[] }>(
+  return apiFetch<CompetitorRun[]>(
     `/api/v1/workspaces/${workspaceId}/competitors/runs?limit=${limit}`,
-  ).then((body) => body.runs)
+  )
 }
 
 export function listCompetitors(workspaceId: string): Promise<CompetitorList> {
@@ -742,5 +762,94 @@ export function deleteCompetitor(
   return apiFetch<void>(
     `/api/v1/workspaces/${workspaceId}/competitors/${competitorId}`,
     { method: "DELETE" },
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Accounts
+// ---------------------------------------------------------------------------
+
+export interface AccountRecord {
+  id: string
+  workspace_id: string
+  run_id: string | null
+  name: string
+  account_type: string
+  website: string | null
+  domain: string | null
+  platform: string | null
+  venue: string | null
+  event_date: string | null
+  member_size: string | null
+  industry: string | null
+  size: string | null
+  geo: string | null
+  tech_stack: string[]
+  recent_news: string[]
+  key_contacts: Array<Record<string, unknown>>
+  pain_signals: string[]
+  hiring_signals: string[]
+  sources: Array<Record<string, unknown>>
+  source_queries: string[]
+  score: number | null
+  score_breakdown: string | null
+  why_selected: string[]
+  why_reach_out: string[]
+  trigger_event: Record<string, unknown> | null
+  selected: boolean
+  created_at: string
+}
+
+export interface AccountList {
+  accounts: AccountRecord[]
+  total: number
+}
+
+export interface AccountRun {
+  id: string
+  workspace_id: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  error: string | null
+  candidates_seen: number
+  found: number
+  started_at: string | null
+  finished_at: string | null
+  created_at: string
+}
+
+export interface AccountRunStart {
+  run: AccountRun
+  already_tracked: number
+}
+
+export function startAccountRun(workspaceId: string): Promise<AccountRunStart> {
+  return apiFetch<AccountRunStart>(
+    `/api/v1/workspaces/${workspaceId}/accounts/runs`,
+    { method: 'POST' },
+  )
+}
+
+export function getAccountRun(workspaceId: string, runId: string): Promise<AccountRun> {
+  return apiFetch<AccountRun>(`/api/v1/workspaces/${workspaceId}/accounts/runs/${runId}`)
+}
+
+export function listAccountRuns(workspaceId: string, limit = 20): Promise<AccountRun[]> {
+  return apiFetch<AccountRun[]>(
+    `/api/v1/workspaces/${workspaceId}/accounts/runs?limit=${limit}`,
+  )
+}
+
+export function listAccounts(workspaceId: string): Promise<AccountList> {
+  return apiFetch<AccountList>(`/api/v1/workspaces/${workspaceId}/accounts`)
+}
+
+export function updateAccount(
+  workspaceId: string,
+  accountId: string,
+  patch: { selected?: boolean },
+): Promise<AccountRecord> {
+  return apiFetch<AccountRecord>(
+    `/api/v1/workspaces/${workspaceId}/accounts/${accountId}`,
+    { method: 'PATCH', body: JSON.stringify(patch) },
   )
 }

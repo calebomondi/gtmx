@@ -19,6 +19,7 @@ class Config:
     market_recency_days: int = field(default_factory=lambda: int(environ.get("MARKET_RECENCY_DAYS", "365")))
 
     openai_api_key: str = field(default_factory=lambda: environ.get("OPENAI_API_KEY", ""))
+    brightdata_api_key: str = field(default_factory=lambda: environ.get("BRIGHTDATA_API_KEY", ""))
 
     supabase_base_url: str = field(default_factory=lambda: environ.get("SUPABASE_BASE_URL", ""))
     supabase_anon_key: str = field(default_factory=lambda: environ.get("SUPABASE_ANON_KEY", ""))
