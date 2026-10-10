@@ -30,3 +30,6 @@ agents/tests/sub_agents/_out/
 # Stale root-level copy of the LLM client. The live package is agents/llm/,
 # which is what every module imports; nothing references this one.
 llm/
+
+# Internal admin console: a separate git repository checked out here.
+admin_dashboard/

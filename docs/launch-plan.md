@@ -38,7 +38,7 @@ Everything else builds on this phase.
 | 1.4 | `refactor/postgres-checkpointer` | `AsyncPostgresSaver` replaces SQLite. Engine options become dialect-aware | A discovery run checkpoints to Postgres | 1.2 |
 | 1.5 | `test/repair-suite` | pytest dev group, `conftest` with a stub LLM and stub search, `live` marker, legacy-import tests fixed or deleted | `uv run pytest` is green and needs no network | 1.3 |
 | 1.6 | `chore/ci` | GitHub Actions: pytest + Postgres service, alembic round-trip, frontend build and lint, admin build, typecheck and lint | CI is green on PRs into `dev` | 1.5 |
-| 1.7 | `chore/absorb-admin-dashboard` | Bring `admin_dashboard/` into this repo. Its nested `.git` holds a single template commit. Pick one package manager per app | Admin builds from the repo root checkout | owner approval |
+| 1.7 | `chore/admin-repo-setup` | Admin stays a **separate repo**: push it to its own GitHub remote with a `dev` branch and the same PR flow. `admin_dashboard/` is ignored here. Bun everywhere: the frontend drops `package-lock.json` | Both repos build with `bun run build` | — |
 
 ## Phase 2 — Structure cleanup (Day 1–2)
 
@@ -77,10 +77,10 @@ This is the most important phase for avoiding visible glitches.
 | 5.1 | `feat/accounts-ui-wiring` | Typed account API client. Wire the outreach accounts list, run trigger and status edits | Discovered accounts show up and can be triaged |
 | 5.2 | `feat/signals-feed` | `signals` table. Signals are emitted by runs (discovery finished, new competitor, new accounts, monitor changes). `GET /signals` (home) and `GET /workspaces/{id}/signals`. The feeds are backed by the API | Feeds survive a refresh and show real events |
 | 5.3 | `feat/workspace-chat` | Chat agent scoped to a workspace. It is grounded in the persisted insights, competitors and accounts, with a web-search tool. Streams over the run event channel. `chat_messages` table | Ask "who are my top 3 competitors and why?" and get an answer that cites the workspace data |
-| 5.4 | `feat/composio-connections` | `connections` table. Composio OAuth connect, callback and disconnect for Gmail (and LinkedIn if Composio supports the needed actions). Mock connections removed | A user connects Gmail and the status is real |
-| 5.5 | `feat/outreach-agent` | Reach-out agent drafts personalised emails per account from the ICP and insights. The user reviews and edits, then sends via Composio Gmail. `outreach_messages` table with status. **Nothing sends without an explicit user click** | Draft → edit → send works end to end with a real mailbox |
+| 5.4 | `feat/composio-connections` | `connections` table. Composio OAuth connect, callback and disconnect for **Gmail, LinkedIn, Instagram, TikTok and X**. Mock connections removed | A user connects each channel and the status is real |
+| 5.5 | `feat/outreach-agent` | Reach-out agent drafts personalised messages per account from the ICP and insights: email via Gmail, plus DMs and posts on the connected socials wherever Composio exposes the action. The user reviews and edits, then sends. `outreach_messages` table with status. **Nothing sends without an explicit user click** | Draft → edit → send works end to end with a real mailbox |
 | 5.6 | `feat/competitor-monitor` | Monitor agent re-checks tracked competitors (pricing, features, news) on a schedule (an APScheduler job inside the single backend instance) and emits diff signals. There's also a "check now" button | A changed competitor page produces a feed signal |
-| 5.7 | `feat/competitor-socials` | BrightData social profiles (LinkedIn, X, Instagram, TikTok) added to competitor profiles, plus a socials tab | A competitor card shows real social stats |
+| 5.7 | `feat/competitor-socials` | BrightData social profiles (LinkedIn, X, Instagram, TikTok) added to competitor profiles, plus a socials tab. **Key verified 2026-10-10: all four platforms return data.** Scrapes take 13–56s each, so they run as background runs, never inline | A competitor card shows real social stats |
 
 **If we fall behind,** these are the agreed cuts:
 - 5.5 ships draft and copy only, with no send.
@@ -95,7 +95,7 @@ The owner decides on Day 3 evening.
 |---|---|---|
 | 6.1 | `feat/admin-api-overview` | `/admin/metrics`: users, active users, runs by status, success rate, average duration, LLM and search cost per day |
 | 6.2 | `feat/admin-api-entities` | Paginated users (Supabase admin API), workspaces, runs with event timelines, and signals |
-| 6.3 | `feat/admin-api-actions` | Suspend or reactivate a user, cancel a run, adjust a user's quota. All of these write to the audit log |
+| 6.3 | `feat/admin-api-actions` | Suspend or reactivate a user, cancel a run, adjust a user's quota, **grant or revoke admin**. All of these write to the audit log. `ADMIN_BOOTSTRAP_EMAILS=kalebmokua@gmail.com` seeds the first admin. Self-revoke and removing the last admin are blocked |
 | 6.4 | `feat/admin-ui` | Replace the template: Supabase login with an admin gate, an overview with charts, users, runs (with live timeline), workspaces, and the audit log. `data.json` deleted |
 
 ## Phase 7 — Hardening & release (Day 5, Oct 15)
@@ -118,11 +118,11 @@ The owner decides on Day 3 evening.
 3. **Phase 4 is the largest change.** It's isolated behind the run manager, so if 4.2 slips we can keep the WebSocket-owned run and add checkpoint resume as a stopgap.
 4. **Sending email for users** carries reputation and abuse risk. Sending is always user-initiated, rate-limited, and logged.
 
-## Owner decisions needed
+## Owner decisions (resolved 2026-10-10)
 
-- [ ] Approve the plan, or reorder or cut items
-- [ ] Approve 1.7: absorb `admin_dashboard/` into this repo (its nested `.git` has one template commit)
-- [ ] Composio: do we have an account and API key? Which channels are in scope: Gmail only, or Gmail plus LinkedIn?
-- [ ] BrightData: an active key with social datasets enabled?
-- [ ] Who are the first admins (emails to grant `role=admin`)?
-- [ ] Frontend package manager: Bun (matches admin) or npm?
+- [x] Plan approved
+- [x] Admin dashboard stays a separate repo
+- [x] Composio account exists. Channels: Gmail, LinkedIn, Instagram, TikTok, X
+- [x] BrightData key valid. LinkedIn, X, Instagram and TikTok scrapers all verified live
+- [x] First admin is kalebmokua@gmail.com. Admins can grant admin to others
+- [x] Bun everywhere
