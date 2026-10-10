@@ -89,8 +89,10 @@ async def accounts_found(run_id: uuid.UUID) -> None:
 async def run_failed(run_id: uuid.UUID, message: str) -> None:
     async def build(db):
         run = await db.get(models.Run, run_id)
-        if run is None or run.workspace_id is None:
-            return []  # e.g. discovery that failed before its workspace existed
+        if run is None or run.workspace_id is None or run.kind == "chat":
+            # No workspace yet (an early discovery failure), or a chat reply,
+            # whose failure the chat itself shows -- the feed is not the place.
+            return []
         return [signal_service.build(
             user_id=run.user_id, workspace_id=run.workspace_id, run_id=run_id, category="agent",
             title=f"{_KIND_LABEL.get(run.kind, 'Agent run')} failed", entity=_KIND_LABEL.get(run.kind, run.kind),

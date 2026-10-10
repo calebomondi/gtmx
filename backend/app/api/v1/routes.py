@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from backend.app.api.deps import rate_limited
-from backend.app.api.v1.endpoints import accounts, admin, competitors, discovery, projects, runs, signals, users, workspaces
+from backend.app.api.v1.endpoints import accounts, admin, chat, competitors, discovery, projects, runs, signals, users, workspaces
 
 api_router = APIRouter()
 # Every REST router is rate limited per user; the discovery WebSocket is limited
@@ -19,4 +19,5 @@ api_router.include_router(workspaces.router, prefix="/workspaces", tags=["worksp
 # the opposite of the replace-whole-blob lifecycle the insights endpoints serve.
 api_router.include_router(competitors.router, prefix="/workspaces", tags=["competitors"], dependencies=_LIMITED)
 api_router.include_router(accounts.router, prefix="/workspaces", tags=["accounts"], dependencies=_LIMITED)
+api_router.include_router(chat.router, prefix="/workspaces", tags=["chat"], dependencies=_LIMITED)
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"], dependencies=_LIMITED)

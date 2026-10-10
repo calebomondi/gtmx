@@ -715,3 +715,26 @@ class Signal(Base):
     )
 
     workspace: Mapped["Workspace"] = relationship()
+
+
+class ChatMessage(Base):
+    """One turn of a workspace's conversation with its agent team. An
+    assistant message is written by the `chat` run that produced it."""
+
+    __tablename__ = "chat_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    # user | assistant
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(),
+        nullable=False, index=True,
+    )
