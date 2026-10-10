@@ -1,5 +1,5 @@
 """Harness for the create-specialists sub-agent.
-Run: python agents/tests/sub_agents/test_create_specialists.py <offer_type> <offer_name> <offer_description> [target_geo_csv]
+Run: python agents/tests/sub_agents/live_create_specialists.py <offer_type> <offer_name> <offer_description> [target_geo_csv]
 """
 import sys
 from pathlib import Path
