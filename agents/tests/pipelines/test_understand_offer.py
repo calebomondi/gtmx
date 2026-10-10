@@ -43,7 +43,7 @@ while root != root.parent:
 sys.path.insert(0, str(root))
 
 from agents.llm.main import llm_timing_report  # noqa: E402
-from agents.pipelines.schema_states import Specialist  # noqa: E402
+from agents.schemas.research import Specialist  # noqa: E402
 from agents.pipelines.discover.understand_offer import build_product_graph  # noqa: E402
 import pytest
 

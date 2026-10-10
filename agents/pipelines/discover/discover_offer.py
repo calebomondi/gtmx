@@ -9,10 +9,10 @@ from langgraph.types import interrupt, Command
 
 
 from agents.llm.main import invoke_structured_with_fallback
-from agents.states import SnapshotFeature
+from agents.schemas.offer import SnapshotFeature
 from agents.helpers import as_follow_up, gather_content, normalize_optional_text
 from data_sources.scraping.quality import decode_entities
-from ..schema_states import DiscoverOfferState
+from agents.schemas.sessions import DiscoverOfferState
 
 
 # ---------------------------------------------------------------------------

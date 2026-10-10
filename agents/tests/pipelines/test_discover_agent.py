@@ -48,12 +48,9 @@ while root != root.parent:
 sys.path.insert(0, str(root))
 
 from agents.llm.main import llm_timing_report  # noqa: E402
-from agents.states import (  # noqa: E402
-    CompetitionExtraction,
-    ICP,
-    IdealCompetitorProfile,
-    MarketExtraction,
-)
+from agents.schemas.competition import CompetitionExtraction, IdealCompetitorProfile  # noqa: E402
+from agents.schemas.icp import ICP  # noqa: E402
+from agents.schemas.market import MarketExtraction  # noqa: E402
 from agents import discovery_agent  # noqa: E402
 from langgraph.types import Command  # noqa: E402
 import pytest

@@ -13,7 +13,7 @@ while root != root.parent:
 sys.path.insert(0, str(root))
 
 from agents.pipelines.discover.create_specialists import build_specialist_graph
-from agents.pipelines.schema_states import OfferSessionState
+from agents.schemas.sessions import OfferSessionState
 
 
 def main():

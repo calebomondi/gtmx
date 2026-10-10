@@ -50,12 +50,9 @@ while root != root.parent:
 sys.path.insert(0, str(root))
 
 from agents.llm.main import llm_timing_report  # noqa: E402
-from agents.states import (  # noqa: E402
-    CompetitionExtraction,
-    IdealCompetitorProfile,
-    MarketExtraction,
-)
-from agents.pipelines.schema_states import Specialist  # noqa: E402
+from agents.schemas.competition import CompetitionExtraction, IdealCompetitorProfile  # noqa: E402
+from agents.schemas.market import MarketExtraction  # noqa: E402
+from agents.schemas.research import Specialist  # noqa: E402
 import agents.pipelines.discover.understand_competition as uc  # noqa: E402
 from agents.pipelines.discover.understand_competition import build_competition_graph  # noqa: E402
 import pytest

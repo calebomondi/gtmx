@@ -17,7 +17,8 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from agents.states import ICP, IdealCompetitorProfile
+from agents.schemas.competition import IdealCompetitorProfile
+from agents.schemas.icp import ICP
 from agents.pipelines.accounts.account_discovery import (
     build_account_discovery_graph,
 )

@@ -16,7 +16,7 @@ sys.path.insert(0, str(root))
 
 from agents.pipelines.accounts.account_discovery import run_account_discovery
 from agents.pipelines.discover.build_icp import build_icp_graph
-from agents.pipelines.schema_states import IcpSessionState
+from agents.schemas.sessions import IcpSessionState
 
 REAL_OFFERS = {
     "aphorion (HeatherDB)": {

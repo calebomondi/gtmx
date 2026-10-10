@@ -65,9 +65,10 @@ from langchain_core.messages import SystemMessage
 
 from agents.llm.main import invoke_structured_with_fallback, cheap_providers
 from agents.context_budget import budget_context
-from agents.states import ICP, IcpFindings
+from agents.schemas.icp import ICP, IcpFindings
 
-from ..schema_states import IcpSessionState, Specialist
+from agents.schemas.research import Specialist
+from agents.schemas.sessions import IcpSessionState
 from .understand_competition import _market_context_block, _sibling_block
 from .understand_offer import _offer_material, _offer_noun, _offer_nouns, _specialist_lens
 

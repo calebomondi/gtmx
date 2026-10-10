@@ -9,7 +9,8 @@ from langgraph.graph import START, END, StateGraph
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from agents.llm.main import invoke_structured_with_fallback
-from ..schema_states import Perspectives, Specialist, OfferSessionState
+from agents.schemas.research import Perspectives, Specialist
+from agents.schemas.sessions import OfferSessionState
 
 
 class OfferState(TypedDict):

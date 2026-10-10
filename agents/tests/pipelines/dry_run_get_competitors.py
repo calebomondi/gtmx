@@ -49,7 +49,7 @@ def _stub_distill(docs, focus, log_label="distill_document"):
 
 
 def _candidate(name, website, **kw):
-    from agents.pipelines.schema_states import CandidateFinding
+    from agents.schemas.competition import CandidateFinding
 
     return CandidateFinding(name=name, website=website, **kw)
 
@@ -124,7 +124,7 @@ def _install_stubs():
 
 
 def _task(label, geo, queries):
-    from agents.pipelines.schema_states import CompetitorHuntTask
+    from agents.schemas.competition import CompetitorHuntTask
 
     return CompetitorHuntTask(
         archetype_label=label, geography_scope=geo, objective="find them", queries=queries
@@ -132,7 +132,7 @@ def _task(label, geo, queries):
 
 
 def _profile():
-    from agents.pipelines.schema_states import CompetitorProfile, SourcedFinding
+    from agents.schemas.competition import CompetitorProfile, SourcedFinding
 
     return CompetitorProfile(
         name="Acme Vector",
@@ -287,7 +287,7 @@ async def main() -> None:
 
     # -- opportunities with NO pain signals, which the brief requires -------
     def _no_pain(messages, schema=None, **kw):
-        from agents.pipelines.schema_states import CompetitorProfile
+        from agents.schemas.competition import CompetitorProfile
 
         return CompetitorProfile(
             name="Quiet Co",

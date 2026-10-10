@@ -117,15 +117,12 @@ from langchain_core.messages import SystemMessage
 from config import get_settings
 from agents.llm.main import invoke_structured_with_fallback
 from agents.context_budget import _truncate_to_tokens, budget_context, distill_documents
-from agents.states import (
-    CompetitionFindings,
-    CompetitionRecord,
-    IdealCompetitorProfile,
-    TaskResearchBundle,
-)
+from agents.schemas.competition import CompetitionFindings, CompetitionRecord, IdealCompetitorProfile
+from agents.schemas.research import TaskResearchBundle
 from data_sources.scraping.exa import search_and_scrape
 
-from ..schema_states import CompetitionSessionState, ResearchTask, Specialist, TaskList
+from agents.schemas.research import ResearchTask, Specialist, TaskList
+from agents.schemas.sessions import CompetitionSessionState
 from .understand_offer import (
     _dedupe_sources,
     _known_facts,

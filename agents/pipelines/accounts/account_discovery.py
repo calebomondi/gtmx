@@ -21,14 +21,9 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 from config import Settings, get_settings
 from agents.llm.main import invoke_structured_with_fallback, cheap_providers
-from agents.states import (
-    AccountList,
-    AccountRecord,
-    ContactRecord,
-    ICP,
-    TriggerEvent,
-)
-from agents.pipelines.schema_states import IcpSessionState
+from agents.schemas.accounts import AccountList, AccountRecord, ContactRecord, TriggerEvent
+from agents.schemas.icp import ICP
+from agents.schemas.sessions import IcpSessionState
 from data_sources.scraping.exa import search_and_scrape, scrape_url
 from data_sources.socials import instagram, linkedin, tiktok, x
 from agents.pipelines.web_utils import (

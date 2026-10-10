@@ -36,15 +36,12 @@ from config import get_settings
 from agents.llm.main import invoke_structured_with_fallback
 from agents.context_budget import _truncate_to_tokens, budget_context, distill_documents
 from agents.helpers import format_offer_material
-from agents.states import (
-    OfferDataSnapshot,
-    ProductFindings,
-    SnapshotFeature,
-    TaskResearchBundle,
-)
+from agents.schemas.offer import OfferDataSnapshot, ProductFindings, SnapshotFeature
+from agents.schemas.research import TaskResearchBundle
 from data_sources.scraping.exa import search_and_scrape
 
-from ..schema_states import OfferSessionState, ResearchTask, Specialist, TaskList
+from agents.schemas.research import ResearchTask, Specialist, TaskList
+from agents.schemas.sessions import OfferSessionState
 
 
 # The planner is asked for 3-5; this is the hard stop. A schema hint is a
