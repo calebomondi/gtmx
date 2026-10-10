@@ -53,10 +53,10 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     # Qwen models, tried in order (comma-separated in env). `llm_models` serves
     # reasoning calls; `llm_cheap_models` the bulk extraction/condensing calls.
-    # qwen3.8-flash because qwen3.8-max's quota is exhausted on this account
-    # (2026-10-10); switch back via env once it is funded.
-    llm_models: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["qwen3.8-flash"])
-    llm_cheap_models: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["qwen3.8-flash"])
+    # qwen3.7-plus: the account's free quota on the 3.8 family (max, flash,
+    # omni-flash) is exhausted (2026-10-10). Override via env.
+    llm_models: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["qwen3.7-plus"])
+    llm_cheap_models: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["qwen3.7-plus"])
     # Second provider (OpenRouter, keyed by OPENAI_API_KEY), tried in order when
     # every Qwen model fails -- outage, quota, or a model retired mid-run.
     llm_fallback_models: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["openai/gpt-4o-mini"])
