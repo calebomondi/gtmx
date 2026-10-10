@@ -24,3 +24,10 @@ export function passwordIssues(value: string): string[] {
 export function isValidPassword(value: string): boolean {
   return passwordIssues(value).length === 0
 }
+
+/** A same-site path to return to after sign-in, or null. Rejects absolute and
+ * protocol-relative URLs ("//evil.com") so `?next=` can't be an open redirect. */
+export function safeNextPath(raw: string | null): string | null {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return null
+  return raw
+}

@@ -2,6 +2,7 @@ import { useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 
 import { supabase } from "@/lib/supabase"
+import { safeNextPath } from "@/lib/validation"
 
 export default function AuthCallback() {
   const navigate = useNavigate()
@@ -31,7 +32,7 @@ export default function AuthCallback() {
         navigate("/auth/update-password", { replace: true })
         return
       }
-      navigate(nextParam && nextParam.startsWith("/") ? nextParam : "/feed", {
+      navigate(safeNextPath(nextParam) ?? "/feed", {
         replace: true,
       })
     }
