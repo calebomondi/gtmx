@@ -1,8 +1,6 @@
 """Run rows: status bookkeeping and the queries the API needs."""
 
 import uuid
-from typing import TypeVar
-
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,12 +8,11 @@ from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.services.errors import NotFoundError
 
-RunModel = TypeVar("RunModel", models.Run, models.CompetitorRun, models.AccountRun)
 
 TERMINAL_STATUSES = ("completed", "failed", "cancelled")
 
 
-async def set_run_fields(model: type[RunModel], run_id: uuid.UUID, **fields) -> RunModel | None:
+async def set_run_fields(model: type[models.Run], run_id: uuid.UUID, **fields) -> models.Run | None:
     """Write run fields in their own short-lived session.
 
     One session per transition, not one held across the run: a run takes

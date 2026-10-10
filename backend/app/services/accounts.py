@@ -7,10 +7,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import models
-from backend.app.services import limits
+from backend.app.services.runs import TERMINAL_STATUSES
 from backend.app.services.errors import ConflictError, NotFoundError
 
-ACTIVE_RUN_STATUSES = ("pending", "running")
 
 
 async def list_for_workspace(db: AsyncSession, workspace_id: uuid.UUID) -> list[models.Account]:
@@ -47,43 +46,43 @@ async def set_selected(
     return account
 
 
-async def list_runs(db: AsyncSession, workspace_id: uuid.UUID, limit: int) -> list[models.AccountRun]:
+async def list_runs(db: AsyncSession, workspace_id: uuid.UUID, limit: int) -> list[models.Run]:
     result = await db.execute(
-        select(models.AccountRun)
-        .where(models.AccountRun.workspace_id == workspace_id)
-        .order_by(models.AccountRun.created_at.desc())
+        select(models.Run)
+        .where(models.Run.workspace_id == workspace_id, models.Run.kind == "accounts")
+        .order_by(models.Run.created_at.desc())
         .limit(max(1, min(limit, 100)))
     )
     return list(result.scalars().all())
 
 
-async def get_run(db: AsyncSession, workspace_id: uuid.UUID, run_id: uuid.UUID) -> models.AccountRun:
-    result = await db.execute(
-        select(models.AccountRun).where(
-            models.AccountRun.id == run_id,
-            models.AccountRun.workspace_id == workspace_id,
+async def get_run(db: AsyncSession, workspace_id: uuid.UUID, run_id: uuid.UUID) -> models.Run:
+    run = await db.scalar(
+        select(models.Run).where(
+            models.Run.id == run_id, models.Run.workspace_id == workspace_id, models.Run.kind == "accounts",
         )
     )
-    run = result.scalar_one_or_none()
     if run is None:
         raise NotFoundError("Account run not found")
     return run
 
 
-async def active_run(db: AsyncSession, workspace_id: uuid.UUID) -> models.AccountRun | None:
+async def active_run(db: AsyncSession, workspace_id: uuid.UUID) -> models.Run | None:
+    """The run in flight, if any -- one per workspace, because concurrent runs
+    would race on the same upserts."""
     result = await db.execute(
-        select(models.AccountRun).where(
-            models.AccountRun.workspace_id == workspace_id,
-            models.AccountRun.status.in_(ACTIVE_RUN_STATUSES),
+        select(models.Run).where(
+            models.Run.workspace_id == workspace_id,
+            models.Run.kind == "accounts",
+            models.Run.status.not_in(TERMINAL_STATUSES),
         )
     )
     return result.scalars().first()
 
 
-async def create_run(db: AsyncSession, workspace_id: uuid.UUID, owner_id: uuid.UUID) -> models.AccountRun:
-    """Record a pending run. Requires the ICP from a finished discovery run,
-    which is what the account agent searches against."""
-    await limits.ensure_can_start(db, owner_id, "accounts")
+async def require_icp(db: AsyncSession, workspace_id: uuid.UUID) -> None:
+    """Account discovery searches against the ICP a finished discovery run
+    produces; starting before that is a conflict."""
     insights = await db.scalar(
         select(models.ProductProfile.insights).where(models.ProductProfile.workspace_id == workspace_id)
     )
@@ -92,8 +91,3 @@ async def create_run(db: AsyncSession, workspace_id: uuid.UUID, owner_id: uuid.U
             "This workspace has no ICP yet. Complete the Offer run first -- "
             "the account agent searches for accounts matching it."
         )
-    run = models.AccountRun(workspace_id=workspace_id, status="pending")
-    db.add(run)
-    await db.commit()
-    await db.refresh(run)
-    return run

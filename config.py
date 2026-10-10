@@ -67,6 +67,8 @@ class Settings(BaseSettings):
     # Wall-clock cap on one active segment of a run (time spent waiting for a
     # user's answer does not count: no task is alive then).
     discovery_segment_timeout_s: float = 1800.0
+    # Wall-clock cap on a whole background run (competitors, accounts, ...).
+    background_run_timeout_s: float = 1800.0
 
     # -- Usage limits (per user) --
     max_active_discovery_runs: int = 1

@@ -224,6 +224,19 @@ class CompetitorRunResponse(BaseModel):
     finished_at: datetime | None = None
     created_at: datetime
 
+    @classmethod
+    def from_run(cls, run) -> "CompetitorRunResponse":
+        """Built from a `runs` row; the counts live in its `progress`."""
+        progress = run.progress or {}
+        return cls(
+            id=run.id, workspace_id=run.workspace_id, status=run.status, error=run.error,
+            started_at=run.started_at, finished_at=run.finished_at, created_at=run.created_at,
+            **{k: progress[k] for k in (
+                "candidates_seen", "found", "dropped", "dropped_reasons",
+                "profile_confidence", "archetypes_targeted",
+            ) if progress.get(k) is not None},
+        )
+
 
 class CompetitorRunStartResponse(BaseModel):
     """What POSTing a run returns: the run to poll, plus the current count so

@@ -11,13 +11,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import models
-from backend.app.services import limits
+from backend.app.services.runs import TERMINAL_STATUSES
 from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError
 
-# Only one run may be in flight per workspace: concurrent runs would race on
-# the unique (workspace_id, domain_key) and the loser's inserts would fail for
-# no reason the user could act on.
-ACTIVE_RUN_STATUSES = ("pending", "running")
 
 # A manual row has no research yet; say so in the agent's vocabulary so the UI
 # shows "not researched yet" instead of a profile of empty fields.
@@ -153,34 +149,35 @@ async def delete(db: AsyncSession, competitor: models.Competitor) -> None:
     await db.commit()
 
 
-async def list_runs(db: AsyncSession, workspace_id: uuid.UUID, limit: int) -> list[models.CompetitorRun]:
+async def list_runs(db: AsyncSession, workspace_id: uuid.UUID, limit: int) -> list[models.Run]:
     result = await db.execute(
-        select(models.CompetitorRun)
-        .where(models.CompetitorRun.workspace_id == workspace_id)
-        .order_by(models.CompetitorRun.created_at.desc())
+        select(models.Run)
+        .where(models.Run.workspace_id == workspace_id, models.Run.kind == "competitors")
+        .order_by(models.Run.created_at.desc())
         .limit(max(1, min(limit, 100)))
     )
     return list(result.scalars().all())
 
 
-async def get_run(db: AsyncSession, workspace_id: uuid.UUID, run_id: uuid.UUID) -> models.CompetitorRun:
-    result = await db.execute(
-        select(models.CompetitorRun).where(
-            models.CompetitorRun.id == run_id,
-            models.CompetitorRun.workspace_id == workspace_id,
+async def get_run(db: AsyncSession, workspace_id: uuid.UUID, run_id: uuid.UUID) -> models.Run:
+    run = await db.scalar(
+        select(models.Run).where(
+            models.Run.id == run_id, models.Run.workspace_id == workspace_id, models.Run.kind == "competitors",
         )
     )
-    run = result.scalar_one_or_none()
     if run is None:
         raise NotFoundError("Competitor run not found")
     return run
 
 
-async def active_run(db: AsyncSession, workspace_id: uuid.UUID) -> models.CompetitorRun | None:
+async def active_run(db: AsyncSession, workspace_id: uuid.UUID) -> models.Run | None:
+    """The run in flight, if any -- one per workspace, because concurrent runs
+    would race on the same upserts."""
     result = await db.execute(
-        select(models.CompetitorRun).where(
-            models.CompetitorRun.workspace_id == workspace_id,
-            models.CompetitorRun.status.in_(ACTIVE_RUN_STATUSES),
+        select(models.Run).where(
+            models.Run.workspace_id == workspace_id,
+            models.Run.kind == "competitors",
+            models.Run.status.not_in(TERMINAL_STATUSES),
         )
     )
     return result.scalars().first()
@@ -195,23 +192,13 @@ async def ideal_profile(db: AsyncSession, workspace_id: uuid.UUID) -> dict | Non
     return (insights or {}).get("ideal_competitor_profile") or None
 
 
-async def create_run(db: AsyncSession, workspace_id: uuid.UUID, owner_id: uuid.UUID) -> models.CompetitorRun:
-    """Record a pending run. Requires a finished discovery run, because the
-    agent hunts with the ideal competitor profile that run produces."""
-    await limits.ensure_can_start(db, owner_id, "competitors")
+async def require_ideal_profile(db: AsyncSession, workspace_id: uuid.UUID) -> dict:
+    """The profile a competitor run hunts with; a finished discovery run
+    produces it, so starting before that is a conflict."""
     profile = await ideal_profile(db, workspace_id)
     if profile is None:
         raise ConflictError(
             "This workspace has no ideal competitor profile yet. Complete "
             "discovery first -- the competitor agent searches using it."
         )
-    run = models.CompetitorRun(
-        workspace_id=workspace_id,
-        status="pending",
-        profile_confidence=profile.get("confidence"),
-        archetypes_targeted=len(profile.get("archetypes") or []),
-    )
-    db.add(run)
-    await db.commit()
-    await db.refresh(run)
-    return run
+    return profile

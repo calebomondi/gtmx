@@ -84,10 +84,6 @@ class Workspace(Base):
         back_populates="workspace",
         cascade="all, delete-orphan",
     )
-    competitor_runs: Mapped[list["CompetitorRun"]] = relationship(
-        back_populates="workspace",
-        cascade="all, delete-orphan",
-    )
 
     @property
     def product_name(self) -> str | None:
@@ -253,7 +249,10 @@ class ProductFeature(Base):
 
 
 class CompetitorRun(Base):
-    """One invocation of the standalone competitor agent for a workspace.
+    """DEPRECATED: superseded by `Run` (kind="competitors"); no code reads or
+    writes it. The table is dropped by a later migration (expand -> contract).
+
+One invocation of the standalone competitor agent for a workspace.
 
     A run is a separate entity from its results because the agent is re-runnable
     and each invocation is worth auditing on its own: what it found, when, and
@@ -321,8 +320,6 @@ class CompetitorRun(Base):
     )
 
     # Relationships
-    workspace: Mapped["Workspace"] = relationship(back_populates="competitor_runs")
-    competitors: Mapped[list["Competitor"]] = relationship(back_populates="run")
 
 
 class Competitor(Base):
@@ -364,7 +361,7 @@ class Competitor(Base):
     # Which run first found this competitor. Null for a manually added one, which
     # is exactly how the UI tells agent-found and user-added apart.
     run_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("competitor_runs.id", ondelete="SET NULL"),
+        ForeignKey("runs.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -460,7 +457,6 @@ class Competitor(Base):
 
     # Relationships
     workspace: Mapped["Workspace"] = relationship(back_populates="competitors")
-    run: Mapped["CompetitorRun | None"] = relationship(back_populates="competitors")
 
     __table_args__ = (
         # The dedup guarantee. Two runs finding acme.com and https://www.acme.com
@@ -470,7 +466,10 @@ class Competitor(Base):
     )
 
 class AccountRun(Base):
-    """One invocation of the account-discovery agent for a workspace.
+    """DEPRECATED: superseded by `Run` (kind="accounts"); no code reads or
+    writes it. The table is dropped by a later migration (expand -> contract).
+
+One invocation of the account-discovery agent for a workspace.
 
     Mirrors CompetitorRun: each run is a separate row so the user can audit why a
     run failed (or why one filled the list and another didn't), and the UI can
@@ -509,8 +508,6 @@ class AccountRun(Base):
         nullable=False,
     )
 
-    workspace: Mapped["Workspace"] = relationship()
-    accounts: Mapped[list["Account"]] = relationship(back_populates="run")
 
 
 class Account(Base):
@@ -530,7 +527,7 @@ class Account(Base):
         nullable=False, index=True,
     )
     run_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("account_runs.id", ondelete="SET NULL"),
+        ForeignKey("runs.id", ondelete="SET NULL"),
         nullable=True, index=True,
     )
 
@@ -571,7 +568,6 @@ class Account(Base):
     )
 
     workspace: Mapped["Workspace"] = relationship()
-    run: Mapped["AccountRun | None"] = relationship(back_populates="accounts")
 
     __table_args__ = (
         # Same dedup posture as competitors: re-running the agent refreshes a

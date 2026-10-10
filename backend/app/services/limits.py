@@ -24,20 +24,11 @@ _DAY = timedelta(days=1)
 
 async def _runs_today(db: AsyncSession, user_id: uuid.UUID, kind: str) -> int:
     since = datetime.now(UTC) - _DAY
-    if kind == "discovery":
-        query = select(func.count()).select_from(models.Run).where(
+    return int(await db.scalar(
+        select(func.count()).select_from(models.Run).where(
             models.Run.user_id == user_id, models.Run.kind == kind, models.Run.created_at >= since,
         )
-    else:
-        # Competitor/account runs still have their own tables (until they move
-        # onto the run manager); attribute them through the workspace owner.
-        table = models.CompetitorRun if kind == "competitors" else models.AccountRun
-        query = (
-            select(func.count()).select_from(table)
-            .join(models.Workspace, models.Workspace.id == table.workspace_id)
-            .where(models.Workspace.user_id == user_id, table.created_at >= since)
-        )
-    return int(await db.scalar(query) or 0)
+    ) or 0)
 
 
 def _daily_cap(kind: str) -> int:
@@ -45,6 +36,8 @@ def _daily_cap(kind: str) -> int:
         "discovery": settings.max_discovery_runs_per_day,
         "competitors": settings.max_competitor_runs_per_day,
         "accounts": settings.max_account_runs_per_day,
+        # Manual-competitor research is bounded by how many rivals a user adds.
+        "competitor_research": settings.max_competitor_runs_per_day * 5,
     }[kind]
 
 
