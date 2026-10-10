@@ -26,7 +26,7 @@ stage into a study of the company's own marketing copy.
 """
 
 import json
-from concurrent.futures import ThreadPoolExecutor
+from agents.concurrency import ContextThreadPoolExecutor
 from typing import Optional
 
 from langgraph.graph import START, END, StateGraph
@@ -601,7 +601,7 @@ def conduct_research(state: OfferSessionState) -> dict:
                 search_failed=True,
             )
 
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+    with ContextThreadPoolExecutor(max_workers=workers) as pool:
         bundles = list(pool.map(_guarded, tasks))
 
     for bundle in bundles:

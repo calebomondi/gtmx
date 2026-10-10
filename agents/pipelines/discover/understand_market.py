@@ -44,7 +44,7 @@ narrative findings are the pipeline's product, and losing the structured record
 must not sink a run whose notes are already written.
 """
 
-from concurrent.futures import ThreadPoolExecutor
+from agents.concurrency import ContextThreadPoolExecutor
 from datetime import date, timedelta
 from typing import Optional
 
@@ -535,7 +535,7 @@ def conduct_research(state: MarketSessionState) -> dict:
                 search_failed=True,
             )
 
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+    with ContextThreadPoolExecutor(max_workers=workers) as pool:
         bundles = list(pool.map(_guarded, tasks))
 
     for bundle in bundles:

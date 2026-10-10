@@ -12,7 +12,7 @@ and never pay for the same query twice within a short window.
 
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from agents.concurrency import ContextThreadPoolExecutor
 from typing import Any, Callable, Iterable, Optional
 
 from config import get_settings
@@ -41,7 +41,7 @@ __all__ = [
     "SEARCH_TTL_SECONDS",
 ]
 
-_TIMEOUT_POOL = ThreadPoolExecutor(max_workers=64, thread_name_prefix="web-call-timeout")
+_TIMEOUT_POOL = ContextThreadPoolExecutor(max_workers=64, thread_name_prefix="web-call-timeout")
 
 _SEARCH_CACHE: dict[tuple, tuple[float, Any]] = {}
 _SEARCH_LOCK = threading.Lock()
@@ -66,7 +66,7 @@ def run_parallel(fns: Iterable[Callable[[], Any]], workers: int = 8) -> list[Any
             logger.warning("parallel call failed: %s", e)
             return [None]
     workers = max(1, min(workers, len(fns)))
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+    with ContextThreadPoolExecutor(max_workers=workers) as pool:
         futs = [pool.submit(fn) for fn in fns]
         out = []
         for fn, fut in zip(fns, futs):

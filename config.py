@@ -57,6 +57,14 @@ class Settings(BaseSettings):
     # (2026-10-10); switch back via env once it is funded.
     llm_models: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["qwen3.8-flash"])
     llm_cheap_models: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["qwen3.8-flash"])
+    # Second provider (OpenRouter, keyed by OPENAI_API_KEY), tried in order when
+    # every Qwen model fails -- outage, quota, or a model retired mid-run.
+    llm_fallback_models: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["openai/gpt-4o-mini"])
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    # Per-call cap. Comfortably above the slowest call measured (~150s for a
+    # ~8k-token structured output), far below the old 600s that let one hung
+    # connection stall a run for ten minutes.
+    llm_call_timeout_s: float = 240.0
 
     # -- Web data --
     exa_api_key: str = ""
@@ -120,7 +128,7 @@ class Settings(BaseSettings):
             raise ValueError("at least one model is required")
         return value
 
-    @field_validator("allowed_origins", "admin_bootstrap_emails", "llm_models", "llm_cheap_models", mode="before")
+    @field_validator("allowed_origins", "admin_bootstrap_emails", "llm_models", "llm_cheap_models", "llm_fallback_models", mode="before")
     @classmethod
     def _parse_str_list(cls, value):
         """Accept a comma-separated string or a JSON array from the env."""

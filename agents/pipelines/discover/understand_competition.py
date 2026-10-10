@@ -107,7 +107,7 @@ already written.
 """
 
 import re
-from concurrent.futures import ThreadPoolExecutor
+from agents.concurrency import ContextThreadPoolExecutor
 from datetime import date, timedelta
 from typing import Optional
 
@@ -985,7 +985,7 @@ def conduct_research(state: CompetitionSessionState) -> dict:
                 search_failed=True,
             )
 
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+    with ContextThreadPoolExecutor(max_workers=workers) as pool:
         bundles = list(pool.map(_guarded, tasks))
 
     for bundle in bundles:
@@ -1044,7 +1044,7 @@ def _detail_archetypes(state: CompetitionSessionState, context: str, skeleton: P
         )
         return CompetitorArchetype(**sketch.model_dump(), **(result or ArchetypeDetail()).model_dump())
 
-    with ThreadPoolExecutor(max_workers=max(1, len(sketches))) as pool:
+    with ContextThreadPoolExecutor(max_workers=max(1, len(sketches))) as pool:
         return list(pool.map(detail, sketches))
 
 
@@ -1059,7 +1059,7 @@ def extract_competitor_profile(state: CompetitionSessionState) -> dict:
     """
     context = _competition_context(state, list(state.get("competition_task_research") or []))
     noun = _offer_noun(state)
-    with ThreadPoolExecutor(max_workers=2) as pool:
+    with ContextThreadPoolExecutor(max_workers=2) as pool:
         skeleton_job = pool.submit(
             _structured, "draft_competitor_skeleton", ProfileSkeleton,
             skeleton_instructions.format(offer_noun=noun, context=context),

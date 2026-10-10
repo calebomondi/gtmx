@@ -51,8 +51,7 @@ are refreshed rather than duplicated, and `last_seen_at` moves.
 """
 
 import re
-from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime
+from agents.concurrency import ContextThreadPoolExecutor
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -86,7 +85,7 @@ def _search_and_scrape(query, config, num_results=5, start_published_date=None):
     )
     return search_cache_put(key, results or [])
 
-from agents.schemas.competition import CandidateFinding, CompetitorHuntBundle, CompetitorHuntPlan, CompetitorHuntTask, CompetitorProfile, CompetitorProfileBatch, CompetitorRunOutcome, SourcedFinding
+from agents.schemas.competition import CandidateFinding, CompetitorHuntBundle, CompetitorHuntPlan, CompetitorHuntTask, CompetitorProfile, CompetitorRunOutcome, SourcedFinding
 from agents.schemas.sessions import CompetitorSessionState
 
 
@@ -643,7 +642,7 @@ def hunt_candidates(state: CompetitorSessionState) -> dict:
         print("hunt_candidates: no tasks")
         return {"competitor_hunt_bundles": []}
 
-    with ThreadPoolExecutor(max_workers=min(len(tasks), MAX_HUNT_TASKS)) as pool:
+    with ContextThreadPoolExecutor(max_workers=min(len(tasks), MAX_HUNT_TASKS)) as pool:
         bundles = list(pool.map(_hunt_one, tasks))
 
     total = sum(len(b.candidates) for b in bundles)
@@ -874,7 +873,7 @@ def profile_competitors(state: CompetitorSessionState) -> dict:
         "own_website": state.get("own_website"),
     }
 
-    with ThreadPoolExecutor(max_workers=PROFILE_WORKERS) as pool:
+    with ContextThreadPoolExecutor(max_workers=PROFILE_WORKERS) as pool:
         results = list(pool.map(lambda s: _profile_one(s, offer), survivors))
 
     profiles = [p for p in results if p is not None]

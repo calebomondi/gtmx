@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from langgraph.types import Command
 from sqlalchemy import select
 
+from agents.llm import main as llm
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.runs import background, discovery, events
@@ -35,6 +36,8 @@ _RESTART_MESSAGE = "The server restarted while this run was working. Please star
 
 def _spawn(run_id: uuid.UUID, segment: Coroutine, timeout_s: float) -> None:
     async def guarded() -> None:
+        # Bills every LLM call this segment makes (in any worker thread) to the run.
+        llm.current_run_id.set(str(run_id))
         try:
             async with asyncio.timeout(timeout_s):
                 await segment

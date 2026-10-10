@@ -28,7 +28,7 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from agents.concurrency import ContextThreadPoolExecutor
 from pathlib import Path
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -379,7 +379,7 @@ def distill_documents(
         return distill_document(docs[0], focus=focus, log_label=log_label)
 
     workers = min(len(docs), _DISTILL_MAX_WORKERS)
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+    with ContextThreadPoolExecutor(max_workers=workers) as pool:
         notes = list(
             pool.map(
                 lambda doc: distill_document(

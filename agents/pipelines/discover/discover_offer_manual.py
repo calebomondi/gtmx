@@ -10,7 +10,7 @@ Interrupt surface: no scrape, no candidate picker, no description confirmation.
 The only interrupt is an optional "you didn't cover X yet" nudge when the
 extraction comes back missing pieces — one round, then we accept what we have."""
 
-from typing import Literal, Optional
+from typing import Literal
 
 from langchain_core.messages import HumanMessage
 from langgraph.graph import START, END, StateGraph
