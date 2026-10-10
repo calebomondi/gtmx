@@ -3,7 +3,8 @@ import uuid
 
 from datetime import datetime, UTC
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UUID, Boolean, JSON, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UUID, Boolean, UniqueConstraint, false, func
+from sqlalchemy.dialects.postgresql import JSONB as JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.database.connect import Base
@@ -14,10 +15,9 @@ class Workspace(Base):
 
     # Metadata
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), 
-        primary_key=True, 
-        index=True, 
-        default=uuid.uuid4
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
     )
     # Supabase Auth user id (no local users table — Supabase owns identity).
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -33,7 +33,7 @@ class Workspace(Base):
         Boolean,
         nullable=False,
         default=False,
-        server_default="0",
+        server_default=false(),
     )
 
     # Optional grouping: NULL = ungrouped. Membership is preserved on archive
@@ -48,7 +48,7 @@ class Workspace(Base):
         Boolean,
         nullable=False,
         default=False,
-        server_default="0",
+        server_default=false(),
     )
     archived_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
@@ -58,11 +58,13 @@ class Workspace(Base):
     # Dates
     date_created: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(UTC)
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
     )
     last_activity: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(UTC)
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
     )
 
     # Relationships
@@ -110,7 +112,6 @@ class Project(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        index=True,
         default=uuid.uuid4,
     )
     # Supabase Auth user id (no local users table — Supabase owns identity).
@@ -131,7 +132,7 @@ class Project(Base):
         Boolean,
         nullable=False,
         default=False,
-        server_default="0",
+        server_default=false(),
     )
     position: Mapped[int] = mapped_column(
         Integer,
@@ -144,7 +145,7 @@ class Project(Base):
         Boolean,
         nullable=False,
         default=False,
-        server_default="0",
+        server_default=false(),
     )
     archived_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
@@ -154,11 +155,13 @@ class Project(Base):
     # Dates
     date_created: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(UTC)
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
     )
     last_activity: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(UTC)
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
     )
 
     # Relationships
@@ -207,6 +210,7 @@ class ProductProfile(Base):
         Boolean,
         nullable=False,
         default=False,
+        server_default=false(),
     )
 
     # Final agent-run insights (domain/market/competition/ICP/team + offer
@@ -312,6 +316,7 @@ class CompetitorRun(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
+        server_default=func.now(),
         nullable=False,
     )
 
@@ -436,6 +441,7 @@ class Competitor(Base):
     first_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
+        server_default=func.now(),
         nullable=False,
     )
     # Refreshed on every run that re-finds this firm, so the UI can show what is
@@ -444,6 +450,7 @@ class Competitor(Base):
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
+        server_default=func.now(),
         nullable=False,
     )
     deep_researched_at: Mapped[datetime | None] = mapped_column(
@@ -497,7 +504,9 @@ class AccountRun(Base):
         DateTime(timezone=True), nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False,
+        DateTime(timezone=True), default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
     )
 
     workspace: Mapped["Workspace"] = relationship()
@@ -553,10 +562,12 @@ class Account(Base):
     trigger_event: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     selected: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default="0",
+        Boolean, nullable=False, default=False, server_default=false(),
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False,
+        DateTime(timezone=True), default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
     )
 
     workspace: Mapped["Workspace"] = relationship()

@@ -1,76 +1,19 @@
-import uuid
-
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import inspect as sa_inspect, select, text
+from sqlalchemy import text
 
 from config import settings
 from backend.app.api.v1.routes import api_router
-from backend.app.database import models  # noqa: F401
-from backend.app.database.connect import Base, engine, AsyncSessionLocal
+from backend.app.database.connect import engine, AsyncSessionLocal
+from backend.app.database.schema_check import ensure_schema_at_head
 from backend.app import agents_runtime
-
-
-def _ensure_workspace_columns(sync_conn):
-    """Dev has no alembic and create_all never adds columns to existing tables
-    — add newer columns to pre-existing databases."""
-    inspector = sa_inspect(sync_conn)
-    columns = {col["name"] for col in inspector.get_columns("workspaces")}
-    if "name" not in columns:
-        sync_conn.execute(text("ALTER TABLE workspaces ADD COLUMN name VARCHAR(100)"))
-    if "pinned" not in columns:
-        sync_conn.execute(
-            text("ALTER TABLE workspaces ADD COLUMN pinned BOOLEAN NOT NULL DEFAULT 0")
-        )
-    if "project_id" not in columns:
-        sync_conn.execute(
-            text("ALTER TABLE workspaces ADD COLUMN project_id VARCHAR(36)")
-        )
-    if "archived" not in columns:
-        sync_conn.execute(
-            text("ALTER TABLE workspaces ADD COLUMN archived BOOLEAN NOT NULL DEFAULT 0")
-        )
-    if "archived_at" not in columns:
-        sync_conn.execute(text("ALTER TABLE workspaces ADD COLUMN archived_at DATETIME"))
-    profile_columns = {
-        col["name"] for col in inspector.get_columns("product_profiles")
-    }
-    if "insights" not in profile_columns:
-        sync_conn.execute(
-            text("ALTER TABLE product_profiles ADD COLUMN insights JSON")
-        )
-
-
-def _ensure_competitor_columns(sync_conn):
-    """Same gap as above, for the competitors tables.
-
-    Split out rather than folded into `_ensure_workspace_columns` because it is a
-    different concern with a different failure mode: these tables are new, so
-    create_all builds them whole and this only ever runs against a database that
-    already has them from an earlier build of the same feature.
-
-    `notes` is the only column that has been added after the tables first
-    shipped. It is nullable with no default, so the ALTER is additive and
-    existing rows read back as NULL -- which is correct, since a note is
-    something the user writes and a pre-existing row has none.
-    """
-    inspector = sa_inspect(sync_conn)
-    tables = set(inspector.get_table_names())
-    if "competitors" not in tables:
-        return  # brand new database; create_all already made the full table
-    columns = {col["name"] for col in inspector.get_columns("competitors")}
-    if "notes" not in columns:
-        sync_conn.execute(text("ALTER TABLE competitors ADD COLUMN notes TEXT"))
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-        await connection.run_sync(_ensure_workspace_columns)
-        await connection.run_sync(_ensure_competitor_columns)
+    await ensure_schema_at_head(engine)
     await agents_runtime.start_agent_runtime(settings.database_url)
     try:
         yield

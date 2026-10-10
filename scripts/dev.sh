@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# Dev backend runner: starts the local Postgres (docker-compose.yml) and waits
-# for it to be healthy, then runs uvicorn with reload.
+# Dev backend runner: starts the local Postgres (docker-compose.yml), waits for
+# it to be healthy, applies migrations, then runs uvicorn with reload. (The app
+# itself refuses to start on an unmigrated database.)
 #
 # The point of the explicit --reload-dir list: a bare `uvicorn --reload` watches
 # the whole CWD, including the frontend tree, and Vite rewrites
@@ -17,6 +18,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 docker compose up -d --wait postgres
+alembic upgrade head
 
 exec uvicorn backend.app.main:app \
   --reload \

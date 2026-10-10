@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "aiosqlite>=0.22.1",
+    "alembic>=1.14",
     "assistant-stream>=0.0.36",
     "axios>=0.4.0",
     "brightdata-sdk>=2.5.2",
