@@ -106,7 +106,7 @@ def build_discovery_agent(checkpointer: BaseCheckpointSaver | None = None):
     invoke and resume via Command(resume=...) with the same thread config.
 
     `checkpointer` lets callers (e.g. the backend) supply a durable saver such
-    as AsyncSqliteSaver; falls back to an in-memory saver for interactive
+    as AsyncPostgresSaver; falls back to an in-memory saver for interactive
     drivers and tests."""
 
     builder = StateGraph(DiscoverySessionState)

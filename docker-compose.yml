@@ -1,0 +1,23 @@
+# Local development services. Production uses Supabase Postgres instead.
+#   docker compose up -d      # start
+#   docker compose down       # stop (data kept in the named volume)
+#   docker compose down -v    # stop and wipe the database
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: gtmx
+      POSTGRES_PASSWORD: gtmx
+      POSTGRES_DB: gtmx
+    ports:
+      - "5432:5432"
+    volumes:
+      - gtmx-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gtmx -d gtmx"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  gtmx-pg:

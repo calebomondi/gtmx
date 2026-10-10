@@ -38,7 +38,11 @@ class Settings(BaseSettings):
     # -- Supabase --
     supabase_base_url: str = ""
     supabase_secret_key: str = ""
-    supabase_db_conn_str: str = ""
+
+    # -- Database --
+    # Postgres everywhere. The default is the docker-compose.yml service; in
+    # prod, point DATABASE_URL at Supabase Postgres (its plain postgresql:// URI).
+    database_url: str = "postgresql://gtmx:gtmx@localhost:5432/gtmx"
 
     # -- LLM providers --
     dashscope_api_key: str = ""
@@ -67,12 +71,23 @@ class Settings(BaseSettings):
 
     @computed_field
     @property
-    def database_url(self) -> str:
-        if self.environment == "development":
-            return "sqlite+aiosqlite:///./blog.db"
-        if not self.supabase_db_conn_str:
-            raise ValueError("SUPABASE_DB_CONN_STR is required outside development")
-        return self.supabase_db_conn_str
+    def sqlalchemy_database_url(self) -> str:
+        """`database_url` with the async psycopg driver SQLAlchemy needs."""
+        return "postgresql+psycopg://" + self.database_url.split("://", 1)[1]
+
+    @field_validator("database_url")
+    @classmethod
+    def _require_postgres(cls, value: str) -> str:
+        """Accept any Postgres URI form and store the plain libpq one, which
+        psycopg (checkpointer) uses as-is and SQLAlchemy gets via
+        `sqlalchemy_database_url`."""
+        scheme, sep, rest = value.strip().partition("://")
+        if not sep or scheme.split("+", 1)[0] not in ("postgresql", "postgres"):
+            raise ValueError(
+                f"DATABASE_URL must be a Postgres URI (got scheme {scheme!r}); "
+                "SQLite is no longer supported. Run `docker compose up -d`."
+            )
+        return f"postgresql://{rest}"
 
     @field_validator("allowed_origins", mode="before")
     @classmethod
