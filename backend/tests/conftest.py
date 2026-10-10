@@ -115,16 +115,14 @@ def owned(client, user, seed_workspace):
             " VALUES (%s, %s, 'Acme', 'company', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '[]') RETURNING id",
             (uuid.uuid4(), workspace_id),
         ).fetchone()[0]
-        competitor_run_id = conn.execute(
-            "INSERT INTO competitor_runs (id, workspace_id, status, candidates_seen, found, dropped, archetypes_targeted)"
-            " VALUES (%s, %s, 'completed', 0, 0, 0, 0) RETURNING id",
-            (uuid.uuid4(), workspace_id),
-        ).fetchone()[0]
-        account_run_id = conn.execute(
-            "INSERT INTO account_runs (id, workspace_id, status, candidates_seen, found)"
-            " VALUES (%s, %s, 'completed', 0, 0) RETURNING id",
-            (uuid.uuid4(), workspace_id),
-        ).fetchone()[0]
+        competitor_run_id, account_run_id = (
+            conn.execute(
+                "INSERT INTO runs (id, user_id, workspace_id, kind, status, progress)"
+                " VALUES (%s, %s, %s, %s, 'completed', '{\"found\": 0}') RETURNING id",
+                (uuid.uuid4(), user.id, workspace_id, kind),
+            ).fetchone()[0]
+            for kind in ("competitors", "accounts")
+        )
     return {
         "workspace": workspace_id,
         "project": project["id"],

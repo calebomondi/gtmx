@@ -3,10 +3,10 @@ them. Runs are jobs: POST records one and returns 202; clients poll it."""
 
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Response, status
+from fastapi import APIRouter, Response, status
 
 from backend.app.api.deps import DbSession, OwnedWorkspace
-from backend.app.competitor_runner import deep_research_manual, execute_run
+from backend.app.runs import manager as run_manager
 from backend.app.schemas.competitors import (
     CompetitorCreateRequest,
     CompetitorListResponse,
@@ -16,6 +16,7 @@ from backend.app.schemas.competitors import (
     CompetitorUpdateRequest,
 )
 from backend.app.services import competitors as competitor_service
+from backend.app.services.errors import RateLimitedError
 
 router = APIRouter()
 
@@ -40,7 +41,6 @@ async def add_competitor(
     payload: CompetitorCreateRequest,
     response: Response,
     db: DbSession,
-    background_tasks: BackgroundTasks,
 ):
     """Track a rival by URL; the agent derives the rest in the background.
 
@@ -51,7 +51,13 @@ async def add_competitor(
     if not created:
         response.status_code = status.HTTP_200_OK
     if payload.deep_research:
-        background_tasks.add_task(deep_research_manual, workspace.id, competitor.id)
+        try:
+            await run_manager.start_background(
+                "competitor_research", workspace.user_id, workspace.id,
+                params={"competitor_id": str(competitor.id)},
+            )
+        except RateLimitedError:
+            pass  # still tracked; it stays marked "not researched yet"
     return CompetitorResponse.model_validate(competitor)
 
 
@@ -60,7 +66,7 @@ async def list_competitor_runs(workspace: OwnedWorkspace, db: DbSession, limit: 
     """Recent runs, newest first. The counts say how much the agent screened
     away -- the difference between "found 3" and "screened 40, kept 3"."""
     runs = await competitor_service.list_runs(db, workspace.id, limit)
-    return [CompetitorRunResponse.model_validate(r) for r in runs]
+    return [CompetitorRunResponse.from_run(r) for r in runs]
 
 
 @router.post(
@@ -68,21 +74,27 @@ async def list_competitor_runs(workspace: OwnedWorkspace, db: DbSession, limit: 
     response_model=CompetitorRunStartResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
-async def start_competitor_run(workspace: OwnedWorkspace, db: DbSession, background_tasks: BackgroundTasks):
+async def start_competitor_run(workspace: OwnedWorkspace, db: DbSession):
     """Start a run (or return the one already in flight) for polling."""
     run = await competitor_service.active_run(db, workspace.id)
     if run is None:
-        run = await competitor_service.create_run(db, workspace.id, workspace.user_id)
-        background_tasks.add_task(execute_run, run.id, workspace.id)
+        profile = await competitor_service.require_ideal_profile(db, workspace.id)
+        run = await run_manager.start_background(
+            "competitors", workspace.user_id, workspace.id,
+            progress={
+                "profile_confidence": profile.get("confidence"),
+                "archetypes_targeted": len(profile.get("archetypes") or []),
+            },
+        )
     return CompetitorRunStartResponse(
-        run=CompetitorRunResponse.model_validate(run),
+        run=CompetitorRunResponse.from_run(run),
         already_tracked=await competitor_service.count_for_workspace(db, workspace.id),
     )
 
 
 @router.get("/{workspace_id}/competitors/runs/{run_id}", response_model=CompetitorRunResponse)
 async def get_competitor_run(workspace: OwnedWorkspace, run_id: uuid.UUID, db: DbSession):
-    return CompetitorRunResponse.model_validate(await competitor_service.get_run(db, workspace.id, run_id))
+    return CompetitorRunResponse.from_run(await competitor_service.get_run(db, workspace.id, run_id))
 
 
 @router.patch("/{workspace_id}/competitors/{competitor_id}", response_model=CompetitorResponse)

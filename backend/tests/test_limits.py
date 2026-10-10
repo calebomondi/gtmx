@@ -1,6 +1,10 @@
 """Per-user usage limits: one discovery at a time, daily run caps, and the
 REST request rate limit."""
 
+import json
+import uuid
+
+import psycopg
 import pytest
 
 from backend.app.runs import discovery, manager
@@ -43,6 +47,12 @@ async def test_daily_discovery_cap(agent, monkeypatch):
 
 
 def test_competitor_and_account_run_caps(client, owned, monkeypatch):
+    # A finished discovery, so the prerequisite (409) passes and the cap is hit.
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        conn.execute(
+            "INSERT INTO product_profiles (id, workspace_id, target_geo, insights) VALUES (%s, %s, '[]', %s)",
+            (uuid.uuid4(), owned["workspace"], json.dumps({"ideal_competitor_profile": {"archetypes": []}, "icp": {"industries": []}})),
+        )
     monkeypatch.setattr(settings, "max_competitor_runs_per_day", 0)
     monkeypatch.setattr(settings, "max_account_runs_per_day", 0)
     for kind in ("competitors", "accounts"):

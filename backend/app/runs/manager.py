@@ -18,7 +18,7 @@ from sqlalchemy import select
 
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
-from backend.app.runs import discovery, events
+from backend.app.runs import background, discovery, events
 from backend.app.runs.errors import user_facing_error
 from backend.app.schemas.agents import DiscoveryRequest
 from backend.app.services import limits
@@ -65,6 +65,35 @@ async def start_discovery(user_id: uuid.UUID, request: DiscoveryRequest) -> mode
         await db.commit()
     _spawn(run.id, discovery.run_segment(run.id, discovery.build_initial_state(request)),
            settings.discovery_segment_timeout_s)
+    return run
+
+
+async def start_background(
+    kind: str,
+    user_id: uuid.UUID,
+    workspace_id: uuid.UUID,
+    *,
+    params: dict | None = None,
+    progress: dict | None = None,
+) -> models.Run:
+    """Start a non-interactive run (competitors, accounts, competitor_research)
+    under the same lifecycle as discovery: timeout, failure recording, restart
+    recovery, event log. `params` is kept as the run's input."""
+    executor = background.EXECUTORS[kind]
+    async with AsyncSessionLocal() as db:
+        await limits.ensure_can_start(db, user_id, kind)
+        run = models.Run(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            kind=kind,
+            status="running",
+            input=params,
+            progress=progress,
+            started_at=datetime.now(UTC),
+        )
+        db.add(run)
+        await db.commit()
+    _spawn(run.id, executor(run.id, workspace_id, params or {}), settings.background_run_timeout_s)
     return run
 
 
