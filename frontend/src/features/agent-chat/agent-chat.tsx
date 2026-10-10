@@ -1,43 +1,87 @@
-import { Bot } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { AlertTriangle, Bot, Loader2 } from 'lucide-react'
+
 import { PromptInputWithActions } from '@/components/chat-input'
 import { SpecialistAvatarGroup } from '@/components/specialist-avatargroup'
-import { workspaceDisplayName } from '@/lib/api'
+import { Markdown } from '@/components/ui/markdown'
+import { getChat, sendChat, workspaceDisplayName, type ChatThread } from '@/lib/api'
 import { useWorkspaces } from '@/lib/workspaces-store'
 import { useWorkspaceSpecialists } from '@/lib/specialists'
+import { cn } from '@/lib/utils'
+
+const POLL_MS = 2000
+
+function isReplying(thread: ChatThread | null): boolean {
+  const status = thread?.reply_run?.status
+  return status === 'pending' || status === 'running'
+}
 
 /**
- * Chat is scoped per workspace: `workspaceId` keys the conversation store, and
- * the header surfaces the workspace name plus that workspace's specialist team
- * so it's always clear which product/service the agent is talking about.
- * (Project-wide chat will live on the project hub as a separate agent.)
+ * Chat is scoped per workspace: the conversation is stored server-side per
+ * workspace, and the agent answers from that workspace's research (plus a
+ * quick web lookup when the question needs it). A reply is a server-side run,
+ * so it survives navigating away; this view polls while one is in progress.
  */
 export function AgentChat({ workspaceId }: { workspaceId?: string }) {
   const { workspaces } = useWorkspaces()
   const specialists = useWorkspaceSpecialists(workspaceId)
-
-  const workspace = workspaceId
-    ? workspaces.find((item) => item.id === workspaceId)
-    : undefined
+  const workspace = workspaceId ? workspaces.find((item) => item.id === workspaceId) : undefined
   const scopeName = workspace ? workspaceDisplayName(workspace) : null
+
+  const [thread, setThread] = useState<ChatThread | null>(null)
+  const [sendError, setSendError] = useState<string | null>(null)
+  const [sending, setSending] = useState(false)
+  const bottomRef = useRef<HTMLDivElement>(null)
+
+  const refresh = useCallback(async () => {
+    if (!workspaceId) return
+    try {
+      setThread(await getChat(workspaceId))
+    } catch {
+      // keep the last good thread; the next poll retries
+    }
+  }, [workspaceId])
+
+  useEffect(() => {
+    void refresh()
+  }, [refresh])
+
+  const replying = isReplying(thread)
+  useEffect(() => {
+    if (!replying) return
+    const timer = window.setInterval(() => void refresh(), POLL_MS)
+    return () => window.clearInterval(timer)
+  }, [replying, refresh])
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [thread?.messages.length, replying])
+
+  const handleSubmit = async (message: string) => {
+    if (!workspaceId || !message) return
+    setSending(true)
+    setSendError(null)
+    try {
+      const { message: sent, reply_run } = await sendChat(workspaceId, message)
+      setThread((current) => ({ messages: [...(current?.messages ?? []), sent], reply_run }))
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const messages = thread?.messages ?? []
+  const failedRun = thread?.reply_run?.status === 'failed' ? thread.reply_run : null
 
   return (
     <div className='flex h-full flex-col'>
       <div className='border-b px-4 py-3'>
         <div className='flex items-center justify-between gap-2'>
-          {/* <span aria-hidden className='size-2 rounded-full bg-emerald-500' /> */}
           <div>
             <p className='text-base font-medium'>{scopeName} ChatRoom</p>
-            <p className='text-sm text-muted-foreground'>
-              {scopeName
-                ? `Converse with your specialist team.`
-                : 'Converse with your specialist team.'}
-            </p>
+            <p className='text-sm text-muted-foreground'>Converse with your specialist team.</p>
           </div>
-          {/* {scopeName && (
-            <span className='inline-flex max-w-40 items-center gap-1 truncate rounded-full border border-primary/10 bg-muted/60 px-2 py-0.5 text-[11px] text-muted-foreground'>
-              {scopeName}
-            </span>
-          )} */}
           {specialists.length > 0 && (
             <div className='relative -ml-1.5'>
               <SpecialistAvatarGroup specialists={specialists} />
@@ -45,31 +89,60 @@ export function AgentChat({ workspaceId }: { workspaceId?: string }) {
           )}
         </div>
       </div>
-      <div className='flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 text-center'>
-        <div className='flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-500'>
-          <Bot className='size-6' />
-        </div>
-        <div>
-          <p className='text-sm font-medium text-foreground'>
-            Agent chat isn't connected yet
-          </p>
-          <p className='mt-1 text-sm leading-relaxed text-muted-foreground'>
-            Conversations with your GTM agent are coming soon
-            {scopeName ? ` and will be kept per workspace (${scopeName})` : ''}.
-            Until then, the agent's findings show up in the Feed,
-            Product/Service, and Competitors tabs.
-          </p>
-        </div>
+
+      <div className='min-h-0 flex-1 overflow-y-auto px-4 py-4'>
+        {messages.length === 0 && !replying ? (
+          <div className='flex h-full flex-col items-center justify-center gap-3 text-center'>
+            <div className='flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-500'>
+              <Bot className='size-6' />
+            </div>
+            <p className='max-w-sm text-sm text-muted-foreground'>
+              Ask about your market, competitors, ideal customers or accounts. Answers come from
+              {scopeName ? ` ${scopeName}'s` : ' this workspace’s'} research, with a quick web check when needed.
+            </p>
+          </div>
+        ) : (
+          <div className='mx-auto flex max-w-3xl flex-col gap-4'>
+            {messages.map((m) => (
+              <div key={m.id} className={cn('flex', m.role === 'user' ? 'justify-end' : 'justify-start')}>
+                <div
+                  className={cn(
+                    'max-w-[85%] rounded-2xl px-4 py-2.5 text-sm',
+                    m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted',
+                  )}
+                >
+                  {m.role === 'user' ? (
+                    <p className='whitespace-pre-wrap'>{m.content}</p>
+                  ) : (
+                    <Markdown className='prose prose-sm dark:prose-invert max-w-none'>{m.content}</Markdown>
+                  )}
+                </div>
+              </div>
+            ))}
+            {replying && (
+              <div className='flex items-center gap-2 text-sm text-muted-foreground'>
+                <Loader2 className='size-4 animate-spin' /> Your specialist team is thinking…
+              </div>
+            )}
+            {failedRun && (
+              <div className='flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive'>
+                <AlertTriangle className='mt-0.5 size-4 shrink-0' />
+                <span>{failedRun.error ?? 'The reply failed.'} Send your message again to retry.</span>
+              </div>
+            )}
+            <div ref={bottomRef} />
+          </div>
+        )}
       </div>
-      <div className='border-t p-3 opacity-50' aria-hidden>
+
+      <div className='border-t p-3'>
+        {sendError && <p className='mb-2 text-sm text-destructive'>{sendError}</p>}
         <PromptInputWithActions
-          onSubmit={() => {}}
-          isLoading={false}
-          placeholder='Ask your agent… (coming soon)'
+          onSubmit={(message) => void handleSubmit(message)}
+          isLoading={sending || replying}
+          placeholder={replying ? 'Waiting for the reply…' : 'Ask your specialist team…'}
         />
       </div>
     </div>
   )
 }
-
-export default AgentChat

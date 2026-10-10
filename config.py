@@ -84,6 +84,7 @@ class Settings(BaseSettings):
     max_competitor_runs_per_day: int = 20
     max_account_runs_per_day: int = 20
     max_requests_per_minute: int = 120
+    max_chat_messages_per_day: int = 200
 
     # -- Agent tuning --
     # How far back (days) research may look for sources. Kept short so the
