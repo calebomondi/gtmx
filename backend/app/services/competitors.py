@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import models
+from backend.app.services import limits
 from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError
 
 # Only one run may be in flight per workspace: concurrent runs would race on
@@ -194,9 +195,10 @@ async def ideal_profile(db: AsyncSession, workspace_id: uuid.UUID) -> dict | Non
     return (insights or {}).get("ideal_competitor_profile") or None
 
 
-async def create_run(db: AsyncSession, workspace_id: uuid.UUID) -> models.CompetitorRun:
+async def create_run(db: AsyncSession, workspace_id: uuid.UUID, owner_id: uuid.UUID) -> models.CompetitorRun:
     """Record a pending run. Requires a finished discovery run, because the
     agent hunts with the ideal competitor profile that run produces."""
+    await limits.ensure_can_start(db, owner_id, "competitors")
     profile = await ideal_profile(db, workspace_id)
     if profile is None:
         raise ConflictError(

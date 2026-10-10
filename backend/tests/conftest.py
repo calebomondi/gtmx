@@ -1,6 +1,7 @@
 """Backend test fixtures: a migrated Postgres test database, wiped between
 tests, and an API client authenticated as a fixed user."""
 
+import asyncio
 import uuid
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from backend.app.api.v1.routes import api_router
 from backend.app.database import models  # noqa: F401 -- registers every table on Base.metadata
 from backend.app.database.connect import AsyncSessionLocal, Base, get_db
 from backend.app.main import add_service_error_handlers
+from backend.app.runs import manager as run_manager
 from backend.tests.helpers import make_user
 from config import settings
 
@@ -131,3 +133,13 @@ def owned(client, user, seed_workspace):
         "competitor_run": str(competitor_run_id),
         "account_run": str(account_run_id),
     }
+
+
+@pytest.fixture(autouse=True)
+async def drain_run_tasks(clean_tables):
+    """Let run tasks finish before table cleanup. A run marks itself completed
+    a moment before writing its last event; cleanup's synchronous TRUNCATE
+    would otherwise block the event loop that write needs."""
+    yield
+    if run_manager._tasks:
+        await asyncio.gather(*run_manager._tasks.values(), return_exceptions=True)

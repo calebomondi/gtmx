@@ -50,7 +50,7 @@ async def start_account_run(workspace: OwnedWorkspace, db: DbSession, background
     """Start a run (or return the one already in flight) for polling."""
     run = await account_service.active_run(db, workspace.id)
     if run is None:
-        run = await account_service.create_run(db, workspace.id)
+        run = await account_service.create_run(db, workspace.id, workspace.user_id)
         background_tasks.add_task(execute_run, run.id, workspace.id)
     return AccountRunStartResponse(
         run=AccountRunResponse.model_validate(run),

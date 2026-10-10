@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import models
+from backend.app.services import limits
 from backend.app.services.errors import ConflictError, NotFoundError
 
 ACTIVE_RUN_STATUSES = ("pending", "running")
@@ -79,9 +80,10 @@ async def active_run(db: AsyncSession, workspace_id: uuid.UUID) -> models.Accoun
     return result.scalars().first()
 
 
-async def create_run(db: AsyncSession, workspace_id: uuid.UUID) -> models.AccountRun:
+async def create_run(db: AsyncSession, workspace_id: uuid.UUID, owner_id: uuid.UUID) -> models.AccountRun:
     """Record a pending run. Requires the ICP from a finished discovery run,
     which is what the account agent searches against."""
+    await limits.ensure_can_start(db, owner_id, "accounts")
     insights = await db.scalar(
         select(models.ProductProfile.insights).where(models.ProductProfile.workspace_id == workspace_id)
     )

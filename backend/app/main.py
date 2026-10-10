@@ -8,7 +8,7 @@ from config import settings
 from backend.app.api.v1.routes import api_router
 from backend.app.database.connect import engine, AsyncSessionLocal
 from backend.app.database.schema_check import ensure_schema_at_head
-from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError, ServiceError
+from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError, RateLimitedError, ServiceError
 from backend.app import agents_runtime
 from backend.app.runs import manager as run_manager
 from backend.app.services import admin as admin_service
@@ -45,6 +45,7 @@ _SERVICE_ERROR_STATUS = {
     NotFoundError: 404,
     ConflictError: 409,
     InvalidInputError: 422,
+    RateLimitedError: 429,
 }
 
 
@@ -52,7 +53,10 @@ def add_service_error_handlers(application: FastAPI) -> None:
     """Map service-layer domain errors to HTTP responses ({"detail": ...},
     the same shape as HTTPException), so services never import FastAPI."""
     async def handle(_request, exc: ServiceError):
-        return JSONResponse(status_code=_SERVICE_ERROR_STATUS[type(exc)], content={"detail": str(exc)})
+        headers = None
+        if isinstance(exc, RateLimitedError) and exc.retry_after_s:
+            headers = {"Retry-After": str(exc.retry_after_s)}
+        return JSONResponse(status_code=_SERVICE_ERROR_STATUS[type(exc)], content={"detail": str(exc)}, headers=headers)
 
     for error_type in _SERVICE_ERROR_STATUS:
         application.add_exception_handler(error_type, handle)
