@@ -28,7 +28,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { COUNTRIES, normalizeCountry } from "@/lib/countries"
 import { useDiscovery } from "@/hooks/use-discovery"
 
-import { SourceToggle, type SourceMode } from '@/sidepanel/new/toggle'
+import { SourceToggle, type SourceMode } from '@/features/workspace/new/toggle'
 
 /**
  * What the user is offering, asserted rather than inferred. The agent used to

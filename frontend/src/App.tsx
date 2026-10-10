@@ -14,20 +14,20 @@ import {
 import { DiscoveryInterruptPicker } from "@/components/interrupt-panel"
 import { answerDiscovery, useAgentRun } from "@/lib/agent-run-store"
 
-import Workspace from './sidepanel/workspace'
-import RecentSession from './sidepanel/recent_session'
-import NewWorkspace from './sidepanel/new/new_workspace'
+import Workspace from './features/workspace/workspace'
+import RecentSession from './features/workspace/recent-session'
+import NewWorkspace from './features/workspace/new/new-workspace'
 import { ThemeProvider } from "@/components/theme-provider"
-import { ProjectsComponent } from "@/projects/projects-components"
-import { ProjectHub } from "@/projects/project-hub"
-import { ArchiveComponent } from "@/archive/archive-components"
-import { AccountsComponent } from "@/connected-accounts/accounts-component"
-import { ArchivedWorkspace } from "@/archive/archived-workspace"
-import { HomeFeed } from "@/home-feed/home-feed-components"
-import AuthPage from "@/auth/auth-component"
-import AuthCallback from "@/auth/auth-callback"
-import ForgotPasswordPage from "@/auth/forgot-password"
-import UpdatePasswordPage from "@/auth/update-password"
+import { ProjectsComponent } from "@/features/projects/projects-components"
+import { ProjectHub } from "@/features/projects/project-hub"
+import { ArchiveComponent } from "@/features/archive/archive-components"
+import { AccountsComponent } from "@/features/connected-accounts/accounts-component"
+import { ArchivedWorkspace } from "@/features/archive/archived-workspace"
+import { HomeFeed } from "@/features/home-feed/home-feed-components"
+import AuthPage from "@/features/auth/auth-component"
+import AuthCallback from "@/features/auth/auth-callback"
+import ForgotPasswordPage from "@/features/auth/forgot-password"
+import UpdatePasswordPage from "@/features/auth/update-password"
 
 /**
  * Interrupts surface inline inside the /new form's right-hand panel; on every
