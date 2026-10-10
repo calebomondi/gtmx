@@ -70,6 +70,12 @@ class Settings(BaseSettings):
     exa_api_key: str = ""
     brightdata_api_key: str = ""
     composio_api_key: str = ""
+    # Composio auth config per toolkit, for toolkits Composio does not manage
+    # auth for (verified 2026-10-10: tiktok, twitter). JSON object, e.g.
+    # COMPOSIO_AUTH_CONFIGS={"twitter": "ac_...", "tiktok": "ac_..."}
+    composio_auth_configs: dict[str, str] = Field(default_factory=dict)
+    # Where users land after connecting an account (the SPA's origin).
+    frontend_base_url: str = "http://localhost:5173"
 
     # -- Runs --
     # Wall-clock cap on one active segment of a run (time spent waiting for a
