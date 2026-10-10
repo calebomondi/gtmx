@@ -2,18 +2,18 @@
 
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import Field, field_validator
 
-from agents.schemas.coercion import coerce_json, none_str_to_null
+from agents.schemas.coercion import coerce_json, LenientModel, none_str_to_null
 
 
-class PainSignal(BaseModel):
+class PainSignal(LenientModel):
     pain: str = Field(description="The pain point or complaint competitor customers have")
     evidence: str = Field(description="What was actually said/found — quote or close paraphrase from the source")
     source_url: str | None = Field(default=None, description="URL where this pain signal was observed")
 
 
-class Competitor(BaseModel):
+class Competitor(LenientModel):
     name: str = Field(description="Competitor company or product name")
     description: str = Field(description="What this competitor does and how they position themselves")
     website: str | None = Field(default=None, description="Competitor website URL, or null if not found")
@@ -44,7 +44,7 @@ class Competitor(BaseModel):
     deep_researched_at: str | None = Field(default=None, description="ISO timestamp of the last deep-dive on this competitor")
 
 
-class ArchetypeSketch(BaseModel):
+class ArchetypeSketch(LenientModel):
     """The identity of one archetype: what kind of company it is. Drafted and
     reviewed for the whole profile at once, before any details are written,
     because overlap, gaps and a named real company are structural problems."""
@@ -68,7 +68,7 @@ class ArchetypeSketch(BaseModel):
         return v
 
 
-class ArchetypeDetail(BaseModel):
+class ArchetypeDetail(LenientModel):
     """The working detail of one archetype -- written per archetype, in
     parallel, once the set of archetypes is settled."""
 
@@ -124,7 +124,7 @@ class CompetitorArchetype(ArchetypeDetail, ArchetypeSketch):
     """
 
 
-class _ProfileFields(BaseModel):
+class _ProfileFields(LenientModel):
     """Profile-level fields shared by the skeleton and the finished profile."""
 
     category_definition: str = Field(
@@ -217,7 +217,7 @@ class IdealCompetitorProfile(_ProfileFields):
         return coerce_json(v)
 
 
-class CompetitionExtraction(BaseModel):
+class CompetitionExtraction(LenientModel):
     """Structured competitive output produced by the understand_competition
     subgraph: how the product stacks up against the competitive standard
     (strengths/weaknesses/opportunities/differentiators).
@@ -246,7 +246,7 @@ class CompetitionExtraction(BaseModel):
 
 
 
-class CompetitionFindings(BaseModel):
+class CompetitionFindings(LenientModel):
     """Competitive-landscape research notes + concise positioning understanding, from the competition specialist."""
 
     findings: str = Field(description="Detailed markdown research notes laying out the product's competitive landscape and how it stacks up — the named competitors, their positioning, the comparison and the honest gaps the report section has to be built from")
@@ -255,7 +255,7 @@ class CompetitionFindings(BaseModel):
     )
 
 
-class CompetitorHuntTask(BaseModel):
+class CompetitorHuntTask(LenientModel):
 	"""One search assignment: hunt for firms matching one archetype."""
 
 	archetype_label: str = Field(description="The archetype from the ideal profile being hunted")
@@ -271,11 +271,11 @@ class CompetitorHuntTask(BaseModel):
 	)
 
 
-class CompetitorHuntPlan(BaseModel):
+class CompetitorHuntPlan(LenientModel):
 	tasks: list[CompetitorHuntTask] = Field(default_factory=list)
 
 
-class CandidateFinding(BaseModel):
+class CandidateFinding(LenientModel):
 	"""A firm the hunt turned up, with the evidence that it exists."""
 
 	name: str = Field(description="The company's own name as it brands itself")
@@ -303,7 +303,7 @@ class CandidateFinding(BaseModel):
 	)
 
 
-class CompetitorHuntBundle(BaseModel):
+class CompetitorHuntBundle(LenientModel):
 	"""What one hunt task found, with the sources behind it."""
 
 	archetype_label: str = ""
@@ -314,7 +314,7 @@ class CompetitorHuntBundle(BaseModel):
 	sources: list[dict] = Field(default_factory=list)
 
 
-class SourcedFinding(BaseModel):
+class SourcedFinding(LenientModel):
 	"""One claim about a real company, with the proof attached.
 
 	`evidence` is required, not optional. A weakness or a complaint attributed to
@@ -332,7 +332,7 @@ class SourcedFinding(BaseModel):
 	)
 
 
-class CompetitorSocial(BaseModel):
+class CompetitorSocial(LenientModel):
 	kind: Literal["website", "instagram", "tiktok", "x", "linkedin", "github", "other"] = Field(
 		description="The network. The brief asks for Instagram, TikTok, X and "
 		"LinkedIn; website and github are included because they turn up alongside "
@@ -347,7 +347,7 @@ class CompetitorSocial(BaseModel):
 	)
 
 
-class CompetitorProfile(BaseModel):
+class CompetitorProfile(LenientModel):
 	"""A verified real company, profiled with per-field provenance.
 
 	The inverse of `CompetitorArchetype`. Every field is a claim about a real
@@ -421,11 +421,11 @@ class CompetitorProfile(BaseModel):
 	)
 
 
-class CompetitorProfileBatch(BaseModel):
+class CompetitorProfileBatch(LenientModel):
 	profiles: list[CompetitorProfile] = Field(default_factory=list)
 
 
-class CompetitorRunOutcome(BaseModel):
+class CompetitorRunOutcome(LenientModel):
 	"""What one run did, in the shape the API records on the run row."""
 
 	candidates_seen: int = 0

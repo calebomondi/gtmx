@@ -2,20 +2,20 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import Field, field_validator
 
-from agents.schemas.coercion import none_str_to_null
+from agents.schemas.coercion import LenientModel, none_str_to_null
 from agents.schemas.offer import BuyerType, ProductCategory
 
 
-class Pricing(BaseModel):
+class Pricing(LenientModel):
     tier: str = Field(description="")
     monthly_sub: str = Field(default=None ,description="")
     yearly_sub: str = Field(default=None ,description="")
     features: list[str] = Field(default_factory=list, description="")
 
 
-class MarketExtraction(BaseModel):
+class MarketExtraction(LenientModel):
     """Structured market definition + product-market fit output produced by the
     understand_market subgraph from the market interview (current web research +
     the product's own scraped material)."""
@@ -80,7 +80,7 @@ class MarketExtraction(BaseModel):
         return v
 
 
-class MarketFindings(BaseModel):
+class MarketFindings(LenientModel):
     """Market research notes + concise product-market-fit understanding, from the market specialist."""
 
     findings: str = Field(description="Detailed markdown research notes defining the product's market and its product-market fit — the segment sizing, demand evidence, buyer types and current conditions the report section has to be built from")
