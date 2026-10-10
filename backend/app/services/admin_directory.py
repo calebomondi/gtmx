@@ -2,7 +2,6 @@
 is no local users table); activity counts come from our own tables."""
 
 import uuid
-from datetime import UTC, datetime
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,13 +13,6 @@ from backend.app.services import admin as admin_service
 from backend.app.services.errors import NotFoundError
 
 
-def _suspended(user) -> bool:
-    banned = getattr(user, "banned_until", None)
-    if isinstance(banned, str):
-        banned = datetime.fromisoformat(banned.replace("Z", "+00:00"))
-    return banned is not None and banned > datetime.now(UTC)
-
-
 def user_row(user, counts: dict | None = None) -> AdminUserRow:
     meta = getattr(user, "user_metadata", None) or {}
     return AdminUserRow(
@@ -30,7 +22,7 @@ def user_row(user, counts: dict | None = None) -> AdminUserRow:
         created_at=getattr(user, "created_at", None),
         last_sign_in_at=getattr(user, "last_sign_in_at", None),
         is_admin=supabase_admin.is_admin(user.app_metadata),
-        suspended=_suspended(user),
+        suspended=supabase_admin.is_suspended(getattr(user, "banned_until", None)),
         **(counts or {}),
     )
 

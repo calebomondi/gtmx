@@ -31,7 +31,7 @@ async def _runs_today(db: AsyncSession, user_id: uuid.UUID, kind: str) -> int:
     ) or 0)
 
 
-def _daily_cap(kind: str) -> int:
+def default_daily_cap(kind: str) -> int:
     return {
         "discovery": settings.max_discovery_runs_per_day,
         "competitors": settings.max_competitor_runs_per_day,
@@ -42,6 +42,14 @@ def _daily_cap(kind: str) -> int:
         "outreach_drafts": settings.max_account_runs_per_day,
         "monitor": settings.max_monitor_runs_per_day,
     }[kind]
+
+
+async def daily_cap(db: AsyncSession, user_id: uuid.UUID, kind: str) -> int:
+    """The admin's override for this user, else the default."""
+    override = await db.scalar(select(models.UserQuota.daily_cap).where(
+        models.UserQuota.user_id == user_id, models.UserQuota.kind == kind,
+    ))
+    return default_daily_cap(kind) if override is None else override
 
 
 async def ensure_can_start(db: AsyncSession, user_id: uuid.UUID, kind: str) -> None:
@@ -58,7 +66,7 @@ async def ensure_can_start(db: AsyncSession, user_id: uuid.UUID, kind: str) -> N
             raise RateLimitedError(
                 "You already have a discovery run in progress. Let it finish (or cancel it) before starting another."
             )
-    cap = _daily_cap(kind)
+    cap = await daily_cap(db, user_id, kind)
     if await _runs_today(db, user_id, kind) >= cap:
         raise RateLimitedError(
             f"You've reached today's limit of {cap} {kind} runs. It resets on a rolling 24-hour window.",
