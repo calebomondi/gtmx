@@ -8,21 +8,25 @@
     ],
     "build": [
       [
-        "npx",
-        "--prefix",
+        "bun",
+        "--cwd",
         "frontend",
-        "vite",
+        "install",
+        "--frozen-lockfile"
+      ],
+      [
+        "bun",
+        "--cwd",
+        "frontend",
+        "run",
         "build"
       ]
     ],
     "test": [
       [
-        ".venv/bin/python",
-        "notebook/test_analyst_e2e.py"
-      ],
-      [
-        ".venv/bin/python",
-        "notebook/test_hitl.py"
+        "uv",
+        "run",
+        "pytest"
       ]
     ],
     "start": ".venv/bin/uvicorn backend.app.main:app --host 0.0.0.0 --port 8000",
