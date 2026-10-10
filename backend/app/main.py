@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import inspect as sa_inspect, select, text
 
-from backend.app.config.settings import settings
+from config import settings
 from backend.app.api.v1.routes import api_router
 from backend.app.database import models  # noqa: F401
 from backend.app.database.connect import Base, engine, AsyncSessionLocal
@@ -71,7 +71,7 @@ async def lifespan(app: FastAPI):
         await connection.run_sync(Base.metadata.create_all)
         await connection.run_sync(_ensure_workspace_columns)
         await connection.run_sync(_ensure_competitor_columns)
-    await agents_runtime.start_agent_runtime(settings.DATABASE_URL)
+    await agents_runtime.start_agent_runtime(settings.database_url)
     try:
         yield
     finally:
@@ -80,21 +80,21 @@ async def lifespan(app: FastAPI):
 def create_application() -> FastAPI:
     # FastAPI instance
     application = FastAPI(
-        title= settings.PROJECT_NAME,
+        title= settings.project_name,
         lifespan=lifespan
     )
     # CORS — only relevant when the API and frontend live on different origins.
     # Same-origin deployments (dev proxy / reverse proxy) do not require it.
-    if settings.ALLOWED_ORIGINS:
+    if settings.allowed_origins:
         application.add_middleware(
             CORSMiddleware,
-            allow_origins=settings.ALLOWED_ORIGINS,
+            allow_origins=settings.allowed_origins,
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"]
         )
     # Include routers
-    application.include_router(api_router, prefix=settings.API_V1_STR)
+    application.include_router(api_router, prefix=settings.api_v1_str)
 
     @application.get("/health", tags=["ops"])
     async def health():

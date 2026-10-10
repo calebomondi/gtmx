@@ -13,9 +13,9 @@ from fastapi import Depends, HTTPException, WebSocket, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from supabase import acreate_client
 
-from config import Config
+from config import get_settings
 
-_cfg = Config()
+_cfg = get_settings()
 _bearer = HTTPBearer(auto_error=False)
 
 _client = None

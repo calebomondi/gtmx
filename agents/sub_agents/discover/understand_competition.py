@@ -93,7 +93,7 @@ load-bearing output the downstream competitor agent reads, so the writer is
 anchored on it rather than the other way round.
 
 RECENCY is inherited from the market stage: every search passes
-`start_published_date = today - Config().market_recency_days` (default 365) --
+`start_published_date = today - get_settings().market_recency_days` (default 365) --
 the same window the interview-era understand_competition uses. Positioning,
 pricing and features decay; a landscape built from stale sources is worse than
 a thin one.
@@ -114,7 +114,7 @@ from typing import Optional
 from langgraph.graph import START, END, StateGraph
 from langchain_core.messages import SystemMessage
 
-from config import Config
+from config import get_settings
 from agents.llm.main import invoke_structured_with_fallback
 from agents.context_budget import _truncate_to_tokens, budget_context, distill_documents
 from agents.states import (
@@ -830,7 +830,7 @@ def _research_one(task: ResearchTask) -> TaskResearchBundle:
     uses. Current rivals, current pricing, current positioning are the point.
     """
     area = task.area or "unnamed area"
-    cfg = Config()
+    cfg = get_settings()
     cutoff = _recency_cutoff(cfg.market_recency_days)
     issued: list[str] = []
     docs: list[dict] = []

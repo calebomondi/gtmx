@@ -32,9 +32,9 @@ from langchain_openai import ChatOpenAI
 from typing import Any, Sequence
 
 from utils.log import logger
-from config import Config
+from config import get_settings
 
-cfg = Config()
+cfg = get_settings()
 
 QWEN_MODELS = [
     "qwen3.8-max",  

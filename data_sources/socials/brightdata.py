@@ -6,7 +6,7 @@ from typing import Optional
 
 from brightdata import SyncBrightDataClient
 
-from config import Config
+from config import Settings, get_settings
 from utils.log import logger
 
 
@@ -17,8 +17,8 @@ def _client(token: str, thread_id: int) -> SyncBrightDataClient:
     return client
 
 
-def get_client(config: Config | None = None) -> SyncBrightDataClient | None:
-    cfg = config or Config()
+def get_client(config: Settings | None = None) -> SyncBrightDataClient | None:
+    cfg = config or get_settings()
     if not cfg.brightdata_api_key:
         return None
     return _client(cfg.brightdata_api_key, threading.get_ident())
@@ -28,14 +28,14 @@ def scrape_resource(
     platform: str,
     method: str,
     url: str,
-    config: Config | None = None,
+    config: Settings | None = None,
 ) -> dict | None:
     """Run one Bright Data scraper method and return the first result, or None.
 
     Every social module funnels through this. Failures are surfaced in the logs
     and swallowed so a single scraper outage does not sink an agent run.
     """
-    cfg = config or Config()
+    cfg = config or get_settings()
     if not cfg.brightdata_api_key:
         logger.warning("Bright Data API key missing; skipping %s.%s for %s", platform, method, url)
         return None

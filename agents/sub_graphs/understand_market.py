@@ -16,7 +16,7 @@ from agents.sub_graphs.understand_product import (
     route_messages,
     route_after_question,
 )
-from config import Config
+from config import get_settings
 from data_sources.scraping.exa import search_and_scrape
 from utils.log import logger
 
@@ -156,7 +156,7 @@ def search_web(state: InterviewState) -> dict:
     offer_noun = _offer_type_for(state)
     material = format_offer_material(offer, state.get("scraped_content"), offer_noun)
     markets = ", ".join(offer.target_geo or []) or "not specified"
-    start_published_date = _recency_cutoff(Config().market_recency_days)
+    start_published_date = _recency_cutoff(get_settings().market_recency_days)
 
     print(f"Creating market search query...")
     # Degrade to "no web docs" rather than failing the run: the specialist still
@@ -190,13 +190,13 @@ def search_web(state: InterviewState) -> dict:
 
     print(f"Searching web (published after {start_published_date}) ...")
     search_docs = search_and_scrape(
-        search_query.search_query, Config(), num_results=3,
+        search_query.search_query, get_settings(), num_results=3,
         start_published_date=start_published_date,
     )
     if not search_docs and search_query.broader_query:
         print(f"Primary search empty — retrying with broader query:\n{search_query.broader_query}")
         search_docs = search_and_scrape(
-            search_query.broader_query, Config(), num_results=3,
+            search_query.broader_query, get_settings(), num_results=3,
             start_published_date=start_published_date,
         )
     print(f"{"✅ Search complete" if search_docs else "❌ Search failed"}")

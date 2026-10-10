@@ -13,7 +13,7 @@ from agents.states import (
 )
 from agents.helpers import as_offer_snapshot, format_offer_material, icp_block, market_context_block, competition_context_block
 from agents.sub_graphs.understand_product import _offer_type_for, join_context
-from config import Config
+from config import get_settings
 from data_sources.scraping.exa import search_and_scrape
 
 
@@ -92,7 +92,7 @@ def search_web(state: AccountDiscoveryState) -> dict:
     offer_noun = _offer_type_for(state)
     material = format_offer_material(offer, state.get("scraped_content"), offer_noun)
     markets = ", ".join(offer.target_geo or []) or "not specified"
-    start_published_date = _recency_cutoff(Config().market_recency_days)
+    start_published_date = _recency_cutoff(get_settings().market_recency_days)
 
     print("Creating account-discovery queries ...")
     queries = invoke_structured_with_fallback(
@@ -117,7 +117,7 @@ def search_web(state: AccountDiscoveryState) -> dict:
         if not q:
             continue
         results = search_and_scrape(
-            q, Config(), num_results=3, start_published_date=start_published_date
+            q, get_settings(), num_results=3, start_published_date=start_published_date
         )
         for d in results:
             if d["url"] not in seen:

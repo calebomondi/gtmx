@@ -176,10 +176,10 @@ def gather_content(source: str) -> str:
     the loud failure this used to skip."""
     try:
         if _URL_RE.match(source.strip()):
-            from config import Config
+            from config import get_settings
             from data_sources.scraping.exa import scrape_url as _scrape_url
             from data_sources.scraping.quality import is_usable_body, rejection_reason
-            raw = _scrape_url(source.strip(), Config())
+            raw = _scrape_url(source.strip(), get_settings())
             if not is_usable_body(raw):
                 logger.warning(
                     "Rejected unusable body for %r: %s", source.strip(), rejection_reason(raw)

@@ -19,10 +19,8 @@ import sys
 import tempfile
 import uuid
 
-# Make `backend.app.*` importable when run from the repo root tree, and keep the
-# repo root ahead of backend/app on sys.path -- otherwise `import config` picks up
-# backend/app/config and `from config import Config` fails. Matches the
-# sys.path handling in test_projects_api.py.
+# Make `backend.app.*` and the root `config` importable when run directly.
+# Matches the sys.path handling in test_projects_api.py.
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 import httpx
