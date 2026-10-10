@@ -36,9 +36,9 @@ from config import get_settings
 
 cfg = get_settings()
 
-QWEN_MODELS = [
-    "qwen3.8-max",  
-]
+# Model ladders come from settings (LLM_MODELS / LLM_CHEAP_MODELS), so a model
+# swap -- e.g. when one runs out of quota -- is an env change, not a code change.
+QWEN_MODELS: list[str] = cfg.llm_models
 
 # Cheap text-only tier, for bulk mechanical work that doesn't need a flagship
 # reasoning model: distilling scraped documents, condensing the offer's own
@@ -46,9 +46,7 @@ QWEN_MODELS = [
 # flagship matters for more than cost — the flagship is a large omni model, and
 # a run that routes its high-volume extraction work there is what pushes the
 # account into tokens-per-minute throttling in the first place.
-CHEAP_QWEN_MODELS = [
-    "qwen3.8-max",
-]
+CHEAP_QWEN_MODELS: list[str] = cfg.llm_cheap_models
 
 
 def cheap_providers() -> list[tuple[str, list[str]]]:

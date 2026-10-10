@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     dashscope_api_key: str = ""
     dashscope_base_url: str = ""
     openai_api_key: str = ""
+    # Qwen models, tried in order (comma-separated in env). `llm_models` serves
+    # reasoning calls; `llm_cheap_models` the bulk extraction/condensing calls.
+    # qwen3.8-flash because qwen3.8-max's quota is exhausted on this account
+    # (2026-10-10); switch back via env once it is funded.
+    llm_models: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["qwen3.8-flash"])
+    llm_cheap_models: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["qwen3.8-flash"])
 
     # -- Web data --
     exa_api_key: str = ""
@@ -89,9 +95,18 @@ class Settings(BaseSettings):
             )
         return f"postgresql://{rest}"
 
-    @field_validator("allowed_origins", mode="before")
+    @field_validator("llm_models", "llm_cheap_models")
     @classmethod
-    def _parse_allowed_origins(cls, value):
+    def _require_models(cls, value: list[str]) -> list[str]:
+        # Fail at startup, not on the first LLM call of some user's run.
+        if not value:
+            raise ValueError("at least one model is required")
+        return value
+
+    @field_validator("allowed_origins", "llm_models", "llm_cheap_models", mode="before")
+    @classmethod
+    def _parse_str_list(cls, value):
+        """Accept a comma-separated string or a JSON array from the env."""
         if not isinstance(value, str):
             return value
         value = value.strip()
