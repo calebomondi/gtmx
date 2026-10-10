@@ -43,7 +43,7 @@ NODE_ORDER = [
 
 
 def _build_initial_state(discovery_req: DiscoveryRequest) -> dict:
-    """Seed the loose intake keys the discovery agent reads. The sub_agents
+    """Seed the loose intake keys the discovery agent reads. The pipelines
     family carries offer_name/website_url/target_market directly on the session
     (no OfferDataSnapshot model), so the initial input is a plain dict.
 

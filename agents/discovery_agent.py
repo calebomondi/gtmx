@@ -1,8 +1,8 @@
-"""Discovery agent — the top-level workflow that amalgamates the sub_agents
-pipelines under agents/sub_agents.
+"""Discovery agent — the top-level workflow that amalgamates the pipelines
+pipelines under agents/pipelines.
 
 Mirror of `gtmx_agent.py` (same shape of wiring and parallelism reasoning), but
-over the sub_agents family instead of the interview-era subgraphs:
+over the pipelines family instead of the interview-era subgraphs:
 
     discover_offer -> create_specialists -> [understand_offer ∥ understand_market]
         -> understand_competition -> determine_icp
@@ -28,14 +28,14 @@ from langgraph.graph import START, END, StateGraph
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
-from agents.sub_agents.schema_states import DiscoverySessionState
-from agents.sub_agents.discover.discover_offer import build_offer_discovery_graph
-from agents.sub_agents.discover.discover_offer_manual import build_manual_offer_discovery_graph
-from agents.sub_agents.discover.create_specialists import build_specialist_graph
-from agents.sub_agents.discover.understand_offer import build_product_graph
-from agents.sub_agents.discover.understand_market import build_market_graph
-from agents.sub_agents.discover.understand_competition import build_competition_graph
-from agents.sub_agents.discover.build_icp import build_icp_graph
+from agents.pipelines.schema_states import DiscoverySessionState
+from agents.pipelines.discover.discover_offer import build_offer_discovery_graph
+from agents.pipelines.discover.discover_offer_manual import build_manual_offer_discovery_graph
+from agents.pipelines.discover.create_specialists import build_specialist_graph
+from agents.pipelines.discover.understand_offer import build_product_graph
+from agents.pipelines.discover.understand_market import build_market_graph
+from agents.pipelines.discover.understand_competition import build_competition_graph
+from agents.pipelines.discover.build_icp import build_icp_graph
 
 
 # Nested subgraphs can't own a checkpointer — the parent agent does. Built once

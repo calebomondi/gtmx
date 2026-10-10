@@ -958,13 +958,13 @@ class OfferSessionState(TypedDict):
     scrape_failed: bool = Field(default=False, description="True once the user has been told that their URL could not be fetched, so re-entry skips re-scraping")
 
 
-# --- Node-led offer research (sub_agents) -----------------------------------
+# --- Node-led offer research (pipelines) -----------------------------------
 #
 # Models for the node-led research pipeline, which replaces the
 # specialist-interviews-an-expert loop with explicit intelligence operations:
 # analyze -> identify gaps -> plan -> research -> evaluate -> synthesize.
 #
-# They live HERE, not in sub_agents/understand_product.py, because
+# They live HERE, not in pipelines/understand_product.py, because
 # backend/app/agents_runtime.py:38-43 derives the LangGraph checkpoint serde
 # allowlist by walking this module's members and filtering on
 # `__module__ == "agents.states"`. A model defined in the pipeline module would
