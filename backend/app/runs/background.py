@@ -23,15 +23,19 @@ from backend.app.services import chat as chat_service
 from backend.app.services import competitors as competitor_service
 from backend.app.services import outreach as outreach_service
 from backend.app.services.errors import RateLimitedError
-from backend.app.services.runs import set_run_fields
 from config import settings
 from utils.log import logger
 
 
 async def _finish(run_id: uuid.UUID, outcome: dict) -> None:
-    run = await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC))
-    if run is not None:
-        await set_run_fields(models.Run, run_id, progress={**(run.progress or {}), **outcome})
+    # Status and outcome in one transaction: a poll must never see "completed"
+    # before the counts it reports are written.
+    async with AsyncSessionLocal() as db:
+        async with db.begin():
+            run = await db.get(models.Run, run_id)
+            if run is not None:
+                run.status, run.finished_at = "completed", datetime.now(UTC)
+                run.progress = {**(run.progress or {}), **outcome}
     await events.publish(run_id, "complete", outcome)
 
 
