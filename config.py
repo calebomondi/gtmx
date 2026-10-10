@@ -103,6 +103,9 @@ class Settings(BaseSettings):
     # dev reload) doesn't immediately fan out paid monitoring runs.
     monitor_initial_delay_s: float = 120.0
     monitor_max_age_h: float = 24.0
+    # Social stats move slowly and every Bright Data scrape is paid, so a
+    # monitor run refreshes them only when they are older than this.
+    socials_max_age_h: float = 168.0
 
     # -- Agent tuning --
     # How far back (days) research may look for sources. Kept short so the

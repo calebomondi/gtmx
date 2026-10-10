@@ -5,6 +5,7 @@ import {
   ChevronRight,
   Code2,
   ExternalLink,
+  BadgeCheck,
   Hash,
   Pencil,
   Quote,
@@ -28,6 +29,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
+import { formatRelativeTime } from '@/lib/format'
 import { cn } from 'cn'
 
 import {
@@ -35,6 +37,7 @@ import {
   unsourcedFieldLabel,
   type Competitor,
   type Confidence,
+  type SocialProfile,
   type SourcedClaim,
   type TrackingSource,
   type TrackingSourceKind,
@@ -320,6 +323,92 @@ function Socials({ sources }: { sources: TrackingSource[] }) {
   )
 }
 
+const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 })
+const SOCIAL_ORDER = ['linkedin', 'x', 'instagram', 'tiktok']
+
+function Stat({ value, label }: { value: number | string | null; label: string }) {
+  if (value === null || value === '') return null
+  return (
+    <span>
+      <span className="font-medium text-foreground tabular-nums">
+        {typeof value === 'number' ? compact.format(value) : value}
+      </span>{' '}
+      {label}
+    </span>
+  )
+}
+
+function SocialProfileRow({ profile }: { profile: SocialProfile }) {
+  const kind = isKnownKind(profile.platform) ? profile.platform : 'other'
+  const latest = profile.recent_posts[0]
+  return (
+    <li className="flex flex-col gap-1.5">
+      <a
+        href={profile.url}
+        target="_blank"
+        rel="noreferrer"
+        className="flex items-center gap-1.5 text-[13px] font-medium hover:underline"
+      >
+        <SocialGlyph kind={kind} />
+        {TRACKING_KIND_LABELS[kind]}
+        {profile.verified && <BadgeCheck className="size-3.5 text-sky-500" aria-label="verified" />}
+        <ArrowUpRight className="size-2.5 text-muted-foreground/60" />
+      </a>
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[12px] text-muted-foreground">
+        <Stat value={profile.followers} label="followers" />
+        <Stat value={profile.posts_count} label={profile.platform === 'tiktok' ? 'videos' : 'posts'} />
+        <Stat value={profile.likes} label="likes" />
+        <Stat value={profile.employees} label="" />
+        {profile.followers === null && profile.posts_count === null && <span>counts hidden by the network</span>}
+      </div>
+      {latest && (
+        <a
+          href={latest.url ?? profile.url}
+          target="_blank"
+          rel="noreferrer"
+          className="rounded-md bg-muted/50 px-2.5 py-1.5 text-[12px] leading-relaxed text-foreground/85 hover:bg-muted"
+        >
+          <span className="line-clamp-2">{latest.text || 'Latest post'}</span>
+          <span className="mt-0.5 block text-[11px] text-muted-foreground">
+            {latest.date ? formatRelativeTime(Date.parse(latest.date)) : 'latest'}
+            {latest.likes !== null && ` · ${compact.format(latest.likes)} likes`}
+          </span>
+        </a>
+      )}
+    </li>
+  )
+}
+
+/** What a rival is doing on social, refreshed weekly by monitoring. */
+function SocialActivity({ competitor }: { competitor: Competitor }) {
+  const profiles = Object.values(competitor.social_profiles ?? {}).sort(
+    (a, b) => SOCIAL_ORDER.indexOf(a.platform) - SOCIAL_ORDER.indexOf(b.platform),
+  )
+  if (profiles.length === 0) {
+    return (
+      <p className="text-[12px] text-muted-foreground italic">
+        {competitor.socials_checked_at
+          ? 'no social profiles are linked from their site'
+          : 'stats appear after the next check — usually within a few minutes'}
+      </p>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      <ul className="flex flex-col gap-3">
+        {profiles.map((profile) => (
+          <SocialProfileRow key={profile.platform} profile={profile} />
+        ))}
+      </ul>
+      {competitor.socials_checked_at && (
+        <p className="text-[11px] text-muted-foreground/80">
+          Updated {formatRelativeTime(Date.parse(competitor.socials_checked_at))}
+        </p>
+      )}
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // A collapsible block inside the card
 // ---------------------------------------------------------------------------
@@ -566,6 +655,13 @@ export function CompetitorCard({
 
         {/* -- the evidence, in sections -------------------------------- */}
         <div className="-mx-1 flex flex-col">
+          <Detail
+            title="Social activity"
+            badge={<CountBadge n={Object.keys(competitor.social_profiles ?? {}).length} />}
+          >
+            <SocialActivity competitor={competitor} />
+          </Detail>
+
           <Detail
             title="Strengths"
             defaultOpen

@@ -32,6 +32,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
+import { formatRelativeTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import {
@@ -49,7 +50,6 @@ import AccountsComponent from './accounts-components'
 
 import {
   CHANNELS,
-  formatRelativeTime,
   initialsFor,
   latestMessage,
   matchContactEmail,

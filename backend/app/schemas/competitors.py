@@ -28,6 +28,30 @@ class TrackingSource(BaseModel):
     )
 
 
+class SocialPost(BaseModel):
+    text: str = ""
+    url: str | None = None
+    date: str | None = None
+    likes: int | None = None
+
+
+class SocialProfile(BaseModel):
+    """Normalized stats for one network (see data_sources/socials/profiles.py).
+    Counts are null when the network hides them, never zero."""
+
+    platform: str
+    url: str
+    name: str | None = None
+    followers: int | None = None
+    posts_count: int | None = None
+    likes: int | None = None
+    employees: str | None = None
+    verified: bool = False
+    bio: str | None = None
+    recent_posts: list[SocialPost] = Field(default_factory=list)
+    fetched_at: str | None = None
+
+
 class SourcedClaim(BaseModel):
     """One evidenced claim about a real company.
 
@@ -142,6 +166,8 @@ class CompetitorResponse(BaseModel):
     )
     first_seen_at: datetime
     last_checked_at: datetime | None = None
+    social_profiles: dict[str, SocialProfile] | None = None
+    socials_checked_at: datetime | None = None
     last_seen_at: datetime
     deep_researched_at: datetime | None = None
 

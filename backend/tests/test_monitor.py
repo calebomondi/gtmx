@@ -1,12 +1,13 @@
 """Competitor monitoring: the first check records a baseline silently, later
-checks turn material changes into feed signals, and the scheduler only picks
-stale, live workspaces."""
+checks turn material changes into feed signals, social stats refresh on their
+own slower cadence, and the scheduler only picks stale, live workspaces."""
 
 import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import psycopg
+import pytest
 
 from agents.schemas.monitor import CompetitorChange
 from backend.app.runs import background, manager, scheduler
@@ -19,6 +20,17 @@ API = "/api/v1/workspaces"
 async def _drain():
     if manager._tasks:
         await asyncio.gather(*manager._tasks.values(), return_exceptions=True)
+
+
+@pytest.fixture(autouse=True)
+def socials_calls(monkeypatch):
+    calls = []
+
+    def fake_refresh(name, website, tracking, previous):
+        calls.append(name)
+        return {"x": {"platform": "x", "url": "https://x.com/rival", "followers": 1200}}, {"x": "https://x.com/rival"}
+    monkeypatch.setattr(background.competitor_socials, "refresh", fake_refresh)
+    return calls
 
 
 def _run_monitor(client, workspace):
@@ -74,3 +86,25 @@ async def test_scheduler_picks_only_stale_live_workspaces(owned, monkeypatch):
         conn.execute("UPDATE competitors SET last_checked_at = %s", (datetime.now(UTC) - timedelta(hours=30),))
         conn.execute("UPDATE workspaces SET archived = true")
     assert await scheduler.sweep() == 0  # archived workspaces are left alone
+
+
+def test_socials_refresh_weekly_and_record_found_handles(client, owned, monkeypatch, socials_calls):
+    monkeypatch.setattr(background.check_competitor, "check", lambda *a: ({}, []))
+    _run_monitor(client, owned["workspace"])
+    competitor = client.get(f"{API}/{owned['workspace']}/competitors").json()["competitors"][0]
+    assert competitor["social_profiles"]["x"]["followers"] == 1200 and competitor["socials_checked_at"]
+    assert {"kind": "x", "value": "https://x.com/rival", "confidence": "high"} in competitor["tracking_sources"]
+
+    _run_monitor(client, owned["workspace"])  # stats are fresh: no second paid scrape
+    assert len(socials_calls) == 1
+
+
+def test_finished_competitor_run_starts_monitoring(client, owned, monkeypatch):
+    monkeypatch.setattr(settings, "monitor_enabled", True)
+    started = []
+
+    async def fake_start(kind, user_id, workspace_id, **kw):
+        started.append(kind)
+    monkeypatch.setattr(manager, "start_background", fake_start)
+    client.portal.call(background._start_monitoring, uuid.UUID(owned["competitor_run"]), uuid.UUID(owned["workspace"]))
+    assert started == ["monitor"]

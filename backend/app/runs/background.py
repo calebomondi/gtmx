@@ -5,13 +5,14 @@ on the run and publishes it, so all kinds share one lifecycle (manager)."""
 import asyncio
 import uuid
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
 from agents.concurrency import ContextThreadPoolExecutor
 from agents.pipelines.chat import workspace_chat
 from agents.pipelines.monitor import check_competitor
+from agents.pipelines.monitor import socials as competitor_socials
 from agents.pipelines.outreach import draft_messages
 from backend.app.account_runner import run_account_discovery_for_workspace
 from backend.app.competitor_runner import research_competitor_site, run_competitor_discovery
@@ -19,8 +20,11 @@ from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.runs import events, signals
 from backend.app.services import chat as chat_service
+from backend.app.services import competitors as competitor_service
 from backend.app.services import outreach as outreach_service
+from backend.app.services.errors import RateLimitedError
 from backend.app.services.runs import set_run_fields
+from config import settings
 from utils.log import logger
 
 
@@ -31,9 +35,27 @@ async def _finish(run_id: uuid.UUID, outcome: dict) -> None:
     await events.publish(run_id, "complete", outcome)
 
 
+async def _start_monitoring(run_id: uuid.UUID, workspace_id: uuid.UUID) -> None:
+    """New rivals get their baseline and social stats now, not at the next
+    scheduler sweep up to an hour later."""
+    if not settings.monitor_enabled:
+        return
+    from backend.app.runs import manager  # manager imports this module
+
+    async with AsyncSessionLocal() as db:
+        user_id = (await db.get(models.Run, run_id)).user_id
+        if await competitor_service.active_monitor_run(db, workspace_id):
+            return
+    try:
+        await manager.start_background("monitor", user_id, workspace_id)
+    except RateLimitedError:
+        logger.info("Monitoring for workspace %s waits for the next sweep (daily cap)", workspace_id)
+
+
 async def competitors(run_id: uuid.UUID, workspace_id: uuid.UUID, _params: dict) -> None:
     await _finish(run_id, await run_competitor_discovery(workspace_id=workspace_id, run_id=run_id))
     await signals.competitors_found(run_id)
+    await _start_monitoring(run_id, workspace_id)
 
 
 async def accounts(run_id: uuid.UUID, workspace_id: uuid.UUID, _params: dict) -> None:
@@ -48,6 +70,7 @@ async def competitor_research(run_id: uuid.UUID, workspace_id: uuid.UUID, params
         workspace_id=workspace_id, competitor_id=uuid.UUID(params["competitor_id"]),
     )
     await _finish(run_id, {"researched": bool(researched)})
+    await _start_monitoring(run_id, workspace_id)
 
 
 async def chat(run_id: uuid.UUID, workspace_id: uuid.UUID, params: dict) -> None:
@@ -104,21 +127,33 @@ _MONITOR_WORKERS = 4
 
 
 async def monitor(run_id: uuid.UUID, workspace_id: uuid.UUID, _params: dict) -> None:
-    """Re-check every tracked competitor; changes become feed signals."""
+    """Re-check every tracked competitor; changes become feed signals. Social
+    stats ride along when they are older than `socials_max_age_h`."""
     async with AsyncSessionLocal() as db:
         competitors = (await db.execute(
             select(models.Competitor).where(models.Competitor.workspace_id == workspace_id)
         )).scalars().all()
         offer = (await chat_service.workspace_context(db, workspace_id))[1]
-    targets = [(c.id, c.name, c.website, c.monitor_state) for c in competitors]
+    socials_cutoff = datetime.now(UTC) - timedelta(hours=settings.socials_max_age_h)
+    targets = [
+        (c.id, c.name, c.website, c.monitor_state, list(c.tracking_sources or []), c.social_profiles,
+         c.socials_checked_at is None or c.socials_checked_at < socials_cutoff)
+        for c in competitors
+    ]
 
     def check_one(target):
-        _id, name, website, previous = target
+        _id, name, website, previous, tracking, prev_socials, socials_due = target
         try:
-            return check_competitor.check(name, website, previous, offer)
+            checked = check_competitor.check(name, website, previous, offer)
         except Exception:  # noqa: BLE001 -- one rival failing must not stop the rest
             logger.exception("Monitoring %s failed", name)
-            return None
+            checked = None
+        try:
+            socials = competitor_socials.refresh(name, website, tracking, prev_socials) if socials_due else None
+        except Exception:  # noqa: BLE001
+            logger.exception("Refreshing socials for %s failed", name)
+            socials = None
+        return checked, socials
 
     def check_all():
         with ContextThreadPoolExecutor(max_workers=_MONITOR_WORKERS) as pool:
@@ -128,18 +163,29 @@ async def monitor(run_id: uuid.UUID, workspace_id: uuid.UUID, _params: dict) -> 
     now = datetime.now(UTC)
     found = []
     async with AsyncSessionLocal() as db:
-        for (competitor_id, name, website, _prev), result in zip(targets, results):
-            if result is None:
-                continue
-            state, changes = result
+        for (competitor_id, name, website, *_), (checked, socials) in zip(targets, results):
             competitor = await db.get(models.Competitor, competitor_id)
             if competitor is None:
                 continue
-            competitor.monitor_state = state
-            competitor.last_checked_at = now
-            found += [(name, website, change) for change in changes if change.importance != "low"]
+            if checked is not None:
+                state, changes = checked
+                competitor.monitor_state = state
+                competitor.last_checked_at = now
+                found += [(name, website, change) for change in changes if change.importance != "low"]
+            if socials is not None:
+                profiles, discovered = socials
+                competitor.social_profiles = profiles
+                competitor.socials_checked_at = now
+                if discovered:  # read off their own site, so as sure as a handle gets
+                    competitor.tracking_sources = [*competitor.tracking_sources, *(
+                        {"kind": kind, "value": url, "confidence": "high"} for kind, url in discovered.items()
+                    )]
         await db.commit()
-    await _finish(run_id, {"checked": sum(r is not None for r in results), "changes": len(found)})
+    await _finish(run_id, {
+        "checked": sum(c is not None for c, _ in results),
+        "socials": sum(s is not None for _, s in results),
+        "changes": len(found),
+    })
     await signals.competitor_changes(run_id, found)
 
 

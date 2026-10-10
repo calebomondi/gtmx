@@ -59,6 +59,29 @@ export interface TrackingSource {
   confidence?: Confidence | null
 }
 
+export interface SocialPost {
+  text: string
+  url: string | null
+  date: string | null
+  likes: number | null
+}
+
+/** Live stats for one network, normalized server-side from Bright Data.
+ * Counts are null when the network hides them -- never shown as zero. */
+export interface SocialProfile {
+  platform: string
+  url: string
+  name: string | null
+  followers: number | null
+  posts_count: number | null
+  likes: number | null
+  employees: string | null
+  verified: boolean
+  bio: string | null
+  recent_posts: SocialPost[]
+  fetched_at: string | null
+}
+
 /** One claim about a real company, with the evidence for it.
  *
  * Strengths, weaknesses, pain signals and customer sentiment are all this type
@@ -134,6 +157,10 @@ export interface Competitor {
   last_seen_at: string
   /** When monitoring last re-checked this rival; null if never. */
   last_checked_at: string | null
+  /** Keyed by platform (linkedin | x | instagram | tiktok); null until the
+   * first monitoring run has fetched them. */
+  social_profiles: Record<string, SocialProfile> | null
+  socials_checked_at: string | null
   deep_researched_at: string | null
 }
 
