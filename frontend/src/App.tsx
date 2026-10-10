@@ -74,12 +74,19 @@ function GlobalInterruptDialog() {
 
 function AppLayout() {
   const { user } = useAuth()
+  const location = useLocation()
   // Reattach to a discovery run that outlived the last page load (or was
   // started on another device). Runs live on the server; this only resumes
   // watching one.
   useEffect(() => {
     if (user) void resumeActiveDiscovery()
   }, [user])
+
+  // Every app route needs a session; send visitors to sign in and back here.
+  if (!user) {
+    const next = encodeURIComponent(location.pathname + location.search)
+    return <Navigate to={`/auth/login?next=${next}`} replace />
+  }
 
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">

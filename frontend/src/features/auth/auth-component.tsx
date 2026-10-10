@@ -1,13 +1,17 @@
 import { AnimatePresence, motion } from "motion/react"
-import { useLocation } from "react-router-dom"
+import { Navigate, useLocation } from "react-router-dom"
 
 import { LoginForm } from "@/components/login-form"
 import { SignupForm } from "@/components/signup-form"
 import type { AuthMode } from "@/features/auth/auth-types"
+import { useAuth } from "@/lib/auth"
 
 export default function AuthPage() {
   const { pathname } = useLocation()
+  const { user } = useAuth()
   const mode: AuthMode = pathname.endsWith("/signup") ? "signup" : "login"
+
+  if (user) return <Navigate to="/feed" replace />
 
   return (
     <div className="flex min-h-svh flex-col items-center justify-center gap-6 bg-muted p-6 md:p-10">
