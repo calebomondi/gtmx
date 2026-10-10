@@ -21,8 +21,10 @@ Nothing under `agents/` imports `backend/`. Nothing under `data_sources/` import
 
 ```bash
 # Backend (from repo root)
+cp .env.example .env                  # first time only, then fill in keys
 uv sync                               # install Python deps (incl. dev group)
-scripts/dev.sh                        # uvicorn with scoped --reload on :8000
+docker compose up -d --wait           # local Postgres 16 on :5432 (gtmx/gtmx)
+scripts/dev.sh                        # starts Postgres if needed, then uvicorn --reload on :8000
 uv run pytest                         # unit tests (no network)
 uv run pytest -m live                 # tests that hit real LLM/search APIs (opt-in)
 uv run alembic upgrade head           # apply migrations

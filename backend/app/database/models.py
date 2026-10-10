@@ -113,9 +113,9 @@ class Project(Base):
         index=True,
         default=uuid.uuid4,
     )
+    # Supabase Auth user id (no local users table — Supabase owns identity).
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
