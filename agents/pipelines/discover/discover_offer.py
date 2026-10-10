@@ -282,8 +282,6 @@ def _extract_candidates(content: str, offer_name: str | None = None) -> list[str
     norm = lambda s: re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
     def attempt(template, offer_name_hint, thinking):
-        from agents.llm.main import _llm
-
         messages = [
             SystemMessage(
                 content=template.format(
@@ -291,9 +289,9 @@ def _extract_candidates(content: str, offer_name: str | None = None) -> list[str
                 )
             )
         ]
-        llm = _llm("qwen", thinking=thinking)
-        raw = llm.invoke(messages)
-        raw_text = getattr(raw, "content", str(raw))
+        raw_text = invoke_structured_with_fallback(
+            messages=messages, log_label="match_offer_name", thinking=thinking,
+        ) or ""
 
         # The model returns valid JSON inside a ```json fence; extract the object.
         obj_start = raw_text.find("[")
@@ -731,17 +729,11 @@ def understand_scraped_content(state: DiscoverOfferState) -> dict:
 Content:
 {content[:12000]}"""
 
-    from langchain_core.messages import HumanMessage
-    from agents.llm.main import _llm
-    from agents.llm.main import QWEN_MODELS
-
     def _try_summary(persisted_prompt: str) -> str | None:
-        from langchain_core.messages import HumanMessage
-        from agents.llm.main import _llm
-
-        raw = _llm("qwen", thinking=False).invoke([HumanMessage(content=persisted_prompt)])
-        text = getattr(raw, "content", str(raw)) if raw else None
-        if text is None:
+        text = invoke_structured_with_fallback(
+            messages=[HumanMessage(content=persisted_prompt)], log_label="understand_scraped_content",
+        )
+        if not text:
             return None
         stripped = text.strip()
         if stripped.startswith("```"):
@@ -752,9 +744,6 @@ Content:
 
     page_understanding = _try_summary(prompt)
     if page_understanding is None or ("- **offer_name**" not in page_understanding and "offer_name" not in page_understanding.lower()):
-        from langchain_core.messages import HumanMessage
-        from agents.llm.main import _llm
-
         retry_prompt = f"""You must output only a JSON object with keys:
 offer_name, offer_type, products/services_offered (list of strings), problem, how_it_works, target_market (list of strings).
 Do not include markdown fences. If unknown use null or empty list.

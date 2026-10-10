@@ -655,3 +655,27 @@ class RunEvent(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(), nullable=False,
     )
+
+
+class LlmCall(Base):
+    """One LLM call attempt: what it cost and what it was for. Failed attempts
+    are recorded too -- they spend tokens. `run_id` is null for calls made
+    outside a run. The admin dashboard aggregates this for cost per day/run."""
+
+    __tablename__ = "llm_calls"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    log_label: Mapped[str] = mapped_column(String(120), nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    seconds: Mapped[float] = mapped_column(nullable=False, default=0.0)
+    ok: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(),
+        nullable=False, index=True,
+    )

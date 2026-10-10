@@ -44,9 +44,8 @@ def user_facing_error(err: BaseException) -> str:
             )
         elif kind == "billing":
             reason = (
-                "The AI provider reports the account is out of credit. Add funds "
-                "or raise the quota on your DashScope account and start the "
-                "workspace again — nothing already saved is lost."
+                "The AI provider reports the account is out of credit; the "
+                "account's quota needs to be raised."
             )
         else:
             reason = "The AI provider rejected the request."

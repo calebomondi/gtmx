@@ -24,7 +24,7 @@ from agents.llm.main import invoke_structured_with_fallback, cheap_providers
 from agents.schemas.accounts import AccountList, AccountRecord, ContactRecord, TriggerEvent
 from agents.schemas.icp import ICP
 from agents.schemas.sessions import IcpSessionState
-from data_sources.scraping.exa import search_and_scrape, scrape_url
+from data_sources.scraping.exa import search_and_scrape
 from data_sources.socials import instagram, linkedin, tiktok, x
 from agents.pipelines.web_utils import (
     call_with_timeout,
@@ -893,7 +893,7 @@ def run_account_discovery_segmented(state: IcpSessionState) -> dict:
     Each segment returns its own ≤ MAX_ACCOUNT_ROWS accounts; the merged list
     is larger because the cap applies per segment. Duplicates across segments
     are resolved by domain/platform key, keeping the higher-scored record."""
-    from concurrent.futures import ThreadPoolExecutor
+    from agents.concurrency import ContextThreadPoolExecutor
 
     segments = _segments_for(state)
     print(f"Segmented account discovery over {len(segments)} segments: "
@@ -909,7 +909,7 @@ def run_account_discovery_segmented(state: IcpSessionState) -> dict:
             return {}
 
     results: list[dict] = []
-    with ThreadPoolExecutor(max_workers=SEGMENT_MAX_WORKERS) as pool:
+    with ContextThreadPoolExecutor(max_workers=SEGMENT_MAX_WORKERS) as pool:
         results = list(pool.map(_run, segments))
 
     merged: dict[str, AccountRecord] = {}
