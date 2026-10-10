@@ -20,19 +20,29 @@ from ..schema_states import DiscoverOfferState
 # circular-import risk)
 # ---------------------------------------------------------------------------
 
+# One confirmation phrase. A reply confirms when it is made ENTIRELY of these
+# (joined by spaces/punctuation/"and"), e.g. "yes", "yes, that's correct",
+# "yep looks good!" -- while "yes but change X" still goes to the revision step.
+_CONFIRM_PHRASE = (
+    r"(?:yes|yep|yeah|yup|y|sure|correct|right|exactly|accurate|perfect|great|"
+    r"confirm(?:ed)?|approve[d]?|lgtm|ok|okay|fine|all\s+good|spot\s+on|"
+    r"looks?\s+(?:good|great|right|correct|fine)|sounds?\s+(?:good|great|right|correct)|"
+    r"(?:that|this|it)(?:\s+is|['\u2019]s)\s+(?:it|right|correct|accurate|perfect|fine|good)|"
+    r"(?:that|this|it)\s+looks\s+(?:good|right|correct))"
+)
 CONFIRM_PATTERN = re.compile(
-    r"^\s*(yes|yep|yeah|y|correct|right|confirmed|approve[d]?|looks?\s+good|perfect|"
-    r"that[''']?s\s+it|sounds?\s+(good|right|correct)|ok|okay|fine)", re.IGNORECASE
+    rf"{_CONFIRM_PHRASE}(?:(?:[\s,;:.!-]+|\s+and\s+){_CONFIRM_PHRASE})*",
+    re.IGNORECASE,
 )
 
 
 def _pure_confirmation(latest_reply: str | None) -> bool:
-    """True only when the reply is ENTIRELY a confirmation (e.g. 'yes',
-    'that's right', 'looks good.') — so a 'yes but change X' never skips the
-    draft-revision LLM call."""
+    """True only when the reply is ENTIRELY confirmation phrases (e.g. 'yes',
+    "yes, that's correct", 'looks good.') -- so a 'yes but change X' never skips
+    the draft-revision LLM call."""
     if not latest_reply:
         return False
-    stripped = re.sub(r"^[\s'\"!.]+|[\s'\"!.]+$", "", latest_reply.strip(), flags=re.IGNORECASE)
+    stripped = re.sub(r"^[\s'\"!.]+|[\s'\"!.]+$", "", latest_reply.strip())
     return bool(CONFIRM_PATTERN.fullmatch(stripped))
 
 
@@ -410,7 +420,10 @@ class DescriptionDraft(BaseModel):
 class InlineCheck(BaseModel):
     """Result of verifying the user's edits against the scraped content and
     folding the grounded ones into a revised description."""
+    # Defaults False so the `or InlineCheck()` fallback (LLM returned nothing)
+    # re-asks rather than treating a failed check as a confirmation.
     inline: bool = Field(
+        default=False,
         description="True when every one of the user's edits is supported by (or derivable from) the scraped content / the user's own replies",
     )
     revised_description: Optional[str] = Field(
@@ -1017,7 +1030,7 @@ def ask_for_confirmation(state: DiscoverOfferState) -> Command[Literal["check_if
     return Command(update=update, goto="check_if_desc_inline")
 
 
-def check_if_desc_inline(state: DiscoverOfferState) -> Command[Literal["retrieve_rest_product_service_info", "ask_for_confirmation"]]:
+def check_if_desc_inline(state: DiscoverOfferState) -> Command[Literal["proceed_to_description", "ask_for_confirmation"]]:
     """Fold the user's latest proposed edits into the description, keeping only
     the edits grounded in the scraped content. The LLM returns a revised draft;
     if some edits are fabricated, a note explains what was dropped. Always returns
@@ -1048,12 +1061,19 @@ def check_if_desc_inline(state: DiscoverOfferState) -> Command[Literal["retrieve
     ) or InlineCheck()
 
     update: dict = {}
-    if result.revised_description:
-        revised = normalize_optional_text(result.revised_description)
-        if revised and revised != current_draft:
-            # merge_snapshot only fills EMPTY fields, so a revised draft must be
-            # set directly to overwrite the previous one — same here.
-            update["offer_description"] = revised
+    revised = normalize_optional_text(result.revised_description)
+    if revised and revised != current_draft:
+        # merge_snapshot only fills EMPTY fields, so a revised draft must be
+        # set directly to overwrite the previous one — same here.
+        update["offer_description"] = revised
+    elif result.inline:
+        # The reply was grounded but changes nothing: there was no edit in it,
+        # so it is a confirmation phrased in a way _pure_confirmation missed.
+        # Re-asking here would loop forever on the same answer.
+        return Command(
+            update={"confirmed": True, "follow_up": {"follow_up_question": None, "user_replies": follow_up.user_replies}},
+            goto="proceed_to_description",
+        )
 
     # When the edits are NOT grounded, stash a note for ask_for_confirmation to
     # show before re-presenting the draft. Always rewrite follow_up so a stale
