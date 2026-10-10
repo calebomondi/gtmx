@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     # Empty = same-origin only (dev proxy / reverse proxy). Comma-separated or a
     # JSON array, e.g. ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
     allowed_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    # Emails granted the admin role at startup (idempotent). Further admins are
+    # granted from the admin dashboard.
+    admin_bootstrap_emails: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     # -- Supabase --
     supabase_base_url: str = ""
@@ -103,7 +106,7 @@ class Settings(BaseSettings):
             raise ValueError("at least one model is required")
         return value
 
-    @field_validator("allowed_origins", "llm_models", "llm_cheap_models", mode="before")
+    @field_validator("allowed_origins", "admin_bootstrap_emails", "llm_models", "llm_cheap_models", mode="before")
     @classmethod
     def _parse_str_list(cls, value):
         """Accept a comma-separated string or a JSON array from the env."""

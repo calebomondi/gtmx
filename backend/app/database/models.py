@@ -578,3 +578,28 @@ class Account(Base):
         # known account instead of doubling it.
         UniqueConstraint("workspace_id", "name", name="uq_accounts_workspace_name"),
     )
+
+
+class AdminAuditLog(Base):
+    """Append-only record of every admin write: who did what to which target,
+    with the before/after values. `actor_id` is null for system actions (the
+    startup admin bootstrap)."""
+
+    __tablename__ = "admin_audit_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    actor_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    # e.g. "admin.grant", "admin.revoke", "user.suspend", "run.cancel"
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    target_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    before: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    after: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
+        index=True,
+    )

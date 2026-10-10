@@ -10,11 +10,28 @@ from backend.app.database.connect import engine, AsyncSessionLocal
 from backend.app.database.schema_check import ensure_schema_at_head
 from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError, ServiceError
 from backend.app import agents_runtime
+from backend.app.services import admin as admin_service
+from utils.log import logger
+
+
+async def _bootstrap_admins() -> None:
+    """Grant ADMIN_BOOTSTRAP_EMAILS the admin role. A Supabase outage must not
+    stop the API from serving, so failure is logged loudly instead of raised."""
+    if not settings.admin_bootstrap_emails:
+        return
+    try:
+        async with AsyncSessionLocal() as db:
+            granted = await admin_service.bootstrap_admins(db, settings.admin_bootstrap_emails)
+        if granted:
+            logger.info("Admin bootstrap granted admin to: %s", ", ".join(granted))
+    except Exception:
+        logger.exception("Admin bootstrap failed; existing admins are unaffected")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await ensure_schema_at_head(engine)
+    await _bootstrap_admins()
     await agents_runtime.start_agent_runtime(settings.database_url)
     try:
         yield
