@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     brightdata_api_key: str = ""
     composio_api_key: str = ""
 
+    # -- Runs --
+    # Wall-clock cap on one active segment of a run (time spent waiting for a
+    # user's answer does not count: no task is alive then).
+    discovery_segment_timeout_s: float = 1800.0
+
     # -- Agent tuning --
     # How far back (days) research may look for sources. Kept short so the
     # analysis reflects CURRENT conditions, not history.

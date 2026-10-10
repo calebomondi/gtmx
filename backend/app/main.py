@@ -10,6 +10,7 @@ from backend.app.database.connect import engine, AsyncSessionLocal
 from backend.app.database.schema_check import ensure_schema_at_head
 from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError, ServiceError
 from backend.app import agents_runtime
+from backend.app.runs import manager as run_manager
 from backend.app.services import admin as admin_service
 from utils.log import logger
 
@@ -33,9 +34,11 @@ async def lifespan(app: FastAPI):
     await ensure_schema_at_head(engine)
     await _bootstrap_admins()
     await agents_runtime.start_agent_runtime(settings.database_url)
+    await run_manager.recover_after_restart()
     try:
         yield
     finally:
+        await run_manager.shutdown()
         await agents_runtime.stop_agent_runtime()
 
 _SERVICE_ERROR_STATUS = {

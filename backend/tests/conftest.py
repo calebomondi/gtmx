@@ -18,7 +18,7 @@ from sqlalchemy.pool import NullPool
 from backend.app.api.deps import AuthUser, require_user
 from backend.app.api.v1.routes import api_router
 from backend.app.database import models  # noqa: F401 -- registers every table on Base.metadata
-from backend.app.database.connect import Base, get_db
+from backend.app.database.connect import AsyncSessionLocal, Base, get_db
 from backend.app.main import add_service_error_handlers
 from backend.tests.helpers import make_user
 from config import settings
@@ -38,9 +38,12 @@ def _create_database_if_missing() -> None:
 @pytest.fixture(scope="session", autouse=True)
 def migrated_database():
     """Bring the test database to the Alembic head once per session, through
-    the same migrations production runs."""
+    the same migrations production runs. The app's own session factory (used by
+    run execution) is rebound to a NullPool engine: tests drive it from more
+    than one event loop, and pooled async connections must not cross loops."""
     _create_database_if_missing()
     command.upgrade(AlembicConfig(str(_ALEMBIC_INI)), "head")
+    AsyncSessionLocal.configure(bind=create_async_engine(settings.sqlalchemy_database_url, poolclass=NullPool))
 
 
 @pytest.fixture(autouse=True)
