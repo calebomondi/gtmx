@@ -126,3 +126,21 @@ The owner decides on Day 3 evening.
 - [x] BrightData key valid. LinkedIn, X, Instagram and TikTok scrapers all verified live
 - [x] First admin is kalebmokua@gmail.com. Admins can grant admin to others
 - [x] Bun everywhere
+
+## TODO
+
+Deferred past launch by the owner (2026-10-10). Until they're done, both
+channels show as unavailable on /accounts and outreach skips them, so
+nothing breaks.
+
+- [ ] **X outreach channel.** Composio dropped managed X credentials in Feb 2026.
+  1. developer.x.com: create a Project, then an App inside it (an app outside a project fails with `client-not-enrolled`).
+  2. User authentication settings: permissions "Read and write and Direct message", type "Web App", callback `https://backend.composio.dev/api/v3/toolkits/auth/callback`.
+  3. Copy the OAuth 2.0 Client ID and Secret into Composio (Auth Configs, then Create, then Twitter, OAuth2, "Use your own credentials") and keep the `ac_…` id.
+  4. Check which X API plan covers DMs and posting at our volume.
+- [ ] **TikTok outreach channel.** Composio has never managed TikTok credentials.
+  1. developers.tiktok.com: create an app with Login Kit (and the Content Posting API for posting).
+  2. TikTok may require the redirect URI to sit on a domain we own. If so, this waits for hosting, plus a small endpoint that redirects to the Composio callback.
+  3. Until TikTok approves the app, only listed test users can connect. Review takes days.
+  4. In Composio, create the auth config with the Client Key and Secret and keep the `ac_…` id.
+- [ ] Then set `COMPOSIO_AUTH_CONFIGS={"twitter": "ac_...", "tiktok": "ac_..."}` and test one real connection per channel.
