@@ -6,8 +6,8 @@ interview, borrowed from the offer and market pipelines:
 
     create_tasks_research      -> plan 3-5 competition research objectives
     conduct_research           -> run them, one bundle of evidence per objective
-    extract_competitor_profile -> the draft ideal competitor profile + the offer's SWOD (soft-fail)
-    refine_competitor_profile  -> self-review pass over the profile (soft-fail)
+    extract_competitor_profile -> the ideal competitor profile + the offer's SWOD (soft-fail):
+                                  skeleton ∥ SWOD -> skeleton review -> archetype details in parallel
     note_down_record           -> write the competitive notes + positioning view
 
 Deliberately LINEAR, for the same reason the offer and market stages are: the
@@ -116,8 +116,17 @@ from langchain_core.messages import SystemMessage
 
 from config import get_settings
 from agents.llm.main import invoke_structured_with_fallback
+from utils.log import logger
 from agents.context_budget import _truncate_to_tokens, budget_context, distill_documents
-from agents.schemas.competition import CompetitionFindings, CompetitionRecord, IdealCompetitorProfile
+from agents.schemas.competition import (
+    ArchetypeDetail,
+    ArchetypeSketch,
+    CompetitionExtraction,
+    CompetitionFindings,
+    CompetitorArchetype,
+    IdealCompetitorProfile,
+    ProfileSkeleton,
+)
 from agents.schemas.research import TaskResearchBundle
 from data_sources.scraping.exa import search_and_scrape
 
@@ -596,21 +605,16 @@ framing.
 """
 
 
-extract_instructions = """
-You are an expert competitive analyst.
+# The profile is built in three steps so no single LLM call has to generate
+# the whole thing: (1) a SKELETON -- profile-level fields plus each archetype's
+# identity only -- drafted in parallel with the SWOD; (2) a structural REVIEW of
+# that skeleton (overlap, gaps, named companies); (3) each archetype's DETAIL,
+# written in parallel. One call used to emit the full ~8k-token profile and a
+# second call re-emitted all of it to make a few corrections; output tokens are
+# what an LLM call's latency scales with, so that took ~4 minutes.
+# The prompts below are composed from shared parts so the rules exist once.
 
-Read the COMPETITIVE EVIDENCE in front of you and build two things: an
-`IdealCompetitorProfile` describing the KINDS of company that would compete
-against this {offer_noun}, and a SWOD record of how the {offer_noun} stacks up
-against the competitive standard.
-
-This is a classification task over evidence you already hold, not a research
-task. Nothing here is to be invented, and nothing here is a claim about a real
-company.
-
-{context}
-
-THE PROFILE NAMES NOBODY -- AND THAT IS THE POINT
+_NAMES_NOBODY = """THE PROFILE NAMES NOBODY -- AND THAT IS THE POINT
 The profile is a CONSTRUCT: a set of archetypes describing the shape of a
 perfect competitor. You are NOT producing a list of companies. A later, separate
 agent searches the web for real firms matching these archetypes; your job is to
@@ -621,9 +625,9 @@ tell it what to look for. So:
 - The archetypes SHOULD be specific and opinionated. This is the one place in
   the pipeline where you are expected to be aggressive: a vague profile is worth
   nothing to the agent that consumes it. Reach for the archetype a strategist
-  would actually worry about.
+  would actually worry about."""
 
-BE AGGRESSIVE AND SPAN THE WHOLE THREAT SURFACE
+_THREAT_SURFACE = """BE AGGRESSIVE AND SPAN THE WHOLE THREAT SURFACE
 Aim for 4-6 archetypes (never fewer than 3 unless the evidence is genuinely
 empty). Cover the range deliberately rather than three variations on one idea:
 - local incumbents defending this specific market
@@ -634,28 +638,16 @@ empty). Cover the range deliberately rather than three variations on one idea:
   profile exists to name.
 - premium/niche specialists attacking the same buyer from a different angle
 - indirect and substitute threats: adjacent products, in-house builds, DIY
-  workarounds, or simply doing nothing
+  workarounds, or simply doing nothing"""
 
-Rules for each archetype:
+_SKETCH_RULES = """Rules for each archetype:
 - label: a short name for the KIND of company, e.g. "Regional incumbent",
   "Global SaaS entrant", "DIY substitute".
 - archetype_description: concretely what this kind of competitor is and how it
   operates. Two or three sentences, specific enough to be recognisable.
-- geography_scope: "local", "regional", "global" or "any". Be honest about which.
-- business_model / typical_offering / pricing_model / customer_profile: how it
-  makes money, what it sells, how it charges, and whom it serves.
-- likely_advantages: where THIS KIND of competitor would beat the {offer_noun}.
-- likely_weaknesses: where this kind of competitor would be VULNERABLE to the
-  {offer_noun}. These are the openings worth having.
-- where_to_find_them: search surfaces, directories or query shapes where real
-  instances of this archetype would be found. Be practical -- this is the
-  hunting ground the next agent will use, so "Google" is useless and
-  "regional dental practice directories, '<service> <city>'" is useful.
-- confidence: "high", "medium" or "low" -- how well the evidence supports this
-  archetype. Mark a speculative archetype "low" rather than dropping it or
-  inflating it.
+- geography_scope: "local", "regional", "global" or "any". Be honest about which."""
 
-Profile-level fields:
+_PROFILE_FIELD_RULES = """Profile-level fields:
 - category_definition: what counts as a competitor in this category.
 - boundary_of_category: adjacent things that are NOT competitors -- substitutes,
   complements, upstream suppliers. Keeps the next agent from chasing the wrong
@@ -669,61 +661,118 @@ Profile-level fields:
   evidence supports one. Empty string otherwise.
 - channels: how competitors in this category reach buyers -- the routes a rival
   already owns.
-- confidence: overall, how well the research supports this profile.
+- confidence: overall, how well the research supports this profile."""
 
-SWOD (the `swod` object) -- these ARE claims about the offer, so ground them in
-the evidence and return an empty list rather than inventing:
-- strengths: where the {offer_noun} meets or beats the competitive standard.
-- weaknesses: where it falls short of the standard.
-- opportunities: gaps in the landscape the {offer_noun} could exploit.
-- differentiators: what genuinely sets it apart.
+_DETAIL_RULES = """- business_model / typical_offering / pricing_model / customer_profile: how it
+  makes money, what it sells, how it charges, and whom it serves.
+- likely_advantages: where THIS KIND of competitor would beat the {offer_noun}.
+- likely_weaknesses: where this kind of competitor would be VULNERABLE to the
+  {offer_noun} -- real openings, not restated advantages. If a weakness is
+  something the {offer_noun} also has, it is not a weakness of this archetype.
+- where_to_find_them: search surfaces, directories or query shapes where real
+  instances of this archetype would be found. Be practical -- this is the
+  hunting ground the next agent will use, so "Google" is useless and
+  "regional dental practice directories, '<service> <city>'" is useful.
+- confidence: "high", "medium" or "low" -- how well the evidence supports this
+  archetype. Mark a speculative archetype "low" rather than inflating it."""
 
-JSON discipline: every list field must be a real JSON array -- no
+_JSON_DISCIPLINE = """JSON discipline: every list field must be a real JSON array -- no
 double-serialized strings. For optional string fields that do not apply, use an
-empty string ""; never null and never omit the key. The record is validated
-against a strict schema.
+empty string ""; never null and never omit the key. The output is validated
+against a strict schema."""
+
+skeleton_instructions = f"""
+You are an expert competitive analyst.
+
+Read the COMPETITIVE EVIDENCE in front of you and draft the SKELETON of an
+`IdealCompetitorProfile`: the KINDS of company that would compete against this
+{{offer_noun}}, plus the profile-level fields. Give each archetype only its
+label, description and geography scope -- the detail is written later.
+
+This is a classification task over evidence you already hold, not a research
+task. Nothing here is to be invented, and nothing here is a claim about a real
+company.
+
+{{context}}
+
+{_NAMES_NOBODY}
+
+{_THREAT_SURFACE}
+
+{_SKETCH_RULES}
+
+{_PROFILE_FIELD_RULES}
+
+{_JSON_DISCIPLINE}
 """
 
+swod_instructions = f"""
+You are an expert competitive analyst.
 
-refine_instructions = """
-You are an expert competitive strategist reviewing a draft Ideal Competitor
-Profile for a {offer_noun}.
+Read the COMPETITIVE EVIDENCE in front of you and record how this {{offer_noun}}
+stacks up against the competitive standard (SWOD). These ARE claims about the
+offer, so ground every item in the evidence and return an empty list rather
+than inventing:
+- strengths: where the {{offer_noun}} meets or beats the competitive standard.
+- weaknesses: where it falls short of the standard.
+- opportunities: gaps in the landscape the {{offer_noun}} could exploit.
+- differentiators: what genuinely sets it apart.
 
-A separate agent will later search the web for real companies matching these
-archetypes. Your job is to make that profile the one you would actually want to
-hand it. Review the draft critically and return an improved version.
+{{context}}
+
+{_JSON_DISCIPLINE}
+"""
+
+skeleton_review_instructions = f"""
+You are an expert competitive strategist reviewing the draft skeleton of an
+Ideal Competitor Profile for a {{offer_noun}}. Each archetype's detail will be
+written after your review, so fix the STRUCTURE now; return the improved
+skeleton.
 
 WHAT GOOD LOOKS LIKE
 - SPANS the threat surface. Local incumbents AND international entrants AND at
   least one substitute or indirect threat. A profile of three variations on
   "local competitor" is a failure, not caution.
 - Each archetype earns its place: distinct, recognisable, and genuinely a
-  competitor for THIS buyer. Merge any two that describe the same kind of
-  company. Split any that are doing two different jobs.
+  competitor for THIS buyer.
 - SPECIFIC. "Regional incumbent undercutting on price" is useful; "a
   competitor" is not.
-- `where_to_find_them` is actionable. This is the field the next agent acts on.
-  Directories, marketplaces, trade associations, review sites and query shapes
-  beat abstract categories.
-- `likely_weaknesses` are real openings, not restated advantages. If a weakness
-  is something the {offer_noun} also has, it is not a weakness of this archetype.
-- `confidence` is honest. Mark a speculative archetype "low". Do not inflate
-  confidence to make the profile look authoritative, and do not delete a
-  speculative archetype to make the profile look tidy -- a labelled guess is
-  worth more to the consumer of this profile than a confident nothing.
 
 WHAT TO FIX
-- Collapse archetypes that overlap; split ones that are incoherent.
-- Fill any field left empty that the evidence supports.
+- Merge archetypes that describe the same kind of company; split one that is
+  doing two different jobs.
 - Add a missing archetype if the threat surface has an obvious hole.
-- Correct any archetype that drifted into naming a real company. Archetypes
+- Rewrite any archetype that drifted into naming a real company. Archetypes
   describe KINDS of company, never specific firms -- naming one is the single
   most important error to catch, because a named archetype makes the consumer
   believe the search has already happened.
 - Keep `category_definition` and `boundary_of_category` tight; they are what
   keeps the next agent from chasing the wrong companies.
+- Do not delete a speculative archetype to make the profile look tidy.
 
-Return only the corrected profile. Same schema, no commentary.
+{_JSON_DISCIPLINE}
+Return only the corrected skeleton. Same schema, no commentary.
+"""
+
+archetype_detail_instructions = f"""
+You are an expert competitive analyst. A profile of the kinds of company that
+compete with this {{offer_noun}} has been agreed (below). Write the working
+detail for ONE of its archetypes -- the one marked TARGET -- from the evidence.
+Keep it distinct from the other archetypes; do not describe them.
+
+{{context}}
+
+AGREED PROFILE (archetype identities)
+{{skeleton}}
+
+TARGET ARCHETYPE
+{{target}}
+
+Never name a real company: describe the KIND of company.
+
+{_DETAIL_RULES}
+
+{_JSON_DISCIPLINE}
 """
 
 
@@ -946,126 +995,109 @@ def conduct_research(state: CompetitionSessionState) -> dict:
     return {"competition_task_research": bundles}
 
 
+def _structured(log_label: str, schema, system_message: str, instruction: str):
+    """One soft-failing structured call: None on failure, logged."""
+    try:
+        return invoke_structured_with_fallback(
+            messages=[SystemMessage(content=system_message), SystemMessage(content=instruction)],
+            schema=schema,
+            log_label=log_label,
+            # Closed-schema work over evidence already in hand -- the
+            # cheap-tier, thinking-off workload.
+            thinking=False,
+        )
+    except Exception as exc:  # noqa: BLE001 - every caller has a fallback
+        logger.warning("%s failed: %s", log_label, exc)
+        return None
+
+
+def _review_skeleton(state: CompetitionSessionState, skeleton: ProfileSkeleton) -> ProfileSkeleton:
+    """Structural review; keeps the draft if the review fails or empties it."""
+    reviewed = _structured(
+        "review_competitor_skeleton",
+        ProfileSkeleton,
+        skeleton_review_instructions.format(offer_noun=_offer_noun(state))
+        + f"\nDraft skeleton under review:\n\n{skeleton.model_dump_json(indent=2)}",
+        "Return the corrected skeleton now.",
+    )
+    if reviewed is None or not reviewed.archetypes:
+        return skeleton
+    return reviewed
+
+
+def _detail_archetypes(state: CompetitionSessionState, context: str, skeleton: ProfileSkeleton) -> list[CompetitorArchetype]:
+    """Write every archetype's detail in parallel. An archetype whose detail
+    call fails ships as its sketch (detail fields empty, confidence low) rather
+    than being dropped -- a labelled gap beats a silent hole."""
+    sketches = skeleton.archetypes[:MAX_ARCHETYPES]
+    agreed = "\n".join(f"- {a.label} ({a.geography_scope}): {a.archetype_description}" for a in sketches)
+
+    def detail(sketch: ArchetypeSketch) -> CompetitorArchetype:
+        result = _structured(
+            f"detail_archetype:{sketch.label}",
+            ArchetypeDetail,
+            archetype_detail_instructions.format(
+                offer_noun=_offer_noun(state), context=context, skeleton=agreed,
+                target=sketch.model_dump_json(indent=2),
+            ),
+            f"Write the detail for the '{sketch.label}' archetype now.",
+        )
+        return CompetitorArchetype(**sketch.model_dump(), **(result or ArchetypeDetail()).model_dump())
+
+    with ThreadPoolExecutor(max_workers=max(1, len(sketches))) as pool:
+        return list(pool.map(detail, sketches))
+
+
 def extract_competitor_profile(state: CompetitionSessionState) -> dict:
-    """Read the competitive evidence and emit the DRAFT ideal competitor profile
-    plus the offer's SWOD.
+    """Build the ideal competitor profile and the offer's SWOD from the evidence.
 
-    A cheap-tier classification pass (thinking off) over the same evidence the
-    writer reasons from. One LLM call returns both halves via `CompetitionRecord`,
-    because they come from a single reading of the evidence and splitting them
-    would double the cost for no gain. They land in separate state channels.
-
-    The URL-verification loop this node used to run is GONE. It probed each named
-    competitor's website with a live scrape (up to 5 Exa calls per run) and
-    dropped the ones that failed -- sensible when the output was a list of real
-    companies whose dead links would propagate downstream, and pure waste now
-    that an archetype has no URL to verify. That deletion is why adding the
-    refine node below did not make this stage more expensive overall.
-
-    SOFT-FAILS on purpose, like the market stage's extractor: the narrative
-    findings are the pipeline's product, and losing the structured profile must
-    not sink a run whose notes are already written.
+    skeleton ∥ SWOD -> skeleton review -> archetype details in parallel (see the
+    note above the prompts). Each step SOFT-FAILS: the narrative findings are
+    the stage's product, so a lost structured output must not sink a run whose
+    notes will still be written -- and a failed review or detail keeps what the
+    previous step produced.
     """
-    bundles = list(state.get("competition_task_research") or [])
-    context = _competition_context(state, bundles)
-
-    system_message = extract_instructions.format(
-        offer_noun=_offer_noun(state), context=context
-    )
-
-    try:
-        record = invoke_structured_with_fallback(
-            messages=[
-                SystemMessage(content=system_message),
-                SystemMessage(content="Build the ideal competitor profile and the SWOD now."),
-            ],
-            schema=CompetitionRecord,
-            log_label="extract_competitor_profile",
-            # Closed-schema classification of evidence already in hand --
-            # exactly the cheap-tier workload llm/main.py's thinking gate
-            # reserves for thinking-off calls.
-            thinking=False,
+    context = _competition_context(state, list(state.get("competition_task_research") or []))
+    noun = _offer_noun(state)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        skeleton_job = pool.submit(
+            _structured, "draft_competitor_skeleton", ProfileSkeleton,
+            skeleton_instructions.format(offer_noun=noun, context=context),
+            "Draft the profile skeleton now.",
         )
-    except Exception as exc:  # noqa: BLE001 - soft-fail by design, see docstring
-        print(f"extract_competitor_profile: failed ({exc}); profile + competition_data left unset")
-        return {}
+        swod_job = pool.submit(
+            _structured, "extract_swod", CompetitionExtraction,
+            swod_instructions.format(offer_noun=noun, context=context),
+            "Record the SWOD now.",
+        )
+        skeleton, swod = skeleton_job.result(), swod_job.result()
 
-    profile = record.profile
-    # Hard ceiling on the archetype count. Same philosophy as MAX_RESEARCH_TASKS:
-    # a schema hint is a suggestion, the clamp is the bound. The floor only warns
-    # -- a thin profile is thin evidence, and padding it would be worse than
-    # shipping it short.
-    archetypes = list(profile.archetypes or [])[:MAX_ARCHETYPES]
-    profile = profile.model_copy(update={"archetypes": archetypes})
+    if skeleton is None or not skeleton.archetypes:
+        # Models occasionally drop the list entirely; one targeted retry is far
+        # cheaper than shipping a run with no profile for the competitor agent.
+        logger.warning("draft_competitor_skeleton came back without archetypes; retrying once")
+        skeleton = _structured(
+            "draft_competitor_skeleton_retry", ProfileSkeleton,
+            skeleton_instructions.format(offer_noun=noun, context=context),
+            "Draft the profile skeleton now. The `archetypes` list must contain 4-6 archetypes.",
+        )
+
+    update: dict = {"competition_data": swod} if swod is not None else {}
+    if skeleton is None or not skeleton.archetypes:
+        logger.error("extract_competitor_profile: no archetypes after retry; shipping the run without a profile")
+        return update
+
+    skeleton = _review_skeleton(state, skeleton)
+    archetypes = _detail_archetypes(state, context, skeleton)
     if len(archetypes) < MIN_ARCHETYPES:
-        print(
-            f"extract_competitor_profile: only {len(archetypes)} archetype(s) "
-            f"extracted -- keeping the defensible set, not inventing more"
-        )
-    print(
-        f"extract_competitor_profile: {len(archetypes)} archetype(s) "
-        f"({sum(1 for a in archetypes if a.geography_scope == 'global')} global), "
-        f"{len(record.swod.strengths)} strength(s)"
+        logger.info("extract_competitor_profile: only %d archetype(s) -- keeping the defensible set", len(archetypes))
+    profile = IdealCompetitorProfile(**skeleton.model_dump(exclude={"archetypes"}), archetypes=archetypes)
+    logger.info(
+        "extract_competitor_profile: %d archetype(s) (%d global), %d strength(s)",
+        len(archetypes), sum(1 for a in archetypes if a.geography_scope == "global"),
+        len(swod.strengths) if swod else 0,
     )
-    return {
-        "ideal_competitor_profile": profile,
-        "competition_data": record.swod,
-    }
-
-
-def refine_competitor_profile(state: CompetitionSessionState) -> dict:
-    """Self-review pass over the draft profile.
-
-    Mirrors `build_icp`'s create -> refine -> narrate discipline, applied to the
-    stage's primary output: the profile is finalized BEFORE the writer is
-    anchored on it, so the notes describe the profile that shipped rather than
-    the first draft. Without this the writer reads a draft whose overlapping or
-    missing archetypes it then faithfully describes.
-
-    SOFT-FAILS, and SOFT-FAILS BY KEEPING THE DRAFT. A failed refine must not
-    discard a profile the extractor already produced, so the except branch
-    returns `{}` and the draft stands rather than being cleared.
-    """
-    profile = state.get("ideal_competitor_profile")
-    if profile is None:
-        print("refine_competitor_profile: no draft profile to refine, skipping")
-        return {}
-
-    system_message = refine_instructions.format(offer_noun=_offer_noun(state))
-
-    try:
-        refined = invoke_structured_with_fallback(
-            messages=[
-                SystemMessage(content=system_message),
-                SystemMessage(content=f"Draft profile under review:\n\n{profile.model_dump_json(indent=2, exclude_none=True)}"),
-                SystemMessage(content="Return the corrected profile now."),
-            ],
-            schema=IdealCompetitorProfile,
-            log_label="refine_competitor_profile",
-            # Same cheap-tier gate as the other three pipelines' structured
-            # passes: this is critique of an in-hand artifact, not open-ended
-            # reasoning that justifies the flagship thinking cost.
-            thinking=False,
-        )
-    except Exception as exc:  # noqa: BLE001 - soft-fail by design, see docstring
-        print(f"refine_competitor_profile: failed ({exc}); keeping the draft profile")
-        return {}
-
-    refined = refined.model_copy(
-        update={"archetypes": list(refined.archetypes or [])[:MAX_ARCHETYPES]}
-    )
-
-    # A refine pass that returned an empty profile is a regression, not an
-    # improvement -- the reviewer's job was to fix a draft, not delete it.
-    if not refined.archetypes:
-        print("refine_competitor_profile: returned no archetypes; keeping the draft profile")
-        return {}
-
-    print(
-        f"refine_competitor_profile: {len(profile.archetypes or [])} draft "
-        f"archetype(s) -> {len(refined.archetypes)} refined"
-    )
-    return {"ideal_competitor_profile": refined}
+    return {**update, "ideal_competitor_profile": profile}
 
 
 def note_down_record(state: CompetitionSessionState) -> dict:
@@ -1171,7 +1203,7 @@ def note_down_record(state: CompetitionSessionState) -> dict:
 
 def build_competition_graph(checkpointer: bool = True):
     """create_tasks_research -> conduct_research -> extract_competitor_profile
-    -> refine_competitor_profile -> note_down_record.
+    -> note_down_record.
 
     Extract runs BEFORE the writer (deliberately the reverse of the market
     graph): the structured profile is the load-bearing output the downstream
@@ -1187,15 +1219,13 @@ def build_competition_graph(checkpointer: bool = True):
     builder.add_node("create_tasks_research", create_tasks_research)
     builder.add_node("conduct_research", conduct_research)
     builder.add_node("extract_competitor_profile", extract_competitor_profile)
-    builder.add_node("refine_competitor_profile", refine_competitor_profile)
     builder.add_node("note_down_record", note_down_record)
 
     # -- Edges --
     builder.add_edge(START, "create_tasks_research")
     builder.add_edge("create_tasks_research", "conduct_research")
     builder.add_edge("conduct_research", "extract_competitor_profile")
-    builder.add_edge("extract_competitor_profile", "refine_competitor_profile")
-    builder.add_edge("refine_competitor_profile", "note_down_record")
+    builder.add_edge("extract_competitor_profile", "note_down_record")
     builder.add_edge("note_down_record", END)
 
     return builder.compile()

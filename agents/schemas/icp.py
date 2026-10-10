@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, create_model, Field, field_validator, model_validator
 
 from agents.schemas.coercion import coerce_json
 
@@ -143,3 +143,32 @@ class ICP(BaseModel):
     @classmethod
     def _coerce_nested_json_fields(cls, v):
         return coerce_json(v)
+
+
+class _RevisionBase(BaseModel):
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_json_fields(cls, data):
+        # Same double-serialisation repair ICP applies to its list fields.
+        if isinstance(data, dict):
+            return {k: coerce_json(v) for k, v in data.items()}
+        return data
+
+    def changed_fields(self) -> dict:
+        return {name: value for name, value in self.model_dump().items() if value is not None}
+
+
+# A patch to an ICP: every ICP field, optional, defaulting to "unchanged" (null).
+# Generated from ICP's own fields so the two can never drift apart. The refine
+# pass returns only what it corrects -- a full ICP is ~3.6k output tokens, the
+# corrections a few hundred, and output length is what an LLM call's latency
+# scales with.
+ICPRevision = create_model(
+    "ICPRevision",
+    __base__=_RevisionBase,
+    __doc__="Corrections to a draft ICP. Null = keep the draft's value; a list is replaced whole.",
+    **{
+        name: (field.annotation | None, Field(default=None, description=field.description))
+        for name, field in ICP.model_fields.items()
+    },
+)

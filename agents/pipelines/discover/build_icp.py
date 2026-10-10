@@ -65,7 +65,7 @@ from langchain_core.messages import SystemMessage
 
 from agents.llm.main import invoke_structured_with_fallback, cheap_providers
 from agents.context_budget import budget_context
-from agents.schemas.icp import ICP, IcpFindings
+from agents.schemas.icp import ICP, ICPRevision, IcpFindings
 
 from agents.schemas.research import Specialist
 from agents.schemas.sessions import IcpSessionState
@@ -392,7 +392,9 @@ REVIEW RULES
    firmographics (`industries`, `company_sizes`, `buyer_titles`) carry the weight.
    Don't let a weak emphasis cripple the profile.
 4. Industry discipline: no more than 3 industries — the tightest defensible set wins.
-5. `competitor_leads` — CORRECT them, do not clear them. The draft's leads were
+5. `competitor_leads` — CORRECT them, do not clear them. If the draft has none
+   (it may predate the competition research), derive them from the
+   [competition findings] prose. The draft's leads were
    derived from the [competition findings] prose, and a lead whose `name` appears
    in that prose is grounded and MUST be kept: fix its queries or `pain_angles`
    if they drifted, but do not delete a lead just because the structured
@@ -407,8 +409,20 @@ REVIEW RULES
    delivery and how people/companies buy services where it operates; for a
    PRODUCT on adoption and how the category is acquired there.
 
-Return the FINAL, complete ICP — no commentary.
+9. The draft may have been written while the competition research was still
+   running. If it lacks competitor-derived content the [competition] blocks now
+   support -- `competitor_leads`, angles against rivals in `messaging_angles`,
+   `exclusions` -- add it now, under rule 5's grounding rule.
+
+{output_rule}
 """
+
+_PATCH_OUTPUT_RULE = """OUTPUT: return ONLY the fields you change, each with its complete corrected
+value, and leave every unchanged field null. A list you change is replaced
+whole, so return the full corrected list. If the draft needs no change, return
+every field null. No commentary."""
+
+_FULL_OUTPUT_RULE = "OUTPUT: return the FINAL, complete ICP -- no commentary."
 
 
 note_down_record_instructions = """
@@ -556,18 +570,31 @@ def refine_icp(state: IcpSessionState) -> dict:
         draft_icp=draft.model_dump_json(indent=2, exclude_none=True) if draft else "No draft — build the ICP from the context.",
         context=_icp_context(state),
         buyer_type_label=buyer_label,
+        output_rule=_FULL_OUTPUT_RULE if draft is None else _PATCH_OUTPUT_RULE,
     )
 
-    final = invoke_structured_with_fallback(
-        messages=[
-            SystemMessage(content=system_message),
-            SystemMessage(content="Finalize the ICP now."),
-        ],
-        schema=ICP,
-        log_label="refine_icp",
-        providers=cheap_providers(),
-        thinking=False,
-    )
+    if draft is None:
+        # Nothing to patch (the draft step failed or was skipped): build it whole.
+        final = invoke_structured_with_fallback(
+            messages=[SystemMessage(content=system_message), SystemMessage(content="Build the complete ICP now.")],
+            schema=ICP,
+            log_label="refine_icp",
+            providers=cheap_providers(),
+            thinking=False,
+        )
+    else:
+        revision = invoke_structured_with_fallback(
+            messages=[SystemMessage(content=system_message), SystemMessage(content="Return your corrections now.")],
+            schema=ICPRevision,
+            log_label="refine_icp",
+            providers=cheap_providers(),
+            thinking=False,
+        )
+        changes = revision.changed_fields()
+        print(f"refine_icp: {len(changes)} field(s) revised: {', '.join(sorted(changes)) or 'none'}")
+        # Re-validate the merged profile so the patch goes through ICP's own
+        # coercion rules.
+        final = ICP.model_validate({**draft.model_dump(), **changes})
 
     # 'No more than 3 industries' is a rule the GTM expert actually enforces; a
     # schema hint is a suggestion, so the clamp is the bound — same philosophy as
@@ -663,8 +690,13 @@ def note_down_record(state: IcpSessionState) -> dict:
     }
 
 
-def build_icp_graph(checkpointer: bool = True):
+def build_icp_graph(checkpointer: bool = True, from_draft: bool = False):
     """create_icp -> refine_icp -> note_down_record.
+
+    `from_draft=True` starts at refine_icp for a caller that already drafted the
+    ICP (the discovery agent drafts it in parallel with competition research,
+    then finalizes it here once the competition context exists). refine_icp
+    builds the profile whole if no draft arrived.
 
     The structured record is finalized (create + refine) BEFORE the writer is
     anchored on it — the extract-before-writer discipline of the competition
@@ -679,8 +711,11 @@ def build_icp_graph(checkpointer: bool = True):
     builder.add_node("note_down_record", note_down_record)
 
     # -- Edges --
-    builder.add_edge(START, "create_icp")
-    builder.add_edge("create_icp", "refine_icp")
+    if from_draft:
+        builder.add_edge(START, "refine_icp")
+    else:
+        builder.add_edge(START, "create_icp")
+        builder.add_edge("create_icp", "refine_icp")
     builder.add_edge("refine_icp", "note_down_record")
     builder.add_edge("note_down_record", END)
 
