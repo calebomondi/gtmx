@@ -6,6 +6,7 @@ from functools import lru_cache
 from brightdata import SyncBrightDataClient
 
 from config import Settings, get_settings
+from utils import usage
 from utils.log import logger
 
 
@@ -45,7 +46,8 @@ def scrape_resource(
         logger.error("Unknown Bright Data endpoint %s.%s", platform, method)
         return None
     try:
-        results = scraper(url=url)
+        with usage.track("brightdata", f"{platform}.{method}"):
+            results = scraper(url=url)
     except Exception as exc:
         logger.warning("Bright Data %s.%s failed for %s: %s", platform, method, url, exc)
         return None

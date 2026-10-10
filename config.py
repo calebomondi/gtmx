@@ -94,6 +94,21 @@ class Settings(BaseSettings):
     max_outreach_sends_per_day: int = 50
     max_monitor_runs_per_day: int = 6
 
+    # -- Cost reporting (admin dashboard) --
+    # List prices in USD, used only to estimate spend; confirm against each
+    # provider's current price sheet. LLM: [input, output] per 1M tokens, keyed
+    # by model id; a model missing here is reported as unpriced, never as $0.
+    llm_prices: dict[str, list[float]] = Field(default_factory=lambda: {
+        "qwen3.7-plus": [0.4, 1.2],
+        "openai/gpt-4o-mini": [0.15, 0.6],
+    })
+    # Per call, keyed "provider.operation", or "provider" as a fallback.
+    api_call_prices: dict[str, float] = Field(default_factory=lambda: {
+        "exa.search": 0.01,  # search + text for ~5 results
+        "exa.contents": 0.001,
+        "brightdata": 0.0015,  # per scraped record
+    })
+
     # -- Competitor monitoring --
     # How often the scheduler looks for stale workspaces, and how old a check
     # may get before it is redone.

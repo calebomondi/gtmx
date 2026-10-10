@@ -36,7 +36,10 @@ async def record_audit(
     ))
 
 
-async def _all_users(client) -> list:
+async def list_all_users() -> list:
+    """Every Supabase user. Fine at launch scale (hundreds); page through
+    `list_users` directly once that stops being true."""
+    client = await supabase_admin.get_client()
     users, page = [], 1
     while True:
         batch = await client.auth.admin.list_users(page=page, per_page=_PAGE_SIZE)
@@ -55,7 +58,7 @@ async def bootstrap_admins(db: AsyncSession, emails: list[str]) -> list[str]:
         return []
     client = await supabase_admin.get_client()
     granted = []
-    for user in await _all_users(client):
+    for user in await list_all_users():
         email = (user.email or "").lower()
         if email not in wanted or supabase_admin.is_admin(user.app_metadata):
             continue

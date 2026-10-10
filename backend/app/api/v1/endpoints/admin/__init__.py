@@ -3,7 +3,8 @@
 from fastapi import APIRouter, Depends
 
 from backend.app.api.deps import require_admin
-from backend.app.api.v1.endpoints.admin import me
+from backend.app.api.v1.endpoints.admin import me, metrics
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 router.include_router(me.router)
+router.include_router(metrics.router)

@@ -9,7 +9,7 @@ from backend.app.api.v1.routes import api_router
 from backend.app.database.connect import engine, AsyncSessionLocal
 from backend.app.database.schema_check import ensure_schema_at_head
 from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError, RateLimitedError, ServiceError
-from backend.app import agents_runtime, llm_usage
+from backend.app import agents_runtime, usage
 from backend.app.runs import manager as run_manager
 from backend.app.runs import scheduler as run_scheduler
 from backend.app.services import admin as admin_service
@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
     await ensure_schema_at_head(engine)
     await _bootstrap_admins()
     await agents_runtime.start_agent_runtime(settings.database_url)
-    llm_usage.start()
+    usage.start()
     await run_manager.recover_after_restart()
     run_scheduler.start()
     try:
@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
     finally:
         await run_scheduler.stop()
         await run_manager.shutdown()
-        llm_usage.stop()
+        usage.stop()
         await agents_runtime.stop_agent_runtime()
 
 _SERVICE_ERROR_STATUS = {

@@ -689,6 +689,26 @@ class LlmCall(Base):
     )
 
 
+class ApiCall(Base):
+    """One paid external API call (Exa search/contents, a Bright Data scrape).
+    Priced per call from settings.api_call_prices in the admin metrics."""
+
+    __tablename__ = "api_calls"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    operation: Mapped[str] = mapped_column(String(64), nullable=False)
+    seconds: Mapped[float] = mapped_column(nullable=False, default=0.0)
+    ok: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(),
+        nullable=False, index=True,
+    )
+
+
 class Signal(Base):
     """One item in a user's feed: something an agent found or did that the user
     should know about (a new competitor, a target account, a finished or failed
