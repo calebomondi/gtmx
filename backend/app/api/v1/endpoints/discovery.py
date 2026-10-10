@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from langgraph.types import Command
-from sqlalchemy import select
 
 from agents.helpers import as_follow_up
 from agents.llm.main import (
@@ -13,16 +12,11 @@ from agents.llm.main import (
     llm_timing_report,
 )
 
-from backend.app.api.deps import require_user, websocket_user
+from backend.app.api.deps import websocket_user
 from backend.app.agents_runtime import get_agent
 from backend.app.schemas.agents import DiscoveryRequest
 from backend.app.database.connect import AsyncSessionLocal
-from backend.app.naming import title_case
-from backend.app.database.models import (
-    ProductFeature,
-    ProductProfile,
-    Workspace,
-)
+from backend.app.services import workspaces as workspace_service
 
 from utils.log import logger
 
@@ -102,44 +96,6 @@ async def _receive_answer(websocket: WebSocket) -> str | None:
     return text
 
 
-async def _persist_workspace(values: dict, confirmed: bool, user_id: uuid.UUID) -> uuid.UUID:
-    """Persist the offer the discovery phase settled on. `values` is the
-    session state as loose keys (offer_name/website_url/problem/features: list
-    of plain strings), mapped to the ProductProfile shape."""
-    offer_name = (values.get("offer_name") or "").strip() or None
-
-    async with AsyncSessionLocal() as db:
-        async with db.begin():
-            workspace = Workspace(
-                user_id=user_id,
-                name=title_case(offer_name),
-            )
-
-            profile = ProductProfile(
-                workspace=workspace,
-                product_name=offer_name,
-                product_url=values.get("website_url"),
-                product_description=values.get("offer_description"),
-                intent=None,
-                problem_solved=values.get("problem"),
-                how_it_works=values.get("how_it_works"),
-                target_geo=list(values.get("target_market") or []),
-                confirmed=confirmed,
-                features=[
-                    ProductFeature(
-                        name=f,
-                        description=None,
-                        differentiator=None,
-                    )
-                    for f in values.get("features") or []
-                ],
-            )
-
-            db.add(profile)
-
-        return workspace.id
-
-
 def _build_insights(values: dict) -> dict:
     """Final run results persisted with the workspace so tabs can show real
     data after a refresh."""
@@ -163,19 +119,6 @@ def _build_insights(values: dict) -> dict:
         "specialists": _dump(values.get("specialists")),
         "completed_at": datetime.now(UTC).isoformat(),
     }
-
-
-async def _persist_insights(workspace_id: uuid.UUID, insights: dict) -> None:
-    async with AsyncSessionLocal() as db:
-        async with db.begin():
-            result = await db.execute(
-                select(ProductProfile).where(
-                    ProductProfile.workspace_id == workspace_id
-                )
-            )
-            profile = result.scalar_one_or_none()
-            if profile is not None:
-                profile.insights = insights
 
 
 @router.websocket("")
@@ -262,11 +205,8 @@ async def start_product_discovery(websocket: WebSocket):
                         raise RuntimeError(
                             "Discovery completed without an offer snapshot."
                         )
-                    workspace_id = await _persist_workspace(
-                        values=values,
-                        confirmed=bool(values.get("confirmed")),
-                        user_id=user.id,
-                    )
+                    async with AsyncSessionLocal() as db:
+                        workspace_id = await workspace_service.create_from_discovery(db, user.id, values)
                     await websocket.send_json({
                         "type": "workspace_created",
                         "session_id": session_id,
@@ -346,7 +286,8 @@ async def start_product_discovery(websocket: WebSocket):
         # refetch them right after the `complete` frame.
         if workspace_id is not None:
             try:
-                await _persist_insights(workspace_id, _build_insights(values))
+                async with AsyncSessionLocal() as db:
+                    await workspace_service.save_insights(db, workspace_id, _build_insights(values))
             except Exception:
                 logger.exception(
                     "Failed to persist insights for workspace %s", workspace_id

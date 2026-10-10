@@ -47,6 +47,8 @@ from agents.pipelines.competitors.get_competitors import (
 
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.database.models import Competitor, CompetitorRun, ProductProfile
+from backend.app.services.runs import set_run_fields
+from utils.log import logger
 
 
 # Fields a refresh must never clobber. `source` because a manual row stays
@@ -336,3 +338,47 @@ async def _profile_one_public(survivor: dict, state: dict):
     # Run on a worker thread: the profiler does blocking HTTP and LLM calls, and
     # this runs inside a request's background task on the event loop.
     return await asyncio.to_thread(_profile_one, survivor, offer)
+
+
+async def execute_run(run_id: uuid.UUID, workspace_id: uuid.UUID) -> None:
+    """Background entry point: run the agent and record the outcome on the run.
+
+    Every failure path writes `failed` with a reason rather than leaving the run
+    `running` forever -- in a polled UI a stuck run is indistinguishable from a
+    slow one.
+    """
+    if await set_run_fields(CompetitorRun, run_id, status="running", started_at=datetime.now(UTC)) is None:
+        return
+    try:
+        outcome = await run_competitor_discovery(workspace_id=workspace_id, run_id=run_id)
+    except Exception as exc:  # noqa: BLE001 -- recorded on the run, not raised
+        logger.exception("Competitor run %s failed", run_id)
+        await set_run_fields(
+            CompetitorRun, run_id,
+            status="failed",
+            error=f"{type(exc).__name__}: {exc}"[:2000],
+            finished_at=datetime.now(UTC),
+        )
+        return
+    await set_run_fields(
+        CompetitorRun, run_id,
+        status="completed",
+        candidates_seen=int(outcome.get("candidates_seen") or 0),
+        found=int(outcome.get("found") or 0),
+        dropped=int(outcome.get("dropped") or 0),
+        dropped_reasons=outcome.get("dropped_reasons") or None,
+        finished_at=datetime.now(UTC),
+    )
+
+
+async def deep_research_manual(workspace_id: uuid.UUID, competitor_id: uuid.UUID) -> None:
+    """Background entry point: fill in a manually added competitor from its site.
+
+    Runs after the response was sent, so there is nobody to return an error to;
+    the row keeps its `unsourced_fields`, which is the honest record of a rival
+    that could not be researched.
+    """
+    try:
+        await research_competitor_site(workspace_id=workspace_id, competitor_id=competitor_id)
+    except Exception:  # noqa: BLE001 -- best effort; the row stands as added
+        logger.exception("Deep research failed for competitor %s", competitor_id)
