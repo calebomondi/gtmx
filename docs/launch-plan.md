@@ -46,7 +46,7 @@ Mechanical moves with no behaviour change. This phase runs early so feature work
 
 | # | Branch | What |
 |---|---|---|
-| 2.1 | `refactor/agent-schemas` | Merge `agents/states.py` and `sub_agents/schema_states.py` into `agents/schemas/`. Update the checkpointer allowlist |
+| 2.1 | `refactor/agent-schemas` | Merge `agents/states.py` and `sub_agents/schema_states.py` (now `pipelines/schema_states.py`) into `agents/schemas/`. Update the checkpointer allowlist |
 | 2.2 | `refactor/remove-legacy-agents` | Move `gather_context` out of `sub_graphs/`, then delete `sub_graphs/`, root `llm/`, `main.py`, `sql/`, `test_product.docx`, stale notebooks and `_check_competitors.py`. Rename `sub_agents/` to `pipelines/` |
 | 2.3 | `refactor/backend-services` | Pull business logic out of the endpoints into `services/`. Endpoints become thin |
 | 2.4 | `refactor/frontend-features` | Move to the `src/features/<x>/` layout. Split `lib/api.ts` into `lib/api/<resource>.ts`. Remove the empty files (`canvas.tsx`, `chat-containter.tsx`) and unused shadcn-studio examples. Use a single lockfile |

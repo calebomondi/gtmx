@@ -12,7 +12,7 @@ from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel
 
 import agents.states
-import agents.sub_agents.schema_states
+import agents.pipelines.schema_states
 from agents.discovery_agent import build_discovery_agent
 
 from utils.log import logger
@@ -27,7 +27,7 @@ from utils.log import logger
 # set rather than listing only the top-level ones is what covers them.
 #
 # Two modules, because the discovery agent's session models live in
-# agents.sub_agents.schema_states (Specialist, Perspectives, TaskList, ...)
+# agents.pipelines.schema_states (Specialist, Perspectives, TaskList, ...)
 # while MarketExtraction/CompetitionExtraction/ICP stay in agents.states.
 #
 # Derived, not hand-listed: a literal list silently drifts as soon as anyone
@@ -40,7 +40,7 @@ from utils.log import logger
 # them would allowlist pydantic.main and enum. Over-admitting a type that never
 # reaches a checkpoint is harmless -- this list exists to avoid the warnings and
 # the future hard block, it is not a trust boundary.
-_CHECKPOINT_MODULES = (agents.states, agents.sub_agents.schema_states)
+_CHECKPOINT_MODULES = (agents.states, agents.pipelines.schema_states)
 _CHECKPOINT_TYPES = [
     (module.__name__, name)
     for module in _CHECKPOINT_MODULES

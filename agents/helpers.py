@@ -1,8 +1,5 @@
-from langchain.messages import HumanMessage
-
 from utils.log import logger
 from .states import OfferDataSnapshot, FollowUp, IndepthIntakeStep, IntakeStep, MarketExtraction, CompetitionExtraction, ICP
-from .sub_graphs.gather_context import gather_context_graph
 from .context_budget import offer_brief
 
 import re
@@ -161,39 +158,32 @@ _URL_RE = re.compile(r"^\s*(https?://)", re.IGNORECASE)
 
 
 def gather_content(source: str) -> str:
-    """Scrape/parse the source, returning "" on any failure so the agent can
+    """Scrape the offer's website, returning "" on any failure so the agent can
     fall back to asking the user instead of crashing on a dead URL.
 
-    Plain URLs are scraped deterministically (exactly as provided — the model is
-    never allowed to pick or rewrite the URL, so it can't append paths or jump to
-    subpages). Non-URL sources (documents) go through the gather_context graph.
+    The URL is scraped deterministically, exactly as provided -- the model never
+    picks or rewrites it, so it can't append paths or jump to subpages. A bare
+    host (an LLM-drafted "linear.app") gets https:// rather than being rejected.
 
-    A body that comes back but is a placeholder ("Coming Soon", "under construction")
-    is treated as a FAILURE, not content. `scrape_website` only tests the scraped text
-    for emptiness, so boilerplate would otherwise sail through, the run would proceed
-    on it, and the workspace would report `confirmed: True` having learned nothing.
-    Returning "" routes it to `notify_unscrappable_url` instead, which asks the user —
-    the loud failure this used to skip."""
+    A body that comes back but is a placeholder ("Coming Soon", "under
+    construction") is treated as a FAILURE, not content: the run would otherwise
+    proceed on boilerplate and report `confirmed: True` having learned nothing.
+    Returning "" routes it to `notify_unscrappable_url`, which asks the user."""
+    from config import get_settings
+    from data_sources.scraping.exa import scrape_url
+    from data_sources.scraping.quality import is_usable_body, rejection_reason
+
+    url = source.strip()
+    if not url:
+        return ""
+    if not _URL_RE.match(url):
+        url = f"https://{url}"
     try:
-        if _URL_RE.match(source.strip()):
-            from config import get_settings
-            from data_sources.scraping.exa import scrape_url as _scrape_url
-            from data_sources.scraping.quality import is_usable_body, rejection_reason
-            raw = _scrape_url(source.strip(), get_settings())
-            if not is_usable_body(raw):
-                logger.warning(
-                    "Rejected unusable body for %r: %s", source.strip(), rejection_reason(raw)
-                )
-                return ""
-            if raw.strip():
-                return raw
-            return ""
-        gather_result = gather_context_graph().invoke({
-            "messages": [HumanMessage(content=source)]
-        })
-        raw = gather_result["messages"][-1].content
-        if raw.strip() and raw.strip() != "No content to gather.":
-            return raw
+        raw = scrape_url(url, get_settings())
     except Exception as e:
-        logger.warning("Gather failed for source %r: %s", source, e)
-    return ""
+        logger.warning("Scrape failed for %r: %s", url, e)
+        return ""
+    if not is_usable_body(raw):
+        logger.warning("Rejected unusable body for %r: %s", url, rejection_reason(raw))
+        return ""
+    return raw

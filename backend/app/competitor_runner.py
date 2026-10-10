@@ -2,7 +2,7 @@
 
 SPLIT OF RESPONSIBILITY, AND WHY IT FALLS THIS WAY
 ---------------------------------------------------
-`agents/sub_agents/get_competitors.py` is the agent: it plans hunts, searches,
+`agents/pipelines/get_competitors.py` is the agent: it plans hunts, searches,
 screens candidates against the website filter and builds sourced profiles. It is
 pure -- web search, scraping and LLM calls, nothing else.
 
@@ -38,7 +38,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from agents.sub_agents.competitors.get_competitors import (
+from agents.pipelines.competitors.get_competitors import (
     build_competitors_graph,
     row_values_from_profile,
     state_from_workspace,
@@ -322,7 +322,7 @@ async def _profile_one_public(survivor: dict, state: dict):
     the call site, and so the agent's private helper is not imported into a second
     module's namespace where a rename would break it silently.
     """
-    from agents.sub_agents.competitors.get_competitors import _profile_one
+    from agents.pipelines.competitors.get_competitors import _profile_one
 
     offer = {
         "offer_type": state.get("offer_type"),
