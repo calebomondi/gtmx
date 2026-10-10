@@ -2,12 +2,12 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, create_model, Field, field_validator, model_validator
+from pydantic import create_model, Field, field_validator, model_validator
 
-from agents.schemas.coercion import coerce_json
+from agents.schemas.coercion import coerce_json, LenientModel
 
 
-class IcpFindings(BaseModel):
+class IcpFindings(LenientModel):
     """ICP notes + concise go-to-market understanding, from the gtm specialist.
 
     Unlike the research stages' findings, these notes carry NO `### Sources` block
@@ -21,7 +21,7 @@ class IcpFindings(BaseModel):
     )
 
 
-class CompetitorLead(BaseModel):
+class CompetitorLead(LenientModel):
     """A competitor the ICP should hunt comparative/pain-angle accounts against,
     derived from the understand_competition output."""
 
@@ -36,7 +36,7 @@ class CompetitorLead(BaseModel):
     )
 
 
-class BuyerPersona(BaseModel):
+class BuyerPersona(LenientModel):
     """A named consumer/professional persona the ICP should target — the human
     buying unit, especially relevant when the offer sells directly to consumers."""
 
@@ -57,7 +57,7 @@ class BuyerPersona(BaseModel):
         return coerce_json(v)
 
 
-class TargetChannel(BaseModel):
+class TargetChannel(LenientModel):
     """A discoverable venue where ideal customers/audiences congregate — the unit
     of reach for consumer offers (and a useful secondary axis for B2B)."""
 
@@ -75,7 +75,7 @@ class TargetChannel(BaseModel):
     first_angle: str = Field(description="How to engage this channel first — post format, sponsor slot, booth, creator outreach")
 
 
-class ICP(BaseModel):
+class ICP(LenientModel):
     """Ideal Customer Profile for the product, synthesised by the GTM specialist
     from the market + competition understanding. Guides which targets to discover."""
 
@@ -145,7 +145,7 @@ class ICP(BaseModel):
         return coerce_json(v)
 
 
-class _RevisionBase(BaseModel):
+class _RevisionBase(LenientModel):
     @model_validator(mode="before")
     @classmethod
     def _coerce_json_fields(cls, data):

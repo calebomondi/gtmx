@@ -2,12 +2,12 @@
 
 from typing import List, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import Field, field_validator
 
-from agents.schemas.coercion import coerce_json
+from agents.schemas.coercion import coerce_json, LenientModel
 
 
-class Specialist(BaseModel):
+class Specialist(LenientModel):
     domain: Literal["product", "service", "market", "competition", "gtm"] = Field(
         description="Which of the five research domains this specialist covers. 'product' or 'service' is the offer's own domain expert; the other three are market, competition and go-to-market. Required rather than inferred so a consumer can select the right specialist from a team without relying on list position -- without it, picking the product specialist out of OfferSessionState.specialists is guesswork.",
     )
@@ -34,13 +34,13 @@ class Specialist(BaseModel):
         )
 
 
-class Perspectives(BaseModel):
+class Perspectives(LenientModel):
     specialists: List[Specialist] = Field(
         description="Comprehensive list of the product/service specialist with their roles and affiliations.",
     )
 
 
-class ResearchTask(BaseModel):
+class ResearchTask(LenientModel):
     area: str = Field(description="The knowledge-gap area this task closes")
     objective: str = Field(description="What this task must establish — a research goal, not a search string")
     queries: list[str] = Field(
@@ -57,7 +57,7 @@ class ResearchTask(BaseModel):
         return v  # not a list: let pydantic raise its own type error
 
 
-class TaskList(BaseModel):
+class TaskList(LenientModel):
     tasks: list[ResearchTask] = Field(default_factory=list, description="The research tasks to execute this round")
 
     @field_validator("tasks", mode="before")
@@ -66,7 +66,7 @@ class TaskList(BaseModel):
         return coerce_json(v)
 
 
-class TaskResearchBundle(BaseModel):
+class TaskResearchBundle(LenientModel):
     """What one research task actually retrieved.
 
     Held per task rather than as a single undifferentiated pile of documents,

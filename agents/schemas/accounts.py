@@ -2,12 +2,12 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import Field, field_validator
 
-from agents.schemas.coercion import coerce_json
+from agents.schemas.coercion import coerce_json, LenientModel
 
 
-class ContactRecord(BaseModel):
+class ContactRecord(LenientModel):
     """A person to reach out to at a target account. Never fabricate contact
     details — only fill in what appears in the sources."""
 
@@ -17,13 +17,13 @@ class ContactRecord(BaseModel):
     email: str | None = Field(default=None, description="Email address, if found")
 
 
-class SourceRecord(BaseModel):
+class SourceRecord(LenientModel):
     title: str = Field(description="Title of the source")
     url: str = Field(description="URL of the source")
     snippet: str | None = Field(default=None, description="Relevant snippet from the source")
 
 
-class TriggerEvent(BaseModel):
+class TriggerEvent(LenientModel):
     """A current, verifiable event at the account that makes it worth reaching
     out now. Required on every target account."""
 
@@ -41,7 +41,7 @@ class TriggerEvent(BaseModel):
     source: str = Field(description="URL/where the trigger was observed")
 
 
-class AccountRecord(BaseModel):
+class AccountRecord(LenientModel):
     """A target account for GTM outreach: a company, OR — for consumer offers —
     a discoverable channel/community/event/creator/platform where the ICP
     congregates, with the named people to reach out to and the current trigger."""
@@ -113,7 +113,7 @@ class AccountRecord(BaseModel):
         return parsed if isinstance(parsed, dict) else {}
 
 
-class AccountList(BaseModel):
+class AccountList(LenientModel):
     accounts: list[AccountRecord] = Field(
         description="4-8 target accounts found for outreach, each with a current trigger event",
     )

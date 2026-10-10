@@ -4,7 +4,9 @@ import operator
 from enum import Enum
 from typing import Annotated, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from agents.schemas.coercion import LenientModel
 
 
 class ProductCategory(str, Enum):
@@ -25,7 +27,7 @@ class BuyerType(str, Enum):
     BOTH = "both"
 
 
-class FollowUp(BaseModel):
+class FollowUp(LenientModel):
     # -------
     follow_up_question: Optional[str] = Field(
         default=None,
@@ -37,7 +39,7 @@ class FollowUp(BaseModel):
     )
 
 
-class SnapshotFeature(BaseModel):
+class SnapshotFeature(LenientModel):
     """A feature as mentioned so far in the conversation. All fields optional
     because this is a PARTIAL, evolving capture — never a finalized profile."""
 
@@ -46,7 +48,7 @@ class SnapshotFeature(BaseModel):
     differentiator: str | None = None
 
 
-class OfferDataSnapshot(BaseModel):
+class OfferDataSnapshot(LenientModel):
     """Running, partial understanding of the product gathered progressively
     during the conversation. Everything is optional: unknown fields may be null
     or empty. Merged into state.product_data_snapshot on every capture turn
@@ -64,7 +66,7 @@ class OfferDataSnapshot(BaseModel):
     how_it_works: str | None = Field(default=None, description="How the product works end-to-end, in plain terms")
 
 
-class ProductFindings(BaseModel):
+class ProductFindings(LenientModel):
     """Domain research notes + concise product-domain understanding, from the product specialist.
 
     Deliberately notes rather than the finished report section. A specialist that
