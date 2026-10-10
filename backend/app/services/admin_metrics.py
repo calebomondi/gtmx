@@ -15,14 +15,14 @@ from config import settings
 MAX_DAYS = 90
 
 
-def _llm_price(model: str, input_tokens: int, output_tokens: int) -> float | None:
+def llm_cost(model: str, input_tokens: int, output_tokens: int) -> float | None:
     price = settings.llm_prices.get(model)
     if not price:
         return None
     return (input_tokens * price[0] + output_tokens * price[1]) / 1_000_000
 
 
-def _api_price(provider: str, operation: str, calls: int) -> float | None:
+def api_cost(provider: str, operation: str, calls: int) -> float | None:
     price = settings.api_call_prices.get(f"{provider}.{operation}", settings.api_call_prices.get(provider))
     return None if price is None else price * calls
 
@@ -90,7 +90,7 @@ async def _llm_costs(db: AsyncSession, since: datetime, series: dict[date, DayMe
                func.sum(c.input_tokens), func.sum(c.output_tokens))
         .where(c.created_at >= since).group_by(_day(c.created_at), c.model)
     )).all():
-        cost = _llm_price(model, tin or 0, tout or 0)
+        cost = llm_cost(model, tin or 0, tout or 0)
         _add(lines, unpriced, model, calls, failed, cost, tin or 0, tout or 0)
         if cost is not None and day in series:
             series[day].llm_cost_usd += cost
@@ -104,7 +104,7 @@ async def _api_costs(db: AsyncSession, since: datetime, series: dict[date, DayMe
         select(_day(c.created_at), c.provider, c.operation, func.count(), func.count().filter(c.ok.is_(False)))
         .where(c.created_at >= since).group_by(_day(c.created_at), c.provider, c.operation)
     )).all():
-        cost = _api_price(provider, operation, calls)
+        cost = api_cost(provider, operation, calls)
         _add(lines, unpriced, f"{provider}.{operation}", calls, failed, cost)
         if cost is not None and day in series:
             series[day].api_cost_usd += cost
