@@ -92,7 +92,13 @@ async def test_run_pauses_with_no_task_then_resumes_and_completes(agent):
     run = await manager.start_discovery(owner.id, REQUEST)
 
     paused = await _wait_for_status(run.id, {"awaiting_input"})
-    assert run.id not in manager._tasks  # nothing waits on the human
+    # The status flips just before the question is published (so an instant
+    # answer is never refused); then the segment's task exits. Nothing waits
+    # on the human.
+    task = manager._tasks.get(run.id)
+    if task is not None:
+        await asyncio.wait_for(asyncio.shield(task), timeout=5)
+    assert run.id not in manager._tasks
     assert paused.progress["interrupt"]["question"] == "Is this right?"
     first = await _frames(run.id)
     assert [f["type"] for f in first] == ["interrupt"]
