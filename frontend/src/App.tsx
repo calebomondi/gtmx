@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { createBrowserRouter, RouterProvider, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { AppSidebar } from "@/components/app-sidebar"
 import {
@@ -12,7 +13,8 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { DiscoveryInterruptPicker } from "@/components/interrupt-panel"
-import { answerDiscovery, useAgentRun } from "@/lib/agent-run-store"
+import { answerDiscovery, resumeActiveDiscovery, useAgentRun } from "@/lib/agent-run-store"
+import { useAuth } from "@/lib/auth"
 
 import Workspace from './features/workspace/workspace'
 import RecentSession from './features/workspace/recent-session'
@@ -71,6 +73,14 @@ function GlobalInterruptDialog() {
 }
 
 function AppLayout() {
+  const { user } = useAuth()
+  // Reattach to a discovery run that outlived the last page load (or was
+  // started on another device). Runs live on the server; this only resumes
+  // watching one.
+  useEffect(() => {
+    if (user) void resumeActiveDiscovery()
+  }, [user])
+
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <SidebarProvider className="h-screen">

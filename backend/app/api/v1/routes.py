@@ -1,9 +1,10 @@
 from fastapi import APIRouter
-from backend.app.api.v1.endpoints import accounts, admin, competitors, discovery, projects, users, workspaces
+from backend.app.api.v1.endpoints import accounts, admin, competitors, discovery, projects, runs, users, workspaces
 
 api_router = APIRouter()
 
 api_router.include_router(discovery.router, prefix="/discover", tags=["discovery"])
+api_router.include_router(runs.router, prefix="/runs", tags=["runs"])
 api_router.include_router(users.router, prefix="/users", tags=["users"])
 api_router.include_router(projects.router, prefix="/projects", tags=["projects"])
 api_router.include_router(workspaces.router, prefix="/workspaces", tags=["workspaces"])

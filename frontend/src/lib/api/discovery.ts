@@ -203,13 +203,53 @@ export interface DiscoveryErrorFrame {
   message: string
 }
 
-export type DiscoveryFrame =
+/** Sent first on every connection: the run this socket is attached to. */
+export interface DiscoveryRunFrame {
+  type: "run"
+  run_id: string
+}
+
+/** Someone (this tab, another tab or device) answered the pending question. */
+export interface DiscoveryAnsweredFrame {
+  type: "answered"
+  answer: string
+}
+
+export interface DiscoveryCancelledFrame {
+  type: "cancelled"
+  message: string
+}
+
+/** A rejected client action (e.g. answering when nothing is asked). */
+export interface DiscoveryNoticeFrame {
+  type: "notice"
+  message: string
+}
+
+/** Persisted run frames carry their run and a monotonic cursor for resume. */
+export interface RunFrameMeta {
+  run_id?: string
+  event_id?: number
+}
+
+export type DiscoveryFrame = RunFrameMeta & (
+  | DiscoveryRunFrame
   | DiscoveryInterruptFrame
   | DiscoveryWorkspaceCreatedFrame
   | DiscoveryPhaseFrame
   | DiscoveryPhaseDataFrame
+  | DiscoveryAnsweredFrame
   | DiscoveryCompleteFrame
   | DiscoveryErrorFrame
+  | DiscoveryCancelledFrame
+  | DiscoveryNoticeFrame
+)
+
+/** Reattach to an existing run, replaying every frame after `after`. */
+export interface DiscoveryResume {
+  resume: string
+  after: number
+}
 
 const DISCOVERY_PATH = "/api/v1/discover"
 const DEFAULT_TIMEOUT_MS = 15_000
@@ -253,7 +293,7 @@ export class DiscoveryClient implements AsyncIterable<DiscoveryFrame> {
   }
 
   static async connect(
-    request: DiscoveryRequest,
+    opening: DiscoveryRequest | DiscoveryResume,
     options: { timeoutMs?: number; url?: string; signal?: AbortSignal } = {},
   ): Promise<DiscoveryClient> {
     const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
@@ -319,7 +359,7 @@ export class DiscoveryClient implements AsyncIterable<DiscoveryFrame> {
           return
         }
         const client = new DiscoveryClient(socket)
-        client.send(JSON.stringify(request))
+        client.send(JSON.stringify(opening))
         settle(() => resolve(client))
       }
 
@@ -343,6 +383,10 @@ export class DiscoveryClient implements AsyncIterable<DiscoveryFrame> {
 
   get isClosed(): boolean {
     return this.ended
+  }
+
+  get isOpen(): boolean {
+    return !this.ended && this.socket.readyState === WebSocket.OPEN
   }
 
   send(value: string): void {

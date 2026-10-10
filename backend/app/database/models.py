@@ -3,7 +3,7 @@ import uuid
 
 from datetime import datetime, UTC
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UUID, Boolean, UniqueConstraint, false, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, UUID, UniqueConstraint, false, func
 from sqlalchemy.dialects.postgresql import JSONB as JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -602,4 +602,60 @@ class AdminAuditLog(Base):
         server_default=func.now(),
         nullable=False,
         index=True,
+    )
+
+
+class Run(Base):
+    """One agent run, owned by the server rather than by any connection.
+
+    Discovery runs pause in `awaiting_input` with NO task alive: the LangGraph
+    checkpoint holds their state, and an answer resumes them -- even after a
+    server restart. Every frame a client should see is appended to run_events,
+    so a client that reconnects replays what it missed from its last event id.
+    """
+
+    __tablename__ = "runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    # Discovery creates its workspace mid-run, so this starts null for it.
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    # discovery | competitors | accounts | ... (backend.app.runs.kinds.RunKind)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    # pending | running | awaiting_input | completed | failed | cancelled
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
+    # The request that started the run, kept for resume and for the admin view.
+    input: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Kind-specific progress that must survive between segments (e.g. which
+    # discovery phases are done) and the final result summary.
+    progress: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Shown to the user. Never a raw traceback; that goes to the logs.
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(), nullable=False,
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(),
+        onupdate=lambda: datetime.now(UTC), nullable=False,
+    )
+
+
+class RunEvent(Base):
+    """An append-only frame emitted by a run. `id` is a global, monotonically
+    increasing cursor: a client resumes with "everything after id N"."""
+
+    __tablename__ = "run_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    type: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(), nullable=False,
     )
