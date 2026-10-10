@@ -2,7 +2,6 @@
 on questions with no task alive, resume from an answer, and fail loudly."""
 
 import asyncio
-import uuid
 from types import SimpleNamespace
 
 import pytest
@@ -113,13 +112,14 @@ async def test_run_pauses_with_no_task_then_resumes_and_completes(agent):
     assert "workspace_created" in types
     assert [f["node"] for f in frames if f["type"] == "phase" and f["status"] == "done"] == PHASES
 
-    # Workspace and insights were persisted for the owner.
+    # The workspace was persisted for the owner, with the run's insights.
     async with AsyncSessionLocal() as db:
         workspace = await db.get(models.Workspace, done.workspace_id)
         profile = (await db.execute(
             models.ProductProfile.__table__.select().where(models.ProductProfile.workspace_id == workspace.id)
         )).first()
     assert workspace.user_id == owner.id and workspace.name == "Linear"
+    assert profile.insights["offer_snapshot"]["offer_name"] == "Linear"
     offer_data = [f for f in frames if f["type"] == "phase_data" and f["node"] == "understand_offer"]
     assert offer_data and offer_data[0]["offer_domain_fit_understanding"] == "From the update."
 

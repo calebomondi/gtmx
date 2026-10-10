@@ -1,6 +1,5 @@
 """Competition-stage extraction, the ideal competitor profile, and the standalone competitor hunt."""
 
-import json
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
@@ -45,19 +44,10 @@ class Competitor(BaseModel):
     deep_researched_at: str | None = Field(default=None, description="ISO timestamp of the last deep-dive on this competitor")
 
 
-class CompetitorArchetype(BaseModel):
-    """One archetype inside an IdealCompetitorProfile.
-
-    A CONSTRUCT, not a claim about a named company. "Regional incumbent
-    undercutting on price" is a design artifact we invented to describe the
-    shape of a rival; it makes no assertion that any specific firm exists. That
-    is what licenses the profile to be aggressive — coverage over caution.
-
-    It is the exact inverse of `Competitor`, which IS a set of factual claims
-    about a real, verified company. Do not let the two drift together: the
-    get_competitors agent must source every one of its fields or say it found
-    nothing, and the archetype carries no such obligation.
-    """
+class ArchetypeSketch(BaseModel):
+    """The identity of one archetype: what kind of company it is. Drafted and
+    reviewed for the whole profile at once, before any details are written,
+    because overlap, gaps and a named real company are structural problems."""
 
     label: str = Field(
         description="Short archetype name, e.g. 'Regional incumbent', 'Global entrant', 'DIY substitute'"
@@ -69,6 +59,19 @@ class CompetitorArchetype(BaseModel):
         default="any",
         description="Where this archetype operates. 'local' incumbents defend a specific market; 'global' entrants operate locally without being headquartered there",
     )
+
+    @field_validator("geography_scope", mode="before")
+    @classmethod
+    def _coerce_scope(cls, v):
+        if isinstance(v, str):
+            return none_str_to_null(v.strip().lower())
+        return v
+
+
+class ArchetypeDetail(BaseModel):
+    """The working detail of one archetype -- written per archetype, in
+    parallel, once the set of archetypes is settled."""
+
     business_model: str | None = Field(default=None, description="How this kind of competitor makes money")
     typical_offering: str | None = Field(default=None, description="What it typically sells or does")
     pricing_model: str | None = Field(default=None, description="How it typically charges")
@@ -90,9 +93,9 @@ class CompetitorArchetype(BaseModel):
         description="How well the evidence supports this archetype",
     )
 
-    @field_validator("confidence", "geography_scope", mode="before")
+    @field_validator("confidence", mode="before")
     @classmethod
-    def _coerce_enum_none(cls, v):
+    def _coerce_confidence(cls, v):
         if isinstance(v, str):
             return none_str_to_null(v.strip().lower())
         return v
@@ -105,23 +108,24 @@ class CompetitorArchetype(BaseModel):
         return coerce_json(v)
 
 
-class IdealCompetitorProfile(BaseModel):
-    """The competition stage's primary structured output: a description of what
-    a perfect competitor to this offer looks like, derived from the stage's
-    research but NOT constrained to the offer's target geographies.
+class CompetitorArchetype(ArchetypeDetail, ArchetypeSketch):
+    """One archetype inside an IdealCompetitorProfile: its identity (sketch)
+    plus its working detail.
 
-    Two deliberate properties:
+    A CONSTRUCT, not a claim about a named company. "Regional incumbent
+    undercutting on price" is a design artifact we invented to describe the
+    shape of a rival; it makes no assertion that any specific firm exists. That
+    is what licenses the profile to be aggressive — coverage over caution.
 
-    1. IT NAMES NOBODY. The stage researches the landscape but emits archetypes,
-       not companies. Finding real rivals is `get_competitors.py`'s job, which
-       runs separately and accumulates them over time.
-    2. IT IS NOT GEO-BOUND. A global player shipping into the offer's market is
-       a live competitor regardless of where it is headquartered, so the profile
-       deliberately spans local incumbents and international entrants.
-
-    Everything here is a construct, so the usual "only state what the sources
-    support" discipline applies to the SWOD record beside it, not to this model.
+    It is the exact inverse of `Competitor`, which IS a set of factual claims
+    about a real, verified company. Do not let the two drift together: the
+    get_competitors agent must source every one of its fields or say it found
+    nothing, and the archetype carries no such obligation.
     """
+
+
+class _ProfileFields(BaseModel):
+    """Profile-level fields shared by the skeleton and the finished profile."""
 
     category_definition: str = Field(
         default="",
@@ -130,10 +134,6 @@ class IdealCompetitorProfile(BaseModel):
     boundary_of_category: list[str] = Field(
         default_factory=list,
         description="Adjacent things that are NOT competitors — substitutes, complements, upstream suppliers",
-    )
-    archetypes: list[CompetitorArchetype] = Field(
-        default_factory=list,
-        description="4-6 archetypes spanning local incumbents, regional players and global entrants",
     )
     global_entry_signals: list[str] = Field(
         default_factory=list,
@@ -159,12 +159,57 @@ class IdealCompetitorProfile(BaseModel):
         description="How well the research supports this profile overall",
     )
 
-    @field_validator("confidence", "category_definition", mode="before")
+    @field_validator("confidence", mode="before")
     @classmethod
-    def _coerce_enum_none(cls, v):
+    def _coerce_confidence(cls, v):
         if isinstance(v, str):
             return none_str_to_null(v.strip().lower())
         return v
+
+    @field_validator("category_definition", mode="before")
+    @classmethod
+    def _coerce_definition(cls, v):
+        # Only null-like strings are coerced; the definition itself keeps its case.
+        return (none_str_to_null(v.strip()) or "") if isinstance(v, str) else v
+
+
+class ProfileSkeleton(_ProfileFields):
+    """The profile with archetypes as sketches only: small enough to draft and
+    review quickly before the details are written in parallel."""
+
+    archetypes: list[ArchetypeSketch] = Field(
+        default_factory=list,
+        description="4-6 archetypes spanning local incumbents, regional players and global entrants",
+    )
+
+    @field_validator("archetypes", mode="before")
+    @classmethod
+    def _coerce_nested_json_fields(cls, v):
+        return coerce_json(v)
+
+
+class IdealCompetitorProfile(_ProfileFields):
+    """The competition stage's primary structured output: a description of what
+    a perfect competitor to this offer looks like, derived from the stage's
+    research but NOT constrained to the offer's target geographies.
+
+    Two deliberate properties:
+
+    1. IT NAMES NOBODY. The stage researches the landscape but emits archetypes,
+       not companies. Finding real rivals is `get_competitors.py`'s job, which
+       runs separately and accumulates them over time.
+    2. IT IS NOT GEO-BOUND. A global player shipping into the offer's market is
+       a live competitor regardless of where it is headquartered, so the profile
+       deliberately spans local incumbents and international entrants.
+
+    Everything here is a construct, so the usual "only state what the sources
+    support" discipline applies to the SWOD record beside it, not to this model.
+    """
+
+    archetypes: list[CompetitorArchetype] = Field(
+        default_factory=list,
+        description="4-6 archetypes spanning local incumbents, regional players and global entrants",
+    )
 
     @field_validator("archetypes", mode="before")
     @classmethod
@@ -199,36 +244,6 @@ class CompetitionExtraction(BaseModel):
     differentiators: list[str] = Field(default_factory=list)
 
 
-class CompetitionRecord(BaseModel):
-    """Wrapper for the competition extractor's single classification pass.
-
-    The extractor reads one evidence set and emits two different kinds of thing
-    from it: the archetype profile (a construct, refined by the next node) and
-    the offer-vs-standard SWOD (a judgment, shipped as-is). They are bundled
-    here purely so one `invoke_structured_with_fallback` call can return both;
-    the node unpacks them into their own state channels immediately.
-    """
-
-    profile: IdealCompetitorProfile = Field(
-        default_factory=IdealCompetitorProfile,
-        description="The draft Ideal Competitor Profile, refined by the following node",
-    )
-    swod: CompetitionExtraction = Field(
-        default_factory=CompetitionExtraction,
-        description="Where the offer meets or beats the competitive standard, and where it does not",
-    )
-
-    @field_validator("profile", "swod", mode="before")
-    @classmethod
-    def _coerce_nested_models(cls, v):
-        # A model asked for a nested object sometimes returns the inner object
-        # as a JSON string. Unwrap it rather than failing the whole record.
-        if isinstance(v, str):
-            try:
-                return json.loads(v)
-            except (ValueError, TypeError):
-                return v
-        return v
 
 
 class CompetitionFindings(BaseModel):
