@@ -25,6 +25,8 @@ from agents.pipelines.accounts.account_discovery import (
 
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.database.models import Account, AccountRun, ProductProfile
+from backend.app.services.runs import set_run_fields
+from utils.log import logger
 
 _PRESERVED_ON_REFRESH = ("id", "source", "selected", "run_id")
 
@@ -168,3 +170,29 @@ async def run_account_discovery_for_workspace(
         "inserted": inserted,
         "refreshed": refreshed,
     }
+
+
+async def execute_run(run_id: uuid.UUID, workspace_id: uuid.UUID) -> None:
+    """Background entry point: run the agent and record the outcome on the run.
+    Failures are written to the run as `failed` with a reason, never left
+    `running`."""
+    if await set_run_fields(AccountRun, run_id, status="running", started_at=datetime.now(UTC)) is None:
+        return
+    try:
+        outcome = await run_account_discovery_for_workspace(workspace_id=workspace_id, run_id=run_id)
+    except Exception as exc:  # noqa: BLE001 -- recorded on the run, not raised
+        logger.exception("Account run %s failed", run_id)
+        await set_run_fields(
+            AccountRun, run_id,
+            status="failed",
+            error=f"{type(exc).__name__}: {exc}"[:2000],
+            finished_at=datetime.now(UTC),
+        )
+        return
+    await set_run_fields(
+        AccountRun, run_id,
+        status="completed",
+        candidates_seen=int(outcome.get("candidates_seen") or 0),
+        found=int(outcome.get("found") or 0),
+        finished_at=datetime.now(UTC),
+    )

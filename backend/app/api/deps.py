@@ -1,9 +1,12 @@
-"""Auth dependencies: verify the Supabase access token from the Authorization
-header (or a `?token=` query param for WebSockets, which cannot send headers).
+"""Auth and ownership dependencies -- the only place either is enforced.
 
-Supabase owns identity (no local users table): a verified token IS the user.
-`require_user` returns a small AuthUser built from the token's claims/metadata;
-no database row is created or looked up."""
+Identity: verify the Supabase access token from the Authorization header (or a
+`?token=` query param for WebSockets, which cannot send headers). Supabase owns
+identity (no local users table): a verified token IS the user.
+
+Ownership: every workspace- or project-scoped route resolves its resource
+through OwnedWorkspace / OwnedProject. Someone else's resource is a 404,
+indistinguishable from a missing one."""
 
 import uuid
 from dataclasses import dataclass
@@ -11,7 +14,13 @@ from typing import Annotated, Optional
 
 from fastapi import Depends, HTTPException, WebSocket, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.ext.asyncio import AsyncSession
 from supabase import acreate_client
+
+from backend.app.database import models
+from backend.app.database.connect import get_db
+from backend.app.services import projects as project_service
+from backend.app.services import workspaces as workspace_service
 
 from config import get_settings
 
@@ -96,3 +105,20 @@ async def websocket_user(websocket: WebSocket) -> Optional[AuthUser]:
     if not token:
         return None
     return await user_from_token(token)
+
+
+CurrentUser = Annotated[AuthUser, Depends(require_user)]
+DbSession = Annotated[AsyncSession, Depends(get_db)]
+
+
+async def get_owned_workspace(workspace_id: uuid.UUID, user: CurrentUser, db: DbSession) -> models.Workspace:
+    return await workspace_service.get_owned(db, user.id, workspace_id)
+
+
+async def get_owned_project(project_id: uuid.UUID, user: CurrentUser, db: DbSession) -> models.Project:
+    return await project_service.get_owned(db, user.id, project_id)
+
+
+OwnedWorkspace = Annotated[models.Workspace, Depends(get_owned_workspace)]
+OwnedProject = Annotated[models.Project, Depends(get_owned_project)]
+MatchingUser = Annotated[AuthUser, Depends(require_matching_user)]
