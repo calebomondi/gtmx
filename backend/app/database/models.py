@@ -458,6 +458,10 @@ class Competitor(Base):
     # recent news), compared on the next check to find GTM-relevant changes.
     monitor_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # {platform: normalized profile} from Bright Data, refreshed on a slower
+    # cadence than the site check because each scrape is paid and slow.
+    social_profiles: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    socials_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     workspace: Mapped["Workspace"] = relationship(back_populates="competitors")

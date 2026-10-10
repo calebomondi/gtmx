@@ -2,7 +2,6 @@
 
 import threading
 from functools import lru_cache
-from typing import Optional
 
 from brightdata import SyncBrightDataClient
 
@@ -50,14 +49,17 @@ def scrape_resource(
     except Exception as exc:
         logger.warning("Bright Data %s.%s failed for %s: %s", platform, method, url, exc)
         return None
-    if isinstance(results, list):
-        return results[0] if results else None
-    if isinstance(results, dict):
-        return results
-    data = getattr(results, "data", None) or getattr(results, "result", None)
-    if isinstance(data, list):
-        return data[0] if data else None
-    if isinstance(data, dict):
-        return data
-    logger.warning("Bright Data %s.%s returned no structured record for %s", platform, method, url)
-    return None
+    if isinstance(results, (list, dict)):
+        record = results
+    else:
+        record = getattr(results, "data", None) or getattr(results, "result", None)
+    if isinstance(record, list):
+        record = record[0] if record else None
+    if not isinstance(record, dict):
+        logger.warning("Bright Data %s.%s returned no structured record for %s", platform, method, url)
+        return None
+    # A missing or dead page comes back as a record carrying only the error.
+    if record.get("error"):
+        logger.info("Bright Data %s.%s: %s for %s", platform, method, record.get("error_code") or record["error"], url)
+        return None
+    return record

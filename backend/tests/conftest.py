@@ -49,6 +49,13 @@ def migrated_database():
 
 
 @pytest.fixture(autouse=True)
+def no_auto_monitoring(monkeypatch):
+    """Finished competitor runs chain a (paid, networked) monitor run; tests
+    that want it turn it back on."""
+    monkeypatch.setattr(settings, "monitor_enabled", False)
+
+
+@pytest.fixture(autouse=True)
 def clean_tables():
     yield
     tables = sql.SQL(", ").join(sql.Identifier(t.name) for t in Base.metadata.sorted_tables)
