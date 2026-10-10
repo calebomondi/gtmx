@@ -8,7 +8,7 @@ spending a token or touching the network.
 import sys
 import types
 
-import agents.sub_agents.understand_offer as uo
+import agents.sub_agents.discover.understand_offer as uo
 from agents.states import ProductFindings
 from agents.sub_agents.schema_states import OfferSessionState, Perspectives, Specialist, TaskList
 

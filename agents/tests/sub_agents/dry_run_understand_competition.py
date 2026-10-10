@@ -16,7 +16,7 @@ exercising a dead loop.
 
 import sys
 
-import agents.sub_agents.understand_competition as uc
+import agents.sub_agents.discover.understand_competition as uc
 from agents.states import (
     CompetitionExtraction,
     CompetitionFindings,

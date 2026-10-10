@@ -10,7 +10,6 @@ from backend.app.config.settings import settings
 from backend.app.api.v1.routes import api_router
 from backend.app.database import models  # noqa: F401
 from backend.app.database.connect import Base, engine, AsyncSessionLocal
-from backend.app.database.models import User
 from backend.app import agents_runtime
 
 
@@ -66,30 +65,12 @@ def _ensure_competitor_columns(sync_conn):
         sync_conn.execute(text("ALTER TABLE competitors ADD COLUMN notes TEXT"))
 
 
-async def _seed_mock_user():
-    """Auth is faked for now: make sure the mock signed-in user exists."""
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(User).where(User.email == settings.MOCK_USER_EMAIL)
-        )
-        if result.scalar_one_or_none() is None:
-            db.add(
-                User(
-                    id=uuid.uuid4(),
-                    name=settings.MOCK_USER_NAME,
-                    email=settings.MOCK_USER_EMAIL,
-                )
-            )
-            await db.commit()
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
         await connection.run_sync(_ensure_workspace_columns)
         await connection.run_sync(_ensure_competitor_columns)
-    await _seed_mock_user()
     await agents_runtime.start_agent_runtime(settings.DATABASE_URL)
     try:
         yield

@@ -109,7 +109,7 @@ function useCompetitors(workspaceId: string | undefined) {
     }
     try {
       const body = await listCompetitors(workspaceId)
-      setCompetitors(body.competitors)
+      setCompetitors(Array.isArray(body?.competitors) ? body.competitors : [])
       setError(null)
     } catch (exc) {
       setError(
@@ -256,7 +256,8 @@ function useRunHistory(workspaceId: string | undefined, refreshKey: number) {
     let cancelled = false
     void (async () => {
       try {
-        setRuns(await listCompetitorRuns(workspaceId, 25))
+        const res = await listCompetitorRuns(workspaceId, 25)
+        setRuns(Array.isArray(res) ? res : [])
       } catch {
         setRuns([])
       } finally {
@@ -270,7 +271,7 @@ function useRunHistory(workspaceId: string | undefined, refreshKey: number) {
     // a change to either re-reads the history.
   }, [workspaceId, key])
 
-  return { runs, loading: key !== null && loadedFor !== key }
+  return { runs: Array.isArray(runs) ? runs : [], loading: key !== null && loadedFor !== key }
 }
 
 /** Ids of manually-added rows whose first site read has not landed yet.
@@ -518,7 +519,8 @@ function RunHistory({
       </div>
     )
   }
-  if (runs.length === 0) {
+  const safeRuns = Array.isArray(runs) ? runs : []
+  if (safeRuns.length === 0) {
     return (
       <p className="py-10 text-center text-[13px] text-muted-foreground">
         No searches yet.
@@ -527,7 +529,7 @@ function RunHistory({
   }
   return (
     <div className="flex flex-col gap-2">
-      {runs.map((run) => (
+      {safeRuns.map((run) => (
         <RunRow key={run.id} run={run} />
       ))}
     </div>
@@ -877,16 +879,16 @@ export function CompetitionComponent({ workspaceId }: { workspaceId?: string }) 
     }
   }
 
-  const manualOnly = competitors.filter((c) => c.source === 'manual').length
+  const manualOnly = (competitors ?? []).filter((c) => c.source === 'manual').length
 
   return (
     <div className="flex h-[calc(100dvh-7rem)] min-h-0 flex-col">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <h2 className="text-xl font-medium text-foreground">Competitors</h2>
-          {competitors.length > 0 && (
+          {(competitors ?? []).length > 0 && (
             <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[12px] font-medium tabular-nums text-muted-foreground">
-              {competitors.length} tracked
+              {(competitors ?? []).length} tracked
             </span>
           )}
         </div>
@@ -968,9 +970,9 @@ export function CompetitionComponent({ workspaceId }: { workspaceId?: string }) 
           <TabsTrigger value="runs">
             <History className="size-3.5" />
             Runs
-            {runs.length > 0 && (
+            {((Array.isArray(runs) ? runs.length : 0) > 0) && (
               <span className="ml-1 rounded-full bg-muted px-1.5 text-[11px] tabular-nums text-muted-foreground">
-                {runs.length}
+                {Array.isArray(runs) ? runs.length : 0}
               </span>
             )}
           </TabsTrigger>
@@ -982,7 +984,7 @@ export function CompetitionComponent({ workspaceId }: { workspaceId?: string }) 
               <Loader2 className="size-3.5 animate-spin" />
               Loading your watch list
             </div>
-          ) : competitors.length === 0 ? (
+          ) : (competitors ?? []).length === 0 ? (
             <EmptyWatchlist canRun={hasProfile} />
           ) : (
             <div className="flex flex-col gap-3">

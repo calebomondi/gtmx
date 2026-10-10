@@ -8,6 +8,7 @@ dependencies = [
     "aiosqlite>=0.22.1",
     "assistant-stream>=0.0.36",
     "axios>=0.4.0",
+    "brightdata-sdk>=2.5.2",
     "composio>=0.22.0",
     "composio-langgraph>=0.25.0",
     "exa-py>=2.18.1",

@@ -38,7 +38,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from agents.sub_agents.get_competitors import (
+from agents.sub_agents.competitors.get_competitors import (
     build_competitors_graph,
     row_values_from_profile,
     state_from_workspace,
@@ -211,7 +211,9 @@ async def run_competitor_discovery(
             state = state_from_workspace(**_hydrate(result.scalar_one_or_none()))
 
     graph = build_competitors_graph()
-    final = await graph.ainvoke(state)
+    # Node fns are sync and I/O-heavy; run the whole graph off the event loop
+    # so a long hunt run doesn't block unrelated requests.
+    final = await asyncio.to_thread(graph.invoke, state)
 
     outcome = final.get("competitor_outcome")
     profiles = list(final.get("competitor_profiles") or [])
@@ -320,7 +322,7 @@ async def _profile_one_public(survivor: dict, state: dict):
     the call site, and so the agent's private helper is not imported into a second
     module's namespace where a rename would break it silently.
     """
-    from agents.sub_agents.get_competitors import _profile_one
+    from agents.sub_agents.competitors.get_competitors import _profile_one
 
     offer = {
         "offer_type": state.get("offer_type"),

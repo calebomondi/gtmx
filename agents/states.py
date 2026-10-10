@@ -801,6 +801,10 @@ class AccountRecord(BaseModel):
         default_factory=list,
         description="People to reach out to — for companies the decision makers, for events/communities the organisers/hosts/admin. Name/title/LinkedIn/email ONLY when present in the sources",
     )
+    socials: dict[str, str] = Field(
+        default_factory=dict,
+        description="Company / org social page URLs keyed by platform (e.g. linkedin, instagram, tiktok, x), discovered via Bright Data. Never fabricate; only fill from verified sources.",
+    )
     pain_signals: list[str] = Field(default_factory=list, description="Observed pain signals matching the ICP")
     hiring_signals: list[str] = Field(default_factory=list, description="Observed hiring signals matching the ICP")
     source_queries: list[str] = Field(default_factory=list, description="Search queries that surfaced this account")
@@ -834,6 +838,14 @@ class AccountRecord(BaseModel):
         if v is None:
             return []
         return _coerce_json(v)
+
+    @field_validator("socials", mode="before")
+    @classmethod
+    def _coerce_socials_field(cls, v):
+        if v is None:
+            return {}
+        parsed = _coerce_json(v)
+        return parsed if isinstance(parsed, dict) else {}
 
 
 class AccountList(BaseModel):

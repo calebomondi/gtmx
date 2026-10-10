@@ -4,13 +4,16 @@ import './index.css'
 import App from './App.tsx'
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { SessionProviderWithState } from "@/lib/session-context"
+import { AuthProvider } from "@/lib/auth"
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <TooltipProvider>
-      <SessionProviderWithState>
-        <App />
-      </SessionProviderWithState>
+      <AuthProvider>
+        <SessionProviderWithState>
+          <App />
+        </SessionProviderWithState>
+      </AuthProvider>
     </TooltipProvider>
   </StrictMode>,
 )

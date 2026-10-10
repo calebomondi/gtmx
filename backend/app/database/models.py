@@ -9,39 +9,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.app.database.connect import Base
 
 
-class User(Base):
-    __tablename__ = "users"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        primary_key=True,
-    )
-    name: Mapped[str | None] = mapped_column(String(100))
-    email: Mapped[str | None] = mapped_column(String(255), index=True, unique=True)
-    avatar_url: Mapped[str | None] = mapped_column(String(2048))
-
-    joined: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False
-    )
-    last_activity: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False
-    )
-
-    # Relationships
-    workspaces: Mapped[list[Workspace]] = relationship(
-        back_populates="creator",
-        cascade="all, delete-orphan"
-    )
-    projects: Mapped[list[Project]] = relationship(
-        back_populates="creator",
-        cascade="all, delete-orphan"
-    )
-
-
 class Workspace(Base):
     __tablename__ = "workspaces"
 
@@ -52,11 +19,11 @@ class Workspace(Base):
         index=True, 
         default=uuid.uuid4
     )
+    # Supabase Auth user id (no local users table — Supabase owns identity).
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
-        index=True
+        index=True,
     )
 
     # User-owned label, seeded with the product/service name at creation time
@@ -99,7 +66,6 @@ class Workspace(Base):
     )
 
     # Relationships
-    creator: Mapped[User] = relationship(back_populates="workspaces")
     project: Mapped["Project | None"] = relationship(back_populates="workspaces")
     product_profile: Mapped["ProductProfile | None"] = relationship(
         back_populates="workspace",
@@ -196,7 +162,6 @@ class Project(Base):
     )
 
     # Relationships
-    creator: Mapped[User] = relationship(back_populates="projects")
     workspaces: Mapped[list[Workspace]] = relationship(back_populates="project")
 
     @property
@@ -495,4 +460,110 @@ class Competitor(Base):
         # must produce one row, and the second must update the first rather than
         # fail -- the agent treats a conflict as "already known", not as an error.
         UniqueConstraint("workspace_id", "domain_key", name="uq_competitors_workspace_domain"),
+    )
+
+class AccountRun(Base):
+    """One invocation of the account-discovery agent for a workspace.
+
+    Mirrors CompetitorRun: each run is a separate row so the user can audit why a
+    run failed (or why one filled the list and another didn't), and the UI can
+    show progress for the in-flight run."""
+
+    __tablename__ = "account_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending",
+    )
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    candidates_seen: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    found: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False,
+    )
+
+    workspace: Mapped["Workspace"] = relationship()
+    accounts: Mapped[list["Account"]] = relationship(back_populates="run")
+
+
+class Account(Base):
+    """A target account discovered by the account-discovery agent for outreach.
+
+    A company, or — for consumer offers — a venue/community/event/creator where
+    the ICP congregates. `selected` is a user-driven choice to keep this account
+    for outreach drafting later; everything else is agent output."""
+
+    __tablename__ = "accounts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4,
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("account_runs.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    account_type: Mapped[str] = mapped_column(String(20), nullable=False, default="company")
+    website: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    platform: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    venue: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    event_date: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    member_size: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    industry: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    size: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    geo: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    tech_stack: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    recent_news: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    key_contacts: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    pain_signals: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    hiring_signals: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    sources: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    source_queries: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+
+    score: Mapped[float | None] = mapped_column(nullable=True)
+    score_breakdown: Mapped[str | None] = mapped_column(Text, nullable=True)
+    why_selected: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    why_reach_out: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    trigger_event: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    selected: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False,
+    )
+
+    workspace: Mapped["Workspace"] = relationship()
+    run: Mapped["AccountRun | None"] = relationship(back_populates="accounts")
+
+    __table_args__ = (
+        # Same dedup posture as competitors: re-running the agent refreshes a
+        # known account instead of doubling it.
+        UniqueConstraint("workspace_id", "name", name="uq_accounts_workspace_name"),
     )

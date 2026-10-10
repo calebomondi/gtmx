@@ -9,6 +9,7 @@ import {
   getCurrentUser,
   type WorkspaceSummary,
 } from "@/lib/api"
+import { supabase } from "@/lib/supabase"
 
 export interface WorkspacesState {
   workspaces: WorkspaceSummary[]
@@ -49,6 +50,11 @@ export function useWorkspaces(): WorkspacesState {
 export async function refetchWorkspaces(): Promise<void> {
   setState({ loading: true, error: null })
   try {
+    const { data } = await supabase.auth.getSession()
+    if (!data.session) {
+      setState({ workspaces: [], archivedWorkspaces: [], loading: false, error: null })
+      return
+    }
     const user = await getCurrentUser()
     const [workspaces, archivedWorkspaces] = await Promise.all([
       listWorkspaces(user.id),

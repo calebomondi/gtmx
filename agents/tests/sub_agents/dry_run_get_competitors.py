@@ -114,7 +114,7 @@ def _install_stubs():
 
     cb.distill_documents = _stub_distill
 
-    import agents.sub_agents.get_competitors as gc
+    import agents.sub_agents.competitors.get_competitors as gc
 
     gc.search_and_scrape = _stub_search
     gc.scrape_url = _stub_scrape
@@ -180,7 +180,7 @@ def _state(**kw):
 
 async def main() -> None:
     _install_stubs()
-    import agents.sub_agents.get_competitors as gc
+    import agents.sub_agents.competitors.get_competitors as gc
 
     # -- plan_hunt: brand-free enforcement --------------------------------
     planned = gc.plan_hunt(_state())

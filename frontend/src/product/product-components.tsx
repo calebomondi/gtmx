@@ -1082,52 +1082,47 @@ export function ProductComponent({ workspaceId }: { workspaceId?: string }) {
     <div className="flex h-[calc(100dvh-7rem)] min-h-0 flex-col">
       <div className="flex items-center justify-between gap-2 mb-5">
         <div className="flex items-center gap-2">
-          <h2 className="text-xl font-medium text-foreground">Offer</h2>
-          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[12px] font-medium text-amber-500">
-            <Bot className="size-4.5" />
+          <h2 className="text-xl font-medium text-foreground">{productName} Offer</h2>
+          {/* <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[12px] font-medium text-amber-500">
+            <Bot className="size-4" />
             agent capture
-          </span>
+          </span> */}
         </div>
-        <span className="truncate text-[12px] text-muted-foreground">{productName}</span>
+        {/* <span className="truncate text-[12px] text-muted-foreground">{productName}</span> */}
       </div>
 
-      <hr className="mb-3"/>
+      <OfferTabNav readiness={offerTabReadiness} value={tab} onTabChange={setTab} />
+
+      <hr className="mt-3"/>
 
       <Tabs
+        orientation="horizontal"
         value={tab}
         onValueChange={(v) => setTab(v as OfferTab)}
         className="mt-3 flex min-h-0 flex-1 flex-col gap-3"
       >
-        <OfferTabNav readiness={offerTabReadiness} />
-
         <TabsContent value="product" className="min-h-0 flex-1 overflow-y-auto pb-2">
           {!hasProductContent ? (
             <EmptyProduct productName={productName} />
           ) : (
             <div className="flex flex-col gap-3">
-          <SectionCard
-            icon={<Bot className="size-4.5" />}
-            title="Agent understanding"
-            description="How the agent summarises the product/service
-          "
-          >
-            <AgentInsight
-              label="Domain understanding"
-              value={state.product_domain_understanding}
-              onEdit={() => setEditInsight('domain')}
-            />
-            <AgentInsight
-              label="Market-fit understanding"
-              value={state.product_market_fit_understanding}
-              onEdit={() => setEditInsight('market')}
-            />
-          </SectionCard>
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="market" className="min-h-0 flex-1 overflow-y-auto pb-2">
-          <div className="flex flex-col gap-3">
+              <SectionCard
+                icon={<Bot className="size-4" />}
+                title="Agent understanding"
+                description={`How the agent summarises ${productName}
+              `}
+              >
+                <AgentInsight
+                  label="Domain understanding"
+                  value={state.product_domain_understanding}
+                  onEdit={() => setEditInsight('domain')}
+                />
+                <AgentInsight
+                  label="Market-fit understanding"
+                  value={state.product_market_fit_understanding}
+                  onEdit={() => setEditInsight('market')}
+                />
+              </SectionCard>
           {snapshot && (
             <SectionCard
               icon={<Package className="size-4" />}
@@ -1202,6 +1197,12 @@ export function ProductComponent({ workspaceId }: { workspaceId?: string }) {
               <Row label="Target geography" value={<TagPills items={snapshot.target_geo} />} />
             </SectionCard>
           )}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="market" className="min-h-0 flex-1 overflow-y-auto pb-2">
+          <div className="flex flex-col gap-3">
           {market && (
             <SectionCard
               icon={<Globe className="size-4" />}

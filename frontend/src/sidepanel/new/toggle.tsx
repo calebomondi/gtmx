@@ -20,12 +20,12 @@ const SOURCE_OPTIONS: SourceOption[] = [
   {
     value: 'website',
     label: 'Website',
-    hint: 'Point me at your product page',
+    hint: 'Point me at your product/service page',
   },
   {
     value: 'social',
-    label: 'Social accounts',
-    hint: 'Link the accounts you post from',
+    label: 'No Website',
+    hint: 'No website? Describe what you offer',
   },
 ]
 
@@ -33,12 +33,14 @@ type SourceToggleProps = {
   value: SourceMode
   onValueChange: (value: SourceMode) => void
   className?: string
+  disabled?: boolean
 }
 
 export function SourceToggle({
   value,
   onValueChange,
   className,
+  disabled = false,
 }: SourceToggleProps) {
   // The group mirrors `value` into internal state from an effect keyed on the
   // array identity, so this has to stay referentially stable — an inline
@@ -55,18 +57,20 @@ export function SourceToggle({
         value={selected}
         onValueChange={(next) => {
           const picked = next[0]
-          if (picked) onValueChange(picked as SourceMode)
+          if (picked && !disabled) onValueChange(picked as SourceMode)
         }}
         activeClassName="bg-background rounded-lg"
         spacing={0}
-        className="bg-primary/10 w-full justify-between rounded-lg p-0.5"
+        className={cn("bg-primary/10 w-full justify-between rounded-lg p-0.5", disabled && "opacity-60 cursor-not-allowed")}
+        disabled={disabled}
       >
         {SOURCE_OPTIONS.map((option) => (
           <ToggleGroupItem
             key={option.value}
             value={option.value}
             aria-label={option.label}
-            className="group-data-[spacing=0]/toggle-group:px-0.5 h-8 min-w-7 flex-1 cursor-pointer text-sm font-medium"
+            className={cn("group-data-[spacing=0]/toggle-group:px-0.5 h-8 min-w-7 flex-1 text-sm font-medium", disabled ? "cursor-not-allowed" : "cursor-pointer")}
+            disabled={disabled}
           >
             {option.label}
           </ToggleGroupItem>

@@ -15,6 +15,7 @@ from langgraph.graph.message import add_messages
 # allowlist). Defining a duplicate here instead of importing it would work, but
 # would give the same class two identities and two checkpoint representations.
 from agents.states import (
+    AccountList,
     CompetitionExtraction,
     FollowUp,
     ICP,
@@ -207,14 +208,17 @@ class DiscoverOfferState(TypedDict):
     service_uniqueness: list[str] = Field(default_factory=list, description="For a service: the distinctive elements that make this service different from alternatives")
     how_it_works: str | None = Field(default=None, description="How the offer works end-to-end, in plain terms")
 
-    # -- Conversation / intake machinery --
-    messages: Annotated[list, add_messages]
-    follow_up: Optional[FollowUp] = None
+    # -- Scraped site understanding --
     scraped_content: Optional[str] = None
+    page_understanding: Optional[str] = None
     scrape_failed: bool = False
     name_mismatch: bool = False
     product_candidates: List[str] = Field(description="")
     confirmed: bool = False
+
+    # -- Conversation / intake machinery --
+    messages: Annotated[list, add_messages]
+    follow_up: Optional[FollowUp] = None
 
 
 class MarketSessionState(TypedDict):
@@ -421,6 +425,11 @@ class IcpSessionState(TypedDict):
     # --Completion--
     icp_complete: bool = Field(default=False, description="")
 
+    # -- Account discovery outputs --
+    account_discovery_queries: Optional[list[str]] = Field(default=None, description="Queries generated for account discovery")
+    account_discovery_docs: Optional[list[dict]] = Field(default=None, description="Documents retrieved for account discovery")
+    accounts: Optional[AccountList] = Field(default=None, description="AccountDiscovery account candidates")
+
 
 class DiscoverySessionState(DiscoverOfferState):
     """Top-level session state of the discovery agent — the union of the offer
@@ -432,6 +441,10 @@ class DiscoverySessionState(DiscoverOfferState):
     + the interactive intake machinery) so `interrupt()`/`Command(resume=...)`
     thread through the top-level driver exactly like gtmx_agent.
     """
+
+    # -- Intake source: which discover_offer path ran --
+    # "website" (scrape flow) or "manual" (no-website description flow).
+    source: Optional[Literal["website", "manual"]] = None
 
     # -- Specialist team (created right after intake) --
     specialists: List[Specialist] = Field(description="")
@@ -733,6 +746,7 @@ class CompetitorSessionState(TypedDict):
 	problem: str | None = Field(default=None, description="The problem the offer addresses")
 	solution: str | None = Field(default=None, description="How the offer solves it")
 	features: list[str] = Field(default_factory=list, description="Differentiators, used to judge how the offer compares to a rival")
+	target_market: list[str] = Field(default_factory=list, description="The workspace's target geographies, used to prioritise local competitor searches")
 	# The offer's own site, so a run can recognise the user and refuse to file
 	# them as their own competitor.
 	own_website: str | None = Field(default=None, description="The offer's own website, for self-exclusion")

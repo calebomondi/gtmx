@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/sidebar"
 import { ChevronsUpDownIcon, SparklesIcon, BadgeCheckIcon, CreditCardIcon, BellIcon, LogOutIcon } from "lucide-react"
 import { ModeToggle } from "@/components/mode-toggle"
+import { supabase } from "@/lib/supabase"
 
 export function NavUser({
   user,
@@ -108,7 +109,9 @@ export function NavUser({
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => void supabase.auth.signOut()}
+            >
               <LogOutIcon
               />
               Log out
