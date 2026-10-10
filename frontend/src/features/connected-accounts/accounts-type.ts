@@ -1,19 +1,17 @@
-// Connection model for the /accounts channel board.
-//
-// v1 hydrates from `mockConnections` behind the `fetchConnections()` seam so
-// swapping in the real backend (OAuth + connection table) is a one-function
-// change.
+// Connection model for the /accounts channel board, backed by the server's
+// Composio-held connections (/api/v1/connections).
 
-export type Platform = 'gmail' | 'linkedin' | 'instagram' | 'tiktok' | 'facebook' | 'x'
+import { deleteConnection, listConnections, startConnection, type ConnectionDto } from '@/lib/api'
 
-export type ConnectionStatus = 'live' | 'needs_attention'
+export type Platform = 'gmail' | 'linkedin' | 'instagram' | 'tiktok' | 'x'
+
+export type ConnectionStatus = 'live' | 'pending' | 'needs_attention'
 
 export interface Connection {
   id: string
   platform: Platform
-  /** Email, @handle, or display name — the tile's grounding label. */
+  /** Provider display name (email, @handle, name) or the platform label. */
   username: string
-  /** Display name under the handle when it differs (e.g. LinkedIn profile). */
   displayName?: string
   status: ConnectionStatus
   connectedAt: string // ISO date
@@ -29,7 +27,6 @@ export const PLATFORM_LABEL: Record<Platform, string> = {
   linkedin: 'LinkedIn',
   instagram: 'Instagram',
   tiktok: 'TikTok',
-  facebook: 'Facebook',
   x: 'X',
 }
 
@@ -39,128 +36,76 @@ export const PLATFORM_ICON: Record<Platform, string> = {
   linkedin: '/linkedin.svg',
   instagram: '/instagram.svg',
   tiktok: '/tiktok.svg',
-  facebook: '/facebook.svg',
   x: '',
 }
 
-/** Every platform the app can connect — the grid shows one tile per
- *  connection plus one "available" tile for platforms with none. */
-export const ALL_PLATFORMS: Platform[] = [
-  'gmail',
-  'linkedin',
-  'instagram',
-  'tiktok',
-  'facebook',
-  'x',
-]
+/** Every channel the app can connect, in display order. */
+export const ALL_PLATFORMS: Platform[] = ['gmail', 'linkedin', 'instagram', 'tiktok', 'x']
 
-const MOCK: Connection[] = [
-  {
-    id: 'conn_gmail_jane',
-    platform: 'gmail',
-    username: 'jane@acme.com',
-    status: 'live',
-    connectedAt: '2026-03-04T10:12:00Z',
-    lastSync: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
-    capabilities: [
-      { label: 'Send email from this inbox', allowed: true },
-      { label: 'Read replies & threads', allowed: true },
-      { label: 'Read contacts', allowed: false },
-    ],
-    usageCount: 12,
-  },
-  {
-    id: 'conn_gmail_work',
-    platform: 'gmail',
-    username: 'jane@work.com',
-    status: 'live',
-    connectedAt: '2026-07-19T09:05:00Z',
-    lastSync: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
-    capabilities: [
-      { label: 'Send email from this inbox', allowed: true },
-      { label: 'Read replies & threads', allowed: true },
-      { label: 'Read contacts', allowed: false },
-    ],
-    usageCount: 4,
-  },
-  {
-    id: 'conn_linkedin_jane',
-    platform: 'linkedin',
-    username: 'jane-doe',
-    displayName: 'Jane Doe · VP Growth',
-    status: 'live',
-    connectedAt: '2026-03-04T10:15:00Z',
-    lastSync: new Date(Date.now() - 11 * 60 * 1000).toISOString(),
-    capabilities: [
-      { label: 'Send connection requests', allowed: true },
-      { label: 'Send InMails & messages', allowed: true },
-      { label: 'Post on your behalf', allowed: false },
-    ],
-    usageCount: 8,
-  },
-  {
-    id: 'conn_tiktok_janedoe',
-    platform: 'tiktok',
-    username: '@janedoe',
-    status: 'live',
-    connectedAt: '2026-04-21T08:40:00Z',
-    lastSync: new Date(Date.now() - 47 * 60 * 1000).toISOString(),
-    capabilities: [
-      { label: 'Read profile & bio', allowed: true },
-      { label: 'Send direct messages', allowed: true },
-      { label: 'Comment on posts', allowed: false },
-    ],
-    usageCount: 3,
-  },
-  {
-    id: 'conn_facebook_jane',
-    platform: 'facebook',
-    username: 'Jane Doe',
-    status: 'needs_attention',
-    connectedAt: '2026-01-15T14:02:00Z',
-    lastSync: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-    capabilities: [
-      { label: 'Read page messages', allowed: true },
-      { label: 'Reply to messages', allowed: true },
-      { label: 'Post on your behalf', allowed: false },
-    ],
-    usageCount: 1,
-  },
-]
-
-/**
- * Seam for the real backend. Today: mocks with a hair of latency so loading
- * states are exercised. Later: replace the body with an API call.
- */
-export async function fetchConnections(): Promise<Connection[]> {
-  await new Promise((resolve) => setTimeout(resolve, 250))
-  return MOCK.map((c) => ({ ...c }))
+/** What outreach does through each channel. Sending always needs the user's
+ *  explicit click; the agent drafts, it never sends on its own. */
+const CAPABILITIES: Record<Platform, Connection['capabilities']> = {
+  gmail: [
+    { label: 'Send emails you approve', allowed: true },
+    { label: 'Read replies to those emails', allowed: true },
+    { label: 'Send without your approval', allowed: false },
+  ],
+  linkedin: [
+    { label: 'Post updates you approve', allowed: true },
+    { label: 'Send without your approval', allowed: false },
+  ],
+  instagram: [
+    { label: 'Publish posts you approve', allowed: true },
+    { label: 'Send without your approval', allowed: false },
+  ],
+  tiktok: [
+    { label: 'Publish content you approve', allowed: true },
+    { label: 'Send without your approval', allowed: false },
+  ],
+  x: [
+    { label: 'Post and reply as you approve', allowed: true },
+    { label: 'Send without your approval', allowed: false },
+  ],
 }
 
-/** Agent-scoped identities — the workspace's agent has its own accounts. */
-export const AGENT_IDENTITY: Record<Platform, string> = {
-  gmail: 'agent@gtmx-team.com',
-  linkedin: 'GTM Agent',
-  instagram: '@gtmx.agent',
-  tiktok: '@gtmx.agent',
-  facebook: 'GTM Agent',
-  x: '@gtmx_agent',
-}
-
-/**
- * Stub for starting an agent-level OAuth connection on a platform.
- * Replace with the real connect endpoint later.
- */
-export async function connectAgentConnection(platform: Platform): Promise<Connection> {
-  await new Promise((resolve) => setTimeout(resolve, 900))
+function toConnection(dto: ConnectionDto): Connection {
+  const platform = dto.platform as Platform
   return {
-    id: `agent_${platform}`,
+    id: dto.id,
     platform,
-    username: AGENT_IDENTITY[platform],
-    status: 'live',
-    connectedAt: new Date().toISOString(),
-    lastSync: new Date().toISOString(),
-    capabilities: [],
+    username: dto.display_name ?? PLATFORM_LABEL[platform],
+    status: dto.status,
+    connectedAt: dto.created_at ?? new Date().toISOString(),
+    lastSync: dto.updated_at ?? dto.created_at ?? new Date().toISOString(),
+    capabilities: CAPABILITIES[platform],
     usageCount: 0,
   }
+}
+
+export interface ConnectionState {
+  connections: Connection[]
+  /** Channels the user can connect now (others need app-level OAuth setup). */
+  available: Set<Platform>
+}
+
+export async function fetchConnectionState(): Promise<ConnectionState> {
+  const { channels, connections } = await listConnections()
+  return {
+    connections: connections.filter((c) => c.platform in PLATFORM_LABEL).map(toConnection),
+    available: new Set(channels.filter((c) => c.available).map((c) => c.platform as Platform)),
+  }
+}
+
+export async function fetchConnections(): Promise<Connection[]> {
+  return (await fetchConnectionState()).connections
+}
+
+/** Sends the browser to the platform's sign-in (via Composio). */
+export async function beginConnection(platform: Platform): Promise<void> {
+  const { redirect_url } = await startConnection(platform)
+  window.location.assign(redirect_url)
+}
+
+export async function disconnectConnection(connectionId: string): Promise<void> {
+  await deleteConnection(connectionId)
 }

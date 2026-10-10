@@ -18,10 +18,14 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
+import { useSearchParams } from "react-router-dom"
+import { toast } from "sonner"
 import {
   ALL_PLATFORMS,
   PLATFORM_LABEL,
-  fetchConnections,
+  beginConnection,
+  disconnectConnection,
+  fetchConnectionState,
   type Connection,
   type Platform,
 } from "./accounts-type"
@@ -52,7 +56,7 @@ function shortDate(iso: string): string {
 
 type GridItem =
   | { kind: "connection"; connection: Connection }
-  | { kind: "available"; platform: Platform }
+  | { kind: "available"; platform: Platform; ready: boolean }
 
 function AccountTile({
   item,
@@ -103,7 +107,7 @@ function AccountTile({
         <span
           className={cn(
             "pointer-events-none absolute top-1 left-1/2 h-[4px] w-8 -translate-x-1/2 rounded-full",
-            live ? "bg-emerald-500" : "bg-amber-500",
+            live ? "bg-emerald-500" : connection.status === "pending" ? "bg-muted-foreground/50" : "bg-amber-500",
           )}
         />
       )}
@@ -151,7 +155,7 @@ function AccountTile({
             </>
             ) : (
             <p className="text-xs text-muted-foreground transition-colors group-hover:text-[#FEA853]">
-                Connect
+                {item.kind === "available" && !item.ready ? "Setup required" : "Connect"}
             </p>
             )}
         </div>
@@ -187,23 +191,33 @@ function ConnectionDialog({
   onClose,
   onNavigate,
   onDisconnect,
+  ready,
 }: {
   state: DialogState
   onClose: () => void
   onNavigate: (view: "manage" | "confirm") => void
   onDisconnect: (connection: Connection) => void
+  /** Whether this channel can be connected now (app-level OAuth exists). */
+  ready: boolean
 }) {
   const reduceMotion = useReducedMotion()
-  const [stub, setStub] = React.useState<"idle" | "working" | "note">("idle")
+  const [working, setWorking] = React.useState(false)
 
   const isConnect = state.view === "connect"
   const connection = isConnect ? null : (state as { target: Connection }).target
   const platform = isConnect ? (state as { target: Platform }).target : connection!.platform
 
-  const runStub = () => {
-    if (stub === "working") return
-    setStub("working")
-    setTimeout(() => setStub("note"), 700)
+  const connect = async () => {
+    if (working || !ready) return
+    setWorking(true)
+    try {
+      await beginConnection(platform)  // navigates away on success
+    } catch (err) {
+      toast.error(`Couldn't start connecting ${PLATFORM_LABEL[platform]}`, {
+        description: err instanceof Error ? err.message : String(err),
+      })
+      setWorking(false)
+    }
   }
 
   const direction = state.view === "confirm" ? 1 : -1
@@ -261,7 +275,7 @@ function ConnectionDialog({
                       connection.status === "live" ? "bg-emerald-500" : "bg-amber-500",
                     )}
                   />
-                  {connection.status === "live" ? "Live" : "Needs attention"}
+                  {connection.status === "live" ? "Live" : connection.status === "pending" ? "Pending" : "Needs attention"}
                 </span>
               )}
             </div>
@@ -282,17 +296,24 @@ function ConnectionDialog({
                 <div className="space-y-3 text-sm">
                   <p className="text-muted-foreground">
                     The agent will be able to use this channel for outreach
-                    once you've signed in.
+                    once you've signed in. Nothing is ever sent without your
+                    approval.
                   </p>
-                  {stub === "note" && (
-                    <p className="text-xs text-muted-foreground">
-                      {PLATFORM_LABEL[platform]} isn't wired up yet — the
-                      sign-in flow lands here.
+                  {!ready && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                      {PLATFORM_LABEL[platform]} needs a one-time app setup by
+                      the GTMX team before it can be connected.
                     </p>
                   )}
                 </div>
               ) : (
                 <div className="space-y-4">
+                  {connection!.status === "pending" && (
+                    <div className="flex items-start gap-2 rounded-lg border border-border p-3 text-sm text-muted-foreground">
+                      <RefreshCw className="mt-0.5 size-4 shrink-0" />
+                      <p>Sign-in hasn't finished. Reconnect to try again.</p>
+                    </div>
+                  )}
                   {connection!.status === "needs_attention" && (
                     <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
                       <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
@@ -315,7 +336,6 @@ function ConnectionDialog({
                   <p className="text-xs text-muted-foreground">
                     Used in {connection!.usageCount}{" "}
                     {connection!.usageCount === 1 ? "outreach run" : "outreach runs"}
-                    {stub === "note" && " · Reconnect isn't wired up yet."}
                   </p>
                 </div>
               )}
@@ -352,10 +372,10 @@ function ConnectionDialog({
                   </Button>
                   <Button
                     size="sm"
-                    disabled={stub === "working"}
-                    onClick={runStub}
+                    disabled={working || !ready}
+                    onClick={() => void connect()}
                   >
-                    {stub === "working" && (
+                    {working && (
                       <RefreshCw className="mr-1.5 size-3.5 animate-spin" />
                     )}
                     Continue with {PLATFORM_LABEL[platform]}
@@ -363,11 +383,11 @@ function ConnectionDialog({
                 </>
               ) : (
                 <>
-                  <Button variant="outline" size="sm" onClick={runStub}>
+                  <Button variant="outline" size="sm" disabled={working || !ready} onClick={() => void connect()}>
                     <RefreshCw
                       className={cn(
                         "mr-1.5 size-3.5",
-                        stub === "working" && "animate-spin",
+                        working && "animate-spin",
                       )}
                     />
                     Reconnect
@@ -395,24 +415,49 @@ function ConnectionDialog({
 
 export function AccountsComponent() {
   const [connections, setConnections] = React.useState<Connection[] | null>(null)
+  const [available, setAvailable] = React.useState<Set<Platform>>(new Set())
   const [dialog, setDialog] = React.useState<DialogState | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
 
   React.useEffect(() => {
     let cancelled = false
-    void fetchConnections().then((rows) => {
-      if (!cancelled) setConnections(rows)
-    })
+    // Back from a provider sign-in: the server re-lists from Composio, so the
+    // query string itself is never trusted -- it only picks the toast.
+    const returnedFrom = searchParams.get("connected") as Platform | null
+    fetchConnectionState()
+      .then((state) => {
+        if (cancelled) return
+        setConnections(state.connections)
+        setAvailable(state.available)
+        if (returnedFrom && returnedFrom in PLATFORM_LABEL) {
+          const live = state.connections.some((c) => c.platform === returnedFrom && c.status === "live")
+          if (live) toast.success(`${PLATFORM_LABEL[returnedFrom]} connected`)
+          else toast.info(`${PLATFORM_LABEL[returnedFrom]} sign-in didn't finish`, { description: "Try connecting again." })
+          setSearchParams({}, { replace: true })
+        }
+      })
+      .catch(() => !cancelled && setConnections([]))
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [searchParams, setSearchParams])
+
+  const disconnect = async (connection: Connection) => {
+    try {
+      await disconnectConnection(connection.id)
+      setConnections((prev) => prev?.filter((row) => row.id !== connection.id) ?? prev)
+      toast.success(`${PLATFORM_LABEL[connection.platform]} disconnected`)
+    } catch (err) {
+      toast.error("Couldn't disconnect", { description: err instanceof Error ? err.message : String(err) })
+    }
+  }
 
   const items: GridItem[] = connections
     ? ALL_PLATFORMS.flatMap<GridItem>((platform) => {
         const connected = connections.filter((c) => c.platform === platform)
         return connected.length > 0
           ? connected.map((connection) => ({ kind: "connection", connection }))
-          : [{ kind: "available", platform }]
+          : [{ kind: "available", platform, ready: available.has(platform) }]
       })
     : []
 
@@ -497,9 +542,8 @@ export function AccountsComponent() {
           state={dialog}
           onClose={() => setDialog(null)}
           onNavigate={(view) => setDialog((prev) => (prev ? { ...prev, view } as DialogState : prev))}
-          onDisconnect={(c) =>
-            setConnections((prev) => prev?.filter((row) => row.id !== c.id) ?? prev)
-          }
+          onDisconnect={(c) => void disconnect(c)}
+          ready={available.has(typeof dialog.target === "string" ? dialog.target : dialog.target.platform)}
         />
       )}
     </div>
