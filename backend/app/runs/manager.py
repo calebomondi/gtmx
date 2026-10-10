@@ -20,6 +20,7 @@ from agents.llm import main as llm
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.runs import background, discovery, events
+from backend.app.runs import signals as run_signals
 from backend.app.runs.errors import user_facing_error
 from backend.app.schemas.agents import DiscoveryRequest
 from backend.app.services import limits
@@ -48,6 +49,7 @@ def _spawn(run_id: uuid.UUID, segment: Coroutine, timeout_s: float) -> None:
             message = user_facing_error(exc)
             await set_run_fields(models.Run, run_id, status="failed", error=message, finished_at=datetime.now(UTC))
             await events.publish(run_id, "error", {"message": message})
+            await run_signals.run_failed(run_id, message)
         finally:
             _tasks.pop(run_id, None)
 

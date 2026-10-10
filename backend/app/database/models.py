@@ -679,3 +679,39 @@ class LlmCall(Base):
         DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(),
         nullable=False, index=True,
     )
+
+
+class Signal(Base):
+    """One item in a user's feed: something an agent found or did that the user
+    should know about (a new competitor, a target account, a finished or failed
+    run). Emitted server-side by runs; the user only reads, pins or dismisses."""
+
+    __tablename__ = "signals"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    # competitor | opportunity | product | market | agent | inbound | outbound
+    category: Mapped[str] = mapped_column(String(20), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    entity: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Why the user is seeing this.
+    reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    source_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    hot: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+    read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+    pinned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+    dismissed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(),
+        nullable=False, index=True,
+    )
+
+    workspace: Mapped["Workspace"] = relationship()

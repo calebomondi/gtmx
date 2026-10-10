@@ -29,7 +29,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { emitSignal } from '@/features/feed/feed-store'
+import { toast } from 'sonner'
 import {
   ApiError,
   addCompetitor,
@@ -1038,24 +1038,17 @@ export function CompetitionComponent({ workspaceId }: { workspaceId?: string }) 
             // Rather than thread the status code through the fetch helper, this
             // is known exactly from the list a moment ago -- the id was either in
             // it or it was not.
-            emitSignal({
-              category: 'competitor',
-              title: wasKnown
-                ? `${competitor.name} is already tracked`
-                : `Now tracking ${competitor.name}`,
-              entity: competitor.name,
-              summary: wasKnown
-                ? `${competitor.website} was already on your watch list, so the list was left as it was. Its profile is being refreshed.`
-                : `Added by URL. The agent is reading ${competitor.website} now and will fill in the rest of the profile from it.`,
-              reason: wasKnown
-                ? 'You added a competitor that was already on the watch list.'
-                : 'You added this competitor by website URL.',
-              sourceUrl: competitor.website,
-              actions: [
-                { kind: 'source', label: 'View source' },
-                { kind: 'dismiss', label: 'Dismiss' },
-              ],
-            })
+            // Your own action: confirm it here. The feed is for what the
+            // agents find (the profile research lands there when it finishes).
+            if (wasKnown) {
+              toast.info(`${competitor.name} is already tracked`, {
+                description: 'Its profile is being refreshed.',
+              })
+            } else {
+              toast.success(`Now tracking ${competitor.name}`, {
+                description: `The agent is reading ${competitor.website} to fill in its profile.`,
+              })
+            }
           }}
         />
       )}

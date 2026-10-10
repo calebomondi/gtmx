@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { Toaster } from 'sonner'
 import { createBrowserRouter, RouterProvider, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { AppSidebar } from "@/components/app-sidebar"
 import {
@@ -95,6 +96,7 @@ function AppLayout() {
         <SidebarInset className="flex h-screen flex-col overflow-hidden">
           <Outlet />
           <GlobalInterruptDialog />
+          <Toaster position="bottom-right" richColors closeButton />
         </SidebarInset>
       </SidebarProvider>
     </ThemeProvider>

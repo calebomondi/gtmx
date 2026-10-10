@@ -39,7 +39,7 @@ import {
 import { workspaceDisplayName } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
-import { removeSignal, updateSignal, useSignals } from './feed-store'
+import { dismiss as dismissSignal, markRead, togglePin as toggleSignalPin, useSignals } from './feed-store'
 import {
   formatTimeAgo,
   isRecent,
@@ -435,7 +435,7 @@ export function FeedComponent({
     product?.offer_name ??
     'your product/service'
 
-  const signals = useSignals()
+  const signals = useSignals(workspaceId)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all')
@@ -454,7 +454,7 @@ export function FeedComponent({
 
   const openSignal = (id: string) => {
     const signal = signals.find((s) => s.id === id)
-    updateSignal(id, (s) => ({ ...s, read: true }))
+    markRead(id)
     // Contact-bearing signals (email/LinkedIn) open directly in OutReach, not a modal.
     if (signal?.sender?.email) {
       setSelectedId(null)
@@ -467,11 +467,11 @@ export function FeedComponent({
   }
 
   const togglePin = (id: string) => {
-    updateSignal(id, (s) => ({ ...s, pinned: !s.pinned }))
+    toggleSignalPin(id)
   }
 
   const dismiss = (id: string) => {
-    removeSignal(id)
+    dismissSignal(id)
     setDetailOpen(false)
   }
 

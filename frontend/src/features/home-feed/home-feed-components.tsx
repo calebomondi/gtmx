@@ -15,7 +15,7 @@ import {
 } from '@/features/feed/feed-components'
 import { formatTimeAgo, isRecent, type RecencyFilter, type Signal } from '@/features/feed/feed-types'
 
-import { removeHomeSignal, updateHomeSignal, useHomeSignals } from './home-feed-store'
+import { dismiss as dismissSignal, markRead, togglePin as toggleSignalPin, useSignals } from '@/features/feed/feed-store'
 import {
   CATEGORY_TARGET_TAB,
   type HomeCategory,
@@ -258,7 +258,7 @@ function EmptyHomeFeed({ workspaceCount }: { workspaceCount: number }) {
 
 export function HomeFeed() {
   const navigate = useNavigate()
-  const signals = useHomeSignals()
+  const signals = useSignals()
   const { workspaces } = useWorkspaces()
   const { projects } = useProjects()
   const [categoryFilter, setCategoryFilter] = useState<HomeCategoryFilter>('all')
@@ -305,16 +305,16 @@ export function HomeFeed() {
   const sections = useMemo(() => splitIntoSectionsOrdered(filtered), [filtered])
 
   const openSignal = (signal: HomeSignal) => {
-    updateHomeSignal(signal.id, (s) => ({ ...s, read: true }))
+    markRead(signal.id)
     navigate(`/workspace/${signal.workspace.id}?tab=${targetTabFor(signal)}`)
   }
 
   const togglePin = (id: string) => {
-    updateHomeSignal(id, (s) => ({ ...s, pinned: !s.pinned }))
+    toggleSignalPin(id)
   }
 
   const dismiss = (id: string) => {
-    removeHomeSignal(id)
+    dismissSignal(id)
   }
 
   const runScan = async () => {

@@ -18,7 +18,7 @@ from agents.llm.main import llm_timing_report
 from backend.app.agents_runtime import get_agent
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
-from backend.app.runs import events
+from backend.app.runs import events, signals
 from backend.app.schemas.agents import DiscoveryRequest
 from backend.app.services import workspaces as workspace_service
 from backend.app.services.runs import set_run_fields
@@ -261,6 +261,8 @@ async def run_segment(run_id: uuid.UUID, agent_input: dict | Command) -> None:
 
     await save_progress(interrupt=None)
     await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC))
+    if workspace_id is not None:
+        await signals.discovery_finished(run_id, user_id, workspace_id, values)
     await events.publish(run_id, "complete", {
         "workspace_id": str(workspace_id) if workspace_id else None,
         "confirmed": bool(values.get("confirmed")),

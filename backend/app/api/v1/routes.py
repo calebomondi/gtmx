@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from backend.app.api.deps import rate_limited
-from backend.app.api.v1.endpoints import accounts, admin, competitors, discovery, projects, runs, users, workspaces
+from backend.app.api.v1.endpoints import accounts, admin, competitors, discovery, projects, runs, signals, users, workspaces
 
 api_router = APIRouter()
 # Every REST router is rate limited per user; the discovery WebSocket is limited
@@ -10,6 +10,7 @@ _LIMITED = [Depends(rate_limited)]
 api_router.include_router(discovery.router, prefix="/discover", tags=["discovery"])
 api_router.include_router(runs.router, prefix="/runs", tags=["runs"], dependencies=_LIMITED)
 api_router.include_router(users.router, prefix="/users", tags=["users"], dependencies=_LIMITED)
+api_router.include_router(signals.router, prefix="/signals", tags=["signals"], dependencies=_LIMITED)
 api_router.include_router(projects.router, prefix="/projects", tags=["projects"], dependencies=_LIMITED)
 api_router.include_router(workspaces.router, prefix="/workspaces", tags=["workspaces"], dependencies=_LIMITED)
 # Competitors are workspace-scoped, so this router carries the workspace id in
