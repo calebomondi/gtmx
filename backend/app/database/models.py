@@ -454,6 +454,10 @@ class Competitor(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    # Monitoring: the last snapshot of what the rival says about itself (site +
+    # recent news), compared on the next check to find GTM-relevant changes.
+    monitor_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     workspace: Mapped["Workspace"] = relationship(back_populates="competitors")

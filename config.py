@@ -92,6 +92,17 @@ class Settings(BaseSettings):
     max_requests_per_minute: int = 120
     max_chat_messages_per_day: int = 200
     max_outreach_sends_per_day: int = 50
+    max_monitor_runs_per_day: int = 6
+
+    # -- Competitor monitoring --
+    # How often the scheduler looks for stale workspaces, and how old a check
+    # may get before it is redone.
+    monitor_enabled: bool = True
+    monitor_scan_interval_s: float = 3600.0
+    # Grace period after boot before the first sweep, so a restart (or a local
+    # dev reload) doesn't immediately fan out paid monitoring runs.
+    monitor_initial_delay_s: float = 120.0
+    monitor_max_age_h: float = 24.0
 
     # -- Agent tuning --
     # How far back (days) research may look for sources. Kept short so the

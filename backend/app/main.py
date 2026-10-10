@@ -11,6 +11,7 @@ from backend.app.database.schema_check import ensure_schema_at_head
 from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError, RateLimitedError, ServiceError
 from backend.app import agents_runtime, llm_usage
 from backend.app.runs import manager as run_manager
+from backend.app.runs import scheduler as run_scheduler
 from backend.app.services import admin as admin_service
 from utils.log import logger
 
@@ -36,9 +37,11 @@ async def lifespan(app: FastAPI):
     await agents_runtime.start_agent_runtime(settings.database_url)
     llm_usage.start()
     await run_manager.recover_after_restart()
+    run_scheduler.start()
     try:
         yield
     finally:
+        await run_scheduler.stop()
         await run_manager.shutdown()
         llm_usage.stop()
         await agents_runtime.stop_agent_runtime()

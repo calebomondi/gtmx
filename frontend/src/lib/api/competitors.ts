@@ -106,3 +106,8 @@ export function deleteCompetitor(
     { method: "DELETE" },
   )
 }
+
+/** Re-check every tracked competitor now; changes arrive as feed signals. */
+export function checkCompetitorsNow(workspaceId: string): Promise<import("./runs").RunDto> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/competitors/monitor`, { method: "POST" })
+}

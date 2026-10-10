@@ -202,3 +202,10 @@ async def require_ideal_profile(db: AsyncSession, workspace_id: uuid.UUID) -> di
             "discovery first -- the competitor agent searches using it."
         )
     return profile
+
+
+async def active_monitor_run(db: AsyncSession, workspace_id: uuid.UUID) -> models.Run | None:
+    return await db.scalar(select(models.Run).where(
+        models.Run.workspace_id == workspace_id, models.Run.kind == "monitor",
+        models.Run.status.not_in(TERMINAL_STATUSES),
+    ))
