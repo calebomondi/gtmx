@@ -141,6 +141,7 @@ class CompetitorResponse(BaseModel):
         default="agent", description="agent | manual"
     )
     first_seen_at: datetime
+    last_checked_at: datetime | None = None
     last_seen_at: datetime
     deep_researched_at: datetime | None = None
 

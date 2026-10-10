@@ -132,6 +132,8 @@ export interface Competitor {
   source: 'agent' | 'manual'
   first_seen_at: string
   last_seen_at: string
+  /** When monitoring last re-checked this rival; null if never. */
+  last_checked_at: string | null
   deep_researched_at: string | null
 }
 

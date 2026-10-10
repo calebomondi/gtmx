@@ -16,6 +16,7 @@ _KIND_LABEL = {
     "accounts": "Account discovery",
     "competitor_research": "Competitor profiling",
     "outreach_drafts": "Outreach drafting",
+    "monitor": "Competitor monitoring",
 }
 _MAX_ACCOUNT_SIGNALS = 5
 
@@ -96,6 +97,19 @@ async def outreach_drafted(run_id: uuid.UUID, count: int) -> None:
             summary="Review, edit and approve them in Reach Out. Nothing is sent without you.",
             reason="You asked the agent to draft outreach.",
         )] if count else []
+    await _emit(build)
+
+
+async def competitor_changes(run_id: uuid.UUID, changes: list) -> None:
+    """One signal per material change a monitoring run found."""
+    async def build(db):
+        run = await db.get(models.Run, run_id)
+        return [signal_service.build(
+            user_id=run.user_id, workspace_id=run.workspace_id, run_id=run_id, category="competitor",
+            title=f"{name}: {change.title}", entity=name, summary=change.summary,
+            reason=f"Monitoring spotted a {change.kind} change.",
+            source_url=change.source_url or website, hot=change.importance == "high",
+        ) for name, website, change in changes]
     await _emit(build)
 
 

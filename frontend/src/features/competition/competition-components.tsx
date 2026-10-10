@@ -12,6 +12,7 @@ import {
   Loader2,
   Plus,
   Radar,
+  RefreshCw,
   Search,
   XCircle,
 } from 'lucide-react'
@@ -33,6 +34,7 @@ import { toast } from 'sonner'
 import {
   ApiError,
   addCompetitor,
+  checkCompetitorsNow,
   deleteCompetitor,
   getCompetitorRun,
   listCompetitorRuns,
@@ -881,6 +883,28 @@ export function CompetitionComponent({ workspaceId }: { workspaceId?: string }) 
 
   const manualOnly = (competitors ?? []).filter((c) => c.source === 'manual').length
 
+  const [checking, setChecking] = useState(false)
+  const lastChecked = (competitors ?? [])
+    .map((c) => c.last_checked_at)
+    .filter((at): at is string => Boolean(at))
+    .sort()
+    .at(-1)
+
+  const checkNow = async () => {
+    if (!workspaceId) return
+    setChecking(true)
+    try {
+      await checkCompetitorsNow(workspaceId)
+      toast.success('Checking your competitors', {
+        description: 'Pricing, product and news changes will show up in your feed.',
+      })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err))
+    } finally {
+      setChecking(false)
+    }
+  }
+
   return (
     <div className="flex h-[calc(100dvh-7rem)] min-h-0 flex-col">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -913,6 +937,20 @@ export function CompetitionComponent({ workspaceId }: { workspaceId?: string }) 
             )}
             Find competitors
           </Button>
+          {(competitors ?? []).length > 0 && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="cursor-pointer"
+              disabled={checking}
+              onClick={() => void checkNow()}
+              title={lastChecked ? `Last checked ${new Date(lastChecked).toLocaleString()}` : 'Not checked yet'}
+            >
+              {checking ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+              Check for changes
+            </Button>
+          )}
           <Button
             type="button"
             size="sm"

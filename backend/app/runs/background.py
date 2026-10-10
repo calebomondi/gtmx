@@ -7,17 +7,21 @@ import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
+from sqlalchemy import select
+
+from agents.concurrency import ContextThreadPoolExecutor
+from agents.pipelines.chat import workspace_chat
+from agents.pipelines.monitor import check_competitor
+from agents.pipelines.outreach import draft_messages
 from backend.app.account_runner import run_account_discovery_for_workspace
 from backend.app.competitor_runner import research_competitor_site, run_competitor_discovery
 from backend.app.database import models
-from agents.concurrency import ContextThreadPoolExecutor
-from agents.pipelines.chat import workspace_chat
-from agents.pipelines.outreach import draft_messages
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.runs import events, signals
 from backend.app.services import chat as chat_service
 from backend.app.services import outreach as outreach_service
 from backend.app.services.runs import set_run_fields
+from utils.log import logger
 
 
 async def _finish(run_id: uuid.UUID, outcome: dict) -> None:
@@ -96,10 +100,54 @@ async def outreach_drafts(run_id: uuid.UUID, workspace_id: uuid.UUID, params: di
     await signals.outreach_drafted(run_id, len(drafts))
 
 
+_MONITOR_WORKERS = 4
+
+
+async def monitor(run_id: uuid.UUID, workspace_id: uuid.UUID, _params: dict) -> None:
+    """Re-check every tracked competitor; changes become feed signals."""
+    async with AsyncSessionLocal() as db:
+        competitors = (await db.execute(
+            select(models.Competitor).where(models.Competitor.workspace_id == workspace_id)
+        )).scalars().all()
+        offer = (await chat_service.workspace_context(db, workspace_id))[1]
+    targets = [(c.id, c.name, c.website, c.monitor_state) for c in competitors]
+
+    def check_one(target):
+        _id, name, website, previous = target
+        try:
+            return check_competitor.check(name, website, previous, offer)
+        except Exception:  # noqa: BLE001 -- one rival failing must not stop the rest
+            logger.exception("Monitoring %s failed", name)
+            return None
+
+    def check_all():
+        with ContextThreadPoolExecutor(max_workers=_MONITOR_WORKERS) as pool:
+            return list(pool.map(check_one, targets))
+    results = await asyncio.to_thread(check_all)
+
+    now = datetime.now(UTC)
+    found = []
+    async with AsyncSessionLocal() as db:
+        for (competitor_id, name, website, _prev), result in zip(targets, results):
+            if result is None:
+                continue
+            state, changes = result
+            competitor = await db.get(models.Competitor, competitor_id)
+            if competitor is None:
+                continue
+            competitor.monitor_state = state
+            competitor.last_checked_at = now
+            found += [(name, website, change) for change in changes if change.importance != "low"]
+        await db.commit()
+    await _finish(run_id, {"checked": sum(r is not None for r in results), "changes": len(found)})
+    await signals.competitor_changes(run_id, found)
+
+
 EXECUTORS: dict[str, Callable[[uuid.UUID, uuid.UUID, dict], Awaitable[None]]] = {
     "competitors": competitors,
     "accounts": accounts,
     "competitor_research": competitor_research,
     "chat": chat,
     "outreach_drafts": outreach_drafts,
+    "monitor": monitor,
 }

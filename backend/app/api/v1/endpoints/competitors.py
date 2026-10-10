@@ -16,7 +16,8 @@ from backend.app.schemas.competitors import (
     CompetitorUpdateRequest,
 )
 from backend.app.services import competitors as competitor_service
-from backend.app.services.errors import RateLimitedError
+from backend.app.schemas.runs import RunResponse
+from backend.app.services.errors import ConflictError, RateLimitedError
 
 router = APIRouter()
 
@@ -90,6 +91,15 @@ async def start_competitor_run(workspace: OwnedWorkspace, db: DbSession):
         run=CompetitorRunResponse.from_run(run),
         already_tracked=await competitor_service.count_for_workspace(db, workspace.id),
     )
+
+
+@router.post("/{workspace_id}/competitors/monitor", response_model=RunResponse, status_code=status.HTTP_202_ACCEPTED)
+async def check_competitors_now(workspace: OwnedWorkspace, db: DbSession):
+    """Re-check every tracked competitor now; changes arrive as feed signals."""
+    if await competitor_service.count_for_workspace(db, workspace.id) == 0:
+        raise ConflictError("Track at least one competitor before monitoring.")
+    active = await competitor_service.active_monitor_run(db, workspace.id)
+    return active or await run_manager.start_background("monitor", workspace.user_id, workspace.id)
 
 
 @router.get("/{workspace_id}/competitors/runs/{run_id}", response_model=CompetitorRunResponse)
