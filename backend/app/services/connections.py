@@ -119,3 +119,11 @@ async def disconnect(user_id: uuid.UUID, connection_id: str) -> None:
             raise NotFoundError("Connection not found")
         client.connected_accounts.delete(connection_id, revoke_on_delete=True)
     await asyncio.to_thread(remove)
+
+
+def execute_tool(user_id: uuid.UUID, tool_slug: str, arguments: dict, connected_account_id: str) -> dict:
+    """Run one Composio tool as the user through a specific connected account.
+    Synchronous: call it in a worker thread. Returns {data, error, log_id}."""
+    session = _client().create(user_id=str(user_id), manage_connections=False, auth_configs=_auth_configs())
+    response = session.execute(tool_slug, arguments=arguments, account=connected_account_id)
+    return {"data": response.data, "error": response.error, "log_id": response.log_id}

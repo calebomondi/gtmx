@@ -39,6 +39,7 @@ def _daily_cap(kind: str) -> int:
         # Manual-competitor research is bounded by how many rivals a user adds.
         "competitor_research": settings.max_competitor_runs_per_day * 5,
         "chat": settings.max_chat_messages_per_day,
+        "outreach_drafts": settings.max_account_runs_per_day,
     }[kind]
 
 

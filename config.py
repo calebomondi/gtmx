@@ -91,6 +91,7 @@ class Settings(BaseSettings):
     max_account_runs_per_day: int = 20
     max_requests_per_minute: int = 120
     max_chat_messages_per_day: int = 200
+    max_outreach_sends_per_day: int = 50
 
     # -- Agent tuning --
     # How far back (days) research may look for sources. Kept short so the
