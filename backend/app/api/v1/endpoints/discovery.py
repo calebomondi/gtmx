@@ -13,6 +13,7 @@ from agents.llm.main import (
     llm_timing_report,
 )
 
+from backend.app.api.deps import require_user, websocket_user
 from backend.app.agents_runtime import get_agent
 from backend.app.config.settings import settings
 from backend.app.schemas.agents import DiscoveryRequest
@@ -21,7 +22,6 @@ from backend.app.naming import title_case
 from backend.app.database.models import (
     ProductFeature,
     ProductProfile,
-    User,
     Workspace,
 )
 
@@ -55,6 +55,8 @@ def _build_initial_state(discovery_req: DiscoveryRequest) -> dict:
         "website_url": discovery_req.product_url,
         "offer_type": discovery_req.offer_type,
         "target_market": discovery_req.target_geo or [],
+        "source": discovery_req.source,
+        "offer_description": discovery_req.offer_description,
         "messages": [],
     }
 
@@ -101,25 +103,10 @@ async def _receive_answer(websocket: WebSocket) -> str | None:
     return text
 
 
-async def _get_mock_user_id() -> uuid.UUID:
-    """Auth is faked: resolve the seeded signed-in user by email."""
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(User).where(User.email == settings.MOCK_USER_EMAIL)
-        )
-        user = result.scalar_one_or_none()
-    if user is None:
-        raise RuntimeError(
-            f"Mock user {settings.MOCK_USER_EMAIL!r} not found — seed ran?"
-        )
-    return user.id
-
-
-async def _persist_workspace(values: dict, confirmed: bool) -> uuid.UUID:
+async def _persist_workspace(values: dict, confirmed: bool, user_id: uuid.UUID) -> uuid.UUID:
     """Persist the offer the discovery phase settled on. `values` is the
     session state as loose keys (offer_name/website_url/problem/features: list
     of plain strings), mapped to the ProductProfile shape."""
-    user_id = await _get_mock_user_id()
     offer_name = (values.get("offer_name") or "").strip() or None
 
     async with AsyncSessionLocal() as db:
@@ -206,6 +193,12 @@ async def start_product_discovery(websocket: WebSocket):
     """
     await websocket.accept()
 
+    user = await websocket_user(websocket)
+    if user is None:
+        await websocket.send_json({"type": "error", "message": "Authentication required"})
+        await websocket.close(code=4401)
+        return
+
     session_id = str(uuid.uuid4())
     try:
         raw = await websocket.receive_text()
@@ -250,6 +243,10 @@ async def start_product_discovery(websocket: WebSocket):
                     continue
 
                 node, _update = next(iter(event.items()))
+                # The manual intake path is a sibling subgraph node; for the
+                # phase-frame / stepper surface it is the same step.
+                if node == "discover_offer_manual":
+                    node = "discover_offer"
                 if node not in NODE_ORDER:
                     continue
 
@@ -269,6 +266,7 @@ async def start_product_discovery(websocket: WebSocket):
                     workspace_id = await _persist_workspace(
                         values=values,
                         confirmed=bool(values.get("confirmed")),
+                        user_id=user.id,
                     )
                     await websocket.send_json({
                         "type": "workspace_created",

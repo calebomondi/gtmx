@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from backend.app.api.deps import AuthUser, require_matching_user
 from backend.app.database import models
 from backend.app.database.connect import get_db
 from backend.app.naming import title_case
@@ -29,14 +30,9 @@ async def get_user_workspaces(
 	user_id: uuid.UUID,
 	archived: bool = False,
 	db: Annotated[AsyncSession, Depends(get_db)] = None,
+	_current_user: Annotated[AuthUser, Depends(require_matching_user)] = None,
 ):
 	"""Live workspaces by default; pass `?archived=true` for the archive page."""
-	user = await db.get(models.User, user_id)
-	if user is None:
-		raise HTTPException(
-			status_code=status.HTTP_404_NOT_FOUND,
-			detail="User not found",
-		)
 
 	result = await db.execute(
 		select(models.Workspace)

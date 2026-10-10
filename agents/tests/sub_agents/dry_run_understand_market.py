@@ -10,7 +10,7 @@ without spending a token or touching the network.
 
 import sys
 
-import agents.sub_agents.understand_market as um
+import agents.sub_agents.discover.understand_market as um
 from agents.states import MarketExtraction, MarketFindings
 from agents.sub_agents.schema_states import ResearchTask, Specialist, TaskList
 

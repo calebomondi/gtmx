@@ -29,17 +29,19 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from agents.sub_agents.schema_states import DiscoverySessionState
-from agents.sub_agents.discover_offer import build_offer_discovery_graph
-from agents.sub_agents.create_specialists import build_specialist_graph
-from agents.sub_agents.understand_offer import build_product_graph
-from agents.sub_agents.understand_market import build_market_graph
-from agents.sub_agents.understand_competition import build_competition_graph
-from agents.sub_agents.build_icp import build_icp_graph
+from agents.sub_agents.discover.discover_offer import build_offer_discovery_graph
+from agents.sub_agents.discover.discover_offer_manual import build_manual_offer_discovery_graph
+from agents.sub_agents.discover.create_specialists import build_specialist_graph
+from agents.sub_agents.discover.understand_offer import build_product_graph
+from agents.sub_agents.discover.understand_market import build_market_graph
+from agents.sub_agents.discover.understand_competition import build_competition_graph
+from agents.sub_agents.discover.build_icp import build_icp_graph
 
 
 # Nested subgraphs can't own a checkpointer — the parent agent does. Built once
 # and reused across run_* invocations instead of recompiling per call.
 _DISCOVER_OFFER = build_offer_discovery_graph(checkpointer=False)
+_DISCOVER_OFFER_MANUAL = build_manual_offer_discovery_graph(checkpointer=False)
 _SPECIALISTS = build_specialist_graph()
 _UNDERSTAND_OFFER = build_product_graph(checkpointer=False)
 _UNDERSTAND_MARKET = build_market_graph(checkpointer=False)
@@ -111,6 +113,7 @@ def build_discovery_agent(checkpointer: BaseCheckpointSaver | None = None):
 
     # -- Nodes --
     builder.add_node("discover_offer", _DISCOVER_OFFER)
+    builder.add_node("discover_offer_manual", _DISCOVER_OFFER_MANUAL)
     builder.add_node("create_specialists", run_create_specialists)
     builder.add_node("understand_offer", run_understand_offer)
     builder.add_node("understand_market", run_understand_market)
@@ -119,8 +122,19 @@ def build_discovery_agent(checkpointer: BaseCheckpointSaver | None = None):
     # builder.add_node("account_discovery", run_account_discovery)
 
     # -- Edges --
-    builder.add_edge(START, "discover_offer")
+    # The intake source decides which discover_offer path runs: website URL →
+    # scrape flow; anything else → manual description flow. Both write the same
+    # loose snapshot keys, so create_specialists onwards is identical.
+    def _route_intake(state: DiscoverySessionState) -> str:
+        return "discover_offer_manual" if state.get("source") == "manual" else "discover_offer"
+
+    builder.add_conditional_edges(
+        START,
+        _route_intake,
+        {"discover_offer": "discover_offer", "discover_offer_manual": "discover_offer_manual"},
+    )
     builder.add_edge("discover_offer", "create_specialists")
+    builder.add_edge("discover_offer_manual", "create_specialists")
     # Offer and market research are independent, so they run in the same
     # super-step and LangGraph executes them concurrently (these are sync node
     # functions, so it hands them to a thread pool). Competition stays strictly

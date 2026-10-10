@@ -29,6 +29,8 @@ import {
   Archive,
 } from "lucide-react"
 
+import { useAgentRun } from "@/lib/agent-run-store"
+
 import {
   renameWorkspace,
   removeWorkspace,
@@ -76,6 +78,11 @@ export function WorkspaceManager({
   // Keyed off the data rather than the route: a workspace that's already in a
   // project shouldn't be offered "Add to project" on any screen.
   const inProject = Boolean(workspace.project_id)
+
+  const run = useAgentRun()
+  const runActive =
+    (run.stage === "running" || run.stage === "awaiting_input") &&
+    (run.workspaceId == null || run.workspaceId === workspace.id)
 
   const openPicker = () => {
     setError(null)
@@ -151,6 +158,8 @@ export function WorkspaceManager({
           render={
             <Button
               variant="ghost"
+              disabled={runActive}
+              title={runActive ? "Actions available once discovery finishes" : undefined}
               className={cn(
                 "min-w-0 cursor-pointer gap-1.5",
                 isBreadcrumb
@@ -165,6 +174,7 @@ export function WorkspaceManager({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" sideOffset={6}>
           <DropdownMenuItem
+            disabled={runActive}
             className="gap-2 cursor-pointer"
             onClick={() => {
               setDraftName(displayName)
@@ -175,7 +185,7 @@ export function WorkspaceManager({
             <PencilIcon className="size-4" />
             Rename
           </DropdownMenuItem>
-          <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => void handleTogglePin()}>
+          <DropdownMenuItem disabled={runActive} className="gap-2 cursor-pointer" onClick={() => void handleTogglePin()}>
             {workspace.pinned ? (
               <PinOffIcon className="size-4" />
             ) : (
@@ -184,25 +194,26 @@ export function WorkspaceManager({
             {workspace.pinned ? "Unpin" : "Pin"}
           </DropdownMenuItem>
           {inProject ? (
-            <DropdownMenuItem className="gap-2 cursor-pointer" onClick={openPicker}>
+            <DropdownMenuItem disabled={runActive} className="gap-2 cursor-pointer" onClick={openPicker}>
               <FolderSync className="size-4" />
               Change project
             </DropdownMenuItem>
           ) : (
-            <DropdownMenuItem className="gap-2 cursor-pointer" onClick={openPicker}>
+            <DropdownMenuItem disabled={runActive} className="gap-2 cursor-pointer" onClick={openPicker}>
               <FolderPlus className="size-4" />
               Add to project
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
+            disabled={runActive || busy}
             className="gap-2 cursor-pointer"
-            disabled={busy}
             onClick={() => void handleArchive()}
           >
             <Archive className="size-4" />
             Archive
           </DropdownMenuItem>
           <DropdownMenuItem
+            disabled={runActive}
             className="gap-2 cursor-pointer text-destructive focus:text-destructive"
             onClick={() => {
               setError(null)

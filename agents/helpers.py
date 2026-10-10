@@ -166,12 +166,25 @@ def gather_content(source: str) -> str:
 
     Plain URLs are scraped deterministically (exactly as provided — the model is
     never allowed to pick or rewrite the URL, so it can't append paths or jump to
-    subpages). Non-URL sources (documents) go through the gather_context graph."""
+    subpages). Non-URL sources (documents) go through the gather_context graph.
+
+    A body that comes back but is a placeholder ("Coming Soon", "under construction")
+    is treated as a FAILURE, not content. `scrape_website` only tests the scraped text
+    for emptiness, so boilerplate would otherwise sail through, the run would proceed
+    on it, and the workspace would report `confirmed: True` having learned nothing.
+    Returning "" routes it to `notify_unscrappable_url` instead, which asks the user —
+    the loud failure this used to skip."""
     try:
         if _URL_RE.match(source.strip()):
             from config import Config
             from data_sources.scraping.exa import scrape_url as _scrape_url
+            from data_sources.scraping.quality import is_usable_body, rejection_reason
             raw = _scrape_url(source.strip(), Config())
+            if not is_usable_body(raw):
+                logger.warning(
+                    "Rejected unusable body for %r: %s", source.strip(), rejection_reason(raw)
+                )
+                return ""
             if raw.strip():
                 return raw
             return ""

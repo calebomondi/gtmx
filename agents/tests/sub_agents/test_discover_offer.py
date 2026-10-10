@@ -21,9 +21,11 @@ untouched all the way to the specialists downstream.
 Branches:
   - product:  real scrape of https://aphorion.co/ (HeatherDB is named on the
               page, so the name-existence gate passes) -> draft, confirm.
-  - service:  URL-less ("StitchUp") -> nothing to scrape, so the agent asks what
-              the offer is and the harness supplies a description. Covers the
-              name-only path end to end without inventing evidence for it.
+  - service:  real scrape of https://thoughtbot.com/ (a real design and
+              development agency) -> draft, confirm. The name gate passes on the
+              agency's own name and the scraped copy gives the extraction step
+              genuine material, so this branch actually exercises the service
+              path instead of running on an empty page.
 
 Run all branches:
     python agents/tests/sub_agents/test_discover_offer.py
@@ -57,23 +59,22 @@ sys.path.insert(0, str(root))
 
 from agents.llm.main import llm_timing_report  # noqa: E402
 from agents.helpers import as_follow_up  # noqa: E402
-from agents.sub_agents.discover_offer import build_offer_discovery_graph  # noqa: E402
+from agents.sub_agents.discover.discover_offer import build_offer_discovery_graph  # noqa: E402
 from langgraph.types import Command  # noqa: E402
 
 _OUT_DIR = Path(__file__).resolve().parent / "_out" / "discover_offer"
 
 
 # ---------------------------------------------------------------------------
-# Fixtures. One branch drives a real scrape; the other is deliberately URL-less
-# so the run has no evidence of its own and the agent has to ask. `offer_type` is
-# an input here — asserted by the caller and carried on the session — not
-# something the graph is expected to decide.
+# Fixtures. Both branches drive a real scrape, so each has genuine material for
+# the extraction step to work from. `offer_type` is an input here — asserted by
+# the caller and carried on the session — not something the graph is expected to
+# decide.
 #
-# `description` is what a user would supply when the agent asks what the offer
-# is. It is only consulted by the branch with nothing to scrape: with no URL and
-# no content there is genuinely nothing to draft from, and asking the user is the
-# correct behaviour (ask_for_confirmation's "tell me about your product/service"
-# prompt) rather than something to paper over in the fixture.
+# `description` is what a user would supply if the agent asks what the offer is
+# and has nothing to draft from. With a scrape that works the agent drafts its
+# own and this is never consulted, so it stays None; _answer_for only reaches for
+# it on an empty-draft confirmation, where answering "yes" would strand the run.
 # ---------------------------------------------------------------------------
 
 PRODUCT_OFFER = {
@@ -83,15 +84,15 @@ PRODUCT_OFFER = {
     "description": None,
 }
 
+# thoughtbot is a real design and development agency. Its own name appears in the
+# scraped copy, so the name-existence gate passes on the agency's actual identity
+# rather than on a lucky substring, and the page carries enough prose for
+# retrieve_rest_product_service_info to extract real features and problems.
 SERVICE_OFFER = {
-    "offer_name": "StitchUp",
-    "website_url": None,
+    "offer_name": "thoughtbot",
+    "website_url": "https://thoughtbot.com/",
     "offer_type": "service",
-    "description": (
-        "StitchUp is an alterations and repair shop. Customers bring in garments "
-        "that need hemming, mending, resizing, or zipper replacement, and the shop "
-        "handles the work while they wait."
-    ),
+    "description": None,
 }
 
 BRANCHES = {"product": PRODUCT_OFFER, "service": SERVICE_OFFER}
@@ -214,9 +215,28 @@ def _assert_intake_run(branch: str, final: dict, interrupt_log: list[dict]) -> N
         f"[{branch}] description is just a repeat of the offer name: {desc!r}"
     )
 
-    for key in ("target_market", "features", "service_uniqueness"):
-        value = final.get(key)
-        assert isinstance(value, list), f"[{branch}] {key} is not a list: {value!r}"
+    # With a usable scrape, the extraction step must return *something* real, not
+    # a silent empty. Features vs service_uniqueness differ by type, so assert the
+    # branch-appropriate one is non-empty and the others are well-shaped lists.
+    if noun == "product":
+        feats = final.get("features") or []
+        assert isinstance(feats, list), f"[{branch}] features is not a list: {feats!r}"
+        assert feats, f"[{branch}] features must be non-empty for a real product scrape"
+        uniq = final.get("service_uniqueness") or []
+        assert isinstance(uniq, list), f"[{branch}] service_uniqueness is not a list: {uniq!r}"
+    else:  # service
+        uniq = final.get("service_uniqueness") or []
+        assert isinstance(uniq, list), f"[{branch}] service_uniqueness is not a list: {uniq!r}"
+        assert uniq, f"[{branch}] service_uniqueness must be non-empty for a real service scrape"
+        feats = final.get("features") or []
+        assert isinstance(feats, list), f"[{branch}] features is not a list: {feats!r}"
+
+    for key in ("target_market", "problem", "how_it_works"):
+        v = final.get(key)
+        if key in ("problem", "how_it_works"):
+            assert v, f"[{branch}] {key} must be non-empty for a real scrape"
+            continue
+        assert isinstance(v, list), f"[{branch}] {key} is not a list: {v!r}"
 
     # Every interrupt that fired was answered, and the answer is in BOTH the
     # follow_up trail and the message history.
@@ -296,9 +316,149 @@ def test_discover_offer_service() -> None:
     _run_and_assert("service")
 
 
+def _run_and_assert_with_fixture(offer: dict, label: str = "cli") -> None:
+    """Run a single offer through the real intake graph.
+
+    This is the same runner as _run_and_assert, just with an explicit offer dict
+    instead of a branch name so the CLI can drive arbitrary inputs."""
+    graph = build_offer_discovery_graph()  # checkpointer=True -> MemorySaver
+    thread_id = uuid.uuid4().hex
+    config = {"configurable": {"thread_id": thread_id}}
+
+    initial = {
+        "offer_name": offer["offer_name"],
+        "website_url": offer["website_url"],
+        "offer_type": offer["offer_type"],
+        "messages": [],
+    }
+
+    state = dict(initial)
+    timings: dict[str, float] = {}
+    interrupt_log: list[dict] = []
+    started = time.perf_counter()
+    last = started
+
+    while True:
+        interrupts = []
+        for chunk in graph.stream(state, config, stream_mode="updates"):
+            now = time.perf_counter()
+            for node, update in chunk.items():
+                if node == "__interrupt__":
+                    interrupts = list(update)
+                    continue
+                timings[node] = now - last
+                last = now
+        if not interrupts:
+            break
+
+        payload = interrupts[0].value
+        answer = _answer_for_with_offer(payload, offer)
+        interrupt_log.append(
+            {"type": payload.get("type"), "answer": answer, "question": payload.get("question")}
+        )
+        print(f"  [interrupt] {payload.get('type')} -> {answer!r}")
+
+        state = Command(resume=answer)
+
+    timings["_total"] = time.perf_counter() - started
+    final = graph.get_state(config).values
+
+    # Save and print first: a failing run must still leave its state behind, or
+    # the failure is undiagnosable from the assert message.
+    _save_artifacts(label, final, timings, interrupt_log)
+    _print_intake_report(label, final, timings, interrupt_log)
+    _assert_intake_run_with_offer(label, final, interrupt_log, offer)
+
+
+def _answer_for_with_offer(payload: dict, offer: dict) -> str:
+    ptype = (payload or {}).get("type")
+
+    if ptype == "product_service_description_confirmation" and not payload.get("draft"):
+        return offer["description"] or "yes"
+
+    auto = {
+        "offer_name_mismatch": "1",
+        "url_unscrappable": "continue",
+        "product_service_description_confirmation": "yes",
+    }
+    return auto.get(ptype, "yes")
+
+
+def _assert_intake_run_with_offer(label: str, final: dict, interrupt_log: list[dict], offer: dict) -> None:
+    noun = offer["offer_type"]
+
+    # Terminal failure path: the URL was unscrappable. No description or extraction.
+    if interrupt_log and interrupt_log[0]["type"] == "url_unscrappable":
+        assert not final.get("confirmed"), f"[{label}] confirmed should not be True after unscrappable URL"
+        assert final.get("scrape_failed") is True, f"[{label}] scrape_failed should be True"
+        return
+
+    assert final.get("offer_type") == noun, (
+        f"[{label}] offer_type {final.get('offer_type')!r} must equal {noun!r}"
+    )
+    assert final.get("confirmed") is True, f"[{label}] flow never confirmed"
+
+    desc = (final.get("offer_description") or "").strip()
+    assert desc, f"[{label}] offer_description empty"
+    assert desc.lower() not in ("none", "n/a", "unknown"), (
+        f"[{label}] placeholder description leaked through: {desc!r}"
+    )
+
+    if noun == "product":
+        feats = final.get("features") or []
+        assert isinstance(feats, list), f"[{label}] features is not a list: {feats!r}"
+        assert feats, f"[{label}] features must be non-empty for a real product scrape"
+        uniq = final.get("service_uniqueness") or []
+        assert isinstance(uniq, list), f"[{label}] service_uniqueness is not a list: {uniq!r}"
+    else:
+        uniq = final.get("service_uniqueness") or []
+        assert isinstance(uniq, list), f"[{label}] service_uniqueness is not a list: {uniq!r}"
+        assert uniq, f"[{label}] service_uniqueness must be non-empty for a real service scrape"
+        feats = final.get("features") or []
+        assert isinstance(feats, list), f"[{label}] features is not a list: {feats!r}"
+
+    for key in ("target_market", "problem", "how_it_works"):
+        v = final.get(key)
+        if key in ("problem", "how_it_works"):
+            assert v, f"[{label}] {key} must be non-empty for a real scrape"
+            continue
+        assert isinstance(v, list), f"[{label}] {key} is not a list: {v!r}"
+
+    replies = list(as_follow_up(final.get("follow_up")).user_replies or [])
+    for entry in interrupt_log:
+        assert entry["answer"] in replies, (
+            f"[{label}] answer {entry['answer']!r} for {entry['type']} missing from "
+            f"follow_up.user_replies {replies}"
+        )
+    contents = [str(m.content) for m in (final.get("messages") or []) if hasattr(m, "content")]
+    for entry in interrupt_log:
+        assert any(entry["answer"] in c for c in contents), (
+            f"[{label}] answer {entry['answer']!r} for {entry['type']} missing from messages"
+        )
+
+
 def main() -> None:
     """Run one or both branches, then the cumulative LLM timing report."""
     print("Real offer-intake run (real LLM + real website scrape, nothing stubbed)")
+
+    if len(sys.argv) >= 4:
+        offer = {
+            "offer_name": sys.argv[1],
+            "website_url": sys.argv[2],
+            "offer_type": sys.argv[3],
+            "description": sys.argv[4] if len(sys.argv) >= 5 else None,
+        }
+        try:
+            _run_and_assert_with_fixture(offer, label="cli")
+        except Exception:
+            import traceback
+
+            traceback.print_exc()
+            sys.exit(1)
+        print("\nCumulative LLM wall clock:")
+        print(llm_timing_report())
+        return
+
     branches = tuple(BRANCHES) if len(sys.argv) < 2 else (sys.argv[1],)
     failed = False
     for branch in branches:
@@ -311,13 +471,10 @@ def main() -> None:
 
             traceback.print_exc()
             failed = True
-    # Traceback or not, a run that spent real money should still account for
-    # where the time went.
     print("\nCumulative LLM wall clock (all branches):")
     print(llm_timing_report())
     if failed:
         sys.exit(1)
-
 
 if __name__ == "__main__":
     main()

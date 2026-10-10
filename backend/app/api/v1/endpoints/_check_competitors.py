@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from backend.app.api.v1.routes import api_router
 from backend.app.database import models  # noqa: F401 -- registers the tables
 from backend.app.database.connect import Base, get_db
-from backend.app.database.models import Competitor, CompetitorRun, User, Workspace
+from backend.app.database.models import Competitor, CompetitorRun, Workspace
 
 _DB_PATH = tempfile.mkstemp(suffix=".db")[1]
 
@@ -50,7 +50,7 @@ async def _seed() -> tuple[uuid.UUID, uuid.UUID]:
 		async with db.begin():
 			# User.id has no column default in this schema -- the app assigns it at
 			# creation -- so the seed does too.
-			user = User(id=uuid.uuid4(), name="Founder", email=f"{uuid.uuid4().hex}@example.com")
+			pass
 			db.add(user)
 			await db.flush()
 			workspace = Workspace(name="HeatherDB", user_id=user.id)

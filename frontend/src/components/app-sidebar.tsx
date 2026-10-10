@@ -15,8 +15,15 @@ import {
   useSidebar,
   SidebarTrigger
 } from "@/components/ui/sidebar"
-import { Pin, Layers, LayoutGrid, Newspaper, Bookmark, Archive } from "lucide-react"
+import { Pin, Layers, LayoutGrid, Archive, LogInIcon } from "lucide-react"
+import { Link } from "react-router-dom"
 import { getCurrentUser, workspaceDisplayName } from "@/lib/api"
+import { useAuth } from "@/lib/auth"
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar"
 import {
   ensureWorkspacesLoaded,
   toggleWorkspacePin,
@@ -27,29 +34,29 @@ import {
 const data = {
   projects: [
     {
-      name: "Showcase",
-      url: "#",
+      name: "Accounts",
+      url: "/accounts",
       icon: (
         <LayoutGrid
         />
       ),
     },
-    {
-      name: "Industry Latest",
-      url: "#",
-      icon: (
-        <Newspaper
-        />
-      ),
-    },
-    {
-      name: "Bookmark",
-      url: "#",
-      icon: (
-        <Bookmark
-        />
-      ),
-    },
+    // {
+    //   name: "Industry Latest",
+    //   url: "#",
+    //   icon: (
+    //     <Newspaper
+    //     />
+    //   ),
+    // },
+    // {
+    //   name: "Bookmark",
+    //   url: "#",
+    //   icon: (
+    //     <Bookmark
+    //     />
+    //   ),
+    // },
     {
       name: "Archive",
       url: "/archive",
@@ -64,6 +71,7 @@ const data = {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { state } = useSidebar()
   const { workspaces } = useWorkspaces()
+  const { user: authUser } = useAuth()
   const [user, setUser] = React.useState<{
     name: string
     email: string
@@ -73,17 +81,34 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   React.useEffect(() => {
     ensureWorkspacesLoaded()
     let cancelled = false
+    if (!authUser) {
+      setUser(null)
+      return
+    }
     void getCurrentUser()
       .then((me) => {
         if (cancelled) return
-        console.log(`>> ${me.name}`)
-        setUser({ name: me.name, email: me.email, avatar: me.avatar_url ?? "" })
+        setUser({
+          name: me.name ?? authUser.email ?? "User",
+          email: me.email ?? "",
+          avatar: me.avatar_url ?? "",
+        })
       })
-      .catch(() => {})
+      .catch(() => {
+        if (cancelled) return
+        setUser({
+          name:
+            (authUser.user_metadata?.full_name as string | undefined) ??
+            authUser.email ??
+            "User",
+          email: authUser.email ?? "",
+          avatar: (authUser.user_metadata?.avatar_url as string | undefined) ?? "",
+        })
+      })
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [authUser])
 
   const toNavItem = (workspace: (typeof workspaces)[number]) => ({
     id: workspace.id,
@@ -129,7 +154,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavProjects projects={data.projects} />
       </SidebarContent>
       <SidebarFooter>
-        {user && <NavUser user={user} />}
+        {user ? (
+          <NavUser user={user} />
+        ) : (
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton size="lg" render={<Link to="/auth/login" />}>
+                <LogInIcon className="size-4" />
+                <span>Sign in</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        )}
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

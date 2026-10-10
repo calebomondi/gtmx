@@ -25,10 +25,6 @@ import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { DiscoveryInterruptPicker } from "@/components/interrupt-panel"
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import {
-  SocialConnect,
-  type SocialPlatformId,
-} from "@/components/social-connect"
 import { COUNTRIES, normalizeCountry } from "@/lib/countries"
 import { useDiscovery } from "@/hooks/use-discovery"
 
@@ -124,7 +120,6 @@ export function NewWorkspaceForm({
   const [productName, setProductName] = useState("")
   const [websiteUrl, setWebsiteUrl] = useState("")
   const [description, setDescription] = useState("")
-  const [connected, setConnected] = useState<SocialPlatformId[]>([])
   const [targetGeo, setTargetGeo] = useState<Option[]>([])
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null)
   const [confirmed, setConfirmed] = useState(false)
@@ -152,14 +147,9 @@ export function NewWorkspaceForm({
   const clarifyUrl =
     awaiting && currentInterrupt?.interrupt_type === "url_unscrappable"
 
-  // The social branch never reaches the offer type: with no URL to scrape and
-  // no account connected yet, the name is the business name either way.
+  // The manual branch has no URL to scrape, so the name matters most either way.
   const nameLabel =
-    source === "social"
-      ? "Business name"
-      : offerType === "service"
-        ? "Service name"
-        : "Product name"
+    offerType === "service" ? "Service name" : "Product name"
 
   // Every remaining piece of product/service-flavoured copy hangs off this one
   // word. All of it stays to a single line on purpose: the name and URL fields
@@ -169,7 +159,7 @@ export function NewWorkspaceForm({
 
   const nameHint =
     source === "social"
-      ? "Names your workspace, and seeds the account handles below."
+      ? "Names your workspace and what you offer."
       : `Which ${offerNoun} should I focus on.`
 
   // Mirrors the definitions the offer interview uses, so the toggle and the
@@ -190,16 +180,9 @@ export function NewWorkspaceForm({
     if (productName.trim().length === 0) return false
 
     return source === "website"
-      ? websiteUrl.trim().length > 0
-      : description.trim().length > 0 && connected.length > 0
-  }, [productName, websiteUrl, description, connected, source])
-
-  const togglePlatform = (id: SocialPlatformId) =>
-    setConnected((current) =>
-      current.includes(id)
-        ? current.filter((existing) => existing !== id)
-        : [...current, id],
-    )
+      ? websiteUrl.trim().length > 0 && targetGeo.length > 0
+      : description.trim().length > 0 && targetGeo.length > 0
+  }, [productName, websiteUrl, description, targetGeo, source])
 
   const handleSourceChange = (next: SourceMode) => {
     setDirection(next === "social" ? 1 : -1)
@@ -290,14 +273,6 @@ export function NewWorkspaceForm({
       return
     }
 
-    // Social-sourced discovery has no backend yet — DiscoveryRequest requires
-    // a product_url — so this branch validates and then intentionally stops.
-    // The note under the button says as much rather than leaving the user
-    // guessing why nothing happened.
-    if (source === "social") {
-      return
-    }
-
     if (!isFormReady || isDiscovering) {
       return
     }
@@ -307,11 +282,10 @@ export function NewWorkspaceForm({
     setConfirmed(false)
     void start({
       product_name: productName,
-      product_url: websiteUrl,
-      // Sent even though the social branch can't start discovery yet: the
-      // backend default is "product", so a social workspace that ships later
-      // without this field would silently get the product specialist roster.
+      product_url: source === 'social' ? '' : websiteUrl,
+      offer_description: source === 'social' ? description.trim() : undefined,
       offer_type: offerType,
+      source: source === 'social' ? 'manual' : 'website',
       target_geo:
         targetGeo.length > 0
           ? targetGeo.map((option) => normalizeCountry(option.value))
@@ -340,6 +314,7 @@ export function NewWorkspaceForm({
               <SourceToggle
                 value={source}
                 onValueChange={handleSourceChange}
+                disabled={isDiscovering || clarifyUrl}
               />
 
               <FieldGroup>
@@ -359,7 +334,7 @@ export function NewWorkspaceForm({
                 >
                   {/* `gap-5` mirrors FieldGroup's own rhythm, which the
                       wrapper now sits between and would otherwise double up. */}
-                  <div ref={branchRef} className="flex flex-col gap-5">
+                  <div ref={branchRef} className="flex max-h-[60vh] flex-col gap-5 overflow-y-auto">
                     <div className='flex flex-col gap-2 items-start justify-start'>
                       <p className="text-foreground font-medium">What are you offering?</p>
                       {/* Kept at the group's intrinsic width rather than stretched
@@ -385,20 +360,21 @@ export function NewWorkspaceForm({
                         value={[offerType]}
                         onValueChange={(next) => {
                           const [picked] = next
-                          if (picked) setOfferType(picked as OfferType)
+                          if (picked && !isDiscovering && !clarifyUrl) setOfferType(picked as OfferType)
                         }}
                         variant='outline'
                         size='lg'
                         spacing={0}
+                        disabled={isDiscovering || clarifyUrl}
                       >
                         {/* Only the padding is overridden. Height and type come
                             from `size='lg'`; re-declaring them here is how the
                             button and its pressed background end up disagreeing
                             about how tall the control is. */}
-                        <ToggleGroupItem value='product' className='px-4'>
+                        <ToggleGroupItem value='product' className='px-4' disabled={isDiscovering || clarifyUrl}>
                           Product
                         </ToggleGroupItem>
-                        <ToggleGroupItem value='service' className='px-4'>
+                        <ToggleGroupItem value='service' className='px-4' disabled={isDiscovering || clarifyUrl}>
                           Service
                         </ToggleGroupItem>
                       </ToggleGroup>
@@ -478,12 +454,12 @@ export function NewWorkspaceForm({
                           <>
                             <Field>
                               <FieldLabel htmlFor="business-description">
-                                What does your business do?{" "}
+                                What does the {offerNoun} do?{" "}
                                 <span className="text-[var(--destructive)]">*</span>
                               </FieldLabel>
                               <FieldDescription>
-                                A sentence or two. What you post about this is a strong signal for
-                                who your customers are.
+                                Describe it explicitly — what it is and what it does. A couple of
+                                sentences is enough, but be specific: this is my only source.
                               </FieldDescription>
                               <Textarea
                                 id="business-description"
@@ -496,26 +472,8 @@ export function NewWorkspaceForm({
                                 // out from under the cursor.
                                 field-sizing-fixed
                                 rows={4}
+                                className="max-h-48 overflow-y-auto"
                                 required
-                                disabled={isDiscovering || clarifyUrl}
-                              />
-                            </Field>
-                        
-                            <Field>
-                              {/* No htmlFor: each account is its own toggle button, so there is no
-                                  single element to point a label at. The section reads as a
-                                  group instead. */}
-                              <FieldLabel>
-                                Connect your accounts{" "}
-                                <span className="text-[var(--destructive)]">*</span>
-                              </FieldLabel>
-                              <FieldDescription>
-                                Link the accounts you post from. Connect at least one.
-                              </FieldDescription>
-                              <SocialConnect
-                                businessName={productName}
-                                connected={connected}
-                                onToggle={togglePlatform}
                                 disabled={isDiscovering || clarifyUrl}
                               />
                             </Field>
@@ -532,9 +490,13 @@ export function NewWorkspaceForm({
                       point at. `commandProps.label` carries the accessible name
                       instead. */}
                   <FieldLabel>
-                    Target Geo <span className="text-xs">(optional)</span>
+                    Target Geo <span className="text-[var(--destructive)]">*</span>
                   </FieldLabel>
-                  <FieldDescription>Leave empty for me to decide</FieldDescription>
+                  <FieldDescription>
+                    {offerType === "service"
+                      ? "Where you want to offer this service"
+                      : "Where you target to sell this product"}
+                  </FieldDescription>
                   <MultipleSelector
                     value={targetGeo}
                     onChange={setTargetGeo}
@@ -572,19 +534,6 @@ export function NewWorkspaceForm({
 
                     {/* Lives below the measured block, so it animates its own
                         height rather than relying on the wrapper. */}
-                    <AnimatePresence initial={false}>
-                      {source === "social" && (
-                        <motion.p
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: "auto" }}
-                          exit={{ opacity: 0, height: 0 }}
-                          transition={reduceMotion ? { duration: 0 } : { duration: 0.3, ease: EASE_OUT }}
-                          className="overflow-hidden text-center text-xs text-muted-foreground"
-                        >
-                          Social-sourced workspaces are coming soon.
-                        </motion.p>
-                      )}
-                    </AnimatePresence>
                   </div>
                 </Field>
               </FieldGroup>

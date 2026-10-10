@@ -51,6 +51,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import type { ProjectDto } from '@/lib/api'
+import { useAuth } from '@/lib/auth'
 import {
   archiveProjectAction,
   createProject,
@@ -229,6 +230,8 @@ function ProjectColumn({
 
 export function ProjectsComponent() {
   const { projects } = useProjects()
+  const { user: authUser } = useAuth()
+  const navigate = useNavigate()
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [draftName, setDraftName] = useState('')
@@ -417,6 +420,10 @@ export function ProjectsComponent() {
             size="sm"
             className="cursor-pointer rounded-md bg-[#FEA853] text-black hover:bg-[#FEA853]"
             onClick={() => {
+              if (!authUser) {
+                navigate('/auth/login')
+                return
+              }
               setError(null)
               setDraftName('')
               setCreateOpen(true)
@@ -428,7 +435,15 @@ export function ProjectsComponent() {
         </div>
 
         {!hasProjects ? (
-          <EmptyProjects onCreate={() => setCreateOpen(true)} />
+          <EmptyProjects
+            onCreate={() => {
+              if (!authUser) {
+                navigate('/auth/login')
+                return
+              }
+              setCreateOpen(true)
+            }}
+          />
         ) : (
           <Card>
             <CardContent className="pt-6">

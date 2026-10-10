@@ -4,6 +4,30 @@ import random
 import re
 import threading
 from langchain_qwq import ChatQwen
+
+
+class _ChatQwen(ChatQwen):
+    """ChatQwen whose `_support_tool_choice` does not clobber enable_thinking.
+
+    The base implementation sets `self.enable_thinking = False` for any model
+    without "thinking" in its name — which silently breaks chat completions on
+    models that only accept enable_thinking=True (e.g. qwen3.7-max), because
+    with_structured_output goes through tool-choice checks first."""
+
+    def _support_tool_choice(self) -> bool:
+        return True
+
+    def with_structured_output(self, schema, **kwargs):
+        saved = self.enable_thinking
+        try:
+            # Thinking mode rejects tool_choice="required" (function_calling),
+            # so fall back to json_mode for thinking models.
+            if self.enable_thinking and "method" not in kwargs:
+                kwargs["method"] = "json_mode"
+            return super().with_structured_output(schema, **kwargs)
+        finally:
+            # Base impl force-disables thinking on non-"thinking"-named models.
+            self.enable_thinking = saved
 from langchain_openai import ChatOpenAI
 from typing import Any, Sequence
 
@@ -13,7 +37,7 @@ from config import Config
 cfg = Config()
 
 QWEN_MODELS = [
-    "qwen3.6-35b-a3b",  
+    "qwen3.8-max",  
 ]
 
 # Cheap text-only tier, for bulk mechanical work that doesn't need a flagship
@@ -23,7 +47,7 @@ QWEN_MODELS = [
 # a run that routes its high-volume extraction work there is what pushes the
 # account into tokens-per-minute throttling in the first place.
 CHEAP_QWEN_MODELS = [
-    "qwen-plus-2025-07-28",
+    "qwen3.8-max",
 ]
 
 
@@ -42,6 +66,11 @@ _DOWN_MODELS: set[tuple[str, str]] = set()
 # ANY enable_thinking=True). Once learned, all calls to that model run with
 # thinking disabled so we stop paying a 400 round-trip per call.
 _NO_THINKING_MODELS: set[tuple[str, str]] = set()
+
+# Inverse learning: models that REJECT enable_thinking=False (some only
+# accept thinking=True). Once learned, retry/run them with thinking enabled
+# instead of paying a 400 round-trip per call.
+_FORCE_THINKING_MODELS: set[tuple[str, str]] = {("qwen", "qwen3.8-2.4t-a95b")}
 
 # Per-log_label wall-clock accounting, so a run can be attributed rather than
 # guessed at. `log_label` is the only stable identity a call site has, and it is
@@ -338,6 +367,9 @@ def _llm(
             # Learned to reject enable_thinking — run it non-thinking.
             thinking = False
             thinking_budget = None
+        if (provider, m) in _FORCE_THINKING_MODELS:
+            # Learned to require thinking — always send it enabled.
+            thinking = True
         logger.info("Using Qwen (%s, thinking=%s, budget=%s)", m, thinking, thinking_budget)
         kwargs = {"enable_thinking": thinking}
         if thinking_budget is not None:
@@ -347,11 +379,11 @@ def _llm(
             # _NO_THINKING_MODELS learning would otherwise have to undo with a
             # wasted 400 round-trip on every fresh process.
             kwargs["thinking_budget"] = thinking_budget
-        return ChatQwen(
+        return _ChatQwen(
             model=m,
             api_key=cfg.dashscope_api_key,
             base_url=cfg.dashscope_base_url,
-            timeout=300,
+            timeout=600,
             **kwargs,
         )
 
@@ -460,6 +492,20 @@ def invoke_structured_with_fallback(
                         _NO_THINKING_MODELS.add((provider, model))
                         logger.info(
                             "%s: %s/%s rejected thinking; retrying same model with thinking off",
+                            log_label, provider, model,
+                        )
+                        continue
+                    is_thinking_required = (
+                        not thinking
+                        and "enable_thinking" in err_str
+                        and ("restricted to true" in err_str or "restricted_to_true" in err_str)
+                    )
+                    if is_thinking_required and (provider, model) not in _FORCE_THINKING_MODELS:
+                        # This model only accepts thinking ON. Learn it and retry
+                        # the same model with thinking enabled immediately.
+                        _FORCE_THINKING_MODELS.add((provider, model))
+                        logger.info(
+                            "%s: %s/%s requires thinking; retrying same model with thinking on",
                             log_label, provider, model,
                         )
                         continue

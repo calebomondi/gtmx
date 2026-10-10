@@ -14,7 +14,7 @@ search to gate. That absence is the point, and the structural asserts below
 
 import sys
 
-import agents.sub_agents.build_icp as b
+import agents.sub_agents.discover.build_icp as b
 from agents.states import CompetitionExtraction, ICP, IcpFindings, MarketExtraction
 from agents.sub_agents.schema_states import Specialist
 

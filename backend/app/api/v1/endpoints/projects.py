@@ -7,6 +7,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from backend.app.api.deps import AuthUser, require_matching_user
 from backend.app.database import models
 from backend.app.database.connect import get_db
 from backend.app.naming import title_case
@@ -20,15 +21,6 @@ from backend.app.schemas.projects import (
 
 router = APIRouter()
 
-
-async def _ensure_user(user_id: uuid.UUID, db: AsyncSession) -> models.User:
-    user = await db.get(models.User, user_id)
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
-    return user
 
 
 def _load_options():
@@ -80,9 +72,9 @@ async def list_projects(
     user_id: uuid.UUID,
     archived: bool = False,
     db: Annotated[AsyncSession, Depends(get_db)] = None,
+    _current_user: Annotated[AuthUser, Depends(require_matching_user)] = None,
 ):
     """Live projects by default; pass `?archived=true` for the archive page."""
-    await _ensure_user(user_id, db)
     result = await db.execute(
         select(models.Project)
         .options(_load_options())
@@ -108,8 +100,8 @@ async def create_project(
     user_id: uuid.UUID,
     payload: ProjectCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
+    _current_user: Annotated[AuthUser, Depends(require_matching_user)] = None,
 ):
-    await _ensure_user(user_id, db)
     name = title_case(payload.name)
     if not name:
         raise HTTPException(
@@ -157,10 +149,10 @@ async def order_projects(
     user_id: uuid.UUID,
     payload: ProjectOrder,
     db: Annotated[AsyncSession, Depends(get_db)],
+    _current_user: Annotated[AuthUser, Depends(require_matching_user)] = None,
 ):
     """Persist the two-bucket drag order. Projects listed move to that bucket
     with a rewritten position; unlisted projects are left untouched."""
-    await _ensure_user(user_id, db)
     ids = [*payload.priority, *payload.other]
     if not ids:
         return
