@@ -95,6 +95,14 @@ class Settings(BaseSettings):
             )
         return f"postgresql://{rest}"
 
+    @field_validator("llm_models", "llm_cheap_models")
+    @classmethod
+    def _require_models(cls, value: list[str]) -> list[str]:
+        # Fail at startup, not on the first LLM call of some user's run.
+        if not value:
+            raise ValueError("at least one model is required")
+        return value
+
     @field_validator("allowed_origins", "llm_models", "llm_cheap_models", mode="before")
     @classmethod
     def _parse_str_list(cls, value):
