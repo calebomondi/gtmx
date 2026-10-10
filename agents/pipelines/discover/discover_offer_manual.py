@@ -19,7 +19,7 @@ from langgraph.types import interrupt, Command
 
 from agents.helpers import as_follow_up, normalize_optional_text
 
-from ..schema_states import DiscoverOfferState
+from agents.schemas.sessions import DiscoverOfferState
 from .discover_offer import retrieve_rest_product_service_info
 
 

@@ -61,7 +61,7 @@ from langgraph.graph import END, START, StateGraph
 from config import get_settings
 from agents.context_budget import distill_documents
 from agents.llm.main import invoke_structured_with_fallback
-from agents.states import IdealCompetitorProfile
+from agents.schemas.competition import IdealCompetitorProfile
 from data_sources.scraping.exa import scrape_url, search_and_scrape
 
 from ..web_utils import call_with_timeout, search_cache_get, search_cache_put, timed_node
@@ -86,17 +86,8 @@ def _search_and_scrape(query, config, num_results=5, start_published_date=None):
     )
     return search_cache_put(key, results or [])
 
-from ..schema_states import (
-    CandidateFinding,
-    CompetitorHuntBundle,
-    CompetitorHuntPlan,
-    CompetitorHuntTask,
-    CompetitorProfile,
-    CompetitorProfileBatch,
-    CompetitorRunOutcome,
-    CompetitorSessionState,
-    SourcedFinding,
-)
+from agents.schemas.competition import CandidateFinding, CompetitorHuntBundle, CompetitorHuntPlan, CompetitorHuntTask, CompetitorProfile, CompetitorProfileBatch, CompetitorRunOutcome, SourcedFinding
+from agents.schemas.sessions import CompetitorSessionState
 
 
 # Bounds. The archetype count comes from the profile (3-8 in practice); the

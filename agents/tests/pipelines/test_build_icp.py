@@ -53,14 +53,10 @@ while root != root.parent:
 sys.path.insert(0, str(root))
 
 from agents.llm.main import llm_timing_report  # noqa: E402
-from agents.states import (  # noqa: E402
-    CompetitionExtraction,
-    CompetitorArchetype,
-    ICP,
-    IdealCompetitorProfile,
-    MarketExtraction,
-)
-from agents.pipelines.schema_states import Specialist  # noqa: E402
+from agents.schemas.competition import CompetitionExtraction, CompetitorArchetype, IdealCompetitorProfile  # noqa: E402
+from agents.schemas.icp import ICP  # noqa: E402
+from agents.schemas.market import MarketExtraction  # noqa: E402
+from agents.schemas.research import Specialist  # noqa: E402
 import agents.pipelines.discover.build_icp as icp  # noqa: E402
 from agents.pipelines.discover.build_icp import build_icp_graph  # noqa: E402
 import pytest

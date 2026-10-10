@@ -1,5 +1,5 @@
 from utils.log import logger
-from .states import OfferDataSnapshot, FollowUp, IndepthIntakeStep, IntakeStep, MarketExtraction, CompetitionExtraction, ICP
+from agents.schemas.offer import FollowUp, OfferDataSnapshot
 from .context_budget import offer_brief
 
 import re
@@ -18,32 +18,6 @@ def as_follow_up(value):
         return FollowUp(**value)
     return value
 
-
-def market_context_block(market_data: MarketExtraction | None) -> str:
-    """Render the market understanding so the GTM specialist can scope the ICP."""
-    if not market_data:
-        return "No market data available — scope to the offer/category alone."
-    return market_data.model_dump_json(indent=2, exclude_none=True)
-
-
-def competition_context_block(competition_data: CompetitionExtraction | None) -> str:
-    """Render the offer-vs-standard SWOD so the GTM specialist has the
-    competitive context behind its competitor leads (accounts/audiences
-    evaluating or using competitors are prime targets).
-
-    The named competitor list this used to render is gone from
-    CompetitionExtraction — the stage now emits archetypes, and real rivals come
-    from the standalone get_competitors agent. Named leads still reach the GTM
-    specialist through the competition FINDINGS prose, which retained the rivals
-    the research actually named.
-    """
-    if not competition_data:
-        return "No competition data available."
-    return competition_data.model_dump_json(indent=2, exclude_none=True)
-
-
-def icp_block(icp: ICP | None) -> str:
-    return icp.model_dump_json(indent=2, exclude_none=True) if icp else "No ICP available."
 
 PLACEHOLDER_VALUES = {
     "", "none", "null", "nil", "na", "n/a", "unknown",
@@ -128,30 +102,6 @@ def format_offer_material(snapshot: OfferDataSnapshot, scraped_content: str | No
 
     href = url or f"{name} (user-provided material)"
     return f'<Document href="{href}"/>\n{name} — {noun}\'s own material\n-----\n{body}\n</Document>'
-
-
-def merge_snapshot(snapshot: OfferDataSnapshot, step: IndepthIntakeStep | IntakeStep | MarketExtraction) -> OfferDataSnapshot:
-    updates = step.model_dump(exclude_none=True, exclude={"follow_up_question"})
-    fill = {}
-    for field, value in updates.items():
-        if not hasattr(snapshot, field):
-            # Extraction-only fields (pricing_source, market_fit_reasoning, ...)
-            # feed the report, not the profile schema — skip them.
-            continue
-        value = normalize_optional_text(value)
-        if value is None:
-            continue
-        current = getattr(snapshot, field)
-        if current in (None, "", [], {}) and value not in (None, "", [], {}):
-            fill[field] = value
-    return (
-        OfferDataSnapshot.model_validate({
-            **snapshot.model_dump(),
-            **fill,
-        })
-        if fill
-        else snapshot
-    )
 
 
 _URL_RE = re.compile(r"^\s*(https?://)", re.IGNORECASE)

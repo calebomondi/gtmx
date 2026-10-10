@@ -28,7 +28,7 @@ from langgraph.graph import START, END, StateGraph
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
-from agents.pipelines.schema_states import DiscoverySessionState
+from agents.schemas.sessions import DiscoverySessionState
 from agents.pipelines.discover.discover_offer import build_offer_discovery_graph
 from agents.pipelines.discover.discover_offer_manual import build_manual_offer_discovery_graph
 from agents.pipelines.discover.create_specialists import build_specialist_graph

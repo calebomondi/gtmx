@@ -17,15 +17,9 @@ exercising a dead loop.
 import sys
 
 import agents.pipelines.discover.understand_competition as uc
-from agents.states import (
-    CompetitionExtraction,
-    CompetitionFindings,
-    CompetitionRecord,
-    CompetitorArchetype,
-    IdealCompetitorProfile,
-    MarketExtraction,
-)
-from agents.pipelines.schema_states import ResearchTask, Specialist, TaskList
+from agents.schemas.competition import CompetitionExtraction, CompetitionFindings, CompetitionRecord, CompetitorArchetype, IdealCompetitorProfile
+from agents.schemas.market import MarketExtraction
+from agents.schemas.research import ResearchTask, Specialist, TaskList
 
 
 # --- stub Exa: first query for each task returns nothing, second returns docs ---

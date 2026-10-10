@@ -15,8 +15,10 @@ search to gate. That absence is the point, and the structural asserts below
 import sys
 
 import agents.pipelines.discover.build_icp as b
-from agents.states import CompetitionExtraction, ICP, IcpFindings, MarketExtraction
-from agents.pipelines.schema_states import Specialist
+from agents.schemas.competition import CompetitionExtraction
+from agents.schemas.icp import ICP, IcpFindings
+from agents.schemas.market import MarketExtraction
+from agents.schemas.research import Specialist
 
 
 def fake_llm(messages, schema=None, **kw):

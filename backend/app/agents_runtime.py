@@ -3,7 +3,9 @@ once with a durable AsyncPostgresSaver (same database as the app) so
 discovery interrupts and phase progress survive per thread_id."""
 
 import enum
+import importlib
 import inspect
+import pkgutil
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
@@ -11,8 +13,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel
 
-import agents.states
-import agents.pipelines.schema_states
+import agents.schemas
 from agents.discovery_agent import build_discovery_agent
 
 from utils.log import logger
@@ -26,9 +27,8 @@ from utils.log import logger
 # ResearchTask, ...) are serialized as their own entries, so deriving the whole
 # set rather than listing only the top-level ones is what covers them.
 #
-# Two modules, because the discovery agent's session models live in
-# agents.pipelines.schema_states (Specialist, Perspectives, TaskList, ...)
-# while MarketExtraction/CompetitionExtraction/ICP stay in agents.states.
+# Every module in the agents.schemas package is scanned, discovered rather than
+# listed, so a new schema module is covered without touching this file.
 #
 # Derived, not hand-listed: a literal list silently drifts as soon as anyone
 # adds a model, which is exactly how BuyerType and ProductCategory came to be
@@ -40,7 +40,10 @@ from utils.log import logger
 # them would allowlist pydantic.main and enum. Over-admitting a type that never
 # reaches a checkpoint is harmless -- this list exists to avoid the warnings and
 # the future hard block, it is not a trust boundary.
-_CHECKPOINT_MODULES = (agents.states, agents.pipelines.schema_states)
+_CHECKPOINT_MODULES = tuple(
+    importlib.import_module(f"agents.schemas.{info.name}")
+    for info in pkgutil.iter_modules(agents.schemas.__path__)
+)
 _CHECKPOINT_TYPES = [
     (module.__name__, name)
     for module in _CHECKPOINT_MODULES

@@ -11,8 +11,8 @@ without spending a token or touching the network.
 import sys
 
 import agents.pipelines.discover.understand_market as um
-from agents.states import MarketExtraction, MarketFindings
-from agents.pipelines.schema_states import ResearchTask, Specialist, TaskList
+from agents.schemas.market import MarketExtraction, MarketFindings
+from agents.schemas.research import ResearchTask, Specialist, TaskList
 
 
 # --- stub Exa: first query for each task returns nothing, second returns docs ---

@@ -1,142 +1,25 @@
-import json
-import operator
-from typing import TypedDict, List, Optional, Literal, Annotated
-from pydantic import BaseModel, Field, field_validator
+"""LangGraph state schemas (TypedDicts) for each pipeline and the top-level discovery session."""
 
+import operator
+from typing import Annotated, List, Literal, Optional, TypedDict
+
+from pydantic import Field
 from langgraph.graph.message import add_messages
 
-# TaskResearchBundle is deliberately imported from the canonical module rather
-# than redefined here. Every model that reaches a LangGraph checkpoint has to be
-# allowlisted by module. backend/app/agents_runtime.py derives that allowlist by
-# reflecting over BOTH `agents.states` and this module, keeping a class only when
-# its `__module__` equals the module it was found in -- so a model DEFINED here is
-# allowlisted under `agents.pipelines.schema_states`, and one merely IMPORTED
-# here is not (which is why this import list must not be mistaken for the
-# allowlist). Defining a duplicate here instead of importing it would work, but
-# would give the same class two identities and two checkpoint representations.
-from agents.states import (
-    AccountList,
+from agents.schemas.accounts import AccountList
+from agents.schemas.competition import (
     CompetitionExtraction,
-    FollowUp,
-    ICP,
+    CompetitorHuntBundle,
+    CompetitorHuntTask,
+    CompetitorProfile,
+    CompetitorRunOutcome,
     IdealCompetitorProfile,
-    IcpFindings,
-    MarketExtraction,
-    TaskResearchBundle,
 )
+from agents.schemas.icp import ICP
+from agents.schemas.market import MarketExtraction
+from agents.schemas.offer import FollowUp
+from agents.schemas.research import Specialist, TaskList
 
-# SCHEMAS AND STATES
-
-# -- SPECIAlISTS --
-
-class Specialist(BaseModel):
-    domain: Literal["product", "service", "market", "competition", "gtm"] = Field(
-        description="Which of the five research domains this specialist covers. 'product' or 'service' is the offer's own domain expert; the other three are market, competition and go-to-market. Required rather than inferred so a consumer can select the right specialist from a team without relying on list position -- without it, picking the product specialist out of OfferSessionState.specialists is guesswork.",
-    )
-    affiliation: str = Field(
-        description="Primary affiliation of the specialist.",
-    )
-    name: str = Field(
-        description="Name of the specialist."
-    )
-    role: str = Field(
-        description="Role of the specialist in the context of the topic.",
-    )
-    description: str = Field(
-        description="Description of the specialist focus, concerns, and motives.",
-    )
-    @property
-    def persona(self) -> str:
-        return (
-            f"Name: {self.name}\n"
-            f"Role: {self.role}\n"
-            f"Domain: {self.domain}\n"
-            f"Affiliation: {self.affiliation}\n"
-            f"Description: {self.description}\n"
-        )
-
-class Perspectives(BaseModel):
-    specialists: List[Specialist] = Field(
-        description="Comprehensive list of the product/service specialist with their roles and affiliations.",
-    )
-
-# -- TASKS --
-
-def _extract_json_value(text: str):
-    """Tolerant JSON extraction, mirroring llm/main._json_from_text but taking
-    the EARLIEST opening bracket, so a bare top-level array beats the object
-    brace inside it.
-
-    If a whole-string parse fails, pull the first valid JSON value out of the
-    text: models habitually append a stray brace after the closing bracket of a
-    list field ('...] }') or wrap the answer in prose/fences, and raw_decode
-    stops after the first complete value, ignoring the trailing garbage.
-    """
-    decoder = json.JSONDecoder()
-
-    def _positions(offset: int) -> list[int]:
-        found = [text.find(k, offset) for k in ("{", "[")]
-        return [p for p in found if p != -1]
-
-    positions = _positions(0)
-    idx = min(positions) if positions else -1
-    while idx != -1:
-        try:
-            obj, _ = decoder.raw_decode(text[idx:])
-            return obj
-        except json.JSONDecodeError:
-            positions = _positions(idx + 1)
-            idx = min(positions) if positions else -1
-    return text
-
-
-def _coerce_json(value):
-    """Accept a JSON string where a list is expected.
-
-    Qwen models habitually serialise a list field as a JSON *string* even when
-    the schema declares `list[...]` -- and frequently with trailing stale
-    characters, so the string does not even parse whole. Without this,
-    `TaskList.tasks` arrives as an unclean string, pydantic rejects it, and the
-    planner falls into llm.main's `_try_repair_structured`, which re-asks the
-    model: a full second flagship round-trip every time the habit fires. Same
-    pattern `agents.states` applies to its Interview plans; this local mirror
-    keeps pipelines' models self-contained.
-    """
-    if isinstance(value, str):
-        try:
-            return json.loads(value)
-        except (json.JSONDecodeError, TypeError):
-            return _extract_json_value(value)
-    return value
-
-
-class ResearchTask(BaseModel):
-    area: str = Field(description="The knowledge-gap area this task closes")
-    objective: str = Field(description="What this task must establish — a research goal, not a search string")
-    queries: list[str] = Field(
-        default_factory=list,
-        description="2 independent web-search queries, ordered most specific first; the second is the broad fallback. NEVER include the offer's or brand's name — research the DOMAIN/CATEGORY the offer sits in, so the sources describe the category rather than the offer",
-    )
-
-    @field_validator("queries", mode="before")
-    @classmethod
-    def _coerce_queries(cls, v):
-        v = _coerce_json(v)
-        if isinstance(v, list):
-            return [q for q in v if isinstance(q, str)]
-        return v  # not a list: let pydantic raise its own type error
-
-
-class TaskList(BaseModel):
-    tasks: list[ResearchTask] = Field(default_factory=list, description="The research tasks to execute this round")
-
-    @field_validator("tasks", mode="before")
-    @classmethod
-    def _coerce_tasks(cls, v):
-        return _coerce_json(v)
-
-
-# -- SESSION STATE --
 
 class OfferSessionState(TypedDict):
     # Offer Snapshot
@@ -273,8 +156,6 @@ class MarketSessionState(TypedDict):
 
     # --Completion--
     market_complete: bool = Field(default=False, description="")
-
-    # --
 
 
 class CompetitionSessionState(TypedDict):
@@ -504,215 +385,6 @@ class DiscoverySessionState(DiscoverOfferState):
     icp_findings: Optional[str] = Field(default=None, description="GTM-stage notes laying out the ICP and how it will be reached")
     icp_understanding: Optional[str] = Field(default=None, description="Brief standalone synthesis of who the ICP is and where to reach them; target 40 words, maximum 50")
     icp_complete: bool = Field(default=False, description="")
-
-
-
-# ============================================================================
-# COMPETITOR AGENT (get_competitors) -- the epistemic inverse of the competition
-# stage.
-#
-# `IdealCompetitorProfile` above is a CONSTRUCT: "the regional incumbent
-# undercutting on price" makes no claim that any firm exists, which is exactly
-# why it may be aggressive and needs no sourcing. Everything in this section is
-# the opposite -- a claim that a NAMED, REAL company exists and does these
-# things. So the models here are shaped around provenance rather than coverage:
-#
-#   - `CandidateFinding.website` is nullable and a null means the candidate is
-#     DROPPED, because a firm with no findable public site cannot be verified.
-#   - `SourcedFinding` requires `evidence`, so an unsourced assertion about a
-#     real company is unrepresentable rather than merely discouraged.
-#   - `CompetitorProfile.unsourced_fields` names what research could not
-#     establish, so the UI says "not found" instead of rendering a blank that
-#     reads as a finding.
-#
-# The two standards must not blur. In particular the competition stage's "be
-# aggressive, construct freely" instruction has NO place in this agent: an
-# invented weakness attributed to a real named company is a factual error about
-# an identifiable business, not a hypothesis.
-# ============================================================================
-
-
-class CompetitorHuntTask(BaseModel):
-	"""One search assignment: hunt for firms matching one archetype."""
-
-	archetype_label: str = Field(description="The archetype from the ideal profile being hunted")
-	geography_scope: str = Field(
-		description="local | regional | global | any -- carried through so the "
-		"verdict survives to the profile"
-	)
-	objective: str = Field(description="What this task is trying to find")
-	queries: list[str] = Field(
-		default_factory=list,
-		description="Search queries. Must never name the offer itself -- a query "
-		"like 'alternatives to us' returns listicles, not the rivals",
-	)
-
-
-class CompetitorHuntPlan(BaseModel):
-	tasks: list[CompetitorHuntTask] = Field(default_factory=list)
-
-
-class CandidateFinding(BaseModel):
-	"""A firm the hunt turned up, with the evidence that it exists."""
-
-	name: str = Field(description="The company's own name as it brands itself")
-	website: Optional[str] = Field(
-		default=None,
-		description="The company's public website, as it appeared in a retrieved "
-		"source. NULL MEANS DROP: the brief tracks only firms with a findable "
-		"public site, and a candidate whose site could not be read is a "
-		"candidate we cannot verify.",
-	)
-	evidence_urls: list[str] = Field(
-		default_factory=list,
-		description="Retrieved pages that named this company and showed its site. "
-		"Empty is permitted -- a site read off a directory listing still counts -- "
-		"but a name with no traceable origin is a hallucination risk and the "
-		"planner prompt says so.",
-	)
-	why_it_might_match: Optional[str] = Field(
-		default=None,
-		description="One line on why this firm looks like the archetype. A guess "
-		"flagged as a guess, so the screening stage can drop it if it cannot hold up",
-	)
-	geography_hint: Optional[str] = Field(
-		default=None, description="Where the source suggests the firm is based"
-	)
-
-
-class CompetitorHuntBundle(BaseModel):
-	"""What one hunt task found, with the sources behind it."""
-
-	archetype_label: str = ""
-	geography_scope: str = "any"
-	candidates: list[CandidateFinding] = Field(default_factory=list)
-	search_failed: bool = Field(default=False)
-	queries: list[str] = Field(default_factory=list)
-	sources: list[dict] = Field(default_factory=list)
-
-
-class SourcedFinding(BaseModel):
-	"""One claim about a real company, with the proof attached.
-
-	`evidence` is required, not optional. A weakness or a complaint attributed to
-	a named business is a factual assertion about an identifiable company, and an
-	unsourced one is simply a fabrication with extra steps.
-	"""
-
-	text: str = Field(description="The claim, in one line")
-	evidence: str = Field(
-		description="A quote or close paraphrase from a retrieved source showing "
-		"the claim is real. Never a paraphrase of a paraphrase",
-	)
-	source_url: Optional[str] = Field(
-		default=None, description="The page the evidence came from"
-	)
-
-
-class CompetitorSocial(BaseModel):
-	kind: Literal["website", "instagram", "tiktok", "x", "linkedin", "github", "other"] = Field(
-		description="The network. The brief asks for Instagram, TikTok, X and "
-		"LinkedIn; website and github are included because they turn up alongside "
-		"them and a competitor's repo is often its most honest page",
-	)
-	value: str = Field(description="The full profile URL, or the handle if that is all that was found")
-	confidence: Literal["high", "medium", "low"] = Field(
-		default="medium",
-		description="How sure we are the link belongs to THIS company. A handle "
-		"found next to the company name is medium; one read off the company's own "
-		"site is high",
-	)
-
-
-class CompetitorProfile(BaseModel):
-	"""A verified real company, profiled with per-field provenance.
-
-	The inverse of `CompetitorArchetype`. Every field is a claim about a real
-	firm, so the model carries the evidence for each one and names the fields
-	research could not establish.
-	"""
-
-	name: str
-	website: str = Field(description="Required. A firm with no public site is not tracked")
-	description: Optional[str] = Field(default=None, description="What the company does, in its own framing")
-	offering: Optional[str] = Field(default=None, description="The product or service actually sold")
-	positioning: Optional[str] = Field(default=None, description="How it claims to differ")
-	business_model: Optional[str] = Field(default=None)
-	pricing: Optional[str] = Field(
-		default=None,
-		description="Published pricing or its absence. 'No public pricing' is a "
-		"finding; leave null only if pricing was not researched at all",
-	)
-
-	target_customers: Optional[str] = Field(default=None, description="Whom they serve")
-	headquarters: Optional[str] = Field(default=None)
-	geography_scope: Optional[str] = Field(
-		default=None,
-		description="local | regional | global | any -- the local-vs-foreign "
-		"verdict, carried from the archetype that found them and corrected "
-		"against their own site",
-	)
-
-	comparison: Optional[str] = Field(
-		default=None,
-		description="How the user's own offer compares to this firm, on the axes "
-		"the competitor profile establishes",
-	)
-	matched_archetype: Optional[str] = Field(
-		default=None, description="Which archetype of the ideal profile this firm turned out to be"
-	)
-
-	strengths: list[SourcedFinding] = Field(default_factory=list)
-	weaknesses: list[SourcedFinding] = Field(default_factory=list)
-	# Opportunities are a DIFFERENT kind of claim from weaknesses above, and the
-	# brief is explicit that they must exist even with no pain signals at all --
-	# better quality, faster, cheaper. So they are not sourced facts ABOUT the
-	# competitor; they are openings derived from cited facts about them plus the
-	# user's offer. Keeping them in their own field stops a derived opening from
-	# being read as a sourced observation.
-	opportunities: list[str] = Field(default_factory=list)
-	notable_customers: list[str] = Field(default_factory=list)
-
-	pain_signals: list[SourcedFinding] = Field(
-		default_factory=list,
-		description="Specific, evidenced complaints. Empty is a legitimate and "
-		"common outcome -- it is not the same as 'they have no problems'",
-	)
-	customer_sentiment: list[SourcedFinding] = Field(
-		default_factory=list,
-		description="What customers say about them overall. Separate from pain "
-		"signals because a well-loved firm can still beat us on price",
-	)
-
-	tracking_sources: list[CompetitorSocial] = Field(default_factory=list)
-
-	evidence: dict[str, list[str]] = Field(
-		default_factory=dict,
-		description="{field_name: [source_url, ...]} -- which retrieved page backs "
-		"which claim. This is the audit trail for every other field",
-	)
-	unsourced_fields: list[str] = Field(
-		default_factory=list,
-		description="Field names research could NOT establish. The UI renders "
-		"these as 'not found' rather than as empty space",
-	)
-
-
-class CompetitorProfileBatch(BaseModel):
-	profiles: list[CompetitorProfile] = Field(default_factory=list)
-
-
-class CompetitorRunOutcome(BaseModel):
-	"""What one run did, in the shape the API records on the run row."""
-
-	candidates_seen: int = 0
-	found: int = 0
-	dropped: int = 0
-	dropped_reasons: dict[str, int] = Field(
-		default_factory=dict,
-		description="{reason: count}. 'no_public_website' is expected to dominate: "
-		"that is the brief's filter working, not a lossy run",
-	)
 
 
 class CompetitorSessionState(TypedDict):

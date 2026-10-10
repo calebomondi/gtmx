@@ -9,8 +9,9 @@ import sys
 import types
 
 import agents.pipelines.discover.understand_offer as uo
-from agents.states import ProductFindings
-from agents.pipelines.schema_states import OfferSessionState, Perspectives, Specialist, TaskList
+from agents.schemas.offer import ProductFindings
+from agents.schemas.research import Perspectives, Specialist, TaskList
+from agents.schemas.sessions import OfferSessionState
 
 
 # --- stub Exa: first query for each task returns nothing, second returns docs ---

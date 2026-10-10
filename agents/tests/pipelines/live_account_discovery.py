@@ -19,18 +19,9 @@ sys.path.insert(0, str(root))
 import agents.pipelines.accounts.account_discovery as discovery
 from agents.pipelines.accounts.account_discovery import run_account_discovery
 from agents.pipelines.discover.build_icp import build_icp_graph
-from agents.pipelines.schema_states import IcpSessionState
-from agents.states import (
-    AccountList,
-    AccountRecord,
-    ContactRecord,
-    ICP,
-    BuyerPersona,
-    TargetChannel,
-    CompetitorLead,
-    SourceRecord,
-    TriggerEvent,
-)
+from agents.schemas.sessions import IcpSessionState
+from agents.schemas.accounts import AccountList, AccountRecord, ContactRecord, SourceRecord, TriggerEvent
+from agents.schemas.icp import BuyerPersona, CompetitorLead, ICP, TargetChannel
 from agents.tests.pipelines.test_build_icp import BRANCHES
 
 

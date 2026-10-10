@@ -46,8 +46,8 @@ while root != root.parent:
 sys.path.insert(0, str(root))
 
 from agents.llm.main import llm_timing_report  # noqa: E402
-from agents.states import MarketExtraction  # noqa: E402
-from agents.pipelines.schema_states import Specialist  # noqa: E402
+from agents.schemas.market import MarketExtraction  # noqa: E402
+from agents.schemas.research import Specialist  # noqa: E402
 import agents.pipelines.discover.understand_market as um  # noqa: E402
 from agents.pipelines.discover.understand_market import build_market_graph  # noqa: E402
 import pytest
