@@ -8,6 +8,7 @@ from data_sources.scraping.quality import (
     is_usable_body,
     rejection_reason,
 )
+from utils import usage
 from utils.log import logger
 
 
@@ -36,7 +37,8 @@ def scrape_url(url: str, config: Settings) -> str:
     (e.g. a page describing multiple products), all are included.
     """
     exa = _client(config.exa_api_key)
-    result = exa.get_contents([url], text=True, livecrawl="always")
+    with usage.track("exa", "contents"):
+        result = exa.get_contents([url], text=True, livecrawl="always")
     if not result.results:
         raise ValueError(f"No content returned for URL: {url}")
     # Return all results concatenated, so multi-product pages are captured
@@ -63,12 +65,13 @@ def search_and_scrape(
     to sources published after that date — used to keep market research current.
     """
     exa = _client(config.exa_api_key)
-    results = exa.search(
-        query,
-        contents={"text": True},
-        num_results=num_results,
-        start_published_date=start_published_date,
-    )
+    with usage.track("exa", "search"):
+        results = exa.search(
+            query,
+            contents={"text": True},
+            num_results=num_results,
+            start_published_date=start_published_date,
+        )
 
     # NOTE: deliberately NOT forcing `livecrawl` here, unlike scrape_url. Forcing
     # freshness changes result *composition*, not just freshness: with
