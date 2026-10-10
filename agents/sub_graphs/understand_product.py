@@ -7,7 +7,7 @@ from agents.llm.main import invoke_structured_with_fallback
 from agents.states import InterviewState, ProductFindings, SearchQuery
 from agents.context_budget import DEFAULT_CONTEXT_BUDGET, budget_context, distill_documents
 from agents.helpers import as_offer_snapshot, format_offer_material
-from config import Config
+from config import get_settings
 from data_sources.scraping.exa import search_and_scrape
 from utils.log import logger
 
@@ -192,10 +192,10 @@ def search_web(state: InterviewState) -> dict:
     print(f"✅ Search query generated.\n{search_query.search_query}")
 
     print(f"Searching web ...")
-    search_docs = search_and_scrape(search_query.search_query, Config(), num_results=3)
+    search_docs = search_and_scrape(search_query.search_query, get_settings(), num_results=3)
     if not search_docs and search_query.broader_query:
         print(f"Primary search empty — retrying with broader query:\n{search_query.broader_query}")
-        search_docs = search_and_scrape(search_query.broader_query, Config(), num_results=3)
+        search_docs = search_and_scrape(search_query.broader_query, get_settings(), num_results=3)
     print(f"{"✅ Search complete" if search_docs else "❌ Search failed"}")
 
     # Condense each page once, against the query that surfaced it. The note is

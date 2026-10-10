@@ -50,7 +50,6 @@ profile per surviving competitor. Re-running appends: firms already on the list
 are refreshed rather than duplicated, and `last_seen_at` moves.
 """
 
-import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
@@ -59,7 +58,7 @@ from urllib.parse import urlparse
 
 from langgraph.graph import END, START, StateGraph
 
-from config import Config
+from config import get_settings
 from agents.context_budget import distill_documents
 from agents.llm.main import invoke_structured_with_fallback
 from agents.states import IdealCompetitorProfile
@@ -67,8 +66,8 @@ from data_sources.scraping.exa import scrape_url, search_and_scrape
 
 from ..web_utils import call_with_timeout, search_cache_get, search_cache_put, timed_node
 
-_SEARCH_TIMEOUT_S = float(os.environ.get("COMPETITOR_SEARCH_TIMEOUT_S", "20"))
-_SCRAPE_TIMEOUT_S = float(os.environ.get("COMPETITOR_SCRAPE_TIMEOUT_S", "30"))
+_SEARCH_TIMEOUT_S = get_settings().competitor_search_timeout_s
+_SCRAPE_TIMEOUT_S = get_settings().competitor_scrape_timeout_s
 
 
 def _search_and_scrape(query, config, num_results=5, start_published_date=None):
@@ -110,7 +109,7 @@ MAX_CANDIDATES_PER_TASK = 8
 MAX_CANDIDATES_PER_RUN = 24
 # Concurrency for the deep phase: each profile is several network round-trips, so
 # this is the difference between a run finishing in a minute and in five.
-PROFILE_WORKERS = int(os.environ.get("COMPETITOR_PROFILE_WORKERS", "6"))
+PROFILE_WORKERS = get_settings().competitor_profile_workers
 
 # A website has to look like one. The screening stage applies this before a
 # candidate is allowed to become a tracked company -- the brief's filter is "a
@@ -559,7 +558,7 @@ def _hunt_one(task: CompetitorHuntTask) -> CompetitorHuntBundle:
 
     Runs on a worker thread: takes no state and shares nothing mutable.
     """
-    cfg = Config()
+    cfg = get_settings()
     issued: list[str] = []
     docs: list[dict] = []
     seen: set[str] = set()
@@ -574,7 +573,7 @@ def _hunt_one(task: CompetitorHuntTask) -> CompetitorHuntBundle:
 
             # Keep the hunt fresh — stale directory listings poison candidate
             # quality more than a thin result set does.
-            cfg = Config()
+            cfg = get_settings()
             recency_cutoff = (date.today() - timedelta(days=cfg.market_recency_days)).isoformat()
             results = _search_and_scrape(
                 query,
@@ -759,7 +758,7 @@ def _gather_profile_evidence(survivor: dict) -> tuple[str, str]:
     where socials, pricing and geography come from. Neither source can be
     substituted for the other, so both are collected and labelled.
     """
-    cfg = Config()
+    cfg = get_settings()
     chunks: list[str] = []
     seen: set[str] = set()
 

@@ -15,7 +15,6 @@ from agents.llm.main import (
 
 from backend.app.api.deps import require_user, websocket_user
 from backend.app.agents_runtime import get_agent
-from backend.app.config.settings import settings
 from backend.app.schemas.agents import DiscoveryRequest
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.naming import title_case

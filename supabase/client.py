@@ -2,9 +2,9 @@ import os
 from supabase import create_client, Client
 from supabase.client import ClientOptions
 
-from config import Config
+from config import get_settings
 
-cfg = Config()
+cfg = get_settings()
 
 supabase: Client = create_client(
     cfg.supabase_base_url,

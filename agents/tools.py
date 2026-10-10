@@ -1,11 +1,11 @@
 from langchain_core.tools import tool
 
-from config import Config
+from config import get_settings
 from data_sources.scraping.exa import scrape_url as _scrape_url
 from data_sources.scraping.exa import search_and_scrape as _search_and_scrape
 from data_sources.parsing.documents import parse_document as _parse_document
 
-cfg = Config()
+cfg = get_settings()
 
 
 @tool

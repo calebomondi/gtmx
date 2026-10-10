@@ -2,7 +2,7 @@ from functools import lru_cache
 
 from exa_py import Exa
 
-from config import Config
+from config import Settings
 from data_sources.scraping.quality import (
     MIN_SEARCH_CHARS,
     is_usable_body,
@@ -22,7 +22,7 @@ def _client(api_key: str) -> Exa:
     return Exa(api_key=api_key)
 
 
-def scrape_url(url: str, config: Config) -> str:
+def scrape_url(url: str, config: Settings) -> str:
     """Extract clean text content from a URL via Exa.
 
     `livecrawl="always"` is load-bearing. Exa serves `get_contents` from a cache, and
@@ -53,7 +53,7 @@ def scrape_url(url: str, config: Config) -> str:
 
 def search_and_scrape(
     query: str,
-    config: Config,
+    config: Settings,
     num_results: int = 5,
     start_published_date: str | None = None,
 ) -> list[dict]:

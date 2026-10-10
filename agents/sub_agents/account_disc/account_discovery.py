@@ -12,7 +12,6 @@ It can be wired into a parent LangGraph or used as a CLI harness.
 from __future__ import annotations
 
 import json
-import os
 from datetime import date, timedelta
 from typing import Optional
 
@@ -20,7 +19,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import SystemMessage, HumanMessage
 
-from config import Config
+from config import Settings, get_settings
 from agents.llm.main import invoke_structured_with_fallback, cheap_providers
 from agents.states import (
     AccountList,
@@ -41,10 +40,10 @@ from agents.sub_agents.web_utils import (
 )
 
 MAX_QUERY_RESULTS = 4
-_SEARCH_TIMEOUT_S = float(os.environ.get("ACCOUNT_SEARCH_TIMEOUT_S", "20"))
-_SCRAPE_TIMEOUT_S = float(os.environ.get("ACCOUNT_SCRAPE_TIMEOUT_S", "30"))
-_ENRICH_WORKERS = int(os.environ.get("ACCOUNT_ENRICH_WORKERS", "6"))
-_SOCIALS_WORKERS = int(os.environ.get("ACCOUNT_SOCIALS_WORKERS", "6"))
+_SEARCH_TIMEOUT_S = get_settings().account_search_timeout_s
+_SCRAPE_TIMEOUT_S = get_settings().account_scrape_timeout_s
+_ENRICH_WORKERS = get_settings().account_enrich_workers
+_SOCIALS_WORKERS = get_settings().account_socials_workers
 
 
 def _search_and_scrape(query, config, num_results=5, start_published_date=None):
@@ -73,7 +72,7 @@ MAX_PERSONAL_EMAIL_LOOKUPS = 3
 
 # Test/dev fast mode: shrink query fan-out, socials, and extraction excerpt
 # so a live LLM + Exa run completes in ~minutes, not tens of minutes.
-_FAST_DISCOVERY = os.environ.get("ACCOUNT_DISCOVERY_FAST", "").strip().lower() in ("1", "true", "yes")
+_FAST_DISCOVERY = get_settings().account_discovery_fast
 
 
 def _offer_noun_for(state: IcpSessionState) -> str:
@@ -217,8 +216,8 @@ def search_accounts(state: IcpSessionState) -> dict:
     queries = state.get("account_discovery_queries") or []
     if not queries:
         return {"account_discovery_docs": []}
-    cfg = Config()
-    cutoff = _recency_cutoff(getattr(cfg, "market_recency_days", 365))
+    cfg = get_settings()
+    cutoff = _recency_cutoff(cfg.market_recency_days)
     todo = queries[:8 if _FAST_DISCOVERY else 16]
     per_query = run_parallel(
         [
@@ -304,8 +303,8 @@ def extract_accounts(state: IcpSessionState) -> dict:
                 fallback_queries.append(f"{pain} community {geo}")
             fallback_queries.append(f"{noun} users {geo}")
         fallback_queries = list(dict.fromkeys(fallback_queries))[:4 if _FAST_DISCOVERY else 8]
-        cfg = Config()
-        cutoff = _recency_cutoff(getattr(cfg, "market_recency_days", 365))
+        cfg = get_settings()
+        cutoff = _recency_cutoff(cfg.market_recency_days)
         seen = {d["url"] for d in docs}
         fallback_hits = run_parallel(
             [
@@ -405,7 +404,7 @@ def _record_matches_account(raw: dict, account: AccountRecord) -> bool:
 _GENERIC_EMAIL_LOCALS = ("hello", "info", "sales", "contact", "support", "team", "office", "admin")
 
 
-def _domain_emails_from_queries(queries: list[str], acc: AccountRecord, cfg: Config, cutoff: str) -> list[str]:
+def _domain_emails_from_queries(queries: list[str], acc: AccountRecord, cfg: Settings, cutoff: str) -> list[str]:
     """Run targeted Exa queries and return domain-matched emails, de-duplicated."""
     found: list[str] = []
     for query in queries[:2]:
@@ -468,8 +467,8 @@ def collect_socials_and_emails(state: IcpSessionState) -> dict:
     if not accounts or not accounts.accounts:
         return {}
 
-    cfg = Config()
-    cutoff = _recency_cutoff(getattr(cfg, "market_recency_days", 365))
+    cfg = get_settings()
+    cutoff = _recency_cutoff(cfg.market_recency_days)
     docs = state.get("account_discovery_docs") or []
     icp = state.get("icp_data")
     buyer_type = (icp.buyer_type or "b2b").lower() if icp else "b2b"
@@ -727,7 +726,7 @@ def enrich_accounts(state: IcpSessionState) -> dict:
     if not accounts or not accounts.accounts:
         return {}
 
-    cfg = Config()
+    cfg = get_settings()
 
     repaired = run_parallel(
         [lambda a=acc: _enrich_one_account(a, cfg) for acc in accounts.accounts],
@@ -789,7 +788,7 @@ def verify_accounts(state: IcpSessionState) -> dict:
             if not (acc.member_size or acc.event_date):
                 print(f"⚠️ '{acc.name}' kept without audience size / event date.")
 
-        strict_reachability = os.environ.get("ACCOUNT_DISCOVERY_STRICT_REACHABILITY", "").strip().lower() in ("1", "true", "yes")
+        strict_reachability = get_settings().account_discovery_strict_reachability
         has_socials = bool(acc.socials)
         has_email_contacts = any(c.email for c in acc.key_contacts)
         has_linkedin_trigger = bool(acc.trigger_event and acc.trigger_event.source and _LINKEDIN_RE.search(acc.trigger_event.source))

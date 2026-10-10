@@ -32,7 +32,7 @@ from typing import Optional
 from langgraph.graph import START, END, StateGraph
 from langchain_core.messages import SystemMessage
 
-from config import Config
+from config import get_settings
 from agents.llm.main import invoke_structured_with_fallback
 from agents.context_budget import _truncate_to_tokens, budget_context, distill_documents
 from agents.helpers import format_offer_material
@@ -496,7 +496,7 @@ def _research_one(task: ResearchTask) -> TaskResearchBundle:
     Runs on a worker thread, so it takes no state and shares nothing mutable.
     """
     area = task.area or "unnamed area"
-    cfg = Config()
+    cfg = get_settings()
     issued: list[str] = []
     docs: list[dict] = []
     seen: set[str] = set()

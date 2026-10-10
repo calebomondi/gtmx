@@ -16,7 +16,7 @@ from agents.sub_graphs.understand_product import (
     route_messages,
     route_after_question,
 )
-from config import Config
+from config import get_settings
 from data_sources.scraping.exa import search_and_scrape
 from utils.log import logger
 
@@ -171,7 +171,7 @@ def search_web(state: InterviewState) -> dict:
     offer_noun = _offer_type_for(state)
     material = format_offer_material(offer, state.get("scraped_content"), offer_noun)
     markets = ", ".join(offer.target_geo or []) or "not specified"
-    start_published_date = _recency_cutoff(Config().market_recency_days)
+    start_published_date = _recency_cutoff(get_settings().market_recency_days)
     year = date.today().year
 
     print(f"Creating competition search queries...")
@@ -207,7 +207,7 @@ def search_web(state: InterviewState) -> dict:
         if not q:
             continue
         results = search_and_scrape(
-            q, Config(), num_results=3, start_published_date=start_published_date
+            q, get_settings(), num_results=3, start_published_date=start_published_date
         )
         for d in results:
             if d["url"] not in seen:
@@ -219,7 +219,7 @@ def search_web(state: InterviewState) -> dict:
     if not docs and queries.broader_query:
         print(f"Direct/landscape empty — retrying with broader query:\n{queries.broader_query}")
         docs = search_and_scrape(
-            queries.broader_query, Config(), num_results=3,
+            queries.broader_query, get_settings(), num_results=3,
             start_published_date=start_published_date,
         )
     print(f"{"✅ Search complete" if docs else "❌ Search failed"} ({len(docs)} unique docs)")

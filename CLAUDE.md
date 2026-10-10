@@ -72,8 +72,8 @@ backend/app/
   database/models.py        # SQLAlchemy models
   database/migrations/      # Alembic
   schemas/<resource>.py     # pydantic request/response models
-  config/settings.py        # the ONLY place env vars are read
 data_sources/               # external API adapters (Exa, BrightData, parsers)
+config.py                   # Settings: the ONLY place env vars / .env are read (all layers)
 frontend/src/
   features/<feature>/       # components, types, store for one feature
   components/ui/            # shadcn primitives. Generated, so don't hand-edit for features.
@@ -102,7 +102,7 @@ Treat each of these as a review blocker:
 
 - **Silent failure.** `except Exception: pass`, or returning `""`/`None` for a hard error the caller can't tell apart from "no data". Catch narrowly, log with context (`logger.exception`), and raise or return a typed result.
 - **Missing authorization.** Any route that touches a workspace, project, competitor, account or run without going through the ownership dependency in `api/deps.py`.
-- **Env reads outside settings.** `os.environ`/`getenv` anywhere except `config/settings.py` (backend) or `import.meta.env` outside `lib/` (frontend).
+- **Env reads outside settings.** `os.environ`/`getenv`/`load_dotenv` anywhere except root `config.py` (add a field to `Settings` instead), or `import.meta.env` outside `lib/` (frontend).
 - **Dialect-specific code in shared paths.** SQLite-only `connect_args`, raw SQL that only works on one database, or `ALTER TABLE` in app startup.
 - **Blocking the event loop.** Calling sync LLM/HTTP/graph `.invoke()` inside an `async def` without `asyncio.to_thread`, or `time.sleep` in async code.
 - **Unbounded work.** Every LLM, search and scrape call has a timeout. Every list endpoint has a limit. Every agent run has a wall-clock cap.

@@ -20,7 +20,7 @@ The one deliberate departure from the offer stage is RECENCY. Domain conventions
 are stable and the offer stage does not recency-gate its searches; markets
 decay. Demand, pricing norms, channels and adoption barriers change on a
 year-ish horizon, so every market search passes
-`start_published_date = today - Config().market_recency_days` (default 365),
+`start_published_date = today - get_settings().market_recency_days` (default 365),
 the same window the interview-era understand_market and understand_competition
 use. A market verdict built from stale sources is worse than a thin one.
 
@@ -51,7 +51,7 @@ from typing import Optional
 from langgraph.graph import START, END, StateGraph
 from langchain_core.messages import SystemMessage
 
-from config import Config
+from config import get_settings
 from agents.llm.main import invoke_structured_with_fallback
 from agents.context_budget import _truncate_to_tokens, budget_context, distill_documents
 from agents.states import MarketExtraction, MarketFindings, TaskResearchBundle
@@ -422,7 +422,7 @@ def _research_one(task: ResearchTask) -> TaskResearchBundle:
     Markets decay, so current conditions are the point of this stage.
     """
     area = task.area or "unnamed area"
-    cfg = Config()
+    cfg = get_settings()
     cutoff = _recency_cutoff(cfg.market_recency_days)
     issued: list[str] = []
     docs: list[dict] = []

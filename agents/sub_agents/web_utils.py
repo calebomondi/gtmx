@@ -9,12 +9,13 @@ fix: run independent calls concurrently, never let one hung call block the run,
 and never pay for the same query twice within a short window.
 """
 
-import os
+
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Iterable, Optional
 
+from config import get_settings
 from utils.log import logger
 
 
@@ -45,7 +46,7 @@ _TIMEOUT_POOL = ThreadPoolExecutor(max_workers=64, thread_name_prefix="web-call-
 _SEARCH_CACHE: dict[tuple, tuple[float, Any]] = {}
 _SEARCH_LOCK = threading.Lock()
 
-SEARCH_TTL_SECONDS = float(os.environ.get("ACCOUNT_SEARCH_CACHE_TTL", "600"))
+SEARCH_TTL_SECONDS = get_settings().account_search_cache_ttl
 
 
 def run_parallel(fns: Iterable[Callable[[], Any]], workers: int = 8) -> list[Any]:

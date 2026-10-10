@@ -31,7 +31,7 @@ uo.search_and_scrape = fake_search
 uo.distill_documents = lambda docs, focus, log_label="": (
     f"[distilled {len(docs)} doc(s)] focus={focus[:40]!r}"
 )
-uo.Config = lambda: "CFG"
+uo.get_settings = lambda: "CFG"
 
 PLAN = TaskList(
     tasks=[
