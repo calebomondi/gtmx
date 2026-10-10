@@ -15,19 +15,14 @@ from typing import Annotated, Optional
 from fastapi import Depends, HTTPException, WebSocket, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
-from supabase import acreate_client
 
+from backend.app import supabase_admin
 from backend.app.database import models
 from backend.app.database.connect import get_db
 from backend.app.services import projects as project_service
 from backend.app.services import workspaces as workspace_service
 
-from config import get_settings
-
-_cfg = get_settings()
 _bearer = HTTPBearer(auto_error=False)
-
-_client = None
 
 
 @dataclass(frozen=True)
@@ -36,19 +31,14 @@ class AuthUser:
     email: Optional[str]
     name: Optional[str]
     avatar_url: Optional[str]
-
-
-async def _get_client():
-    global _client
-    if _client is None:
-        _client = await acreate_client(_cfg.supabase_base_url, _cfg.supabase_secret_key)
-    return _client
+    # From Supabase app_metadata.role, which only the service key can write.
+    is_admin: bool = False
 
 
 async def user_from_token(token: str) -> Optional[AuthUser]:
     """Resolve a Supabase access token to an AuthUser. None on invalid token."""
     try:
-        client = await _get_client()
+        client = await supabase_admin.get_client()
         response = await client.auth.get_user(token)
     except Exception:
         return None
@@ -67,6 +57,7 @@ async def user_from_token(token: str) -> Optional[AuthUser]:
         email=getattr(suser, "email", None),
         name=metadata.get("full_name") or metadata.get("name"),
         avatar_url=metadata.get("avatar_url") or metadata.get("picture"),
+        is_admin=supabase_admin.is_admin(getattr(suser, "app_metadata", None)),
     )
 
 
@@ -122,3 +113,13 @@ async def get_owned_project(project_id: uuid.UUID, user: CurrentUser, db: DbSess
 OwnedWorkspace = Annotated[models.Workspace, Depends(get_owned_workspace)]
 OwnedProject = Annotated[models.Project, Depends(get_owned_project)]
 MatchingUser = Annotated[AuthUser, Depends(require_matching_user)]
+
+
+async def require_admin(user: CurrentUser) -> AuthUser:
+    """Server-side admin gate for /api/v1/admin/*. A UI check alone is never enough."""
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    return user
+
+
+AdminUser = Annotated[AuthUser, Depends(require_admin)]

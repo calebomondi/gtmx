@@ -1,0 +1,9 @@
+"""/api/v1/admin/*: every route here is gated by require_admin at the router."""
+
+from fastapi import APIRouter, Depends
+
+from backend.app.api.deps import require_admin
+from backend.app.api.v1.endpoints.admin import me
+
+router = APIRouter(dependencies=[Depends(require_admin)])
+router.include_router(me.router)
