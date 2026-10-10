@@ -17,3 +17,12 @@ class ConflictError(ServiceError):
 
 class InvalidInputError(ServiceError):
     """Input passed schema validation but breaks a business rule."""
+
+
+class RateLimitedError(ServiceError):
+    """The user hit a usage limit. `retry_after_s`, when known, becomes the
+    Retry-After header."""
+
+    def __init__(self, message: str, retry_after_s: int | None = None):
+        super().__init__(message)
+        self.retry_after_s = retry_after_s

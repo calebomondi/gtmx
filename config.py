@@ -68,6 +68,13 @@ class Settings(BaseSettings):
     # user's answer does not count: no task is alive then).
     discovery_segment_timeout_s: float = 1800.0
 
+    # -- Usage limits (per user) --
+    max_active_discovery_runs: int = 1
+    max_discovery_runs_per_day: int = 10
+    max_competitor_runs_per_day: int = 20
+    max_account_runs_per_day: int = 20
+    max_requests_per_minute: int = 120
+
     # -- Agent tuning --
     # How far back (days) research may look for sources. Kept short so the
     # analysis reflects CURRENT conditions, not history.

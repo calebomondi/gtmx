@@ -21,6 +21,7 @@ from backend.app.database.connect import AsyncSessionLocal
 from backend.app.runs import discovery, events
 from backend.app.runs.errors import user_facing_error
 from backend.app.schemas.agents import DiscoveryRequest
+from backend.app.services import limits
 from backend.app.services import runs as run_service
 from backend.app.services.errors import ConflictError, InvalidInputError
 from backend.app.services.runs import TERMINAL_STATUSES, set_run_fields
@@ -52,6 +53,7 @@ def _spawn(run_id: uuid.UUID, segment: Coroutine, timeout_s: float) -> None:
 
 async def start_discovery(user_id: uuid.UUID, request: DiscoveryRequest) -> models.Run:
     async with AsyncSessionLocal() as db:
+        await limits.ensure_can_start(db, user_id, "discovery")
         run = models.Run(
             user_id=user_id,
             kind="discovery",

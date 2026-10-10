@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app import supabase_admin
 from backend.app.database import models
 from backend.app.database.connect import get_db
+from backend.app.services import limits
 from backend.app.services import projects as project_service
 from backend.app.services import workspaces as workspace_service
 
@@ -123,3 +124,9 @@ async def require_admin(user: CurrentUser) -> AuthUser:
 
 
 AdminUser = Annotated[AuthUser, Depends(require_admin)]
+
+
+async def rate_limited(user: CurrentUser) -> AuthUser:
+    """Router-level guard on the REST API: per-user requests per minute."""
+    limits.check_request_rate(user.id)
+    return user

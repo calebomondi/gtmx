@@ -72,7 +72,7 @@ async def start_competitor_run(workspace: OwnedWorkspace, db: DbSession, backgro
     """Start a run (or return the one already in flight) for polling."""
     run = await competitor_service.active_run(db, workspace.id)
     if run is None:
-        run = await competitor_service.create_run(db, workspace.id)
+        run = await competitor_service.create_run(db, workspace.id, workspace.user_id)
         background_tasks.add_task(execute_run, run.id, workspace.id)
     return CompetitorRunStartResponse(
         run=CompetitorRunResponse.model_validate(run),

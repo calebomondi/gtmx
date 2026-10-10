@@ -47,16 +47,6 @@ class FakeAgent:
         return SimpleNamespace(values=FINAL_VALUES)
 
 
-@pytest.fixture(autouse=True)
-async def drain_run_tasks(clean_tables):
-    """Let run tasks finish before table cleanup. A run marks itself completed
-    a moment before writing its last event; cleanup's synchronous TRUNCATE
-    would otherwise block the event loop that write needs."""
-    yield
-    if manager._tasks:
-        await asyncio.gather(*manager._tasks.values(), return_exceptions=True)
-
-
 @pytest.fixture
 def agent(monkeypatch):
     fake = FakeAgent()
