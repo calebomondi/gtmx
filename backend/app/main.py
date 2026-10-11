@@ -1,3 +1,6 @@
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,6 +35,13 @@ async def _bootstrap_admins() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # LangGraph runs sync graph nodes, and our asyncio.to_thread work, on the
+    # loop's default executor -- by default only min(32, CPUs + 4) threads.
+    # Each concurrent discovery run holds up to two of them for minutes, so
+    # the default runs out at ~10 runs and starves the checkpointer.
+    asyncio.get_running_loop().set_default_executor(
+        ThreadPoolExecutor(max_workers=settings.default_executor_workers, thread_name_prefix="loop-default")
+    )
     await ensure_schema_at_head(engine)
     await _bootstrap_admins()
     await agents_runtime.start_agent_runtime(settings.database_url)

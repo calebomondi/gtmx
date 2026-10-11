@@ -40,7 +40,7 @@ cfg = get_settings()
 
 # Model ladders come from settings (LLM_MODELS / LLM_CHEAP_MODELS), so a model
 # swap -- e.g. when one runs out of quota -- is an env change, not a code change.
-QWEN_MODELS: list[str] = cfg.llm_models
+QWEN_MODELS: list[str] = [m for m in cfg.llm_models if m.strip()]
 
 # Cheap text-only tier, for bulk mechanical work that doesn't need a flagship
 # reasoning model: distilling scraped documents, condensing the offer's own
@@ -48,10 +48,10 @@ QWEN_MODELS: list[str] = cfg.llm_models
 # flagship matters for more than cost — the flagship is a large omni model, and
 # a run that routes its high-volume extraction work there is what pushes the
 # account into tokens-per-minute throttling in the first place.
-CHEAP_QWEN_MODELS: list[str] = cfg.llm_cheap_models
+CHEAP_QWEN_MODELS: list[str] = [m for m in cfg.llm_cheap_models if m.strip()]
 
 
-FALLBACK_MODELS: list[str] = cfg.llm_fallback_models
+FALLBACK_MODELS: list[str] = [m for m in cfg.llm_fallback_models if m.strip()]
 
 
 def _with_fallback(primary: list[tuple[str, list[str]]]) -> list[tuple[str, list[str]]]:
@@ -246,6 +246,20 @@ _CONTEXT_OVERFLOW_MARKERS = (
 )
 
 _MAX_RETRY_DELAY_S = 60.0
+
+# At most settings.llm_max_concurrency calls in flight per provider, process-
+# wide. Every run fans out (research workers, hunt tasks, profiles), and many
+# runs at once exceed the provider's concurrency/request-rate limits; past the
+# cap calls queue here instead of bouncing off 429s and backing off.
+_PROVIDER_SLOTS: dict[str, threading.BoundedSemaphore] = {}
+_SLOTS_LOCK = threading.Lock()
+
+
+def _provider_slot(provider: str) -> threading.BoundedSemaphore:
+    with _SLOTS_LOCK:
+        if provider not in _PROVIDER_SLOTS:
+            _PROVIDER_SLOTS[provider] = threading.BoundedSemaphore(cfg.llm_max_concurrency)
+        return _PROVIDER_SLOTS[provider]
 
 # --- Throttle circuit breaker -------------------------------------------
 # A single transient 429 is worth waiting out, but a sustained one is not: with
@@ -521,10 +535,16 @@ def invoke_structured_with_fallback(
                 try:
                     llm = _llm(provider, model=model, thinking=thinking, thinking_budget=thinking_budget)
                     config = {"callbacks": [usage]}
-                    if schema is not None:
-                        result = llm.with_structured_output(schema).invoke(messages, config=config)
-                    else:
-                        result = llm.invoke(messages, config=config)
+                    queued = time.perf_counter()
+                    with _provider_slot(provider):
+                        waited = time.perf_counter() - queued
+                        if waited > 1:
+                            logger.info("%s waited %.1fs for a %s slot", log_label, waited, provider)
+                        started = time.perf_counter()  # time the call, not the queue
+                        if schema is not None:
+                            result = llm.with_structured_output(schema).invoke(messages, config=config)
+                        else:
+                            result = llm.invoke(messages, config=config)
                     _record_call_timing(
                         log_label, time.perf_counter() - started, model
                     )

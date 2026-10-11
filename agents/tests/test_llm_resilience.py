@@ -82,3 +82,33 @@ def test_default_ladder_includes_fallback_when_keyed(monkeypatch):
 def test_unknown_provider_is_an_error():
     with pytest.raises(ValueError):
         llm._llm("nope")
+
+
+def test_calls_per_provider_are_capped(monkeypatch):
+    """Past llm_max_concurrency, calls queue instead of hitting the provider."""
+    import threading
+    import time as real_time
+
+    state = {"now": 0, "peak": 0}
+    lock = threading.Lock()
+
+    class SlowModel(FakeModel):
+        def invoke(self, messages, config=None):
+            with lock:
+                state["now"] += 1
+                state["peak"] = max(state["peak"], state["now"])
+            real_time.sleep(0.05)
+            with lock:
+                state["now"] -= 1
+            return Answer(ok=True)
+
+    monkeypatch.setattr(llm, "_llm", lambda provider, **kw: SlowModel(provider))
+    monkeypatch.setattr(llm, "_DOWN_MODELS", set())
+    monkeypatch.setattr(llm, "_PROVIDER_SLOTS", {})
+    monkeypatch.setattr(llm.cfg, "llm_max_concurrency", 2)
+    call = lambda _: llm.invoke_structured_with_fallback(  # noqa: E731
+        [HumanMessage(content="hi")], Answer, log_label="t", providers=[("openrouter", ["m"])],
+    )
+    with ContextThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(call, range(8)))
+    assert all(r.ok for r in results) and state["peak"] == 2

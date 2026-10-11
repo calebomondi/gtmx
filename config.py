@@ -67,8 +67,12 @@ class Settings(BaseSettings):
     # ~8k-token structured output), far below the old 600s that let one hung
     # connection stall a run for ten minutes.
     llm_call_timeout_s: float = 240.0
+    # Max LLM calls in flight per provider (process-wide); past it calls queue.
+    llm_max_concurrency: int = 24
 
     # -- Web data --
+    # Hard cap per Exa call; its SDK sets no timeout of its own.
+    exa_timeout_s: float = 60.0
     exa_api_key: str = ""
     brightdata_api_key: str = ""
     composio_api_key: str = ""
@@ -80,6 +84,9 @@ class Settings(BaseSettings):
     frontend_base_url: str = "http://localhost:5173"
 
     # -- Runs --
+    # Threads for the event loop's default executor (sync graph nodes and
+    # asyncio.to_thread). Each running discovery holds up to two for minutes.
+    default_executor_workers: int = 256
     # Wall-clock cap on one active segment of a run (time spent waiting for a
     # user's answer does not count: no task is alive then).
     discovery_segment_timeout_s: float = 1800.0
