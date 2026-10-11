@@ -20,18 +20,17 @@ const TAB_DEFS = [
 const TAB_VALUES = TAB_DEFS.map(t => t.value)
 
 const TabsVerticalLined = ({ workspaceId }: { workspaceId?: string }) => {
+  // The tab lives in the URL, so a link to ?tab=… (e.g. from Search) switches
+  // it even when this workspace is already open.
   const [searchParams, setSearchParams] = useSearchParams()
-  const [tab, setTabState] = useState(() => {
-    const requested = searchParams.get('tab')
-    return requested && TAB_VALUES.includes(requested) ? requested : 'feed'
-  })
+  const requested = searchParams.get('tab')
+  const tab = requested && TAB_VALUES.includes(requested) ? requested : 'feed'
   const [focus, setFocus] = useState<{ email: string | null; nonce: number }>({
     email: null,
     nonce: 0
   })
 
   const setTab = (next: string) => {
-    setTabState(next)
     setSearchParams({ tab: next }, { replace: true })
   }
 

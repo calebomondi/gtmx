@@ -14,6 +14,7 @@ export interface WorkspaceSummary {
   name: string | null
   pinned: boolean
   product_name: string | null
+  offer_type: "product" | "service" | null
   project_id: string | null
   archived: boolean
   archived_at: string | null

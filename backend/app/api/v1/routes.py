@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from backend.app.api.deps import rate_limited
-from backend.app.api.v1.endpoints import accounts, activity, admin, chat, competitors, connections, outreach, discovery, projects, runs, signals, users, workspaces
+from backend.app.api.v1.endpoints import accounts, activity, admin, chat, competitors, connections, outreach, discovery, projects, runs, search, signals, users, workspaces
 
 api_router = APIRouter()
 # Every REST router is rate limited per user; the discovery WebSocket is limited
@@ -10,6 +10,7 @@ _LIMITED = [Depends(rate_limited)]
 api_router.include_router(discovery.router, prefix="/discover", tags=["discovery"])
 api_router.include_router(runs.router, prefix="/runs", tags=["runs"], dependencies=_LIMITED)
 api_router.include_router(activity.router, prefix="/activity", tags=["activity"], dependencies=_LIMITED)
+api_router.include_router(search.router, prefix="/search", tags=["search"], dependencies=_LIMITED)
 api_router.include_router(users.router, prefix="/users", tags=["users"], dependencies=_LIMITED)
 api_router.include_router(signals.router, prefix="/signals", tags=["signals"], dependencies=_LIMITED)
 api_router.include_router(connections.router, prefix="/connections", tags=["connections"], dependencies=_LIMITED)
