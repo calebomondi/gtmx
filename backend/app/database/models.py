@@ -1,9 +1,9 @@
 from __future__ import annotations
 import uuid
 
-from datetime import datetime, UTC
+from datetime import date, datetime, UTC
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UUID, UniqueConstraint, false, func
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, String, Text, UUID, UniqueConstraint, false, func
 from sqlalchemy.dialects.postgresql import JSONB as JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -710,3 +710,40 @@ class OutreachMessage(Base):
         DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(),
         onupdate=lambda: datetime.now(UTC), nullable=False,
     )
+
+
+class AppSession(Base):
+    """A stretch of active use of the customer app, built from client
+    heartbeats. A gap longer than settings.activity_session_gap_s starts a
+    new session. Durations only: nothing about what the user looked at."""
+
+    __tablename__ = "app_sessions"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    active_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # The workspace of the previous heartbeat, so a switch counts as a visit.
+    last_workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+
+
+class WorkspaceActivity(Base):
+    """Active time and visits per workspace per UTC day."""
+
+    __tablename__ = "workspace_activity"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "day", name="uq_workspace_activity_workspace_day"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    day: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    active_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    visits: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

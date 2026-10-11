@@ -103,6 +103,14 @@ class Settings(BaseSettings):
     max_outreach_sends_per_day: int = 50
     max_monitor_runs_per_day: int = 6
 
+    # -- Activity tracking (customer app heartbeats) --
+    # The app pings this often while the user is active; a ping credits the
+    # time since the previous one, capped so a sleeping laptop isn't counted.
+    activity_heartbeat_s: int = 60
+    activity_max_credit_s: int = 120
+    # Longer than this without a ping and the next one starts a new session.
+    activity_session_gap_s: int = 300
+
     # -- Observability (all opt-in: empty means off) --
     sentry_dsn: str = ""
     sentry_environment: str = "development"
