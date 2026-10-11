@@ -1,5 +1,6 @@
 // One module per backend resource; import from "@/lib/api".
 export * from "./http"
+export * from "./activity"
 export * from "./discovery"
 export * from "./users"
 export * from "./workspaces"

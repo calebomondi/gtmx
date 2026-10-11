@@ -16,6 +16,7 @@ import {
 import { DiscoveryInterruptPicker } from "@/components/interrupt-panel"
 import { answerDiscovery, resumeActiveDiscovery, useAgentRun } from "@/lib/agent-run-store"
 import { useAuth } from "@/lib/auth"
+import { useActivityHeartbeat } from "@/lib/use-activity-heartbeat"
 
 import Workspace from './features/workspace/workspace'
 import RecentSession from './features/workspace/recent-session'
@@ -76,6 +77,7 @@ function GlobalInterruptDialog() {
 function AppLayout() {
   const { user } = useAuth()
   const location = useLocation()
+  useActivityHeartbeat(Boolean(user))
   // Reattach to a discovery run that outlived the last page load (or was
   // started on another device). Runs live on the server; this only resumes
   // watching one.
