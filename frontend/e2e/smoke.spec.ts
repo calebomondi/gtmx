@@ -29,7 +29,8 @@ test("discovery to outreach, and the admin sees the run", async ({ page, browser
     await page.locator("#product-name").fill(OFFER.name)
     await page.locator("#website-url").fill(OFFER.url)
     await page.getByPlaceholder("Select target markets").fill("United States")
-    await page.keyboard.press("Enter")
+    await page.getByRole("option", { name: "United States", exact: true }).click()
+    await page.locator("#product-name").click() // the country list only closes on blur
     await page.getByRole("button", { name: "Create Workspace" }).click()
   })
 
@@ -57,14 +58,26 @@ test("discovery to outreach, and the admin sees the run", async ({ page, browser
     await expect(page.getByText(/something went wrong/i)).toHaveCount(0)
   })
 
-  await test.step("the admin console shows the run", async () => {
+  await test.step("the admin console shows the run completed", async () => {
     const admin = await browser.newPage()
     await admin.goto(ADMIN_URL)
     await admin.getByLabel("Email").fill(EMAIL)
     await admin.getByLabel("Password").fill(PASSWORD)
     await admin.getByRole("button", { name: "Sign in" }).click()
     await admin.getByRole("link", { name: "Runs" }).click()
-    await expect(admin.getByRole("cell", { name: "discovery" }).first()).toBeVisible()
+    // The workspace page opens mid-run, so completion is checked here: the
+    // newest discovery run (this one) must reach "completed".
+    const newest = admin.getByRole("row").filter({ hasText: "discovery" }).first()
+    const deadline = Date.now() + DISCOVERY_TIMEOUT
+    for (;;) {
+      await expect(newest).toBeVisible()
+      const text = (await newest.textContent()) ?? ""
+      expect(text, "discovery run failed").not.toContain("failed")
+      if (text.includes("completed")) break
+      expect(Date.now(), "discovery did not complete in time").toBeLessThan(deadline)
+      await admin.waitForTimeout(10_000)
+      await admin.reload()
+    }
     await admin.close()
   })
 
