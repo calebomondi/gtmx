@@ -70,6 +70,11 @@ async def start_agent_runtime(database_url: str):
 
     pool = AsyncConnectionPool(
         conninfo=database_url,
+        # Opened up front, never grown under load: opening a connection
+        # resolves the host on the event loop's default thread pool, which
+        # concurrent graph nodes can fill, and a checkpoint write waiting on a
+        # new connection then deadlocks every run (seen at 10 concurrent runs).
+        min_size=_POOL_MAX_SIZE,
         max_size=_POOL_MAX_SIZE,
         open=False,
         # The settings AsyncPostgresSaver requires. prepare_threshold=None

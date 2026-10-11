@@ -14,6 +14,8 @@ Test users are random ids; --cleanup deletes their workspaces and runs.
 
 import argparse
 import asyncio
+import faulthandler
+import signal
 import statistics
 import threading
 import time
@@ -147,6 +149,9 @@ async def main(runs: int, cleanup: bool) -> None:
 
 
 if __name__ == "__main__":
+    # `kill -USR1 <pid>` writes every thread's stack to stderr: how a stall is
+    # diagnosed without a debugger attached.
+    faulthandler.register(signal.SIGUSR1, all_threads=True)
     parser = argparse.ArgumentParser()
     parser.add_argument("--runs", type=int, default=10)
     parser.add_argument("--cleanup", action="store_true")
