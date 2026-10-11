@@ -62,6 +62,7 @@ from agents.context_budget import distill_documents
 from agents.llm.main import invoke_structured_with_fallback
 from agents.schemas.competition import IdealCompetitorProfile
 from data_sources.scraping.exa import scrape_url, search_and_scrape
+from utils.log import logger
 
 from ..web_utils import call_with_timeout, search_cache_get, search_cache_put, timed_node
 
@@ -220,6 +221,18 @@ Their own website:
 ---
 {site}
 ---
+
+FIRST, `relevance`: would a buyer of the user's {offer_noun} spend the SAME
+budget on {name}'s offering INSTEAD of it, to do the same job?
+- `direct`: sells a substitute to the same buyer.
+- `indirect`: the same buyer, the same job, done a different way (a
+  spreadsheet, an agency, an all-in-one suite that covers this job).
+- `not_a_competitor`: everything else, however famous or adjacent. That
+  includes the offer's customers, partners and investors; tools that
+  INTEGRATE with it or sit beside it in the same workflow; infrastructure it
+  runs on; vendors selling a different job to the same buyer; press.
+If your own `relevance_reason` says it is not a substitute, the answer is
+`not_a_competitor`, not `indirect`.
 
 EVERY FIELD FOLLOWS THE SAME RULE: either you can point at where you got it,
 or you record that you could not.
@@ -715,7 +728,6 @@ def screen_candidates(state: CompetitorSessionState) -> dict:
                 }
             )
 
-    survivors = survivors[:MAX_CANDIDATES_PER_RUN]
     if len(survivors) > MAX_CANDIDATES_PER_RUN:
         reasons["over_per_run_cap"] = len(survivors) - MAX_CANDIDATES_PER_RUN
         survivors = survivors[:MAX_CANDIDATES_PER_RUN]
@@ -826,6 +838,10 @@ def _profile_one(survivor: dict, offer: dict) -> Optional[CompetitorProfile]:
     profile = batch if isinstance(batch, CompetitorProfile) else None
     if profile is None:
         print(f"profile_competitors: {survivor['name']} produced no profile")
+        return None
+    if profile.relevance == "not_a_competitor":
+        logger.info("profile_competitors: dropping %s -- not a competitor (%s)",
+                    survivor["name"], profile.relevance_reason or "no reason given")
         return None
 
     # The website is the one field the agent does not get a vote on. The screening

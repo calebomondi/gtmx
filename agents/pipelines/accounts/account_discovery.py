@@ -260,7 +260,9 @@ def extract_accounts(state: IcpSessionState) -> dict:
         "Never invent a target, a trigger, or a source. Leave `socials` empty — enrichment fills it.\n"
         f"  {_trigger_line()}\n"
         "- For each target set: name, account_type (company/community/event/creator/platform), "
-        "website/domain/industry/size/geo only as stated, platform/venue/event_date/member_size where "
+        "website/domain/industry/geo only as stated. `size` is the company's ACTUAL headcount or revenue "
+        "as a source states it (e.g. '120 employees'); never copy one of the ICP's size bands onto an "
+        "account, and leave it null when no source states it. platform/venue/event_date/member_size where "
         "stated, key_contacts ONLY when present in the sources, pain_signals/hiring_signals, sources "
         "(URLs proving existence + current trigger), score 0-1 with a short score_breakdown "
         "(ICP fit .30, reach/geo fit .20, pain fit .20, trigger strength .15, defensibility .15), "
@@ -563,6 +565,8 @@ def collect_socials_and_emails(state: IcpSessionState) -> dict:
                     raw = call_with_timeout(lambda: handler(candidate_url, cfg), _SCRAPE_TIMEOUT_S, default=None, label=f'social[{platform_name}]')
                     if isinstance(raw, dict) and _record_matches_account(raw, acc):
                         acc.socials = {**(acc.socials or {}), platform_name: candidate_url}
+                        if platform_name == "linkedin" and raw.get("company_size"):
+                            acc.size = raw["company_size"]  # real headcount beats any model claim
                         print(f"🔗 '{acc.name}' {platform_name} -> {candidate_url}")
                         break
         else:
@@ -731,6 +735,35 @@ def enrich_accounts(state: IcpSessionState) -> dict:
     return {"accounts": AccountList(accounts=repaired)}
 
 
+_HEADCOUNT_RE = re.compile(r"(\d[\d,]*)\s*(?:[-–—]|to)\s*(\d[\d,]*)(\+)?|(\d[\d,]*)\s*(\+|employees)", re.I)
+
+
+def _headcount_range(text: str | None) -> tuple[int, float] | None:
+    """(low, high) employees from '51-200 employees', '10,001+', '501–2,000+',
+    '120 employees'. None when no headcount is stated."""
+    match = _HEADCOUNT_RE.search(text or "")
+    if not match:
+        return None
+    if match.group(4):  # a single number: "10,001+" or "120 employees"
+        lo = int(match.group(4).replace(",", ""))
+        return lo, float("inf") if match.group(5) == "+" else lo
+    lo, hi = (int(match.group(i).replace(",", "")) for i in (1, 2))
+    return lo, float("inf") if match.group(3) else hi
+
+
+def _size_verdict(acc, icp_sizes: list[str]) -> str | None:
+    """'too_large' when the account's stated headcount starts above the ICP's
+    largest band. A size copied verbatim from an ICP band is not evidence and
+    is cleared first."""
+    if acc.size and acc.size.strip().lower() in {b.strip().lower() for b in icp_sizes}:
+        acc.size = None
+    bands = [r for r in (_headcount_range(b) for b in icp_sizes) if r]
+    account = _headcount_range(acc.size)
+    if not bands or not account:
+        return None
+    return "too_large" if account[0] > max(hi for _, hi in bands) else None
+
+
 def verify_accounts(state: IcpSessionState) -> dict:
     """Hard-constraint pass: drop trigger-less targets, require the trigger's
     source to exist in the retrieved docs, dedupe by domain (or platform::name
@@ -740,8 +773,13 @@ def verify_accounts(state: IcpSessionState) -> dict:
         return {"accounts": AccountList(accounts=[])}
 
     doc_urls = {d.get("url") for d in (state.get("account_discovery_docs") or [])}
+    icp = state.get("icp_data")
+    icp_sizes = list(icp.company_sizes or []) if icp else []
     kept, seen = [], set()
     for acc in accounts.accounts:
+        if (not acc.account_type or acc.account_type == "company") and _size_verdict(acc, icp_sizes) == "too_large":
+            print(f"❌ Dropping '{acc.name}' — {acc.size} is larger than any ICP size band.")
+            continue
         if acc.trigger_event is None:
             print(f"❌ Dropping '{acc.name}' — no current trigger_event.")
             continue
