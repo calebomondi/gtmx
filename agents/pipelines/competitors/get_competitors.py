@@ -222,12 +222,17 @@ Their own website:
 {site}
 ---
 
-FIRST, `relevance`: would a buyer of the user's {offer_noun} consider {name}'s
-offering INSTEAD of it? Searches surface the offer's customers, partners,
-investors, press and big brands that merely mention the category. Those are
-`not_a_competitor`, however famous; say so and why in `relevance_reason`.
-`direct` = sells a substitute to the same buyer; `indirect` = solves the same
-problem differently.
+FIRST, `relevance`: would a buyer of the user's {offer_noun} spend the SAME
+budget on {name}'s offering INSTEAD of it, to do the same job?
+- `direct`: sells a substitute to the same buyer.
+- `indirect`: the same buyer, the same job, done a different way (a
+  spreadsheet, an agency, an all-in-one suite that covers this job).
+- `not_a_competitor`: everything else, however famous or adjacent. That
+  includes the offer's customers, partners and investors; tools that
+  INTEGRATE with it or sit beside it in the same workflow; infrastructure it
+  runs on; vendors selling a different job to the same buyer; press.
+If your own `relevance_reason` says it is not a substitute, the answer is
+`not_a_competitor`, not `indirect`.
 
 EVERY FIELD FOLLOWS THE SAME RULE: either you can point at where you got it,
 or you record that you could not.
