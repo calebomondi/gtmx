@@ -11,7 +11,7 @@ case-insensitively (`exa_api_key` <- EXA_API_KEY).
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     api_v1_str: str = "/api/v1"
     environment: str = "development"
     log_level: str = Field("INFO", validation_alias="GTMX_LOG_LEVEL")
+    # "text" for a terminal, "json" (one object per line) for a log shipper.
+    log_format: Literal["text", "json"] = Field("text", validation_alias="GTMX_LOG_FORMAT")
     # Empty = same-origin only (dev proxy / reverse proxy). Comma-separated or a
     # JSON array, e.g. ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
     allowed_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
@@ -93,6 +95,13 @@ class Settings(BaseSettings):
     max_chat_messages_per_day: int = 200
     max_outreach_sends_per_day: int = 50
     max_monitor_runs_per_day: int = 6
+
+    # -- Observability (all opt-in: empty means off) --
+    sentry_dsn: str = ""
+    sentry_environment: str = "development"
+    sentry_traces_sample_rate: float = 0.1
+    langsmith_api_key: str = ""
+    langsmith_project: str = "gtmx"
 
     # -- Cost reporting (admin dashboard) --
     # List prices in USD, used only to estimate spend; confirm against each
