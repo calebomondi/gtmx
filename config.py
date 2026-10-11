@@ -67,6 +67,8 @@ class Settings(BaseSettings):
     # ~8k-token structured output), far below the old 600s that let one hung
     # connection stall a run for ten minutes.
     llm_call_timeout_s: float = 240.0
+    # Max LLM calls in flight per provider (process-wide); past it calls queue.
+    llm_max_concurrency: int = 8
 
     # -- Web data --
     exa_api_key: str = ""

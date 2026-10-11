@@ -247,6 +247,20 @@ _CONTEXT_OVERFLOW_MARKERS = (
 
 _MAX_RETRY_DELAY_S = 60.0
 
+# At most settings.llm_max_concurrency calls in flight per provider, process-
+# wide. Every run fans out (research workers, hunt tasks, profiles), and many
+# runs at once exceed the provider's concurrency/request-rate limits; past the
+# cap calls queue here instead of bouncing off 429s and backing off.
+_PROVIDER_SLOTS: dict[str, threading.BoundedSemaphore] = {}
+_SLOTS_LOCK = threading.Lock()
+
+
+def _provider_slot(provider: str) -> threading.BoundedSemaphore:
+    with _SLOTS_LOCK:
+        if provider not in _PROVIDER_SLOTS:
+            _PROVIDER_SLOTS[provider] = threading.BoundedSemaphore(cfg.llm_max_concurrency)
+        return _PROVIDER_SLOTS[provider]
+
 # --- Throttle circuit breaker -------------------------------------------
 # A single transient 429 is worth waiting out, but a sustained one is not: with
 # both models throttled, each call would otherwise block for the full backoff
@@ -521,10 +535,11 @@ def invoke_structured_with_fallback(
                 try:
                     llm = _llm(provider, model=model, thinking=thinking, thinking_budget=thinking_budget)
                     config = {"callbacks": [usage]}
-                    if schema is not None:
-                        result = llm.with_structured_output(schema).invoke(messages, config=config)
-                    else:
-                        result = llm.invoke(messages, config=config)
+                    with _provider_slot(provider):
+                        if schema is not None:
+                            result = llm.with_structured_output(schema).invoke(messages, config=config)
+                        else:
+                            result = llm.invoke(messages, config=config)
                     _record_call_timing(
                         log_label, time.perf_counter() - started, model
                     )
