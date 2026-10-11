@@ -22,6 +22,7 @@ from backend.app.database import models  # noqa: F401 -- registers every table o
 from backend.app.database.connect import AsyncSessionLocal, Base, get_db
 from backend.app.main import add_service_error_handlers
 from backend.app.runs import manager as run_manager
+from backend.app.services import connections as connection_service
 from backend.tests.helpers import make_user
 from config import settings
 
@@ -53,6 +54,15 @@ def no_auto_monitoring(monkeypatch):
     """Finished competitor runs chain a (paid, networked) monitor run; tests
     that want it turn it back on."""
     monkeypatch.setattr(settings, "monitor_enabled", False)
+
+
+@pytest.fixture(autouse=True)
+def offline_composio(monkeypatch):
+    """Composio is a real network service; a test that needs it installs a
+    fake client. Anything else that reaches it fails loudly."""
+    def unavailable():
+        raise RuntimeError("Composio is not reachable from tests; install a fake client")
+    monkeypatch.setattr(connection_service, "_client", unavailable)
 
 
 @pytest.fixture(autouse=True)

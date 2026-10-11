@@ -1,6 +1,7 @@
 """Channel connections through Composio: per-user listing, Connect Links only
 for available channels, and disconnect only for the owner."""
 
+import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -28,8 +29,14 @@ class FakeComposio:
         self.deleted, self.authorized = [], []
         self.connected_accounts = self
 
-    def list(self, user_ids, toolkit_slugs, statuses):
-        return SimpleNamespace(items=[a for a in self.accounts.values() if a.user_id in user_ids])
+    def list(self, toolkit_slugs, statuses, user_ids=None, limit=None, cursor=None, timeout=None):
+        items = [a for a in self.accounts.values()
+                 if (user_ids is None or a.user_id in user_ids) and a.status in statuses]
+        if limit is None:
+            return SimpleNamespace(items=items, next_cursor=None)
+        start = int(cursor or 0)
+        more = start + limit < len(items)
+        return SimpleNamespace(items=items[start:start + limit], next_cursor=str(start + limit) if more else None)
 
     def get(self, id_):
         return self.accounts.get(id_)
@@ -87,3 +94,13 @@ def test_disconnect_only_own_connections(client, composio):
     assert composio.deleted == [("ca_live", True)]
     client.sign_in(make_user("Intruder"))
     assert client.delete(f"{API}/ca_x").status_code == 404
+
+
+async def test_live_by_user_pages_through_every_user(composio, user, monkeypatch):
+    monkeypatch.setattr(svc, "_LIST_PAGE_SIZE", 1)
+    other = uuid.uuid4()
+    composio.accounts["ca_li"] = _account("ca_li", str(user.id), "linkedin", "ACTIVE")
+    composio.accounts["ca_ig"] = _account("ca_ig", str(other), "instagram", "ACTIVE")
+    live = await svc.live_by_user()
+    # "someone-else" isn't a user id of ours; expired/initiated aren't live.
+    assert live == {user.id: {"gmail", "linkedin"}, other: {"instagram"}}

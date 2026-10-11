@@ -17,6 +17,8 @@ from config import settings
 from utils.log import logger
 
 CHANNELS = ("email", "linkedin")
+# The connected-account platform each channel goes out through.
+CHANNEL_PLATFORM = {"email": "gmail", "linkedin": "linkedin"}
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _EDITABLE = ("draft", "failed")
 _SEND_TOOL = "GMAIL_SEND_EMAIL"  # verified against the live Composio catalog

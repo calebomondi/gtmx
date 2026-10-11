@@ -3,6 +3,7 @@ unpriced usage surfaced rather than counted as free."""
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import psycopg
 import pytest
@@ -20,7 +21,7 @@ def admin_client(client, monkeypatch):
     client.sign_in(make_user("Boss", is_admin=True))
 
     async def three_users():
-        return [object(), object(), object()]
+        return [SimpleNamespace(id=str(uuid.uuid4()), email=None, created_at=None) for _ in range(3)]
     monkeypatch.setattr(admin_service, "list_all_users", three_users)
     return client
 

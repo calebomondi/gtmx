@@ -2,17 +2,20 @@
 window of days. Spend is estimated from list prices in settings; usage with
 no configured price is reported as unpriced rather than counted as free."""
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime
 
-from sqlalchemy import Date, cast, distinct, func, literal_column, select
+from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import models
-from backend.app.schemas.admin import AdminMetrics, CostLine, DayMetrics, KindMetrics
+from backend.app.schemas.admin import AdminMetrics, CostLine, DayMetrics, KindMetrics, UserSpend
 from backend.app.services import admin as admin_service
+from backend.app.services.admin_directory import emails_by_id
+from backend.app.services.admin_time import utc_day, window
 from config import settings
 
 MAX_DAYS = 90
+TOP_SPENDERS = 5
 
 
 def llm_cost(model: str, input_tokens: int, output_tokens: int) -> float | None:
@@ -25,12 +28,6 @@ def llm_cost(model: str, input_tokens: int, output_tokens: int) -> float | None:
 def api_cost(provider: str, operation: str, calls: int) -> float | None:
     price = settings.api_call_prices.get(f"{provider}.{operation}", settings.api_call_prices.get(provider))
     return None if price is None else price * calls
-
-
-def _day(column):
-    # A literal, not a bound parameter: Postgres only matches the GROUP BY to
-    # the SELECT expression when both are textually identical.
-    return cast(func.timezone(literal_column("'UTC'"), column), Date)
 
 
 async def _run_metrics(db: AsyncSession, since: datetime, series: dict[date, DayMetrics]):
@@ -49,9 +46,9 @@ async def _run_metrics(db: AsyncSession, since: datetime, series: dict[date, Day
     ]
     avg_all = await db.scalar(select(func.avg(duration)).where(models.Run.created_at >= since, finished))
     for day, started, failed, users in (await db.execute(
-        select(_day(models.Run.created_at), func.count(), func.count().filter(models.Run.status == "failed"),
+        select(utc_day(models.Run.created_at), func.count(), func.count().filter(models.Run.status == "failed"),
                func.count(distinct(models.Run.user_id)))
-        .where(models.Run.created_at >= since).group_by(_day(models.Run.created_at))
+        .where(models.Run.created_at >= since).group_by(utc_day(models.Run.created_at))
     )).all():
         if day in series:
             series[day].runs_started, series[day].runs_failed, series[day].active_users = started, failed, users
@@ -86,9 +83,9 @@ async def _llm_costs(db: AsyncSession, since: datetime, series: dict[date, DayMe
     c = models.LlmCall
     lines: dict[str, CostLine] = {}
     for day, model, calls, failed, tin, tout in (await db.execute(
-        select(_day(c.created_at), c.model, func.count(), func.count().filter(c.ok.is_(False)),
+        select(utc_day(c.created_at), c.model, func.count(), func.count().filter(c.ok.is_(False)),
                func.sum(c.input_tokens), func.sum(c.output_tokens))
-        .where(c.created_at >= since).group_by(_day(c.created_at), c.model)
+        .where(c.created_at >= since).group_by(utc_day(c.created_at), c.model)
     )).all():
         cost = llm_cost(model, tin or 0, tout or 0)
         _add(lines, unpriced, model, calls, failed, cost, tin or 0, tout or 0)
@@ -101,8 +98,8 @@ async def _api_costs(db: AsyncSession, since: datetime, series: dict[date, DayMe
     c = models.ApiCall
     lines: dict[str, CostLine] = {}
     for day, provider, operation, calls, failed in (await db.execute(
-        select(_day(c.created_at), c.provider, c.operation, func.count(), func.count().filter(c.ok.is_(False)))
-        .where(c.created_at >= since).group_by(_day(c.created_at), c.provider, c.operation)
+        select(utc_day(c.created_at), c.provider, c.operation, func.count(), func.count().filter(c.ok.is_(False)))
+        .where(c.created_at >= since).group_by(utc_day(c.created_at), c.provider, c.operation)
     )).all():
         cost = api_cost(provider, operation, calls)
         _add(lines, unpriced, f"{provider}.{operation}", calls, failed, cost)
@@ -115,11 +112,58 @@ def _total(lines: list[CostLine]) -> float:
     return round(sum(line.cost_usd or 0 for line in lines), 4)
 
 
+async def _priced_spend_by(db: AsyncSession, key, *run_filters) -> dict:
+    """Priced spend of the runs matching `run_filters`, grouped by `key` (a
+    Run column). Unpriced usage is left out, as in the per-user totals."""
+    spend: dict = {}
+    llm, api, run = models.LlmCall, models.ApiCall, models.Run
+    for k, model, tin, tout in (await db.execute(
+        select(key, llm.model, func.sum(llm.input_tokens), func.sum(llm.output_tokens))
+        .join(run, run.id == llm.run_id).where(*run_filters).group_by(key, llm.model)
+    )).all():
+        spend[k] = spend.get(k, 0.0) + (llm_cost(model, tin or 0, tout or 0) or 0)
+    for k, provider, operation, calls in (await db.execute(
+        select(key, api.provider, api.operation, func.count())
+        .join(run, run.id == api.run_id).where(*run_filters).group_by(key, api.provider, api.operation)
+    )).all():
+        spend[k] = spend.get(k, 0.0) + (api_cost(provider, operation, calls) or 0)
+    return spend
+
+
+async def _economics(db: AsyncSession, since: datetime, active_users: int) -> dict:
+    run = models.Run
+    in_window = run.created_at >= since
+    by_user = await _priced_spend_by(db, run.user_id, in_window)
+    top = sorted(by_user.items(), key=lambda item: -item[1])[:TOP_SPENDERS]
+    runs_by_user = dict((await db.execute(
+        select(run.user_id, func.count()).where(in_window, run.user_id.in_([u for u, _ in top])).group_by(run.user_id)
+    )).all()) if top else {}
+    emails = await emails_by_id() if top else {}
+
+    completed = (run.kind == "discovery", run.status == "completed", in_window)
+    n_completed = await db.scalar(select(func.count()).where(*completed)) or 0
+    discovery_spend = sum((await _priced_spend_by(db, run.kind, *completed)).values())
+    duration = func.extract("epoch", run.finished_at - run.started_at)
+    p50, p90 = (await db.execute(
+        select(func.percentile_cont(0.5).within_group(duration), func.percentile_cont(0.9).within_group(duration))
+        .where(*completed)
+    )).one()
+    total = sum(by_user.values())
+    return {
+        "discovery_p50_s": round(p50, 1) if p50 is not None else None,
+        "discovery_p90_s": round(p90, 1) if p90 is not None else None,
+        "spend_per_active_user_usd": round(total / active_users, 4) if active_users else None,
+        "cost_per_completed_discovery_usd": round(discovery_spend / n_completed, 4) if n_completed else None,
+        "top_spenders": [
+            UserSpend(user_id=u, email=emails.get(u), runs=runs_by_user.get(u, 0), cost_usd=round(cost, 4))
+            for u, cost in top
+        ],
+    }
+
+
 async def overview(db: AsyncSession, days: int) -> AdminMetrics:
-    today = datetime.now(UTC).date()
-    first = today - timedelta(days=days - 1)
-    since = datetime.combine(first, datetime.min.time(), tzinfo=UTC)
-    series = {first + timedelta(days=i): DayMetrics(day=first + timedelta(days=i)) for i in range(days)}
+    since, dates = window(days)
+    series = {d: DayMetrics(day=d) for d in dates}
     unpriced: set[str] = set()
 
     runs = await _run_metrics(db, since, series)
@@ -141,4 +185,5 @@ async def overview(db: AsyncSession, days: int) -> AdminMetrics:
         api_costs=sorted(api_lines, key=lambda line: -(line.cost_usd or 0)),
         unpriced=sorted(unpriced),
         series=list(series.values()),
+        **await _economics(db, since, runs["active_users"]),
     )
