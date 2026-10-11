@@ -28,5 +28,4 @@ exec uvicorn backend.app.main:app \
   --reload-dir agents \
   --reload-dir utils \
   --reload-dir data_sources \
-  --reload-dir scripts \
-  --reload-dir supabase
+  --reload-dir scripts
