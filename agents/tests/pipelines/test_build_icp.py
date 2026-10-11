@@ -1008,7 +1008,6 @@ def _norm(name: str) -> str:
 def _assert_icp_run(offer: dict, result: dict) -> None:
     """The invariants this pipeline promises. Each failure names the offender."""
     branch = offer["_branch"]
-    noun = offer["offer_type"]
     expected_buyer = getattr(offer["market_data"], "buyer_type", "b2b")
     expected_buyer = expected_buyer.value if hasattr(expected_buyer, "value") else expected_buyer
 

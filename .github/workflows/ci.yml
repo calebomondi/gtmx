@@ -33,6 +33,8 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --frozen
+      - name: Lint (ruff)
+        run: uv run ruff check .
 
       - name: Migrations round-trip on an empty database
         run: |

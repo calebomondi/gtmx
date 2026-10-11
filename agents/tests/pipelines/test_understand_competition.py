@@ -468,7 +468,6 @@ def _save_artifacts(offer: dict, result: dict, timings: dict, run_log_tag: str) 
             log = json.loads(log_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             log = []
-    data = result.get("competition_data")
     log.append(
         {
             "run_log_tag": run_log_tag,

@@ -976,7 +976,6 @@ def ask_for_confirmation(state: DiscoverOfferState) -> Command[Literal["check_if
     lands in rest-extraction, or to check_if_desc_inline when the user edits the draft."""
 
     follow_up = as_follow_up(state.get("follow_up"))
-    user_replies = list(follow_up.user_replies or [])
     offer_name = normalize_optional_text(state.get("offer_name"))
     offer_description = normalize_optional_text(state.get("offer_description"))
 

@@ -5,13 +5,10 @@ query fallback ordering, bundle accumulation, and the final state -- without
 spending a token or touching the network.
 """
 
-import sys
-import types
 
 import agents.pipelines.discover.understand_offer as uo
 from agents.schemas.offer import ProductFindings
-from agents.schemas.research import Perspectives, Specialist, TaskList
-from agents.schemas.sessions import OfferSessionState
+from agents.schemas.research import Specialist, TaskList
 
 
 # --- stub Exa: first query for each task returns nothing, second returns docs ---
