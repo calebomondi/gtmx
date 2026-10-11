@@ -107,7 +107,9 @@ async def create_from_discovery(db: AsyncSession, owner_id: uuid.UUID, values: d
     """Persist the offer the discovery intake settled on. `values` is the agent
     session state (loose offer_* keys, features as plain strings)."""
     offer_name = (values.get("offer_name") or "").strip() or None
-    workspace = models.Workspace(user_id=owner_id, name=title_case(offer_name))
+    workspace = models.Workspace(
+        user_id=owner_id, name=title_case(offer_name), offer_type=values.get("offer_type"),
+    )
     db.add(models.ProductProfile(
         workspace=workspace,
         product_name=offer_name,

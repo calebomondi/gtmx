@@ -20,6 +20,7 @@ class WorkspaceResponse(BaseModel):
     name: str | None = None
     pinned: bool = False
     product_name: str | None = None
+    offer_type: Literal["product", "service"] | None = None
     project_id: uuid.UUID | None = None
     archived: bool = False
     archived_at: datetime | None = None
@@ -34,6 +35,7 @@ class WorkspaceResponseFull(BaseModel):
     name: str | None = None
     pinned: bool = False
     product_name: str | None = None
+    offer_type: Literal["product", "service"] | None = None
     project_id: uuid.UUID | None = None
     archived: bool = False
     archived_at: datetime | None = None
