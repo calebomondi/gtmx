@@ -3,7 +3,7 @@ import uuid
 
 from datetime import datetime, UTC
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, UUID, UniqueConstraint, false, func
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UUID, UniqueConstraint, false, func
 from sqlalchemy.dialects.postgresql import JSONB as JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -12,6 +12,9 @@ from backend.app.database.connect import Base
 
 class Workspace(Base):
     __tablename__ = "workspaces"
+    __table_args__ = (
+        CheckConstraint("offer_type IN ('product', 'service')", name="ck_workspaces_offer_type"),
+    )
 
     # Metadata
     id: Mapped[uuid.UUID] = mapped_column(
@@ -29,6 +32,9 @@ class Workspace(Base):
     # User-owned label, seeded with the product/service name at creation time
     # (product_profile.product_name stays the agent's own understanding).
     name: Mapped[str | None] = mapped_column(String(100))
+    # Asserted by the user at intake. A real column (not only insights JSON)
+    # so the admin console can count and filter by it. NULL = never recorded.
+    offer_type: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
     pinned: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
