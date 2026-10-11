@@ -890,7 +890,7 @@ def build_competitors_graph():
     """plan -> hunt -> screen -> profile. Persistence happens in the caller.
 
     No LangGraph checkpointer: a run is a background job whose outcome the API
-    records on its own `competitor_runs` row, so there is no graph state to resume
+    records on its `runs` row, so there is no graph state to resume
     and nothing for a checkpointer to protect. The run row IS the resume point.
     """
     builder = StateGraph(CompetitorSessionState)
