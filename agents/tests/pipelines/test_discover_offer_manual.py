@@ -34,7 +34,6 @@ while root != root.parent:
     root = root.parent
 sys.path.insert(0, str(root))
 
-from agents.helpers import as_follow_up  # noqa: E402
 from agents.llm.main import llm_timing_report  # noqa: E402
 from agents.pipelines.discover.discover_offer_manual import (  # noqa: E402
     build_manual_offer_discovery_graph,

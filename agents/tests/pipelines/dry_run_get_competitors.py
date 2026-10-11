@@ -13,8 +13,6 @@ Run directly (pytest is not installed in this venv):
 """
 
 import asyncio
-import sys
-import types
 
 
 PASS: list[str] = []

@@ -25,6 +25,7 @@ cp .env.example .env                  # first time only, then fill in keys
 uv sync                               # install Python deps (incl. dev group)
 docker compose up -d --wait           # local Postgres 16 on :5432 (gtmx/gtmx)
 scripts/dev.sh                        # starts Postgres if needed, then uvicorn --reload on :8000
+uv run ruff check .                   # lint (real-bug rules; runs in CI)
 uv run pytest                         # offline tests, on the gtmx_test Postgres DB (auto-created + migrated)
 uv run pytest -m live                 # tests that hit real LLM/search APIs (opt-in)
 uv run alembic upgrade head           # apply migrations
@@ -52,7 +53,7 @@ bun run build && bun run typecheck && bun run lint
 4. Open the PR **into `dev`** with `gh pr create --base dev`. The body covers what changed, why, how it was tested, and any migration or env changes.
 5. **Never merge your own PR.** The owner reviews and merges. `dev` is promoted to `main` for release.
 6. Commit messages are imperative and specific ("Enforce workspace ownership on competitor routes"), not "fix stuff".
-7. Before opening a PR, all of these pass for every app the PR touches: `uv run pytest`, `bun run build` and `bun run lint` (frontend), `bun run build`, `typecheck` and `lint` (admin_dashboard), and `alembic upgrade head` on an empty database.
+7. Before opening a PR, all of these pass for every app the PR touches: `uv run ruff check .`, `uv run pytest`, `bun run build` and `bun run lint` (frontend), `bun run build`, `typecheck` and `lint` (admin_dashboard), and `alembic upgrade head` on an empty database.
 8. Use **Bun only** for JavaScript (`bun install`, `bun run`, `bunx`). Never add a `package-lock.json`, `yarn.lock` or `pnpm-lock.yaml`.
 9. Never commit `.env*` (except `.env.example`), `*.db`, `node_modules/`, `dist/`, `agents/.cache/`, or test `_out/` artifacts.
 

@@ -20,8 +20,8 @@ import agents.pipelines.accounts.account_discovery as discovery
 from agents.pipelines.accounts.account_discovery import run_account_discovery
 from agents.pipelines.discover.build_icp import build_icp_graph
 from agents.schemas.sessions import IcpSessionState
-from agents.schemas.accounts import AccountList, AccountRecord, ContactRecord, SourceRecord, TriggerEvent
-from agents.schemas.icp import BuyerPersona, CompetitorLead, ICP, TargetChannel
+from agents.schemas.accounts import AccountList, AccountRecord, SourceRecord, TriggerEvent
+from agents.schemas.icp import ICP
 from agents.tests.pipelines.test_build_icp import BRANCHES
 
 
@@ -64,7 +64,7 @@ def run_deterministic_checks() -> None:
             text = 'Foo Inc on LinkedIn'
             url = 'https://www.linkedin.com/company/foo-inc'
         elif 'email' in query:
-            text = f'Reach us at hello@foo.com or +254 700 000 000'
+            text = 'Reach us at hello@foo.com or +254 700 000 000'
             url = 'https://foo.com/contact'
         else:
             text = f'{config.get("market_recency_days", 365) if isinstance(config, dict) else 365} days recency docs for {query}'

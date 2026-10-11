@@ -21,7 +21,6 @@ cannot trust. The two are complementary, not redundant.
 from __future__ import annotations
 
 import html
-import re
 
 # Two floors, because the two call sites mean different things by "a body of text".
 #
