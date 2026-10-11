@@ -62,6 +62,7 @@ from agents.context_budget import distill_documents
 from agents.llm.main import invoke_structured_with_fallback
 from agents.schemas.competition import IdealCompetitorProfile
 from data_sources.scraping.exa import scrape_url, search_and_scrape
+from utils.log import logger
 
 from ..web_utils import call_with_timeout, search_cache_get, search_cache_put, timed_node
 
@@ -220,6 +221,13 @@ Their own website:
 ---
 {site}
 ---
+
+FIRST, `relevance`: would a buyer of the user's {offer_noun} consider {name}'s
+offering INSTEAD of it? Searches surface the offer's customers, partners,
+investors, press and big brands that merely mention the category. Those are
+`not_a_competitor`, however famous; say so and why in `relevance_reason`.
+`direct` = sells a substitute to the same buyer; `indirect` = solves the same
+problem differently.
 
 EVERY FIELD FOLLOWS THE SAME RULE: either you can point at where you got it,
 or you record that you could not.
@@ -715,7 +723,6 @@ def screen_candidates(state: CompetitorSessionState) -> dict:
                 }
             )
 
-    survivors = survivors[:MAX_CANDIDATES_PER_RUN]
     if len(survivors) > MAX_CANDIDATES_PER_RUN:
         reasons["over_per_run_cap"] = len(survivors) - MAX_CANDIDATES_PER_RUN
         survivors = survivors[:MAX_CANDIDATES_PER_RUN]
@@ -826,6 +833,10 @@ def _profile_one(survivor: dict, offer: dict) -> Optional[CompetitorProfile]:
     profile = batch if isinstance(batch, CompetitorProfile) else None
     if profile is None:
         print(f"profile_competitors: {survivor['name']} produced no profile")
+        return None
+    if profile.relevance == "not_a_competitor":
+        logger.info("profile_competitors: dropping %s -- not a competitor (%s)",
+                    survivor["name"], profile.relevance_reason or "no reason given")
         return None
 
     # The website is the one field the agent does not get a vote on. The screening

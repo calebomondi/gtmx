@@ -357,6 +357,13 @@ class CompetitorProfile(LenientModel):
 
 	name: str
 	website: str = Field(description="Required. A firm with no public site is not tracked")
+	relevance: Optional[Literal["direct", "indirect", "not_a_competitor"]] = Field(
+		default=None,
+		description="direct: sells a substitute to the same buyer. indirect: solves "
+		"the same problem a different way. not_a_competitor: a customer, partner, "
+		"investor, media outlet, or unrelated firm that merely appeared in the search",
+	)
+	relevance_reason: Optional[str] = Field(default=None, description="One sentence on why")
 	description: Optional[str] = Field(default=None, description="What the company does, in its own framing")
 	offering: Optional[str] = Field(default=None, description="The product or service actually sold")
 	positioning: Optional[str] = Field(default=None, description="How it claims to differ")
