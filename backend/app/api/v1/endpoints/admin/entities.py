@@ -8,7 +8,7 @@ from backend.app.api.deps import DbSession
 from backend.app.schemas.admin import (
     AdminRunDetail, AdminRunRow, AdminSignalRow, AdminUserDetail, AdminUserRow, AdminWorkspaceRow, Page,
 )
-from backend.app.services import admin_directory, admin_runs
+from backend.app.services import admin_directory, admin_engagement, admin_runs
 
 router = APIRouter()
 
@@ -26,8 +26,10 @@ async def list_users(db: DbSession, page: int = PageNo, per_page: int = PerPage,
 async def get_user(user_id: uuid.UUID, db: DbSession):
     user = await admin_directory.get_supabase_user(user_id)
     row = admin_directory.user_row(user, await admin_directory.user_activity(db, user_id))
+    engagement = await admin_engagement.user_engagement(db, user_id)
     return AdminUserDetail(
-        **row.model_dump(),
+        **(row.model_dump() | {"connections": engagement.pop("connections")}),
+        **engagement,
         spend_usd=await admin_runs.user_spend(db, user_id),
         recent_runs=(await admin_runs.list_runs(db, 1, RECENT_RUNS, user_id=user_id)).items,
         workspace_list=(await admin_directory.list_workspaces(db, 1, 100, user_id=user_id)).items,

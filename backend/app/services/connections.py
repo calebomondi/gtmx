@@ -85,6 +85,38 @@ async def list_for_user(user_id: uuid.UUID) -> list[ConnectionInfo]:
     return [i for i in infos if i and not (i.status == "pending" and i.platform in live)]
 
 
+# Bounds the admin-wide listing: 20 pages x 100 covers far past launch scale.
+_LIST_PAGE_SIZE = 100
+_LIST_MAX_PAGES = 20
+_LIST_TIMEOUT_S = 20.0
+
+
+async def live_by_user() -> dict[uuid.UUID, set[str]]:
+    """Every user's live platforms, in one paged pass (admin metrics)."""
+    def fetch() -> list:
+        items, cursor = [], None
+        for _ in range(_LIST_MAX_PAGES):
+            response = _client().connected_accounts.list(
+                toolkit_slugs=list(TOOLKITS.values()), statuses=["ACTIVE"], limit=_LIST_PAGE_SIZE,
+                timeout=_LIST_TIMEOUT_S, **({"cursor": cursor} if cursor else {}),
+            )
+            items.extend(getattr(response, "items", []) or [])
+            cursor = getattr(response, "next_cursor", None)
+            if not cursor:
+                break
+        return items
+    live: dict[uuid.UUID, set[str]] = {}
+    for account in await asyncio.to_thread(fetch):
+        platform = PLATFORM_OF.get(account.toolkit.slug)
+        try:
+            user_id = uuid.UUID(str(account.user_id))
+        except ValueError:
+            continue  # not one of our users (Composio playground, other apps on the key)
+        if platform:
+            live.setdefault(user_id, set()).add(platform)
+    return live
+
+
 async def start(user_id: uuid.UUID, platform: str) -> str:
     """Begin connecting `platform` for the user; returns the Connect Link URL.
     Composio redirects back to the accounts page, which then re-lists from
