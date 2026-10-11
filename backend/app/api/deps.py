@@ -22,6 +22,7 @@ from backend.app.database.connect import get_db
 from backend.app.services import limits
 from backend.app.services import projects as project_service
 from backend.app.services import workspaces as workspace_service
+from utils.log import current_user_id
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -79,6 +80,7 @@ async def require_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
         )
+    current_user_id.set(str(user.id))  # tags this request's log lines
     return user
 
 

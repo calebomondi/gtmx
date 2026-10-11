@@ -13,6 +13,7 @@ from psycopg_pool import ConnectionPool
 from agents.llm import main as llm
 from config import settings
 from utils import usage as api_usage
+from utils.log import current_run_id
 
 _pool: ConnectionPool | None = None
 
@@ -34,7 +35,7 @@ def _record_llm(call: dict) -> None:
 
 def _record_api(call: dict) -> None:
     with _pool.connection() as conn:
-        conn.execute(_INSERT_API, {**call, "run_id": llm.current_run_id.get()})
+        conn.execute(_INSERT_API, {**call, "run_id": current_run_id.get()})
 
 
 def start() -> None:

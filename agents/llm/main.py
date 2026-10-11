@@ -29,12 +29,11 @@ class _ChatQwen(ChatQwen):
             # Base impl force-disables thinking on non-"thinking"-named models.
             self.enable_thinking = saved
 from langchain_openai import ChatOpenAI
-from contextvars import ContextVar
 from typing import Any, Callable, Sequence
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 
-from utils.log import logger
+from utils.log import current_run_id, logger  # noqa: F401 -- current_run_id is re-exported for callers of agents.llm
 from config import get_settings
 
 cfg = get_settings()
@@ -71,9 +70,8 @@ def cheap_providers() -> list[tuple[str, list[str]]]:
 
 
 # -- Usage accounting ---------------------------------------------------------
-# The run an LLM call is billed to. Set by the backend for the span of a run
-# segment; ContextThreadPoolExecutor carries it into the agents' worker threads.
-current_run_id: ContextVar[str | None] = ContextVar("gtmx_current_run_id", default=None)
+# Calls are billed to utils.log.current_run_id, which the backend sets for the
+# span of a run segment; ContextThreadPoolExecutor carries it into workers.
 
 # Receives one record per LLM call attempt (failed attempts cost tokens too).
 # agents/ stays free of the database: the backend registers the sink.

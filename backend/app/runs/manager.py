@@ -17,7 +17,6 @@ from langgraph.types import Command
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agents.llm import main as llm
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.runs import background, discovery, events
@@ -29,17 +28,19 @@ from backend.app.services import runs as run_service
 from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError
 from backend.app.services.runs import TERMINAL_STATUSES, set_run_fields
 from config import settings
-from utils.log import logger
+from utils.log import current_run_id, current_user_id, logger
 
 _tasks: dict[uuid.UUID, asyncio.Task] = {}
 
 _RESTART_MESSAGE = "The server restarted while this run was working. Please start it again."
 
 
-def _spawn(run_id: uuid.UUID, segment: Coroutine, timeout_s: float) -> None:
+def _spawn(run_id: uuid.UUID, user_id: uuid.UUID, segment: Coroutine, timeout_s: float) -> None:
     async def guarded() -> None:
-        # Bills every LLM call this segment makes (in any worker thread) to the run.
-        llm.current_run_id.set(str(run_id))
+        # Bills every LLM/API call this segment makes (in any worker thread) to
+        # the run, and tags its log lines with the run and user.
+        current_run_id.set(str(run_id))
+        current_user_id.set(str(user_id))
         try:
             async with asyncio.timeout(timeout_s):
                 await segment
@@ -69,7 +70,7 @@ async def start_discovery(user_id: uuid.UUID, request: DiscoveryRequest) -> mode
         )
         db.add(run)
         await db.commit()
-    _spawn(run.id, discovery.run_segment(run.id, discovery.build_initial_state(request)),
+    _spawn(run.id, user_id, discovery.run_segment(run.id, discovery.build_initial_state(request)),
            settings.discovery_segment_timeout_s)
     return run
 
@@ -99,7 +100,7 @@ async def start_background(
         )
         db.add(run)
         await db.commit()
-    _spawn(run.id, executor(run.id, workspace_id, params or {}), settings.background_run_timeout_s)
+    _spawn(run.id, user_id, executor(run.id, workspace_id, params or {}), settings.background_run_timeout_s)
     return run
 
 
@@ -113,7 +114,7 @@ async def answer(user_id: uuid.UUID, run_id: uuid.UUID, text: str) -> None:
         if not await run_service.claim_for_resume(db, user_id, run_id):
             raise ConflictError("This run is not waiting for an answer.")
     await events.publish(run_id, "answered", {"answer": text})
-    _spawn(run_id, discovery.run_segment(run_id, Command(resume=text)), settings.discovery_segment_timeout_s)
+    _spawn(run_id, user_id, discovery.run_segment(run_id, Command(resume=text)), settings.discovery_segment_timeout_s)
 
 
 async def cancel(user_id: uuid.UUID, run_id: uuid.UUID) -> models.Run:
