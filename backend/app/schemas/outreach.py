@@ -41,9 +41,16 @@ class SyncResponse(BaseModel):
     bounced: int
 
 
+class Recipient(BaseModel):
+    name: str | None = Field(default=None, max_length=255)
+    address: str | None = Field(default=None, max_length=320)
+
+
 class DraftRequest(BaseModel):
     account_ids: list[uuid.UUID] = Field(min_length=1, max_length=25)
     channel: Literal["email", "linkedin"] = "email"
+    # Who to write to, when drafting for a single account from its page.
+    recipient: Recipient | None = None
 
 
 class MessageUpdate(BaseModel):

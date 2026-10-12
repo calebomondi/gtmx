@@ -5,7 +5,7 @@ import uuid
 from fastapi import APIRouter, status
 from sqlalchemy import select
 
-from backend.app.api.deps import CurrentUser, DbSession, OwnedWorkspace
+from backend.app.api.deps import AuthUser, CurrentUser, DbSession, OwnedWorkspace
 from backend.app.database import models
 from backend.app.runs import manager as run_manager
 from backend.app.runs import signals
@@ -22,6 +22,14 @@ from backend.app.services import outreach as outreach_service
 from backend.app.services.runs import TERMINAL_STATUSES
 
 router = APIRouter()
+
+
+def sender_name(user: AuthUser) -> str:
+    """The name drafts are signed with: the profile name, else the email's local part."""
+    if user.name and user.name.strip():
+        return user.name.strip()
+    local = (user.email or "").split("@")[0].replace(".", " ").replace("_", " ")
+    return local.title() or "Me"
 
 
 @router.get("/{workspace_id}/outreach", response_model=OutreachListResponse)
@@ -44,7 +52,8 @@ async def draft_outreach(workspace: OwnedWorkspace, payload: DraftRequest, user:
     return await run_manager.start_background(
         "outreach_drafts", workspace.user_id, workspace.id,
         params={"account_ids": [str(a) for a in payload.account_ids], "channel": payload.channel,
-                "sender": user.name or ""},
+                "sender": sender_name(user),
+                "recipient": payload.recipient.model_dump() if payload.recipient else None},
     )
 
 
