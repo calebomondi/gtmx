@@ -30,6 +30,7 @@ from data_sources.scraping.exa import scrape_url
 from utils.log import logger
 
 _PAGE_CHARS = 6_000
+MAX_REWRITES = 2
 _WORD_LIMITS = {"email": (50, 140), "linkedin": (25, 90)}
 _SCRAPE_TIMEOUT_S = 25
 
@@ -249,7 +250,14 @@ def write_first_touch(brief: OutreachBrief, offer_name: str) -> OutreachDraft:
     verdict = review(brief, research, plan, draft)
     sources = _brief_sources(brief, research.model_dump_json(), notes)
     problems = lint(brief, draft, sources) + ([] if verdict.passes else verdict.problems)
-    if problems:
+    # The review's verdict counts once; the mechanical checks are re-run after
+    # each rewrite, because a rewrite can keep (or add) the same mistake.
+    for _ in range(MAX_REWRITES):
+        if not problems:
+            break
         logger.info("Outreach draft rewritten after review: %s", "; ".join(problems))
         draft = _write(brief, plan, notes, feedback="; ".join(problems))
+        problems = lint(brief, draft, sources)
+    if problems:
+        logger.warning("Outreach draft still has problems after %d rewrites: %s", MAX_REWRITES, "; ".join(problems))
     return draft

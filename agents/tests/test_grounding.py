@@ -1,6 +1,8 @@
 """Outreach may only state numbers its sources state, and never claim results
 or customers in general terms. Cases are the live chain's real failures."""
 
+import pytest
+
 from agents.pipelines.outreach import grounding
 
 SOURCES = (
@@ -28,3 +30,19 @@ def test_generic_proof_is_flagged():
 def test_a_clean_draft_has_no_problems():
     draft = "Hi Kuda team,\n\nWith over 8 million customers, fraud models get retrained often. HeatherDB adapts without retraining, on ~10× cheaper hardware. Worth 15 minutes?\n\nWanjiku"
     assert grounding.problems(draft, SOURCES) == []
+
+
+def test_the_r_ending_a_word_is_not_the_rand():
+    """'for 200 million' was read as 'R 200 million'."""
+    sources = "Moniepoint processes 200 million transactions."
+    assert grounding.unsupported_numbers("infrastructure for 200 million API calls", sources) == []
+    assert grounding.unsupported_numbers("a pilot from R 500 a month", sources) == ["R 500"]
+
+
+@pytest.mark.parametrize("text", [
+    "Open to a chat on how other African scale-ups are cutting AI costs?",
+    "Open to a chat on how we're helping similar fintechs cut costs?",
+    "Many leading Nigerian banks already run it.",
+])
+def test_broader_generic_proof_is_caught(text):
+    assert any("claims results or customers" in p for p in grounding.problems(text, SOURCES))

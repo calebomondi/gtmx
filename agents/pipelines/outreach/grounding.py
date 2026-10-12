@@ -17,16 +17,20 @@ BANNED = re.compile(
 
 # Results or customers claimed in general terms: only real, named proof from
 # the research may be cited, and a writer reaching for these has none.
+_PEERS = (r"(?:companies|teams|banks|fintechs|processors|businesses|firms|clients|scale-?ups|start-?ups|"
+          r"lenders|operators|organi[sz]ations|players|brands|retailers|manufacturers|labs)")
 _GENERIC_PROOF = re.compile(
-    r"\b(we(?:'ve| have) (?:helped|worked with|supported)|helped (?:similar|other|many|several)\b|"
-    r"(?:similar|other) (?:companies|teams|banks|fintechs|processors|businesses|firms|clients)|"
+    r"\b(we(?:'ve| have| are|'re) (?:helped|helping|worked with|working with|supported|supporting)|"
+    r"helped (?:similar|other|many|several)\b|"
+    rf"(?:similar|other|many|leading)\s+(?:[a-z-]+\s+){{0,2}}{_PEERS}|"
     r"our (?:clients|customers) (?:see|saw|have|report|achieve)|customers like you|companies like yours)",
     re.I,
 )
 
 # A quantity: percentages, multipliers, money, and numbers with a scale word.
 _QUANTITY = re.compile(
-    r"(?:[$€£₦]|KES\s?|ZAR\s?|R\s)?\d[\d,.]*\s?(?:%|x\b|×|(?:k|m|bn)\b|"
+    # The rand sign only when it stands alone ("R 500"), never the r ending "for".
+    r"(?:[$€£₦]|\bKES\s?|\bZAR\s?|(?<![A-Za-z])R\s?(?=\d))?\d[\d,.]*\s?(?:%|x\b|×|(?:k|m|bn)\b|"
     r"(?:thousand|million|billion|percent)\b)?",
     re.I,
 )

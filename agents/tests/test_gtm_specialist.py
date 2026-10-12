@@ -95,7 +95,16 @@ def test_lint_catches_what_a_lenient_reviewer_misses():
 
 def test_lint_failures_force_a_rewrite_even_when_the_review_passes(llm, monkeypatch):
     calls, _ = llm
-    monkeypatch.setattr(gs, "lint", lambda brief, draft, sources=None: ["Remove \"enhance\""])
+    verdicts = iter([["Remove \"enhance\""], []])
+    monkeypatch.setattr(gs, "lint", lambda brief, draft, sources=None: next(verdicts))
     gs.write_first_touch(_brief(), "Cloud of Association")
     writes = [prompt for label, prompt in calls if label.startswith("outreach_write")]
     assert len(writes) == 2 and 'Remove "enhance"' in writes[1]
+
+
+def test_a_rewrite_that_keeps_the_mistake_gets_a_second_one(llm, monkeypatch):
+    calls, _ = llm
+    verdicts = iter([["Remove \"similar fintechs\""], ["Remove \"similar fintechs\""], []])
+    monkeypatch.setattr(gs, "lint", lambda brief, draft, sources=None: next(verdicts))
+    gs.write_first_touch(_brief(), "Cloud of Association")
+    assert len([label for label, _ in calls if label.startswith("outreach_write")]) == 3
