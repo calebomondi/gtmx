@@ -97,6 +97,9 @@ from agents.schemas.sessions import CompetitorSessionState
 # searches, and the candidate cap keeps one chatty directory page from becoming
 # forty competitor profiles.
 MAX_HUNT_TASKS = 8
+# Per task: keep searching until there are this many sources, up to that many queries.
+HUNT_DOCS_PER_TASK = 8
+HUNT_QUERIES_PER_TASK = 3
 SEARCH_RESULTS_PER_QUERY = 4
 MAX_CANDIDATES_PER_TASK = 8
 MAX_CANDIDATES_PER_RUN = 24
@@ -156,8 +159,13 @@ HARD RULES
 2. Never invent a company name into a query. You are looking for firms you do
    not know yet; if you seed a query with a name you recall, you will only ever
    find that name and its SEO echo.
-3. Cover every archetype. If the profile has 6 archetypes, produce tasks for all
-   6 -- a run that quietly skips archetypes is a run that quietly under-reports.
+3. Cover every archetype that is a kind of COMPANY. Skip archetypes that are not
+   companies a buyer could hire or buy from -- in-house teams, do-it-yourself,
+   spreadsheets, "doing nothing" -- since searching them only surfaces big
+   corporations that are not competitors. Every other archetype gets a task.
+4. Write queries a search engine can match: category and buyer words, not the
+   archetype's descriptive label ("hardware product development firm Nairobi",
+   not "Local Full-Stack ODM companies").
 
 Produce {max_tasks} tasks at most.
 """
@@ -532,12 +540,10 @@ def plan_hunt(state: CompetitorSessionState) -> dict:
     patterns = _brand_patterns(state)
     cleaned: list[CompetitorHuntTask] = []
     for task in tasks:
-        # Guarantee locality: prepend country-specific queries for each target geo
-        # so the hunter always starts inside the offer's market.
-        locals = []
-        for geo in target_geo:
-            locals.append(f"{task.archetype_label} companies in {geo}")
-        all_queries = locals + list(task.queries or [])
+        # The planner's own queries first; the label-plus-country ones are only a
+        # fallback (an archetype label is a description, not a search phrase).
+        fallback = [f"{task.archetype_label} companies in {geo}" for geo in target_geo]
+        all_queries = list(task.queries or []) + fallback
         queries = [q for q in (_scrub_brand(q or "", patterns) for q in all_queries) if q]
         if not queries:
             # Every query was a branded comparison: this task has nothing left to
@@ -596,9 +602,9 @@ def _hunt_one(task: CompetitorHuntTask) -> CompetitorHuntBundle:
             if url:
                 seen.add(url)
             docs.append(doc)
-        if docs:
-            # Queries are ordered specific-first with a broad fallback last, so
-            # stopping here is the fallback working as designed.
+        if len(docs) >= HUNT_DOCS_PER_TASK or len(issued) >= HUNT_QUERIES_PER_TASK:
+            # Enough to extract companies from. The first query that returns
+            # anything is not enough: one thin result set is a thin hunt.
             break
 
     bundle = CompetitorHuntBundle(
@@ -819,6 +825,9 @@ is a SUBSTITUTE: the buyer would pick it instead, to get the same job done.
 - The same job done with DIFFERENT technology or a different approach IS a
   substitute (e.g. a conventional vector database against a new kind of AI
   database; an in-house engineering team against an engineering consultancy).
+- A company that does a substantial PART of the job IS a substitute for that
+  part (e.g. a firmware boutique or a prototype manufacturer against an
+  end-to-end hardware consultancy): the buyer could hire it for that part.
 - Adjacent companies are NOT: governance or advisory firms, design agencies,
   tools that integrate with or sit alongside the offer, infrastructure it runs
   on (data centres, cloud hosting), and companies doing a different job for
