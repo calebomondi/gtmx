@@ -266,6 +266,11 @@ def review(brief: OutreachBrief, research: AccountResearch, plan: OutreachPlan, 
     )
 
 
+def _plain_subject(brief: OutreachBrief) -> str:
+    first = (brief.contact_name or "").split()
+    return f"A question for {first[0]}" if first else "A question for your team"
+
+
 def write_first_touch(brief: OutreachBrief, offer_name: str) -> OutreachDraft:
     """Research, plan, consult, write and review one first-touch message."""
     pages = _sources(brief)
@@ -290,4 +295,10 @@ def write_first_touch(brief: OutreachBrief, offer_name: str) -> OutreachDraft:
         problems = lint(brief, draft, sources)
     if problems:
         logger.warning("Outreach draft still has problems after %d rewrites: %s", MAX_REWRITES, "; ".join(problems))
+        # Style problems can ship for the user to edit; a claim nobody can back
+        # can't, so those sentences go (an ungrounded ask becomes the planned one).
+        draft = draft.model_copy(update={
+            "subject": _plain_subject(brief) if grounding.ungrounded(draft.subject or "", sources) else draft.subject,
+            "body": grounding.strip_ungrounded(draft.body, sources, plan.ask),
+        })
     return draft

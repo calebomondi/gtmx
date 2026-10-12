@@ -101,6 +101,35 @@ def unsupported_numbers(text: str, sources: str) -> list[str]:
     return found
 
 
+def ungrounded(sentence: str, sources: str) -> bool:
+    """Whether a sentence states a number no source has, or claims customers
+    or results in general terms: the claims a prospect could catch as false."""
+    sentence = sentence.replace("\u2019", "'").replace("\u2018", "'")
+    return bool(unsupported_numbers(sentence, sources) or _GENERIC_PROOF.search(sentence))
+
+
+_SENTENCE = re.compile(r"[^.!?\n]+(?:[.!?]+|$)")
+
+
+def strip_ungrounded(body: str, sources: str, ask: str) -> str:
+    """The body without its ungrounded sentences: the last resort when
+    rewrites keep a claim nobody can back. An ungrounded question is the
+    message's ask, so it becomes `ask` (the planned one) instead of vanishing;
+    `ask` is dropped too if it is itself ungrounded."""
+    replacement = ask.strip() if ask.strip() and not ungrounded(ask, sources) else ""
+    paragraphs = []
+    for paragraph in body.split("\n"):
+        kept = []
+        for sentence in _SENTENCE.findall(paragraph):
+            if not ungrounded(sentence, sources):
+                kept.append(sentence.strip())
+            elif sentence.strip().endswith("?") and replacement:
+                kept.append(replacement)
+        if kept or not paragraph.strip():
+            paragraphs.append(" ".join(kept))
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(paragraphs)).strip()
+
+
 def problems(text: str, sources: str) -> list[str]:
     """Rewrite instructions for every grounding failure in `text`."""
     text = text.replace("\u2019", "'").replace("\u2018", "'")  # "we’re" reads as "we're"
