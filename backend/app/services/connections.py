@@ -8,6 +8,7 @@ Composio's SDK is synchronous; every call runs in a worker thread.
 import asyncio
 import uuid
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 from datetime import datetime
 from functools import lru_cache
 
@@ -117,7 +118,29 @@ async def live_by_user() -> dict[uuid.UUID, set[str]]:
     return live
 
 
-async def start(user_id: uuid.UUID, platform: str) -> str:
+_LOOPBACK = {"localhost", "127.0.0.1"}
+
+
+def _same_site(origin: str, allowed: str) -> bool:
+    """Exact match, or the same loopback port under its other name: the
+    browser keeps localhost and 127.0.0.1 sessions apart, so returning a user
+    to the wrong one signs them out."""
+    a, b = urlsplit(origin), urlsplit(allowed.rstrip("/"))
+    if (a.scheme, a.netloc) == (b.scheme, b.netloc):
+        return True
+    return (a.scheme == b.scheme and a.port == b.port
+            and a.hostname in _LOOPBACK and b.hostname in _LOOPBACK)
+
+
+def return_base(origin: str | None) -> str:
+    """Where Composio sends the user back: the app origin they started from
+    when it is one we serve, else the configured frontend."""
+    if origin and any(_same_site(origin, a) for a in [settings.frontend_base_url, *settings.allowed_origins]):
+        return origin.rstrip("/")
+    return settings.frontend_base_url.rstrip("/")
+
+
+async def start(user_id: uuid.UUID, platform: str, origin: str | None = None) -> str:
     """Begin connecting `platform` for the user; returns the Connect Link URL.
     Composio redirects back to the accounts page, which then re-lists from
     Composio -- the callback's query parameters are never trusted."""
@@ -128,12 +151,14 @@ async def start(user_id: uuid.UUID, platform: str) -> str:
             f"{platform} needs an app-level OAuth setup before users can connect it."
         )
 
+    base = return_base(origin)
+
     def authorize() -> str:
         session = _client().create(
             user_id=str(user_id), manage_connections=False, auth_configs=_auth_configs(),
         )
         request = session.authorize(
-            TOOLKITS[platform], callback_url=f"{settings.frontend_base_url}/accounts?connected={platform}",
+            TOOLKITS[platform], callback_url=f"{base}/accounts?connected={platform}",
         )
         return request.redirect_url
     return await asyncio.to_thread(authorize)

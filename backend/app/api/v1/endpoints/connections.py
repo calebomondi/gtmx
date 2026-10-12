@@ -2,7 +2,7 @@
 
 from dataclasses import asdict
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Header, status
 
 from backend.app.api.deps import CurrentUser
 from backend.app.schemas.connections import (
@@ -29,9 +29,10 @@ async def list_connections(user: CurrentUser):
 
 
 @router.post("/{platform}", response_model=ConnectStartResponse)
-async def start_connection(platform: str, user: CurrentUser):
-    """A Connect Link to send the user to; they return to /accounts."""
-    return ConnectStartResponse(redirect_url=await connection_service.start(user.id, platform))
+async def start_connection(platform: str, user: CurrentUser, origin: str | None = Header(default=None)):
+    """A Connect Link to send the user to; they return to /accounts on the
+    origin they started from."""
+    return ConnectStartResponse(redirect_url=await connection_service.start(user.id, platform, origin))
 
 
 @router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)

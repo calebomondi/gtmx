@@ -104,3 +104,16 @@ async def test_live_by_user_pages_through_every_user(composio, user, monkeypatch
     live = await svc.live_by_user()
     # "someone-else" isn't a user id of ours; expired/initiated aren't live.
     assert live == {user.id: {"gmail", "linkedin"}, other: {"instagram"}}
+
+
+def test_connect_returns_to_the_origin_the_user_started_from(client, composio, monkeypatch):
+    monkeypatch.setattr(settings, "frontend_base_url", "http://localhost:5173")
+    monkeypatch.setattr(settings, "allowed_origins", ["https://app.example.com"])
+    for origin, expected in [
+        ("http://127.0.0.1:5173", "http://127.0.0.1:5173"),  # loopback alias keeps the session
+        ("https://app.example.com", "https://app.example.com"),
+        ("https://evil.example", "http://localhost:5173"),  # never an arbitrary origin
+        ("http://127.0.0.1:9999", "http://localhost:5173"),
+    ]:
+        client.post(f"{API}/gmail", headers={"Origin": origin})
+        assert composio.authorized[-1][2] == f"{expected}/accounts?connected=gmail"
