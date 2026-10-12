@@ -3,7 +3,7 @@
 
 import { deleteConnection, listConnections, startConnection, type ConnectionDto } from '@/lib/api'
 
-export type Platform = 'gmail' | 'linkedin' | 'instagram' | 'tiktok' | 'x'
+export type Platform = 'gmail' | 'googlecalendar' | 'linkedin' | 'instagram' | 'facebook' | 'tiktok' | 'x'
 
 export type ConnectionStatus = 'live' | 'pending' | 'needs_attention'
 
@@ -24,46 +24,59 @@ export interface Connection {
 
 export const PLATFORM_LABEL: Record<Platform, string> = {
   gmail: 'Gmail',
+  googlecalendar: 'Google Calendar',
   linkedin: 'LinkedIn',
   instagram: 'Instagram',
+  facebook: 'Facebook',
   tiktok: 'TikTok',
   x: 'X',
 }
 
-/** Empty string means "no icon asset" — the tile renders a letter badge. */
+/** Empty string means "no icon asset" — the tile renders a glyph instead. */
 export const PLATFORM_ICON: Record<Platform, string> = {
   gmail: '/gmail.svg',
+  googlecalendar: '',
   linkedin: '/linkedin.svg',
   instagram: '/instagram.svg',
+  facebook: '/facebook.svg',
   tiktok: '/tiktok.svg',
   x: '',
 }
 
 /** Every channel the app can connect, in display order. */
-export const ALL_PLATFORMS: Platform[] = ['gmail', 'linkedin', 'instagram', 'tiktok', 'x']
+export const ALL_PLATFORMS: Platform[] = ['gmail', 'googlecalendar', 'linkedin', 'instagram', 'facebook', 'tiktok', 'x']
 
-/** What outreach does through each channel. Sending always needs the user's
- *  explicit click; the agent drafts, it never sends on its own. */
+/** What the agents do through each channel, as each provider allows it.
+ *  Sending always needs the user's explicit click; agents draft, never send. */
 const CAPABILITIES: Record<Platform, Connection['capabilities']> = {
   gmail: [
     { label: 'Send emails you approve', allowed: true },
     { label: 'Read replies to those emails', allowed: true },
     { label: 'Send without your approval', allowed: false },
   ],
+  googlecalendar: [
+    { label: 'Find free slots for meetings', allowed: true },
+    { label: 'Add meetings you approve', allowed: true },
+    { label: 'Change your calendar without approval', allowed: false },
+  ],
   linkedin: [
-    { label: 'Post updates you approve', allowed: true },
-    { label: 'Send without your approval', allowed: false },
+    { label: 'Show who you are on drafts', allowed: true },
+    { label: 'Send messages (LinkedIn offers no messaging API: you paste drafts yourself)', allowed: false },
   ],
   instagram: [
-    { label: 'Publish posts you approve', allowed: true },
-    { label: 'Send without your approval', allowed: false },
+    { label: 'Read and answer DMs from people who wrote to you', allowed: true },
+    { label: 'Cold DMs (Instagram only allows replies within 24 hours)', allowed: false },
+  ],
+  facebook: [
+    { label: "Read and answer your Page's messages", allowed: true },
+    { label: 'Cold messages (Facebook only allows replies within 24 hours)', allowed: false },
   ],
   tiktok: [
     { label: 'Publish content you approve', allowed: true },
     { label: 'Send without your approval', allowed: false },
   ],
   x: [
-    { label: 'Post and reply as you approve', allowed: true },
+    { label: 'Send DMs you approve', allowed: true },
     { label: 'Send without your approval', allowed: false },
   ],
 }

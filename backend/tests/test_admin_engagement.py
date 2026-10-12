@@ -144,7 +144,7 @@ def test_users_list_and_detail_show_activity_and_connections(client, world, monk
     assert (ann["projects"], ann["workspaces"], ann["active_seconds_30d"], ann["connections"]) == (1, 2, 900, 2)
     assert ann["last_seen_at"] is not None
 
-    async def ann_connections(user_id):
+    async def ann_connections(db, user_id):
         return [connection_service.ConnectionInfo("ca_1", "gmail", "live", "ann@acme.com", NOW, NOW)]
     monkeypatch.setattr(connection_service, "list_for_user", ann_connections)
     detail = client.get(f"{API}/users/{world.ann}").json()

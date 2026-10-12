@@ -26,7 +26,8 @@ def _account(id_, user_id, toolkit, status, name=None):
 class FakeComposio:
     def __init__(self, accounts):
         self.accounts = {a.id: a for a in accounts}
-        self.deleted, self.authorized = [], []
+        self.deleted, self.authorized, self.executed = [], [], []
+        self.identities = {"GMAIL_GET_PROFILE": {"emailAddress": "jane.doe@acme.com"}}
         self.connected_accounts = self
 
     def list(self, toolkit_slugs, statuses, user_ids=None, limit=None, cursor=None, timeout=None):
@@ -51,6 +52,11 @@ class FakeComposio:
             def authorize(self, toolkit, callback_url):
                 fake.authorized.append((user_id, toolkit, callback_url, auth_configs))
                 return SimpleNamespace(redirect_url=f"https://connect.example/{toolkit}")
+
+            def execute(self, tool, arguments, account):
+                fake.executed.append((tool, account))
+                data = fake.identities.get(tool)
+                return SimpleNamespace(data=data, error=None if data else "unsupported", log_id="log")
         return Session()
 
 
@@ -69,10 +75,35 @@ def composio(monkeypatch, user):
 def test_lists_only_the_users_connections(client, composio):
     body = client.get(API).json()
     assert {c["platform"]: c["available"] for c in body["channels"]} == {
-        "gmail": True, "linkedin": True, "instagram": True, "tiktok": False, "x": False,
+        "gmail": True, "googlecalendar": True, "linkedin": True, "instagram": True, "facebook": True,
+        "tiktok": False, "x": False,
     }
     rows = {(c["id"], c["platform"], c["status"], c["display_name"]) for c in body["connections"]}
-    assert rows == {("ca_live", "gmail", "live", "jane@acme.com"), ("ca_x", "x", "needs_attention", None)}
+    # The live account is labelled from the provider's own profile.
+    assert rows == {("ca_live", "gmail", "live", "jane.doe@acme.com"), ("ca_x", "x", "needs_attention", None)}
+
+
+def test_identities_are_read_once_and_forgotten_on_disconnect(client, composio):
+    client.get(API)
+    client.get(API)
+    assert composio.executed == [("GMAIL_GET_PROFILE", "ca_live")]  # remembered after the first read
+    assert client.delete(f"{API}/ca_live").status_code == 204
+    composio.accounts["ca_live2"] = _account("ca_live2", composio.accounts["ca_live"].user_id, "gmail", "ACTIVE")
+    composio.identities["GMAIL_GET_PROFILE"] = {"emailAddress": "new@acme.com"}
+    labels = {c["id"]: c["display_name"] for c in client.get(API).json()["connections"]}
+    assert labels["ca_live2"] == "new@acme.com"
+
+
+@pytest.mark.parametrize("platform, data, label", [
+    ("linkedin", {"localizedFirstName": "Wanjiru", "localizedLastName": "Kamau"}, "Wanjiru Kamau"),
+    ("instagram", {"username": "mama_mboga"}, "@mama_mboga"),
+    ("x", {"data": {"username": "gtmx"}}, "@gtmx"),
+    ("facebook", {"name": "Acme Kenya"}, "Acme Kenya"),
+    ("googlecalendar", {"id": "jane@acme.com", "summary": "Jane"}, "jane@acme.com"),
+    ("linkedin", {}, None),
+])
+def test_identity_labels_per_platform(platform, data, label):
+    assert svc._IDENTITY[platform][2](data) == label
 
 
 def test_connect_link_for_available_channels_only(client, user, composio, monkeypatch):
@@ -80,7 +111,7 @@ def test_connect_link_for_available_channels_only(client, user, composio, monkey
     assert composio.authorized[0][:2] == (str(user.id), "linkedin")
     assert composio.authorized[0][2].endswith("/accounts?connected=linkedin")
     assert client.post(f"{API}/tiktok").status_code == 409  # needs our own OAuth app
-    assert client.post(f"{API}/facebook").status_code == 404
+    assert client.post(f"{API}/myspace").status_code == 404
 
     monkeypatch.setattr(settings, "composio_auth_configs", {"twitter": "ac_123"})
     assert client.post(f"{API}/x").status_code == 200

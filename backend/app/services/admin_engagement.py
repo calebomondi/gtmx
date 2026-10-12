@@ -187,7 +187,7 @@ async def engagement(db: AsyncSession, days: int) -> EngagementMetrics:
 async def _user_connections(db: AsyncSession, user_id: uuid.UUID) -> dict:
     sends = await sends_by_platform(db, user_id=user_id)
     try:
-        connections = await connection_service.list_for_user(user_id)
+        connections = await connection_service.list_for_user(db, user_id)
     except Exception:  # the SDK raises its own and httpx's error types
         logger.exception("Listing connected accounts from Composio failed", extra={"user_id": str(user_id)})
         return {"connection_list": [], "connections_error": COMPOSIO_UNAVAILABLE, "connections": None}

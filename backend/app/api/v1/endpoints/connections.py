@@ -4,7 +4,7 @@ from dataclasses import asdict
 
 from fastapi import APIRouter, Header, status
 
-from backend.app.api.deps import CurrentUser
+from backend.app.api.deps import CurrentUser, DbSession
 from backend.app.schemas.connections import (
     ChannelResponse,
     ConnectionResponse,
@@ -17,8 +17,8 @@ router = APIRouter()
 
 
 @router.get("", response_model=ConnectionsResponse)
-async def list_connections(user: CurrentUser):
-    infos = await connection_service.list_for_user(user.id)
+async def list_connections(user: CurrentUser, db: DbSession):
+    infos = await connection_service.list_for_user(db, user.id)
     return ConnectionsResponse(
         channels=[
             ChannelResponse(platform=p, available=connection_service.available(p))
@@ -36,5 +36,5 @@ async def start_connection(platform: str, user: CurrentUser, origin: str | None 
 
 
 @router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def disconnect(connection_id: str, user: CurrentUser):
-    await connection_service.disconnect(user.id, connection_id)
+async def disconnect(connection_id: str, user: CurrentUser, db: DbSession):
+    await connection_service.disconnect(db, user.id, connection_id)
