@@ -106,6 +106,12 @@ function useMeasuredHeight<T extends HTMLElement>() {
   return [ref, height] as const
 }
 
+// The agent takes a reply this long to "I can't read your website" as the
+// offer's description; anything shorter it asks for again.
+const MIN_DESCRIPTION_WORDS = 8
+
+const wordCount = (text: string) => text.trim().split(/\s+/).filter(Boolean).length
+
 export function NewWorkspaceForm({
   className,
   isDiscovering,
@@ -183,6 +189,16 @@ export function NewWorkspaceForm({
       ? websiteUrl.trim().length > 0 && targetGeo.length > 0
       : description.trim().length > 0 && targetGeo.length > 0
   }, [productName, websiteUrl, description, targetGeo, source])
+
+  // Resuming after an unreadable URL takes either a corrected URL or a
+  // description long enough for the agent to work from.
+  const clarifyReady = useMemo(
+    () =>
+      source === "website"
+        ? websiteUrl.trim().length > 0
+        : wordCount(description) >= MIN_DESCRIPTION_WORDS,
+    [source, websiteUrl, description],
+  )
 
   const handleSourceChange = (next: SourceMode) => {
     setDirection(next === "social" ? 1 : -1)
@@ -268,8 +284,7 @@ export function NewWorkspaceForm({
     event.preventDefault()
 
     if (clarifyUrl) {
-      const trimmed = websiteUrl.trim()
-      if (trimmed) answer(trimmed)
+      if (clarifyReady) answer(source === "social" ? description.trim() : websiteUrl.trim())
       return
     }
 
@@ -314,7 +329,7 @@ export function NewWorkspaceForm({
               <SourceToggle
                 value={source}
                 onValueChange={handleSourceChange}
-                disabled={isDiscovering || clarifyUrl}
+                disabled={isDiscovering}
               />
 
               <FieldGroup>
@@ -438,7 +453,7 @@ export function NewWorkspaceForm({
                             </FieldLabel>
                             <FieldDescription>
                               {clarifyUrl
-                                ? "We couldn't fetch this page. Fix the URL to resume — everything already gathered is kept."
+                                ? "We couldn't read this page. Fix the URL, or choose No Website and describe it instead."
                                 : `The ${offerNoun} page`}
                             </FieldDescription>
                             <Input
@@ -458,8 +473,9 @@ export function NewWorkspaceForm({
                                 <span className="text-[var(--destructive)]">*</span>
                               </FieldLabel>
                               <FieldDescription>
-                                Describe it explicitly — what it is and what it does. A couple of
-                                sentences is enough, but be specific: this is my only source.
+                                {clarifyUrl
+                                  ? `We couldn't read your website, so this is my only source. Say what it is, who it's for and what it does, in at least ${MIN_DESCRIPTION_WORDS} words.`
+                                  : "Describe it explicitly — what it is and what it does. A couple of sentences is enough, but be specific: this is my only source."}
                               </FieldDescription>
                               <Textarea
                                 id="business-description"
@@ -474,7 +490,7 @@ export function NewWorkspaceForm({
                                 rows={4}
                                 className="max-h-48 overflow-y-auto"
                                 required
-                                disabled={isDiscovering || clarifyUrl}
+                                disabled={isDiscovering && !clarifyUrl}
                               />
                             </Field>
                           </>
@@ -520,13 +536,13 @@ export function NewWorkspaceForm({
                       type="submit"
                       disabled={
                         clarifyUrl
-                          ? !websiteUrl.trim()
+                          ? !clarifyReady
                           : !isFormReady || isDiscovering
                       }
                       className={`bg-[#FEA853] ${isDiscovering ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                     >
                       {clarifyUrl
-                        ? "Retry with this URL"
+                        ? source === "website" ? "Retry with this URL" : "Continue with this description"
                         : isDiscovering
                         ? "Started workspace creation..."
                         : "Create Workspace"}

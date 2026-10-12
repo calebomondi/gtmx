@@ -117,10 +117,11 @@ def _answer_for(payload: dict, branch: str) -> str:
     # "yes" there strands the run, so supply the branch's description instead.
     if ptype == "product_service_description_confirmation" and not payload.get("draft"):
         return BRANCHES[branch]["description"] or "yes"
+    if ptype == "url_unscrappable":  # describe the offer instead
+        return BRANCHES[branch]["description"] or "continue"
 
     auto = {
         "offer_name_mismatch": "1",          # pick the first candidate found
-        "url_unscrappable": "continue",      # work from the name/description
         "product_service_description_confirmation": "yes",
     }
     return auto.get(ptype, "yes")
@@ -379,10 +380,11 @@ def _answer_for_with_offer(payload: dict, offer: dict) -> str:
 
     if ptype == "product_service_description_confirmation" and not payload.get("draft"):
         return offer["description"] or "yes"
+    if ptype == "url_unscrappable":  # describe the offer instead
+        return offer["description"] or "continue"
 
     auto = {
         "offer_name_mismatch": "1",
-        "url_unscrappable": "continue",
         "product_service_description_confirmation": "yes",
     }
     return auto.get(ptype, "yes")
@@ -390,12 +392,6 @@ def _answer_for_with_offer(payload: dict, offer: dict) -> str:
 
 def _assert_intake_run_with_offer(label: str, final: dict, interrupt_log: list[dict], offer: dict) -> None:
     noun = offer["offer_type"]
-
-    # Terminal failure path: the URL was unscrappable. No description or extraction.
-    if interrupt_log and interrupt_log[0]["type"] == "url_unscrappable":
-        assert not final.get("confirmed"), f"[{label}] confirmed should not be True after unscrappable URL"
-        assert final.get("scrape_failed") is True, f"[{label}] scrape_failed should be True"
-        return
 
     assert final.get("offer_type") == noun, (
         f"[{label}] offer_type {final.get('offer_type')!r} must equal {noun!r}"

@@ -178,7 +178,7 @@ function ClarifyUrl({
             `I couldn't fetch any content from ${url ?? "the link you shared"}.`}
         </p>
         <span className="text-sm text-muted-foreground">
-          Reply with a working URL, or type <span className="font-semibold">continue</span>.
+          Reply with a working URL, or describe it in a sentence or two.
         </span>
       </div>
       <form

@@ -93,6 +93,8 @@ class DiscoverOfferState(TypedDict):
     scraped_content: Optional[str] = None
     page_understanding: Optional[str] = None
     scrape_failed: bool = False
+    # The site couldn't be read and the reply wasn't a description: ask for one.
+    asked_to_describe: bool = False
     name_mismatch: bool = False
     product_candidates: List[str] = Field(description="")
     confirmed: bool = False
