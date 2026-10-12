@@ -135,6 +135,24 @@ async def competitor_changes(run_id: uuid.UUID, changes: list) -> None:
     await _emit(build)
 
 
+async def inbox_synced(result) -> None:
+    """One signal per new reply (hot: someone answered) and per bounce."""
+    async def build(_db):
+        replies = [signal_service.build(
+            user_id=m.user_id, workspace_id=m.workspace_id, run_id=None, category="inbound",
+            title=f"{m.recipient_name or m.recipient_address} replied", entity=m.recipient_company or "",
+            summary=(m.body or "").strip()[:280], reason="A reply to your outreach arrived.", hot=True,
+        ) for m in result.replies]
+        bounces = [signal_service.build(
+            user_id=m.user_id, workspace_id=m.workspace_id, run_id=None, category="outbound",
+            title=f"Bounced: {m.recipient_address}", entity=m.recipient_company or "",
+            summary="This address didn't receive your email. Find another contact for the account.",
+            reason="The recipient's mail server rejected the message.",
+        ) for m in result.bounced]
+        return replies + bounces
+    await _emit(build)
+
+
 async def run_failed(run_id: uuid.UUID, message: str) -> None:
     async def build(db):
         run = await db.get(models.Run, run_id)

@@ -1,6 +1,7 @@
 """In-process scheduler: keeps every active workspace's competitor monitoring
-fresh. Single-instance by design for launch (one backend process); a
-multi-instance deployment needs a leader lock or an external scheduler."""
+fresh, and syncs replies to sent outreach from users' Gmail. Single-instance
+by design for launch (one backend process); a multi-instance deployment needs
+a leader lock or an external scheduler."""
 
 import asyncio
 from datetime import UTC, datetime, timedelta
@@ -9,13 +10,14 @@ from sqlalchemy import func, or_, select
 
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
-from backend.app.runs import manager
+from backend.app.runs import manager, signals
+from backend.app.services import inbox as inbox_service
 from backend.app.services.errors import RateLimitedError
 from backend.app.services.runs import TERMINAL_STATUSES
 from config import settings
 from utils.log import logger
 
-_task: asyncio.Task | None = None
+_tasks: list[asyncio.Task] = []
 
 
 async def _stale_workspaces() -> list[tuple]:
@@ -52,27 +54,47 @@ async def sweep() -> int:
     return started
 
 
-async def _loop() -> None:
+async def sync_inboxes() -> int:
+    """Sync every user with recent sends. Returns how many replies arrived."""
+    async with AsyncSessionLocal() as db:
+        users = await inbox_service.users_to_sync(db)
+    arrived = 0
+    for user_id in users:
+        try:
+            async with AsyncSessionLocal() as db:
+                result = await inbox_service.sync_user(db, user_id)
+            await signals.inbox_synced(result)
+            arrived += len(result.replies)
+        except Exception:  # noqa: BLE001 -- one user's mailbox must not stop the rest
+            logger.exception("Inbox sync failed for user %s", user_id)
+    return arrived
+
+
+async def _loop(job, name: str, interval_s: float) -> None:
     await asyncio.sleep(settings.monitor_initial_delay_s)
     while True:
         try:
-            started = await sweep()
-            if started:
-                logger.info("Monitoring sweep started %d run(s)", started)
+            count = await job()
+            if count:
+                logger.info("%s: %d", name, count)
         except Exception:  # noqa: BLE001 -- the scheduler must outlive one bad sweep
-            logger.exception("Monitoring sweep failed")
-        await asyncio.sleep(settings.monitor_scan_interval_s)
+            logger.exception("%s failed", name)
+        await asyncio.sleep(interval_s)
 
 
 def start() -> None:
-    global _task
-    if _task is None and settings.monitor_enabled:
-        _task = asyncio.create_task(_loop(), name="monitor-scheduler")
+    if _tasks:
+        return
+    if settings.monitor_enabled:
+        _tasks.append(asyncio.create_task(
+            _loop(sweep, "Monitoring sweep", settings.monitor_scan_interval_s), name="monitor-scheduler"))
+    if settings.inbox_sync_enabled:
+        _tasks.append(asyncio.create_task(
+            _loop(sync_inboxes, "Inbox sync", settings.inbox_sync_interval_s), name="inbox-scheduler"))
 
 
 async def stop() -> None:
-    global _task
-    if _task is not None:
-        _task.cancel()
-        await asyncio.gather(_task, return_exceptions=True)
-        _task = None
+    for task in _tasks:
+        task.cancel()
+    await asyncio.gather(*_tasks, return_exceptions=True)
+    _tasks.clear()

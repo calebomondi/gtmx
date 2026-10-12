@@ -111,6 +111,13 @@ class Settings(BaseSettings):
     # Longer than this without a ping and the next one starts a new session.
     activity_session_gap_s: int = 300
 
+    # -- Inbox sync (replies to sent outreach, from the user's Gmail) --
+    inbox_sync_enabled: bool = True
+    # How often every user with recent sends is checked for replies/bounces.
+    inbox_sync_interval_s: float = 300.0
+    # Only threads sent within this window are watched for replies.
+    inbox_sync_window_days: int = 30
+
     # -- Observability (all opt-in: empty means off) --
     sentry_dsn: str = ""
     sentry_environment: str = "development"

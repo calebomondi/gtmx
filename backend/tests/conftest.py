@@ -54,6 +54,7 @@ def no_auto_monitoring(monkeypatch):
     """Finished competitor runs chain a (paid, networked) monitor run; tests
     that want it turn it back on."""
     monkeypatch.setattr(settings, "monitor_enabled", False)
+    monkeypatch.setattr(settings, "inbox_sync_enabled", False)
 
 
 @pytest.fixture(autouse=True)

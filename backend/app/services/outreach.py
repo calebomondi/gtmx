@@ -22,6 +22,7 @@ CHANNEL_PLATFORM = {"email": "gmail", "linkedin": "linkedin"}
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _EDITABLE = ("draft", "failed")
 _SEND_TOOL = "GMAIL_SEND_EMAIL"  # verified against the live Composio catalog
+_REPLY_TOOL = "GMAIL_REPLY_TO_THREAD"
 
 
 async def list_for_workspace(db: AsyncSession, workspace_id: uuid.UUID) -> list[models.OutreachMessage]:
@@ -82,6 +83,14 @@ def recipient_for(account: models.Account, channel: str) -> tuple[str | None, st
     return best if best_rank else (first_named, None)
 
 
+async def mark_read(db: AsyncSession, message: models.OutreachMessage) -> models.OutreachMessage:
+    if message.direction == "inbound" and message.read_at is None:
+        message.read_at = datetime.now(UTC)
+        await db.commit()
+        await db.refresh(message)
+    return message
+
+
 async def update(db: AsyncSession, message: models.OutreachMessage, changes: dict[str, Any]) -> models.OutreachMessage:
     if message.status not in _EDITABLE:
         raise ConflictError("A sent message can't be edited.")
@@ -114,11 +123,13 @@ async def send(db: AsyncSession, message: models.OutreachMessage) -> models.Outr
     """Send one approved email through the user's connected Gmail."""
     if message.channel != "email":
         raise ConflictError("LinkedIn messages are sent by you: copy the draft into LinkedIn.")
+    if message.direction != "outbound":
+        raise ConflictError("Replies you received can't be sent.")
     if message.status not in _EDITABLE:
         raise ConflictError("This message was already sent.")
     if not _EMAIL_RE.match(message.recipient_address or ""):
         raise InvalidInputError("Add a valid recipient email address before sending.")
-    if not (message.subject or "").strip() or not (message.body or "").strip():
+    if not (message.body or "").strip() or not (message.thread_id or (message.subject or "").strip()):
         raise InvalidInputError("Add a subject and a message before sending.")
     if await _sends_today(db, message.user_id) >= settings.max_outreach_sends_per_day:
         raise RateLimitedError(
@@ -134,13 +145,19 @@ async def send(db: AsyncSession, message: models.OutreachMessage) -> models.Outr
     message.status, message.error = "sending", None
     await db.commit()
     try:
-        result = await asyncio.to_thread(
-            connection_service.execute_tool, message.user_id, _SEND_TOOL,
-            {"recipient_email": message.recipient_address, "subject": message.subject, "body": message.body},
-            gmail.id,
-        )
+        # A draft in an existing thread is a reply: it goes into that thread.
+        tool, arguments = (_REPLY_TOOL, {
+            "thread_id": message.thread_id, "recipient_email": message.recipient_address,
+            "message_body": message.body,
+        }) if message.thread_id else (_SEND_TOOL, {
+            "recipient_email": message.recipient_address, "subject": message.subject, "body": message.body,
+        })
+        result = await asyncio.to_thread(connection_service.execute_tool, message.user_id, tool, arguments, gmail.id)
         failed = bool(result.get("error"))
         message.provider_log_id = result.get("log_id")
+        sent = result.get("data") if isinstance(result.get("data"), dict) else {}
+        message.thread_id = message.thread_id or sent.get("threadId")
+        message.provider_message_id = sent.get("id")
         message.status = "failed" if failed else "sent"
         message.error = "Gmail rejected the message. Check the recipient address and try again." if failed else None
         message.sent_at = None if failed else datetime.now(UTC)
