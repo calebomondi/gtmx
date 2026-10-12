@@ -9,6 +9,10 @@ export interface OutreachMessageDto {
   direction: "outbound" | "inbound"
   thread_id: string | null
   read_at: string | null
+  /** How the GTM specialist read a reply (inbound only). */
+  intent: string | null
+  /** A reply draft's proposed meeting; event_url once added to Calendar. */
+  meeting: { start: string; end: string; timezone: string; title: string; attendee: string | null; event_url?: string } | null
   recipient_name: string | null
   recipient_company: string
   recipient_address: string | null
@@ -64,6 +68,16 @@ export function syncOutreach(workspaceId: string): Promise<{ replies: number; bo
 
 export function markOutreachRead(workspaceId: string, messageId: string): Promise<OutreachMessageDto> {
   return apiFetch(`${base(workspaceId)}/messages/${messageId}/read`, { method: "POST" })
+}
+
+/** Ask the GTM specialist to draft an answer to a received reply. */
+export function draftOutreachReply(workspaceId: string, messageId: string): Promise<RunDto> {
+  return apiFetch(`${base(workspaceId)}/messages/${messageId}/reply-draft`, { method: "POST" })
+}
+
+/** Add a reply draft's proposed meeting to the user's Google Calendar. */
+export function addOutreachMeeting(workspaceId: string, messageId: string): Promise<OutreachMessageDto> {
+  return apiFetch(`${base(workspaceId)}/messages/${messageId}/meeting`, { method: "POST" })
 }
 
 export function deleteOutreachMessage(workspaceId: string, messageId: string): Promise<void> {

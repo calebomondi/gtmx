@@ -4,6 +4,7 @@ drift apart."""
 from typing import Literal, get_args
 
 RunKind = Literal[
-    "discovery", "competitors", "accounts", "competitor_research", "chat", "outreach_drafts", "monitor",
+    "discovery", "competitors", "accounts", "competitor_research", "chat", "outreach_drafts", "outreach_reply",
+    "monitor",
 ]
 RUN_KINDS: tuple[str, ...] = get_args(RunKind)

@@ -2,12 +2,16 @@
 the sent email's thread, once each, and reach the feed. Replying from GTMX
 goes into the same thread."""
 
+import asyncio
 import json
 import uuid
 
 import psycopg
 import pytest
 
+from agents.pipelines.outreach.gtm_replies import ReplyResult
+from agents.schemas.outreach import ReplyAnalysis, ReplyDraft
+from backend.app.runs import background, manager
 from backend.app.services import connections as connection_service
 from backend.app.services.connections import ConnectionInfo
 from backend.tests.test_outreach import account_id, drafted  # noqa: F401 -- shared fixtures
@@ -16,19 +20,49 @@ from config import settings
 API = "/api/v1/workspaces"
 
 
+async def _drain():
+    if manager._tasks:
+        await asyncio.gather(*manager._tasks.values(), return_exceptions=True)
+
+
+@pytest.fixture(autouse=True)
+def specialist(monkeypatch):
+    """The GTM specialist's reply agent, stubbed: `answer["analysis"]` decides."""
+    answer = {"analysis": ReplyAnalysis(intent="question", summary="Asks price", reply_needed=True), "briefs": []}
+
+    def fake(brief):
+        answer["briefs"].append(brief)
+        analysis = answer["analysis"]
+        return ReplyResult(analysis, ReplyDraft(body="Hi Ada, 20 seats is $400/mo. Thursday works.\n\nOwner")
+                           if analysis.reply_needed else None)
+    monkeypatch.setattr(background.gtm_replies, "draft_reply", fake)
+
+    async def no_slots(db, user_id):
+        return ["Thu 16 Oct, 10:00-10:30 (Africa/Nairobi)"], "Africa/Nairobi"
+    monkeypatch.setattr(background.calendar_service, "free_slots", no_slots)
+
+    async def owner(user_id):
+        return "Owner"
+    monkeypatch.setattr(background.outreach_service, "sender_for_user", owner)
+    return answer
+
+
 @pytest.fixture
 def mailbox(monkeypatch):
     """A fake Gmail: sends get thread t1; the inbox holds `box["messages"]`."""
     box = {"messages": [], "calls": []}
 
     async def connections(db, user_id):
-        return [ConnectionInfo("ca_gmail", "gmail", "live", "me@us.example", None, None)]
+        return [ConnectionInfo("ca_gmail", "gmail", "live", "me@us.example", None, None),
+                ConnectionInfo("ca_cal", "googlecalendar", "live", "me@us.example", None, None)]
     monkeypatch.setattr(connection_service, "list_for_user", connections)
 
     def execute(user_id, tool, arguments, account):
         box["calls"].append((tool, arguments))
         if tool == "GMAIL_FETCH_EMAILS":
             return {"data": {"messages": box["messages"]}, "error": None, "log_id": "l"}
+        if tool == "GOOGLECALENDAR_CREATE_EVENT":
+            return {"data": {"response_data": {"htmlLink": "https://calendar.example/e1"}}, "error": None, "log_id": "l"}
         return {"data": {"id": f"sent{len(box['calls'])}", "threadId": "t1"}, "error": None, "log_id": "l"}
     monkeypatch.setattr(connection_service, "execute_tool", execute)
     return box
@@ -40,7 +74,7 @@ def _sent(client, drafted):  # noqa: F811
 
 
 def _feed(client):
-    return [s for s in client.get("/api/v1/signals").json() if "draft" not in s["title"]]
+    return [s for s in client.get("/api/v1/signals").json() if "draft" not in s["title"].lower()]
 
 
 def _messages(client, workspace):
@@ -58,9 +92,11 @@ def test_replies_land_in_the_thread_once_and_reach_the_feed(client, drafted, mai
     ]
     sync = f"{API}/{drafted['workspace']}/outreach/sync"
     assert client.post(sync).json() == {"replies": 1, "bounced": 0}
+    client.portal.call(_drain)
     assert client.post(sync).json() == {"replies": 0, "bounced": 0}  # stored once
 
     reply = next(m for m in _messages(client, drafted["workspace"]) if m["direction"] == "inbound")
+    assert reply["intent"] == "question"
     assert (reply["thread_id"], reply["recipient_address"], reply["body"], reply["read_at"]) == (
         "t1", "ada@acme.example", "Sounds good, call Thursday?", None)
     assert [(s["title"], s["hot"]) for s in _feed(client)] == [("Ada Lovelace replied", True)]
@@ -109,3 +145,53 @@ def test_scheduled_sync_covers_users_with_recent_sends(client, drafted, mailbox)
     mailbox["messages"] = [{"messageId": "r2", "threadId": "t1", "sender": "ada@acme.example", "messageText": "Yes"}]
     assert client.portal.call(scheduler.sync_inboxes) == 1
     assert json.dumps(_feed(client)).count("replied") == 1
+
+
+def test_a_reply_gets_a_threaded_answer_drafted_with_the_team_and_calendar(client, drafted, mailbox, specialist):  # noqa: F811
+    _sent(client, drafted)
+    mailbox["messages"] = [{"messageId": "r1", "threadId": "t1", "sender": "Ada Lovelace <ada@acme.example>",
+                            "messageText": "What does 20 seats cost? Thursday 10am?"}]
+    client.post(f"{API}/{drafted['workspace']}/outreach/sync")
+    client.portal.call(_drain)
+
+    [brief] = specialist["briefs"]
+    assert brief.thread[-1] == ("them", "What does 20 seats cost? Thursday 10am?") and brief.thread[0][0] == "us"
+    assert brief.free_slots == ["Thu 16 Oct, 10:00-10:30 (Africa/Nairobi)"] and brief.sender_name == "Owner"
+    assert set(brief.research) >= {"product", "market", "competition", "gtm"}
+    draft = next(m for m in _messages(client, drafted["workspace"]) if m["status"] == "draft" and m["thread_id"] == "t1")
+    assert (draft["recipient_address"], draft["body"].startswith("Hi Ada"), draft["subject"]) == ("ada@acme.example", True, None)
+    assert "Reply drafted for Ada Lovelace" in [s["title"] for s in client.get("/api/v1/signals").json()]
+
+
+def test_out_of_office_needs_no_answer(client, drafted, mailbox, specialist):  # noqa: F811
+    specialist["analysis"] = ReplyAnalysis(intent="out_of_office", summary="Away", reply_needed=False)
+    _sent(client, drafted)
+    mailbox["messages"] = [{"messageId": "r1", "threadId": "t1", "sender": "ada@acme.example", "messageText": "I'm away"}]
+    client.post(f"{API}/{drafted['workspace']}/outreach/sync")
+    client.portal.call(_drain)
+    assert sorted(m["status"] for m in _messages(client, drafted["workspace"]) if m["thread_id"] == "t1") == ["received", "sent"]
+
+
+def test_an_agreed_time_becomes_a_meeting_added_only_on_click(client, drafted, mailbox, specialist):  # noqa: F811
+    specialist["analysis"] = ReplyAnalysis(intent="meeting_request", summary="Thu", reply_needed=True,
+                                           agreed_time="2026-10-16T10:00:00")
+    _sent(client, drafted)
+    mailbox["messages"] = [{"messageId": "r1", "threadId": "t1", "sender": "ada@acme.example", "messageText": "Thu 10am"}]
+    client.post(f"{API}/{drafted['workspace']}/outreach/sync")
+    client.portal.call(_drain)
+    draft = next(m for m in _messages(client, drafted["workspace"]) if m["status"] == "draft" and m["thread_id"] == "t1")
+    assert draft["meeting"]["start"] == "2026-10-16T10:00:00" and draft["meeting"]["attendee"] == "ada@acme.example"
+    assert not any(tool == "GOOGLECALENDAR_CREATE_EVENT" for tool, _ in mailbox["calls"])  # nothing booked by itself
+
+    path = f"{API}/{drafted['workspace']}/outreach/messages/{draft['id']}/meeting"
+    added = client.post(path).json()
+    assert added["meeting"]["event_url"] == "https://calendar.example/e1"
+    client.post(path)  # a second click doesn't double-book
+    creates = [args for tool, args in mailbox["calls"] if tool == "GOOGLECALENDAR_CREATE_EVENT"]
+    assert len(creates) == 1 and creates[0]["attendees"] == ["ada@acme.example"]
+    assert creates[0]["start_datetime"] == "2026-10-16T10:00:00" and creates[0]["event_duration_minutes"] == 30
+
+
+def test_only_received_replies_can_be_answered(client, drafted):  # noqa: F811
+    path = f"{API}/{drafted['workspace']}/outreach/messages/{drafted['messages'][0]['id']}/reply-draft"
+    assert client.post(path).status_code == 409

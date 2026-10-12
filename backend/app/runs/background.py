@@ -13,12 +13,13 @@ from agents.concurrency import ContextThreadPoolExecutor
 from agents.pipelines.chat import workspace_chat
 from agents.pipelines.monitor import check_competitor
 from agents.pipelines.monitor import socials as competitor_socials
-from agents.pipelines.outreach import gtm_specialist
+from agents.pipelines.outreach import gtm_replies, gtm_specialist
 from backend.app.account_runner import run_account_discovery_for_workspace
 from backend.app.competitor_runner import research_competitor_site, run_competitor_discovery
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.runs import events, signals
+from backend.app.services import calendar as calendar_service
 from backend.app.services import chat as chat_service
 from backend.app.services import competitors as competitor_service
 from backend.app.services import outreach as outreach_service
@@ -142,6 +143,74 @@ async def outreach_drafts(run_id: uuid.UUID, workspace_id: uuid.UUID, params: di
     await signals.outreach_drafted(run_id, len(drafts))
 
 
+_MEETING_MINUTES = 30
+
+
+async def outreach_reply(run_id: uuid.UUID, workspace_id: uuid.UUID, params: dict) -> None:
+    """The GTM specialist reads a reply and drafts the answer, consulting the
+    team and offering free calendar slots. The user approves every send, and
+    a meeting reaches Calendar only from the user's click."""
+    async with AsyncSessionLocal() as db:
+        reply = await db.get(models.OutreachMessage, uuid.UUID(params["message_id"]))
+        conversation = await outreach_service.thread(db, reply)
+        account = await db.get(models.Account, reply.account_id) if reply.account_id else None
+        context = await specialist_service.load(db, workspace_id)
+        offer = await outreach_service.offer_context(db, workspace_id)
+        slots, timezone = await calendar_service.free_slots(db, reply.user_id)
+    brief = gtm_replies.ReplyBrief(
+        sender_name=params.get("sender") or "Me", contact_name=reply.recipient_name, offer=offer,
+        account=outreach_service.account_brief(account) if account else reply.recipient_company,
+        thread=[("them" if m.direction == "inbound" else "us", m.body) for m in conversation
+                if m.status not in ("draft", "failed")],
+        team=context.team, research=context.research, free_slots=slots, timezone=timezone,
+    )
+    result = await asyncio.to_thread(gtm_replies.draft_reply, brief)
+
+    async with AsyncSessionLocal() as db:
+        reply = await db.get(models.OutreachMessage, reply.id)
+        reply.intent = result.analysis.intent
+        await db.commit()
+        draft = None
+        if result.draft is not None:
+            draft = await outreach_service.add_reply_draft(
+                db, reply, result.draft.body, _meeting(result.analysis.agreed_time, timezone, reply, context.offer_name),
+                run_id,
+            )
+    await _finish(run_id, {"intent": result.analysis.intent, "drafted": draft is not None})
+    if draft is not None:
+        await signals.reply_drafted(run_id, reply.recipient_name or reply.recipient_address or "", result.analysis.intent)
+
+
+def _meeting(agreed_time: str, timezone: str, reply: models.OutreachMessage, offer_name: str) -> dict | None:
+    """The meeting to offer adding to Calendar, when the contact agreed a time."""
+    try:
+        start = datetime.fromisoformat(agreed_time) if agreed_time else None
+    except ValueError:
+        return None
+    if start is None:
+        return None
+    end = start + timedelta(minutes=_MEETING_MINUTES)
+    return {
+        "start": start.isoformat(), "end": end.isoformat(), "timezone": timezone or "UTC",
+        "title": f"{offer_name or 'Intro'} x {reply.recipient_company}".strip(), "attendee": reply.recipient_address,
+    }
+
+
+async def after_inbox_sync(result) -> None:
+    """Feed signals for what arrived, and a reply draft for each new reply."""
+    await signals.inbox_synced(result)
+    from backend.app.runs import manager  # manager imports this module
+
+    for reply in result.replies:
+        try:
+            await manager.start_background(
+                "outreach_reply", reply.user_id, reply.workspace_id,
+                params={"message_id": str(reply.id), "sender": await outreach_service.sender_for_user(reply.user_id)},
+            )
+        except RateLimitedError:
+            logger.info("Reply drafting for user %s waits: daily cap reached", reply.user_id)
+
+
 _MONITOR_WORKERS = 4
 
 
@@ -233,5 +302,6 @@ EXECUTORS: dict[str, Callable[[uuid.UUID, uuid.UUID, dict], Awaitable[None]]] = 
     "competitor_research": competitor_research,
     "chat": chat,
     "outreach_drafts": outreach_drafts,
+    "outreach_reply": outreach_reply,
     "monitor": monitor,
 }

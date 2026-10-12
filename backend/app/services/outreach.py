@@ -10,7 +10,9 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app import supabase_admin
 from backend.app.database import models
+from backend.app.services import calendar as calendar_service
 from backend.app.services import connections as connection_service
 from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError, RateLimitedError
 from config import settings
@@ -214,3 +216,62 @@ def account_brief(account: models.Account) -> str:
         _lines("Sources", [s.get("url") for s in (account.sources or [])[:5] if isinstance(s, dict)]),
     ]
     return "\n".join(p for p in parts if p)
+
+
+def sender_name(name: str | None, email: str | None) -> str:
+    """The name outreach is signed with: the profile name, else the email's local part."""
+    if name and name.strip():
+        return name.strip()
+    local = (email or "").split("@")[0].replace(".", " ").replace("_", " ")
+    return local.title() or "Me"
+
+
+async def sender_for_user(user_id: uuid.UUID) -> str:
+    """The sender name for a user, outside a request (e.g. a scheduled sync)."""
+    try:
+        client = await supabase_admin.get_client()
+        user = (await client.auth.admin.get_user_by_id(str(user_id))).user
+    except Exception:  # noqa: BLE001 -- signing falls back; drafting must not fail on it
+        logger.exception("Looking up user %s for the sender name failed", user_id)
+        return "Me"
+    metadata = getattr(user, "user_metadata", None) or {}
+    return sender_name(metadata.get("full_name") or metadata.get("name"), getattr(user, "email", None))
+
+
+async def thread(db: AsyncSession, message: models.OutreachMessage) -> list[models.OutreachMessage]:
+    """The message's conversation, oldest first."""
+    if not message.thread_id:
+        return [message]
+    return list((await db.execute(
+        select(models.OutreachMessage).where(
+            models.OutreachMessage.user_id == message.user_id,
+            models.OutreachMessage.thread_id == message.thread_id,
+        ).order_by(func.coalesce(models.OutreachMessage.sent_at, models.OutreachMessage.created_at))
+    )).scalars().all())
+
+
+async def add_reply_draft(db: AsyncSession, reply: models.OutreachMessage, body: str,
+                          meeting: dict | None, run_id: uuid.UUID | None) -> models.OutreachMessage:
+    """A draft answering `reply`, in its thread, to whoever wrote it."""
+    draft = models.OutreachMessage(
+        workspace_id=reply.workspace_id, user_id=reply.user_id, account_id=reply.account_id, run_id=run_id,
+        channel=reply.channel, recipient_name=reply.recipient_name, recipient_company=reply.recipient_company,
+        recipient_address=reply.recipient_address, body=body, thread_id=reply.thread_id, meeting=meeting,
+    )
+    db.add(draft)
+    await db.commit()
+    return draft
+
+
+async def add_meeting(db: AsyncSession, message: models.OutreachMessage) -> models.OutreachMessage:
+    """Put the meeting a reply draft proposes into the user's Google Calendar.
+    Only ever from the user's click."""
+    if not message.meeting:
+        raise ConflictError("This message has no meeting to add.")
+    if message.meeting.get("event_url"):
+        return message
+    url = await calendar_service.add_meeting(db, message.user_id, message.meeting)
+    message.meeting = {**message.meeting, "event_url": url or "added"}
+    await db.commit()
+    await db.refresh(message)
+    return message
