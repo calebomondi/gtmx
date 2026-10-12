@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { supabase } from "@/lib/supabase"
-import { isValidEmail, safeNextPath } from "@/lib/validation"
+import { isValidEmail, rememberOAuthNext, safeNextPath } from "@/lib/validation"
 import { useState } from "react"
 
 export function LoginForm({
@@ -65,6 +65,7 @@ export function LoginForm({
 
   const handleGoogle = async () => {
     setError(null)
+    rememberOAuthNext(searchParams.get("next"))
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: `${window.location.origin}/auth/callback` },
