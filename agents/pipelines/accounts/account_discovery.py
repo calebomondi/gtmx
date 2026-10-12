@@ -899,6 +899,8 @@ def run_account_discovery(state: IcpSessionState) -> dict:
 # Segment fan-out ------------------------------------------------------------------
 
 MAX_SEGMENTS = 6
+# Each country pass is a full search; beyond a few the cost outruns the value.
+MAX_COUNTRY_PASSES = 4
 MAX_MERGED_ACCOUNTS = 24
 SEGMENT_MAX_WORKERS = 4
 
@@ -944,6 +946,22 @@ def _segment_state(state: IcpSessionState, seg: dict) -> IcpSessionState:
 
 
 def run_account_discovery_segmented(state: IcpSessionState) -> dict:
+    """Run the account-discovery graph once per (industry or persona) x geo
+    segment and merge the lists."""
+    return _run_segments(state, _segments_for(state))
+
+
+def run_account_discovery_by_country(state: IcpSessionState) -> dict:
+    """One account search per target country, merged. A single search across
+    several countries returns whatever the search engine favours (in practice
+    one country), so each country gets its own pass."""
+    geos = _geos_for(state, state.get("icp_data"))[:MAX_COUNTRY_PASSES]
+    if len(geos) <= 1:
+        return build_account_discovery_graph(checkpointer=False).invoke(state)
+    return _run_segments(state, [{"kind": "geo", "label": geo, "geo": geo} for geo in geos])
+
+
+def _run_segments(state: IcpSessionState, segments: list[dict]) -> dict:
     """Run the account-discovery graph once per segment and merge the lists.
 
     Each segment returns its own ≤ MAX_ACCOUNT_ROWS accounts; the merged list
@@ -951,7 +969,6 @@ def run_account_discovery_segmented(state: IcpSessionState) -> dict:
     are resolved by domain/platform key, keeping the higher-scored record."""
     from agents.concurrency import ContextThreadPoolExecutor
 
-    segments = _segments_for(state)
     logger.info(f"Segmented account discovery over {len(segments)} segments: "
           f"{[(s['kind'], s['label'], s['geo']) for s in segments]}")
 

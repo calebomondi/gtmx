@@ -21,7 +21,7 @@ from sqlalchemy.exc import IntegrityError
 from agents.schemas.competition import IdealCompetitorProfile
 from agents.schemas.icp import ICP
 from agents.pipelines.accounts.account_discovery import (
-    build_account_discovery_graph,
+    run_account_discovery_by_country,
 )
 
 from backend.app.database.connect import AsyncSessionLocal
@@ -159,10 +159,9 @@ async def run_account_discovery_for_workspace(
             "No ICP found for this workspace — finish the Offer run first."
         )
 
-    graph = build_account_discovery_graph(checkpointer=False)
-    # Node fns are sync and I/O-heavy; run the whole graph off the event loop
-    # so a long search run doesn't block unrelated requests.
-    final = await asyncio.to_thread(graph.invoke, state)
+    # One search per target country. Node fns are sync and I/O-heavy, so the
+    # whole run goes off the event loop.
+    final = await asyncio.to_thread(run_account_discovery_by_country, state)
     accounts = (final.get("accounts") or {}).get("accounts") if isinstance(final.get("accounts"), dict) else (getattr(final.get("accounts"), "accounts", None) or [])
 
     rows = []
