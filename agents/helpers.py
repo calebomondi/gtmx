@@ -4,6 +4,8 @@ from .context_budget import offer_brief
 
 import re
 
+from data_sources.scraping.quality import decode_entities
+
 def as_offer_snapshot(value):
     if value is None:
         return OfferDataSnapshot()
@@ -151,3 +153,77 @@ def with_target_geo(chosen: list[str] | None, found: list[str] | None) -> list[s
     out = [g for g in (chosen or []) if g]
     seen = {g.lower() for g in out}
     return out + [g for g in (found or []) if g and g.lower() not in seen]
+
+
+# Words that carry no identifying signal in an offer name. Dropping them is what makes
+# "&" and "and" interchangeable: "Engineering and Innovation Consultancy" and
+# "Engineering & Innovation Consultancy" reduce to the same significant tokens, so
+# neither can fail to match the other on punctuation alone.
+_NAME_STOPWORDS = frozenset({
+    "and", "the", "of", "for", "a", "an", "to", "in", "on", "with", "or", "at", "by",
+})
+
+# Fraction of significant tokens that must be present for a multi-word name to match.
+# Most of the name has to be there. 3/3 and 4/5 pass; 2/3 does not. The gap matters:
+# a descriptive phrase like "quantum blockchain consulting" scores 2/3 purely on
+# generic domain vocabulary, and treating that as a confirmed NAME is wrong — it
+# should fall through to be handled as a description instead. A genuinely wrong
+# company scores 0 either way, so the loose cases cost nothing to reject.
+_NAME_MATCH_THRESHOLD = 0.7
+
+# Minimum shared prefix for treating two words as the same word inflected differently.
+# Long enough that "man"/"many" cannot collide, short enough to bridge the regular
+# English derivational pairs that show up in service names: manufacture/manufacturing,
+# consult/consultancy, design/designer.
+_STEM_PREFIX = 6
+
+_WORD_SPLIT_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _name_tokens(name: str) -> list[str]:
+    """Significant lowercase tokens of an offer name, stopwords removed."""
+    return [t for t in _WORD_SPLIT_RE.split(name.lower()) if t and t not in _NAME_STOPWORDS]
+
+
+def name_in_text(name: str, content: str) -> bool:
+    """Is this name (an offer's, or an account's) present in the text?
+
+    Originally a single substring test against the name with all non-alphanumerics
+    stripped. That is brittle in two ways that both bite on real pages:
+
+      * "&" is stripped to nothing while "and" survives, so the SAME service name
+        typed either way produced different keys and could never match the other.
+        Verified: "Engineering and Innovation Consultancy" failed against a page
+        listing "Engineering & Innovation Consultancy" — which is literally Service
+        01 on that site.
+      * it also depended on whether Exa returned HTML-escaped or decoded text, so
+        "&amp;" vs "&" silently flipped the verdict.
+
+    So: decode entities first, then score token overlap. Tokens also match on a shared
+    >=6-char prefix, so a user typing "manufacturing" still matches a page saying
+    "manufacture". An all-stopword name ("The Company") falls back to the old
+    substring test rather than matching everything.
+    """
+    if not name or not content:
+        return False
+
+    haystack = decode_entities(content).lower()
+    tokens = _name_tokens(name)
+    if not tokens:
+        norm = lambda s: re.sub(r"[^a-z0-9]", "", s.lower())
+        return norm(name) in norm(haystack)
+
+    words = set(_WORD_SPLIT_RE.split(haystack))
+
+    def matches(token: str) -> bool:
+        if token in haystack:
+            return True
+        stem = token[:_STEM_PREFIX]
+        if len(stem) < _STEM_PREFIX:
+            return False
+        return any(w.startswith(stem) for w in words if len(w) >= _STEM_PREFIX)
+
+    present = sum(1 for t in tokens if matches(t))
+    if present == len(tokens):
+        return True
+    return present / len(tokens) >= _NAME_MATCH_THRESHOLD
