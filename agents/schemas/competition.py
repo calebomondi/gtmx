@@ -453,6 +453,6 @@ class CompetitorRelevance(LenientModel):
 	same_buyer: bool = Field(description="Would the same person or team buy both?")
 	substitute: bool = Field(
 		description="Would that buyer choose this company's offering INSTEAD of the user's offer, to get the same "
-		"job done? False for tools that integrate with it, sit beside it, run underneath it, govern or advise on "
-		"it, or do a different job for the same buyer.",
+		"job done -- even with different technology? False for tools that integrate with it, sit beside it, run "
+		"underneath it, govern or advise on it, or do a different job for the same buyer.",
 	)
