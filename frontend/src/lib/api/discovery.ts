@@ -83,6 +83,13 @@ export interface SpecialistDto {
   description: string
 }
 
+export interface MarketPricingDto {
+  tier: string
+  monthly_sub?: string | null
+  yearly_sub?: string | null
+  features: string[]
+}
+
 export interface MarketDataDto {
   buyer_type: string | null
   category: string | null
@@ -90,6 +97,14 @@ export interface MarketDataDto {
   target_geo: string[]
   market_fit: string | null
   market_fit_reasoning: string | null
+  pricing?: MarketPricingDto[]
+  pricing_source?: "site" | "market_suggestion" | null
+  category_conventions?: string | null
+  market_demand?: string | null
+  willingness_to_pay?: string | null
+  distribution_channels?: string[]
+  adoption_barriers?: string[]
+  growth_outlook?: "growing" | "stable" | "declining" | "unclear" | null
 }
 
 /** One archetype in the ideal competitor profile.
@@ -142,6 +157,20 @@ export interface CompetitorLeadDto {
   pain_angles: string[]
 }
 
+export interface BuyerPersonaDto {
+  name: string
+  who: string
+  where_they_congregate: string[]
+  intent_signals: string[]
+}
+
+export interface TargetChannelDto {
+  channel_type: string
+  name: string
+  audience_fit: string
+  first_angle: string
+}
+
 export interface IcpDto {
   product_name: string | null
   buyer_type: string | null
@@ -153,6 +182,11 @@ export interface IcpDto {
   pain_signals: string[]
   intent_keywords: string[]
   competitor_leads: CompetitorLeadDto[]
+  buyer_personas?: BuyerPersonaDto[]
+  target_channels?: TargetChannelDto[]
+  event_focus?: string | null
+  messaging_angles?: string[]
+  beachhead?: string | null
 }
 
 export type DiscoveryPhaseDataFrame =

@@ -137,10 +137,11 @@ const AgentRunProductUnderstanding = () => {
         className='flex max-h-[60vh] items-center justify-center gap-5 overflow-hidden max-lg:flex-col max-lg:items-start'
         orientation='vertical'
       >
-        <StepperNav className='w-60'>
+        {/* Progress only: steps follow the run and are not navigable. */}
+        <StepperNav className='pointer-events-none w-60 select-none' aria-disabled>
           {steps.map((step, index) => (
             <StepperItem key={step.id} stepId={step.id} className='relative items-start'>
-              <StepperTrigger className='items-start gap-2.5 pb-15 last:pb-0'>
+              <StepperTrigger tabIndex={-1} className='cursor-default items-start gap-2.5 pb-15 last:pb-0'>
                 <StepperIndicator
                   className={cn(
                     awaiting && step.id === currentStepId && 'animate-pulse bg-[#FEA853] text-black',
