@@ -33,3 +33,4 @@ agents/tests/pipelines/_out/
 
 # Internal admin console: a separate git repository checked out here.
 admin_dashboard/
+backend/tests/live/_out/
