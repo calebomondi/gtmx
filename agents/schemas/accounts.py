@@ -57,6 +57,10 @@ class AccountRecord(LenientModel):
     venue: str | None = Field(default=None, description="For events: city/venue where it happens")
     event_date: str | None = Field(default=None, description="For events: date/period, if stated")
     member_size: str | None = Field(default=None, description="For communities/creators: audience/member size, if stated")
+    summary: str | None = Field(
+        default=None,
+        description="One or two plain sentences on what this target does and who it serves, from the sources (e.g. 'Nairobi lender offering asset-financed loans to SMEs and gig drivers'). Not why it fits the ICP -- that is why_selected.",
+    )
     industry: str | None = Field(default=None, description="Industry the company operates in")
     size: str | None = Field(default=None, description="Company size (headcount/revenue band), if found")
     geo: str | None = Field(default=None, description="Country/region the target is based in")

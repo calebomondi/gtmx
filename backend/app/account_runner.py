@@ -69,6 +69,7 @@ def _account_values(account) -> dict:
         "venue": account.venue,
         "event_date": account.event_date,
         "member_size": account.member_size,
+        "summary": account.summary,
         "industry": account.industry,
         "size": account.size,
         "geo": account.geo,

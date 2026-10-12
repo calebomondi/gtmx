@@ -20,6 +20,7 @@ class AccountResponse(BaseModel):
     venue: str | None = None
     event_date: str | None = None
     member_size: str | None = None
+    summary: str | None = None
     industry: str | None = None
     size: str | None = None
     geo: str | None = None
