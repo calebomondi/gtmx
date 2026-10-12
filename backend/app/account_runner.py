@@ -76,6 +76,7 @@ def _account_values(account) -> dict:
         "tech_stack": list(account.tech_stack or []),
         "recent_news": list(account.recent_news or []),
         "key_contacts": [c.model_dump(mode="json") for c in (account.key_contacts or [])],
+        "socials": dict(account.socials or {}),
         "pain_signals": list(account.pain_signals or []),
         "hiring_signals": list(account.hiring_signals or []),
         "sources": [s.model_dump(mode="json") for s in (account.sources or [])],

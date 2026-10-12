@@ -17,6 +17,8 @@ export interface AccountRecord {
   event_date: string | null
   member_size: string | null
   summary: string | null
+  /** The account's own social pages, by platform. */
+  socials: Record<string, string>
   industry: string | null
   size: string | null
   geo: string | null

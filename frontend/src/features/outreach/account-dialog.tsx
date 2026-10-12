@@ -57,6 +57,13 @@ function channelsFor(account: AccountRecord): ContactChannel[] {
       channels.push({ kind: 'linkedin', label: 'LinkedIn', address: c.linkedin, contactName: c.name })
     }
   }
+  // The account's own pages: the route when no person is published.
+  for (const [platform, url] of Object.entries(account.socials ?? {})) {
+    const social = PLATFORM_CHANNELS[platform.toLowerCase()]
+    if (social && url && !channels.some((ch) => ch.address === url)) {
+      channels.push({ kind: social.kind, label: social.label, address: url, contactName: `${account.name} on ${social.label}` })
+    }
+  }
   const mapped = PLATFORM_CHANNELS[(account.platform ?? '').toLowerCase()]
   if (mapped && !channels.some((ch) => ch.kind === mapped.kind)) {
     channels.push({ kind: mapped.kind, label: mapped.label, address: account.venue ?? account.name })
@@ -205,8 +212,10 @@ export function AccountDetailDialog({
           </div>
         ) : (
           <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-            {channel?.label} doesn't let apps send cold messages. Engage from the {channel?.label} app, or reach this
-            account by email or LinkedIn.
+            {channel?.label} doesn't let apps send cold messages. Engage from the {channel?.label} app
+            {channel?.address.startsWith('http') && (
+              <> (<a href={channel.address} target="_blank" rel="noreferrer" className="text-amber-500 hover:underline">open their page</a>)</>
+            )}, or reach this account by email or LinkedIn.
           </p>
         )}
 
