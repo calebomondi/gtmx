@@ -17,6 +17,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from agents.llm.main import cheap_providers, invoke_structured_with_fallback
 from agents.pipelines import team
 from agents.pipelines.outreach import grounding
+from agents.pipelines.outreach.gtm_specialist import MAX_REWRITES
 from agents.schemas.outreach import ReplyAnalysis, ReplyDraft
 from utils.log import logger
 
@@ -151,7 +152,10 @@ def draft_reply(brief: ReplyBrief) -> ReplyResult:
                              "outreach_consult")
     draft = _write(brief, analysis, notes)
     problems = lint(brief, draft, notes)
-    if problems:
+    for _ in range(MAX_REWRITES):
+        if not problems:
+            break
         logger.info("Reply draft rewritten: %s", "; ".join(problems))
         draft = _write(brief, analysis, notes, feedback="; ".join(problems))
+        problems = lint(brief, draft, notes)
     return ReplyResult(analysis, draft)
