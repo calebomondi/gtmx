@@ -813,11 +813,16 @@ def _add_site_socials(profile: CompetitorProfile, website: str) -> None:
             profile.tracking_sources.append(CompetitorSocial(kind=platform, value=url, confidence="high"))
 
 
-_RELEVANCE_PROMPT = """You decide whether a company competes with the user's {noun}. Be strict: a
-competitor is a SUBSTITUTE -- the buyer would pick it instead, to get the same
-job done. Adjacent companies (governance, consulting, design agencies, tools
-that integrate or sit alongside, infrastructure underneath) are not competitors,
-however related the topic.
+_RELEVANCE_PROMPT = """You decide whether a company competes with the user's {noun}. A competitor
+is a SUBSTITUTE: the buyer would pick it instead, to get the same job done.
+
+- The same job done with DIFFERENT technology or a different approach IS a
+  substitute (e.g. a conventional vector database against a new kind of AI
+  database; an in-house engineering team against an engineering consultancy).
+- Adjacent companies are NOT: governance or advisory firms, design agencies,
+  tools that integrate with or sit alongside the offer, infrastructure it runs
+  on (data centres, cloud hosting), and companies doing a different job for
+  the same buyer -- however related the topic.
 
 THE USER'S {noun_upper}
 {offer}
