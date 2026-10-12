@@ -434,6 +434,8 @@ class Account(Base):
     venue: Mapped[str | None] = mapped_column(String(255), nullable=True)
     event_date: Mapped[str | None] = mapped_column(String(255), nullable=True)
     member_size: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # What the target does, in a sentence or two: the account card's lead line.
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     industry: Mapped[str | None] = mapped_column(String(255), nullable=True)
     size: Mapped[str | None] = mapped_column(String(100), nullable=True)

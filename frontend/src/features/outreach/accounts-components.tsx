@@ -136,6 +136,15 @@ function StatusBadge({ status }: { status: AccountRun['status'] }) {
   )
 }
 
+/** What the target does. Accounts found before the agent wrote summaries fall
+ * back to their firmographics. */
+function aboutLine(account: AccountRecord): string | null {
+  if (account.summary?.trim()) return account.summary.trim()
+  const parts = [account.industry, account.size, account.member_size && `${account.member_size} members`, account.event_date]
+  const line = parts.filter((p): p is string => Boolean(p?.trim())).join(' · ')
+  return line || null
+}
+
 function AccountCard({
   account,
   onOpenDetail,
@@ -182,9 +191,9 @@ function AccountCard({
             {hasLinkedin && <img src="/linkedin.svg" alt="linkedin" className="size-4" />}
           </div>
         </div>
-        <div className="mt-1 p-1 flex text-sm">
-          [about_account]
-        </div>
+        {aboutLine(account) && (
+          <p className="mt-1 line-clamp-3 text-sm text-muted-foreground">{aboutLine(account)}</p>
+        )}
       </CardHeader>
       <CardContent className="flex flex-col gap-3 pb-4 text-sm">
         {trigger?.event && (
@@ -621,6 +630,8 @@ export default function AccountsComponent({ workspaceId }: { workspaceId?: strin
     [workspaceId, refreshAccounts],
   )
 
+  const hunting = starting || (run != null && LIVE_STATUSES.has(run.status))
+
   return (
     <Card className="flex min-h-0 flex-1 flex-col">
       <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
@@ -658,9 +669,10 @@ export default function AccountsComponent({ workspaceId }: { workspaceId?: strin
               <button
                 key={chip.value}
                 type="button"
+                disabled={hunting}
                 onClick={() => setTab(chip.value)}
                 className={cn(
-                  'cursor-pointer rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors',
+                  'cursor-pointer rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
                   tab === chip.value
                     ? 'border-amber-500 bg-amber-500 text-amber-950'
                     : 'border-border bg-secondary text-secondary-foreground hover:bg-accent hover:text-accent-foreground',
@@ -674,9 +686,9 @@ export default function AccountsComponent({ workspaceId }: { workspaceId?: strin
             size="sm"
             className="bg-amber-500 text-amber-950 hover:bg-amber-400"
             onClick={start}
-            disabled={starting || (run != null && LIVE_STATUSES.has(run.status))}
+            disabled={hunting}
           >
-            {starting || (run != null && LIVE_STATUSES.has(run.status)) ? (
+            {hunting ? (
               <Loader2 className="mr-1.5 size-3.5 animate-spin" />
             ) : (
               <Compass className="mr-1.5 size-3.5" />

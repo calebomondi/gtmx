@@ -260,6 +260,7 @@ def extract_accounts(state: IcpSessionState) -> dict:
         "Never invent a target, a trigger, or a source. Leave `socials` empty — enrichment fills it.\n"
         f"  {_trigger_line()}\n"
         "- For each target set: name, account_type (company/community/event/creator/platform), "
+        "a one-to-two sentence `summary` of what the target does and who it serves (from the sources), "
         "website/domain/industry/geo only as stated. `size` is the company's ACTUAL headcount or revenue "
         "as a source states it (e.g. '120 employees'); never copy one of the ICP's size bands onto an "
         "account, and leave it null when no source states it. platform/venue/event_date/member_size where "

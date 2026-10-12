@@ -16,6 +16,7 @@ export interface AccountRecord {
   venue: string | null
   event_date: string | null
   member_size: string | null
+  summary: string | null
   industry: string | null
   size: string | null
   geo: string | null

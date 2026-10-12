@@ -8,7 +8,6 @@ import {
   Loader2,
   Mail,
   PenLine,
-  Sparkles,
   Trash2,
   Link,
   Pin,
@@ -37,8 +36,6 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import {
   deleteOutreachMessage,
-  draftOutreach,
-  listAccounts,
   listOutreach,
   sendOutreachMessage,
   updateOutreachMessage,
@@ -385,88 +382,6 @@ function ThreadModal({
   )
 }
 
-/** Draft one message per account the user selected for outreach. */
-function DraftDialog({
-  workspaceId,
-  open,
-  onOpenChange,
-  onStarted,
-}: {
-  workspaceId?: string
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onStarted: () => void
-}) {
-  const [selected, setSelected] = useState<string[] | null>(null)
-  const [channel, setChannel] = useState<Channel>('email')
-  const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    if (!open || !workspaceId) return
-    setSelected(null)
-    listAccounts(workspaceId)
-      .then((list) => setSelected(list.accounts.filter((a) => a.selected).map((a) => a.id)))
-      .catch(() => setSelected([]))
-  }, [open, workspaceId])
-
-  const start = async () => {
-    if (!workspaceId || !selected?.length) return
-    setBusy(true)
-    try {
-      await draftOutreach(workspaceId, selected.slice(0, 25), channel)
-      toast.success('Drafting started — drafts appear here in a minute')
-      onStarted()
-      onOpenChange(false)
-    } catch (err) {
-      toast.error(errorText(err))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Draft outreach</DialogTitle>
-          <DialogDescription>
-            The agent writes one personalized message per selected account. You review every one — nothing is sent without you.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="flex flex-col gap-3 px-4 pb-2 text-sm">
-          {selected === null ? (
-            <p className="text-muted-foreground">Loading accounts…</p>
-          ) : selected.length === 0 ? (
-            <p className="text-muted-foreground">No accounts selected yet. Open Accounts, mark the ones to reach, then come back.</p>
-          ) : (
-            <p>{selected.length} selected account{selected.length === 1 ? '' : 's'}{selected.length > 25 ? ' (the first 25 will be drafted)' : ''}.</p>
-          )}
-          <div className="flex gap-2">
-            {ENABLED_CHANNELS.map((key) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setChannel(key)}
-                className={cn(
-                  'inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium',
-                  channel === key ? 'border-amber-500 bg-amber-500 text-amber-950' : 'border-border text-muted-foreground',
-                )}
-              >
-                <ChannelGlyph icon={CHANNELS[key].icon} className="size-3.5" /> {CHANNELS[key].label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <DialogFooter>
-          <Button type="button" size="sm" disabled={busy || !selected?.length} onClick={() => void start()} className="cursor-pointer bg-amber-500 text-amber-950 hover:bg-amber-400">
-            {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />} Draft messages
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 export interface OutReachComponentProps {
   focusEmail?: string | null
   onFocusHandled?: () => void
@@ -476,7 +391,6 @@ export interface OutReachComponentProps {
 export function OutReachComponent({ focusEmail = null, onFocusHandled, workspaceId }: OutReachComponentProps) {
   const [messages, setMessages] = useState<OutreachMessageDto[]>([])
   const [drafting, setDrafting] = useState(false)
-  const [draftOpen, setDraftOpen] = useState(false)
   const conversations = useMemo<Conversation[]>(() => messages.map(toConversation), [messages])
 
   const refresh = useCallback(async () => {
@@ -589,16 +503,11 @@ export function OutReachComponent({ focusEmail = null, onFocusHandled, workspace
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            size="sm"
-            className="cursor-pointer bg-amber-500 text-amber-950 hover:bg-amber-400"
-            disabled={drafting}
-            onClick={() => setDraftOpen(true)}
-          >
-            {drafting ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
-            {drafting ? 'Drafting…' : 'Draft outreach'}
-          </Button>
+          {drafting && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Loader2 className="size-3.5 animate-spin" /> Drafting…
+            </span>
+          )}
           <Button
             type="button"
             size="sm"
@@ -764,15 +673,6 @@ export function OutReachComponent({ focusEmail = null, onFocusHandled, workspace
         onOpenChange={setThreadOpen}
         onChanged={(updated) => setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)))}
         onDeleted={(id) => setMessages((prev) => prev.filter((m) => m.id !== id))}
-      />
-      <DraftDialog
-        workspaceId={workspaceId}
-        open={draftOpen}
-        onOpenChange={setDraftOpen}
-        onStarted={() => {
-          setDrafting(true)
-          void refresh()
-        }}
       />
       <AgentConnectionsDialog
         open={connectOpen}
