@@ -43,9 +43,49 @@ def _norm(text: str) -> str:
     return re.sub(r"[\s,]", "", text.lower()).replace("×", "x").replace("percent", "%")
 
 
+_SCALE = {"k": 1e3, "thousand": 1e3, "m": 1e6, "million": 1e6, "bn": 1e9, "billion": 1e9}
+_MONEY_BEFORE = re.compile(r"[$€£₦]|\b(?:KES|ZAR|USD|NGN)\b|(?<![A-Za-z])R\s?\d", re.I)
+_MONEY_AFTER = re.compile(r"^\s?(?:KES|ZAR|USD|NGN|dollars?|rand|naira|shillings?)\b", re.I)
+
+
+def _amount(token: str, after: str) -> tuple[str, float] | None:
+    """A quantity's kind and value, so '15k KES' and '15,000 KES' (or '$200M'
+    and '$200 million') are the same claim. Money, percentages, multipliers
+    and plain counts never match each other: '200 million API calls' is not
+    the '$200M' a source states."""
+    number = re.search(r"\d[\d,]*(?:\.\d+)?", token)
+    if not number:
+        return None
+    try:
+        value = float(number.group(0).replace(",", ""))
+    except ValueError:
+        return None
+    scale = re.search(r"(k|m|bn|thousand|million|billion)\s*$", token, re.I)
+    value *= _SCALE[scale.group(1).lower()] if scale else 1
+    if re.search(r"%|percent", token, re.I):
+        kind = "%"
+    elif re.search(r"x$|×", token.strip(), re.I):
+        kind = "x"
+    elif _MONEY_BEFORE.search(token) or _MONEY_AFTER.match(after):
+        kind = "money"
+    else:
+        kind = "n"
+    return kind, round(value, 6)
+
+
+def _amounts(text: str) -> set[tuple[str, float]]:
+    found = set()
+    for match in _QUANTITY.finditer(text):
+        amount = _amount(match.group(0).strip().rstrip(".,"), text[match.end():match.end() + 12])
+        if amount:
+            found.add(amount)
+    return found
+
+
 def unsupported_numbers(text: str, sources: str) -> list[str]:
     """Quantities in `text` that appear in none of the sources."""
     known = _norm(sources)
+    known_amounts = _amounts(sources)
     found = []
     for match in _QUANTITY.finditer(text):
         token = match.group(0).strip().rstrip(".,")
@@ -54,7 +94,9 @@ def unsupported_numbers(text: str, sources: str) -> list[str]:
             continue
         if len(digits) < 2 and not re.search(r"[%x×$€£₦]|million|billion|thousand|percent", token, re.I):
             continue  # "one call", "3 short paragraphs"
-        if _norm(token) not in known and token not in found:
+        if _norm(token) in known or _amount(token, text[match.end():match.end() + 12]) in known_amounts:
+            continue
+        if token not in found:
             found.append(token)
     return found
 

@@ -17,6 +17,12 @@ def test_invented_numbers_are_caught_and_sourced_ones_pass():
     assert grounding.unsupported_numbers(draft, SOURCES) == ["60%", "200 million"]
 
 
+def test_the_same_amount_written_differently_is_sourced():
+    sources = "Permit fees add ~15k KES per unit. Acme raised $3.5M. Margins rose 20%."
+    assert grounding.unsupported_numbers("about 15,000 KES per unit, after your $3.5 million raise", sources) == []
+    assert grounding.unsupported_numbers("3.5 million users and 20x growth", sources) == ["3.5 million", "20x"]
+
+
 def test_meeting_logistics_are_not_claims():
     assert grounding.unsupported_numbers("A 15-minute call on Tue 14 Oct at 10:00, or 30 minutes Thursday?", SOURCES) == []
 
