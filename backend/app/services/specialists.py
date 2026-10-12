@@ -15,7 +15,7 @@ from backend.app.database import models
 
 # Per-domain research budget: enough for depth, small enough that a
 # specialist's whole slice fits beside the conversation in one call.
-DOMAIN_CHARS = 9_000
+DOMAIN_CHARS = 16_000
 _COMPETITORS = 12
 _ACCOUNTS = 10
 
@@ -64,13 +64,19 @@ async def load(db: AsyncSession, workspace_id: uuid.UUID) -> SpecialistContext:
         .order_by(models.Account.selected.desc(), models.Account.score.desc().nulls_last()).limit(_ACCOUNTS)
     )).scalars().all()
 
+    research = insights.get("research") or {}
     offer_text = _offer_text(offer)
-    product = _join(offer_text, block("DOMAIN AND POSITIONING UNDERSTANDING", insights.get("domain_understanding")))
+    product = _join(
+        offer_text, block("DOMAIN AND POSITIONING UNDERSTANDING", insights.get("domain_understanding")),
+        block("MY RESEARCH NOTES (with sources)", research.get("offer"), DOMAIN_CHARS // 2),
+    )
     market = _join(
         block("PRODUCT-MARKET FIT", insights.get("market_fit_understanding")),
         block("MARKET DATA (buyers, demand, pricing norms, channels, barriers)", insights.get("market_data")),
+        block("MY RESEARCH NOTES (with sources)", research.get("market"), DOMAIN_CHARS // 2),
     )
     competition = _join(
+        block("MY RESEARCH NOTES (with sources)", research.get("competition"), DOMAIN_CHARS // 3),
         block("OFFER VS THE CATEGORY STANDARD (strengths, weaknesses, opportunities, differentiators)",
               insights.get("competition_data")),
         block("COMPETITOR ARCHETYPES", insights.get("ideal_competitor_profile")),
@@ -83,7 +89,8 @@ async def load(db: AsyncSession, workspace_id: uuid.UUID) -> SpecialistContext:
     )
     gtm = _join(
         block("IDEAL CUSTOMER PROFILE (segments, titles, channels, messaging angles, beachhead)", insights.get("icp"),
-              DOMAIN_CHARS // 2),
+              DOMAIN_CHARS // 3),
+        block("MY GTM NOTES", research.get("icp"), DOMAIN_CHARS // 3),
         block("TARGET ACCOUNTS", [
             {"name": a.name, "summary": a.summary, "industry": a.industry, "selected": a.selected,
              "why_reach_out": (a.why_reach_out or [])[:2]}
