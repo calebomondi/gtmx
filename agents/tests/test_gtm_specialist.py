@@ -131,3 +131,13 @@ def test_a_number_only_a_specialist_or_the_research_notes_state_is_not_sourced(l
     sources = seen[0]
     assert "Acme is hiring two ML engineers" in sources and "Rival X charges $40/seat" in sources
     assert "Payments for SMEs" not in sources  # the model's research notes
+
+
+def test_a_claim_that_survives_every_rewrite_is_cut_before_the_draft_is_kept(llm, monkeypatch):
+    _, script = llm
+    stubborn = GOOD_BODY.replace("Would a 15-minute call next week be useful?",
+                                 "Would a call on how other fintechs cut GPU spend be useful?")
+    monkeypatch.setattr(gs, "_write", lambda *a, **k: OutreachDraft(subject="Your ML hires", body=stubborn))
+    draft = gs.write_first_touch(_brief(), "Cloud of Association")
+    assert "other fintechs" not in draft.body
+    assert draft.body.count("?") == 1 and "15-minute call?" in draft.body and draft.body.endswith("Wanjiku")

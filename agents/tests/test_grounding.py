@@ -56,3 +56,26 @@ def test_broader_generic_proof_is_caught(text):
 
 def test_curly_apostrophes_do_not_hide_generic_proof():
     assert grounding.problems("Open to a chat on how we’re helping fintechs cut costs?", SOURCES)
+
+
+DUE_DRAFT = (
+    "Hi Sinako,\n\n"
+    "Due operates across 15+ African markets. Rapid expansion often fragments context.\n\n"
+    "Notion is used by 62% of Fortune 100 companies.\n\n"
+    "Would you be open to a brief chat about how other fintechs are using Notion to manage cross-border work?\n\n"
+    "Wanjiku"
+)
+
+
+def test_ungrounded_sentences_are_cut_and_an_ungrounded_ask_becomes_the_planned_one():
+    sources = "Due operates in 15+ African markets."
+    body = grounding.strip_ungrounded(DUE_DRAFT, sources, "Open to a 15-minute call on how Due keeps context across markets?")
+    assert "62%" not in body and "other fintechs" not in body
+    assert "Due operates across 15+ African markets." in body and body.startswith("Hi Sinako,")
+    assert body.count("?") == 1 and "15-minute call on how Due keeps context" in body and body.endswith("Wanjiku")
+
+
+def test_a_grounded_draft_is_left_alone():
+    sources = "Due operates in 15+ African markets. Notion is used by 62% of Fortune 100 companies."
+    clean = DUE_DRAFT.replace("how other fintechs are using Notion to manage", "how Due manages")
+    assert grounding.strip_ungrounded(clean, sources, "Call?") == clean
