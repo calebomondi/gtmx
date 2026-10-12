@@ -177,7 +177,9 @@ function AccountCard({
 
           <div className="flex shrink-0 items-center gap-1.5">
             {hasEmail && <img src="/gmail.svg" alt="email" className="size-4" />}
-            {hasLinkedin && <img src="/linkedin.svg" alt="linkedin" className="size-4" />}
+            {(hasLinkedin || account.socials?.linkedin) && <img src="/linkedin.svg" alt="linkedin" className="size-4" />}
+            {account.socials?.instagram && <img src="/instagram.svg" alt="instagram" className="size-4" />}
+            {account.socials?.tiktok && <img src="/tiktok.svg" alt="tiktok" className="size-4" />}
           </div>
         </div>
         {aboutLine(account) && (

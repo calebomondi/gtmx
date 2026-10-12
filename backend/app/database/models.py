@@ -444,6 +444,9 @@ class Account(Base):
     tech_stack: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     recent_news: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     key_contacts: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    # The account's own social pages ({platform: url}), found and checked by
+    # account discovery: the contact route when no person is published.
+    socials: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
     pain_signals: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     hiring_signals: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     sources: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)

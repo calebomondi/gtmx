@@ -27,6 +27,7 @@ class AccountResponse(BaseModel):
     tech_stack: list[str] = []
     recent_news: list[str] = []
     key_contacts: list[dict] = []
+    socials: dict[str, str] = {}
     pain_signals: list[str] = []
     hiring_signals: list[str] = []
     sources: list[dict] = []
