@@ -153,6 +153,19 @@ def test_triggers_that_describe_the_company_are_not_triggers(event):
     assert kept["accounts"].accounts == []
 
 
+def test_a_trigger_whose_source_never_names_the_account_is_not_its_trigger():
+    """Equity Group's 'trigger' was a scanner vendor's post about Kenya's new ICT import fees."""
+    equity = _named("Equity Group Holdings", "equitygroupholdings.com", "New permit fees on ICT imports")
+    acme = _named("Acme", "acme.example", "Acme is hiring two ML engineers")
+    equity.trigger_event.source, acme.trigger_event.source = "https://linkedin.com/posts/gscan", "https://news.example/acme"
+    docs = [
+        {"url": "https://linkedin.com/posts/gscan", "text": "The Communications Authority proposes a permit fee on ICT imports."},
+        {"url": "https://news.example/acme", "text": "ACME is hiring two ML engineers in Nairobi."},
+    ]
+    kept = discovery.verify_accounts({"accounts": AccountList(accounts=[equity, acme]), "account_discovery_docs": docs})
+    assert [a.name for a in kept["accounts"].accounts] == ["Acme"]
+
+
 def test_each_target_country_gets_its_own_search(monkeypatch):
     """One search over three countries returned Nigerian accounts only."""
     from agents.schemas.icp import ICP

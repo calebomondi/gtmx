@@ -20,6 +20,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from config import Settings, get_settings
+from agents.helpers import name_in_text
 from agents.llm.main import invoke_structured_with_fallback, cheap_providers
 from agents.schemas.accounts import AccountList, AccountRecord, ContactRecord, TriggerEvent
 from agents.schemas.icp import ICP
@@ -789,6 +790,15 @@ def _excluded(acc: AccountRecord, domains: set[str]) -> bool:
     return bool(host) and any(host == d or host.endswith("." + d) for d in domains)
 
 
+def _trigger_names_account(acc: AccountRecord, source_text: str) -> bool:
+    """A trigger is about the account only if its source says so: the page
+    names the account or its domain. A sector-wide post (a regulator's new fee,
+    a market report) is no reason to write to one company in it."""
+    if acc.domain and acc.domain.lower().removeprefix("www.") in source_text.lower():
+        return True
+    return name_in_text(acc.name, source_text)
+
+
 def verify_accounts(state: IcpSessionState) -> dict:
     """Hard-constraint pass: drop trigger-less targets, require the trigger's
     source to exist in the retrieved docs, dedupe by domain (or platform::name
@@ -797,7 +807,8 @@ def verify_accounts(state: IcpSessionState) -> dict:
     if not accounts or not accounts.accounts:
         return {"accounts": AccountList(accounts=[])}
 
-    doc_urls = {d.get("url") for d in (state.get("account_discovery_docs") or [])}
+    doc_texts = {d.get("url"): d.get("text") or "" for d in (state.get("account_discovery_docs") or [])}
+    doc_urls = set(doc_texts)
     icp = state.get("icp_data")
     icp_sizes = list(icp.company_sizes or []) if icp else []
     excluded = {d.lower().removeprefix("www.") for d in state.get("exclude_domains") or [] if d}
@@ -822,6 +833,9 @@ def verify_accounts(state: IcpSessionState) -> dict:
             continue
         if src not in doc_urls:
             logger.warning(f"⚠️ '{acc.name}' trigger source not in retrieved docs: {src}")
+        elif not _trigger_names_account(acc, doc_texts[src]):
+            logger.info("Dropping %s -- its trigger's source never mentions it: %s", acc.name, src)
+            continue
         is_company = not acc.account_type or acc.account_type == "company"
         if is_company:
             # Website is a hard requirement for companies: without it the
