@@ -108,3 +108,17 @@ def test_a_rewrite_that_keeps_the_mistake_gets_a_second_one(llm, monkeypatch):
     monkeypatch.setattr(gs, "lint", lambda brief, draft, sources=None: next(verdicts))
     gs.write_first_touch(_brief(), "Cloud of Association")
     assert len([label for label, _ in calls if label.startswith("outreach_write")]) == 3
+
+
+def test_venues_get_a_partnership_pitch_not_a_sales_pitch(llm):
+    calls, script = llm
+    brief = _brief()
+    brief.account_type = "community"
+    gs.write_first_touch(brief, "PocketAuthor")
+    plan, write = calls[1][1], next(p for label, p in calls if label.startswith("outreach_write"))
+    for prompt in (plan, write):
+        assert "PARTNERSHIP pitch" in prompt and "community" in prompt and "SALES message" not in prompt
+    calls.clear()
+    script["reviews"] = [DraftReview(passes=True)]
+    gs.write_first_touch(_brief(), "PocketAuthor")
+    assert "SALES message" in calls[1][1]

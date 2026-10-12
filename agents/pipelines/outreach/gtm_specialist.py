@@ -51,6 +51,9 @@ class OutreachBrief:
     contact_title: str | None = None
     website: str | None = None
     trigger_source: str | None = None
+    # company | community | event | creator | platform: a company is a buyer;
+    # the others are audiences, reached through a partnership.
+    account_type: str = "company"
     # The workspace's specialist team, by domain ("gtm", "product"/"service",
     # "market", "competition"): {name, role, description}.
     team: dict[str, dict] = field(default_factory=dict)
@@ -87,6 +90,8 @@ SOURCES
 _PLAN_PROMPT = """You are {persona}. You own go-to-market for {offer_name}, and you write the
 team's outreach. Plan ONE message to the account below before writing it.
 
+{mode}
+
 Pick the angle a senior seller would: the single most relevant account fact
 as the hook, the problem it implies for them, the concrete outcome {offer_name}
 gives (numbers or a before/after only when the research supports them), a
@@ -111,7 +116,9 @@ ACCOUNT RECORD
 
 CONTACT: {contact}"""
 
-_WRITE_PROMPT = """You are {persona}. Write the message {sender} will send. Write as {sender},
+_WRITE_PROMPT = """You are {persona}. Write the message {sender} will send. {mode}
+
+Write as {sender},
 in the first person, plain text, signed "{sender}".
 
 {channel_rule}
@@ -183,11 +190,27 @@ def research_account(brief: OutreachBrief) -> AccountResearch:
     )
 
 
+_SALES = "This is a SALES message: the account could buy the offer."
+_PARTNERSHIP = (
+    "This account is a {kind} -- an audience, not a buyer. Write a PARTNERSHIP pitch to its organiser "
+    "or creator: propose one concrete collaboration that serves THEIR audience (a co-hosted session or "
+    "workshop, a sponsored post or episode, a member discount, an affiliate or referral arrangement, a "
+    "giveaway). The outcome is for their members or followers; the ask is a yes to that collaboration "
+    "or a short call about it. Never pitch them as a customer."
+)
+
+
+def outreach_mode(brief: OutreachBrief) -> str:
+    kind = (brief.account_type or "company").lower()
+    return _SALES if kind == "company" else _PARTNERSHIP.format(kind=kind)
+
+
 def plan_message(brief: OutreachBrief, research: AccountResearch, offer_name: str) -> OutreachPlan:
     return invoke_structured_with_fallback(
         [SystemMessage(content=_PLAN_PROMPT.format(
             persona=team.persona(team.member(brief.team, "gtm")), offer_name=offer_name, offer=brief.offer,
             research=research.model_dump_json(indent=1), account=brief.account, contact=_contact(brief),
+            mode=outreach_mode(brief),
         )), HumanMessage(content="Plan the message now.")],
         OutreachPlan, log_label="outreach_plan",
     )
@@ -197,7 +220,7 @@ def _write(brief: OutreachBrief, plan: OutreachPlan, notes: str, feedback: str =
     draft = invoke_structured_with_fallback(
         [SystemMessage(content=_WRITE_PROMPT.format(
             persona=team.persona(team.member(brief.team, "gtm")), sender=brief.sender_name,
-            channel_rule=CHANNEL_RULES[brief.channel], contact=_contact(brief),
+            channel_rule=CHANNEL_RULES[brief.channel], contact=_contact(brief), mode=outreach_mode(brief),
             plan=plan.model_dump_json(indent=1, exclude={"consult"}), notes=notes, offer=brief.offer,
             feedback=f"\nA reviewer rejected your last version. Fix: {feedback}\n" if feedback else "",
         )), HumanMessage(content="Write the message now.")],
