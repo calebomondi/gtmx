@@ -55,6 +55,8 @@ def _chat_questions(offer: Offer) -> list[tuple[str, set[str]]]:
         (f"How big is the opportunity for {offer.name} in Nigeria and South Africa, and what will buyers pay?", {"market"}),
         ("Which competitor is the biggest threat to us in Kenya, and where are they weakest?", {"competition"}),
         ("Which target accounts should we contact first, and through which channel?", {"gtm"}),
+        *([("Which communities, creators or events should we partner with first, and how?", {"gtm"})]
+          if offer.buyer == "b2c" else []),
         ("Write our positioning against the strongest competitor for South African buyers, including a launch price.",
          {"competition", "gtm", "market"}),
     ]
@@ -189,6 +191,8 @@ async def _stages(offer: Offer, card: checks.Scorecard, artifacts: dict) -> None
     drafts = await _outreach(card, offer, user_id, workspace.id, accounts, json.dumps(artifacts, default=str))
     artifacts["outreach"] = [_row(d, "channel", "recipient_name", "recipient_company", "recipient_address",
                                   "subject", "body") for d in drafts]
+    if offer.buyer == "b2c":
+        checks.check_b2c_reach(card, accounts, drafts)
     lap("outreach")
 
     artifacts["replies"] = await _replies(card, user_id, workspace.id, drafts)
@@ -199,7 +203,11 @@ async def _stages(offer: Offer, card: checks.Scorecard, artifacts: dict) -> None
 
 
 async def _outreach(card, offer, user_id, workspace_id, accounts, sources: str) -> list[models.OutreachMessage]:
-    reachable = [a for a in accounts if any(c.get("email") or c.get("linkedin") for c in a.key_contacts or [])][:2]
+    reachable = [a for a in accounts if any(c.get("email") or c.get("linkedin") for c in a.key_contacts or [])]
+    # B2C: include a venue when one is reachable, so the partnership pitch is exercised.
+    venue = next((a for a in reachable if a.account_type != "company"), None)
+    reachable = ([venue] if venue else []) + [a for a in reachable if a is not venue]
+    reachable = reachable[:2]
     card.check("outreach", len(reachable) == 2, "two reachable accounts to write to", "major", f"{len(reachable)}")
     for account in reachable:
         channel = "email" if any(c.get("email") for c in account.key_contacts) else "linkedin"
