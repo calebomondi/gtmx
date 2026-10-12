@@ -40,7 +40,7 @@ class OutreachPlan(LenientModel):
     problem: str = Field(description="The specific problem this account likely has, in their words")
     outcome: str = Field(description="The concrete outcome the offer gives them (a number or a before/after when the research supports one)")
     proof: str = Field(default="", description="A credible proof point from the offer research; empty if none exists")
-    ask: str = Field(description="One low-friction next step")
+    ask: str = Field(description="One low-friction next step about THEIR situation; never a reference to other customers or results")
     consult: list[Consultation] = Field(
         default_factory=list,
         description="At most 2 questions for the product, market or competition specialist when the angle depends on their expertise (e.g. how the offer beats the competitor this account uses). Empty when the GTM view is enough",

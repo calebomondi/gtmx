@@ -28,7 +28,7 @@ def llm(monkeypatch):
         calls.append((kw["log_label"], messages))
         if schema is ChatRoute:
             return script["route"]
-        return "answer text"
+        return "We'd answer text"
     monkeypatch.setattr(wc, "invoke_structured_with_fallback", fake)
     monkeypatch.setattr(team, "invoke_structured_with_fallback", fake)
     return calls, script
@@ -37,7 +37,7 @@ def llm(monkeypatch):
 def test_the_lead_specialist_answers_in_the_first_person_from_their_research(llm):
     calls, _ = llm
     reply = wc.answer("How do we beat RunPod?", [("user", "hi"), ("assistant", "hello")], CONTEXT)
-    assert reply.domain == "competition" and reply.content == "answer text"
+    assert reply.domain == "competition" and reply.content == "We'd answer text"
     assert [label for label, _ in calls] == ["chat_route", "chat_answer:competition"]
     system = calls[1][1][0].content
     assert "Zawadi Otieno" in system and "first person" in system and "RunPod sells GPU hours" in system
@@ -67,3 +67,28 @@ def test_web_search_only_when_routed_to_it(llm, monkeypatch):
     script["route"] = ChatRoute(lead="competition", needs_web=True, queries=["RunPod funding 2026"])
     wc.answer("Any RunPod news?", [], CONTEXT)
     assert searched == ["RunPod funding 2026"]
+
+
+def test_a_promise_or_a_third_person_answer_is_rewritten(llm):
+    calls, _ = llm
+    answers = iter(["HeatherDB is a database. I will draft three variations for you.", "We'd position on cost."])
+    original = wc.invoke_structured_with_fallback
+
+    def fake(messages, schema=None, **kw):
+        if kw["log_label"].startswith("chat_answer"):
+            calls.append((kw["log_label"], messages))
+            return next(answers)
+        return original(messages, schema, **kw)
+    wc.invoke_structured_with_fallback = fake
+    try:
+        reply = wc.answer("Positioning?", [], CONTEXT)
+    finally:
+        wc.invoke_structured_with_fallback = original
+    assert reply.content == "We'd position on cost."
+    assert "I will draft" in calls[-1][1][-1].content
+
+
+def test_voice_checks():
+    assert wc.voice_problems("I'd start with Lagos fintechs.") == []
+    assert len(wc.voice_problems("The market is large.")) == 1
+    assert any("can't act" in p for p in wc.voice_problems("We should. I’ll prepare a one-pager."))

@@ -90,7 +90,10 @@ team's outreach. Plan ONE message to the account below before writing it.
 Pick the angle a senior seller would: the single most relevant account fact
 as the hook, the problem it implies for them, the concrete outcome {offer_name}
 gives (numbers or a before/after only when the research supports them), a
-proof point if one exists, and one low-friction ask.
+proof point if one exists, and one low-friction ask. The ask is about THEM
+(their workload, their timeline, a short call) -- never "how we're helping
+others" or "how other companies are doing X": that claims customers and
+results the research does not show.
 
 If the angle depends on another specialist's expertise -- how the offer
 compares to a competitor the account uses, a product capability, a market or
