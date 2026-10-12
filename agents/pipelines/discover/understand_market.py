@@ -337,6 +337,12 @@ Rules:
 - buyer_type, category, growth_outlook and market_fit come from closed lists.
   Pick one; when the evidence is mixed, pick the best-supported value. If there
   is no evidence, leave the field empty rather than guessing.
+- buyer_type follows who can buy, judged from the offer's own material and
+  pricing, not from which segment the research found most lucrative: "both"
+  when individuals can sign up and pay on their own (a free or personal plan,
+  an individual price, an app-store listing) and organisations also buy it;
+  "b2c" when only individuals buy; "b2b" only when every plan is bought by an
+  organisation.
 - pricing: list the price tiers the evidence supports, one entry per tier. `tier`
   names the tier. If the offer's own material states prices, set pricing_source to
   "site"; otherwise give the market rates the research supports
