@@ -8,7 +8,7 @@ import pytest
 
 from agents.pipelines.accounts.account_discovery import _headcount_range, _size_verdict
 from agents.pipelines.competitors import get_competitors as gc
-from agents.schemas.competition import CompetitorProfile
+from agents.schemas.competition import CompetitorProfile, CompetitorRelevance
 
 ICP_SIZES = ["11-50 employees (seed to Series A)", "51-200 employees"]
 
@@ -46,7 +46,11 @@ def profiled(monkeypatch):
             name="Southwest Airlines", website="https://southwest.com", relevance=relevance,
             relevance_reason="An airline that uses the product", opportunities=["x"],
         )
-        monkeypatch.setattr(gc, "invoke_structured_with_fallback", lambda *a, **k: profile)
+        def fake(messages, schema=None, **k):
+            if schema is CompetitorRelevance:
+                return CompetitorRelevance(offer_job="x", their_job="x", same_buyer=True, substitute=True)
+            return profile
+        monkeypatch.setattr(gc, "invoke_structured_with_fallback", fake)
         return gc._profile_one({"name": "Southwest Airlines", "website": "https://southwest.com"}, {})
     return run
 
@@ -85,3 +89,18 @@ def test_site_socials_join_the_tracking_sources(monkeypatch):
                                 tracking_sources=[{"kind": "x", "value": "@acmehq", "confidence": "medium"}])
     gc._add_site_socials(profile, profile.website)
     assert [(s.kind, s.confidence) for s in profile.tracking_sources] == [("x", "medium"), ("linkedin", "high")]
+
+
+def test_adjacent_companies_are_stopped_before_profiling(monkeypatch):
+    """AIGN Global (AI governance) was filed as a HeatherDB competitor."""
+    monkeypatch.setattr(gc, "_gather_profile_evidence", lambda s: ("AIGN governs AI programmes.", "site"))
+    calls = []
+
+    def fake(messages, schema=None, **k):
+        calls.append(schema)
+        return CompetitorRelevance(offer_job="Store data that serves AI without GPUs",
+                                   their_job="Advise organisations on AI governance", same_buyer=True, substitute=False)
+    monkeypatch.setattr(gc, "invoke_structured_with_fallback", fake)
+    offer = {"offer_name": "HeatherDB", "offer_description": "An intelligent database", "offer_type": "product"}
+    assert gc._profile_one({"name": "AIGN Global", "website": "https://aign.global"}, offer) == (None, "not_a_competitor")
+    assert calls == [CompetitorRelevance]  # no expensive profile call
