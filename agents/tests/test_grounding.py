@@ -46,3 +46,7 @@ def test_the_r_ending_a_word_is_not_the_rand():
 ])
 def test_broader_generic_proof_is_caught(text):
     assert any("claims results or customers" in p for p in grounding.problems(text, SOURCES))
+
+
+def test_curly_apostrophes_do_not_hide_generic_proof():
+    assert grounding.problems("Open to a chat on how we’re helping fintechs cut costs?", SOURCES)

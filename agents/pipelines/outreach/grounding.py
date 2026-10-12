@@ -61,6 +61,7 @@ def unsupported_numbers(text: str, sources: str) -> list[str]:
 
 def problems(text: str, sources: str) -> list[str]:
     """Rewrite instructions for every grounding failure in `text`."""
+    text = text.replace("\u2019", "'").replace("\u2018", "'")  # "we’re" reads as "we're"
     out = [f'Remove "{m}"' for m in dict.fromkeys(m.group(0) for m in BANNED.finditer(text))]
     out += [f'"{n}" appears in none of your sources: remove it or use a figure the research states'
             for n in unsupported_numbers(text, sources)]

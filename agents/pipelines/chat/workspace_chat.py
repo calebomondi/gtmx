@@ -10,6 +10,7 @@ Pure: the backend supplies the team and each specialist's research as text
 and stores the answer with the specialist who gave it.
 """
 
+import re
 from dataclasses import dataclass, field
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -145,16 +146,35 @@ def answer(question: str, history: list[tuple[str, str]], context: ChatContext) 
         for domain in ("product", "market", "competition", "gtm") if domain != lead
     )
     turns = [HumanMessage(content=c) if role == "user" else AIMessage(content=c) for role, c in history]
+    system = SystemMessage(content=_ANSWER_PROMPT.format(
+        persona=team.persona(team.member(context.team, lead)), offer_name=context.offer_name or "the offer",
+        domain=lead, research=context.research.get(lead) or context.offer, others=others,
+        notes=notes, web=web, gtm_name=team.member(context.team, "gtm").get("name"),
+    ))
     content = invoke_structured_with_fallback(
-        messages=[
-            SystemMessage(content=_ANSWER_PROMPT.format(
-                persona=team.persona(team.member(context.team, lead)), offer_name=context.offer_name or "the offer",
-                domain=lead, research=context.research.get(lead) or context.offer, others=others,
-                notes=notes, web=web, gtm_name=team.member(context.team, "gtm").get("name"),
-            )),
-            *turns,
-            HumanMessage(content=question),
-        ],
-        log_label=f"chat_answer:{lead}",
+        messages=[system, *turns, HumanMessage(content=question)], log_label=f"chat_answer:{lead}",
     )
+    problems = voice_problems(content)
+    if problems:
+        content = invoke_structured_with_fallback(
+            messages=[system, *turns, HumanMessage(content=question), AIMessage(content=content),
+                      HumanMessage(content="Rewrite your answer: " + " ".join(problems))],
+            log_label=f"chat_answer:{lead}:rewrite",
+        )
     return ChatAnswer(domain=lead, content=content)
+
+
+_PROMISE = re.compile(r"\bI(?:'ll|’ll| will| can) (?:draft|prepare|send|schedule|create|put together|build|follow up)\b", re.I)
+_FIRST_PERSON = re.compile(r"\bI(?:'m|’m|'d|’d|'ve|’ve)?\b|\b(?i:my|we|we're|we’re|our|us)\b")
+
+
+def voice_problems(content: str) -> list[str]:
+    """What breaks the specialist's voice: promising work after the
+    conversation, or not speaking as themselves at all."""
+    problems = []
+    if match := _PROMISE.search(content):
+        problems.append(f'You can\'t act after this conversation ("{match.group(0)}"): write it here, or say where in '
+                        "GTMX it gets done.")
+    if not _FIRST_PERSON.search(content):
+        problems.append("Answer in your own voice, in the first person (I / we), as the specialist you are.")
+    return problems
