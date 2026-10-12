@@ -8,7 +8,15 @@ from sqlalchemy import select
 from backend.app.api.deps import CurrentUser, DbSession, OwnedWorkspace
 from backend.app.database import models
 from backend.app.runs import manager as run_manager
-from backend.app.schemas.outreach import DraftRequest, MessageUpdate, OutreachListResponse, OutreachMessageResponse
+from backend.app.runs import signals
+from backend.app.schemas.outreach import (
+    DraftRequest,
+    MessageUpdate,
+    OutreachListResponse,
+    OutreachMessageResponse,
+    SyncResponse,
+)
+from backend.app.services import inbox as inbox_service
 from backend.app.schemas.runs import RunResponse
 from backend.app.services import outreach as outreach_service
 from backend.app.services.runs import TERMINAL_STATUSES
@@ -51,6 +59,19 @@ async def send_message(workspace: OwnedWorkspace, message_id: uuid.UUID, db: DbS
     """Send one approved email through the user's Gmail. Never automatic."""
     message = await outreach_service.get_in_workspace(db, workspace.id, message_id)
     return await outreach_service.send(db, message)
+
+
+@router.post("/{workspace_id}/outreach/sync", response_model=SyncResponse)
+async def sync_inbox(workspace: OwnedWorkspace, db: DbSession):
+    """Check the user's Gmail for replies and bounces now (also runs on a schedule)."""
+    result = await inbox_service.sync_user(db, workspace.user_id)
+    await signals.inbox_synced(result)
+    return SyncResponse(replies=len(result.replies), bounced=len(result.bounced))
+
+
+@router.post("/{workspace_id}/outreach/messages/{message_id}/read", response_model=OutreachMessageResponse)
+async def mark_read(workspace: OwnedWorkspace, message_id: uuid.UUID, db: DbSession):
+    return await outreach_service.mark_read(db, await outreach_service.get_in_workspace(db, workspace.id, message_id))
 
 
 @router.delete("/{workspace_id}/outreach/messages/{message_id}", status_code=status.HTTP_204_NO_CONTENT)

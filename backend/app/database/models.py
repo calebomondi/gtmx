@@ -676,9 +676,14 @@ class ChatMessage(Base):
 
 class OutreachMessage(Base):
     """One outreach message to a target account: drafted by the agent, edited
-    by the user, and sent only on the user's explicit action."""
+    by the user, and sent only on the user's explicit action -- or a reply to
+    one, synced from the user's mailbox."""
 
     __tablename__ = "outreach_messages"
+    __table_args__ = (
+        CheckConstraint("direction IN ('outbound', 'inbound')", name="ck_outreach_messages_direction"),
+        UniqueConstraint("user_id", "provider_message_id", name="uq_outreach_messages_user_provider_message"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workspace_id: Mapped[uuid.UUID] = mapped_column(
@@ -693,13 +698,23 @@ class OutreachMessage(Base):
     )
     # email | linkedin
     channel: Mapped[str] = mapped_column(String(16), nullable=False)
+    # outbound: drafted/sent by the user. inbound: a reply (or bounce) synced
+    # from the user's mailbox into the same thread.
+    direction: Mapped[str] = mapped_column(String(8), nullable=False, default="outbound", server_default="outbound")
+    # The provider's thread (Gmail threadId): ties replies to what was sent,
+    # and makes a draft with one a reply in that thread.
+    thread_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # The provider's message id, so a synced message is stored once.
+    provider_message_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # When the user opened an inbound message; null = unread.
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     recipient_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     recipient_company: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     # The email address for email; null for LinkedIn (sent by the user by hand).
     recipient_address: Mapped[str | None] = mapped_column(String(320), nullable=True)
     subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
     body: Mapped[str] = mapped_column(Text, nullable=False)
-    # draft | sending | sent | failed
+    # outbound: draft | sending | sent | failed | bounced. inbound: received | bounced
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="draft", index=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Composio log id of the send, for support/debugging.

@@ -114,6 +114,8 @@ const FOLDER_OF: Record<OutreachMessageDto['status'], ConversationFolder> = {
   sending: 'sent',
   sent: 'sent',
   failed: 'bounces',
+  bounced: 'bounces',
+  received: 'inbox',
 }
 
 /** One outreach message is one conversation until reply sync exists. */
@@ -132,14 +134,14 @@ export function toConversation(dto: OutreachMessageDto): Conversation {
       id: dto.id,
       conversationId: dto.id,
       channel: dto.channel,
-      direction: 'outbound',
+      direction: dto.direction,
       subject: dto.subject ?? undefined,
       body: dto.body,
       timestamp: at,
-      status: dto.status === 'sending' ? 'sent' : dto.status,
+      status: dto.status === 'sending' ? 'sent' : dto.status === 'received' ? 'replied' : dto.status,
     }],
     folder: FOLDER_OF[dto.status],
-    unread: false,
+    unread: dto.direction === 'inbound' && dto.read_at === null,
     hot: false,
     lastActivityAt: at,
   }

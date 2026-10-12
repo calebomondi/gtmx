@@ -5,12 +5,16 @@ export interface OutreachMessageDto {
   id: string
   account_id: string | null
   channel: "email" | "linkedin"
+  /** inbound = a reply or bounce synced from the user's Gmail. */
+  direction: "outbound" | "inbound"
+  thread_id: string | null
+  read_at: string | null
   recipient_name: string | null
   recipient_company: string
   recipient_address: string | null
   subject: string | null
   body: string
-  status: "draft" | "sending" | "sent" | "failed"
+  status: "draft" | "sending" | "sent" | "failed" | "bounced" | "received"
   error: string | null
   sent_at: string | null
   created_at: string
@@ -45,6 +49,15 @@ export function updateOutreachMessage(workspaceId: string, messageId: string, ch
 /** Send one approved email through the user's connected Gmail. */
 export function sendOutreachMessage(workspaceId: string, messageId: string): Promise<OutreachMessageDto> {
   return apiFetch(`${base(workspaceId)}/messages/${messageId}/send`, { method: "POST" })
+}
+
+/** Check the user's Gmail for replies and bounces now. */
+export function syncOutreach(workspaceId: string): Promise<{ replies: number; bounced: number }> {
+  return apiFetch(`${base(workspaceId)}/sync`, { method: "POST" })
+}
+
+export function markOutreachRead(workspaceId: string, messageId: string): Promise<OutreachMessageDto> {
+  return apiFetch(`${base(workspaceId)}/messages/${messageId}/read`, { method: "POST" })
 }
 
 export function deleteOutreachMessage(workspaceId: string, messageId: string): Promise<void> {

@@ -15,6 +15,9 @@ class OutreachMessageResponse(BaseModel):
     id: uuid.UUID
     account_id: uuid.UUID | None = None
     channel: str
+    direction: Literal["outbound", "inbound"] = "outbound"
+    thread_id: str | None = None
+    read_at: datetime | None = None
     recipient_name: str | None = None
     recipient_company: str
     recipient_address: str | None = None
@@ -31,6 +34,11 @@ class OutreachListResponse(BaseModel):
     messages: list[OutreachMessageResponse]
     # The drafting run in progress, if any.
     drafting_run: RunResponse | None = None
+
+
+class SyncResponse(BaseModel):
+    replies: int
+    bounced: int
 
 
 class DraftRequest(BaseModel):
