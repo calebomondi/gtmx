@@ -167,6 +167,12 @@ HARD RULES
    archetype's descriptive label ("hardware product development firm Nairobi",
    not "Local Full-Stack ODM companies").
 
+5. Always include ONE task (archetype_label "Direct substitutes") for the
+   obvious alternatives a buyer compares this {offer_noun} with: other products
+   in its own core category, named by the job it does (e.g. "best note-taking
+   and team wiki apps", "vector database comparison"). The archetypes can drift
+   to adjacent markets; this task keeps the hunt on the direct rivals.
+
 Produce {max_tasks} tasks at most.
 """
 
@@ -518,6 +524,7 @@ def plan_hunt(state: CompetitorSessionState) -> dict:
     )
     target_geo = state.get("target_market") or []
     user_message = (
+        f"The {noun}: {state.get('offer_name')} -- {state.get('offer_description') or ''}\n\n"
         f"The ideal competitor profile:\n{state['ideal_competitor_profile']}\n\n"
         f"Archetypes to hunt ({len(archetypes)}): "
         + "; ".join(
@@ -532,7 +539,10 @@ def plan_hunt(state: CompetitorSessionState) -> dict:
         log_label="get_competitors:plan_hunt",
     )
 
-    tasks = list(plan.tasks or [])[:MAX_HUNT_TASKS]
+    # Direct substitutes first: the per-run candidate cap keeps the earliest
+    # tasks' finds, and the obvious rivals must never be the ones cut.
+    tasks = sorted(plan.tasks or [], key=lambda t: "direct substitute" not in (t.archetype_label or "").lower())
+    tasks = tasks[:MAX_HUNT_TASKS]
 
     # Enforce the brand-free invariant in code. The planner is told not to name
     # the offer and usually complies, but "alternatives to <us>" is exactly the
