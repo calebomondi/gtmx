@@ -11,12 +11,13 @@ import json
 import re
 from dataclasses import dataclass, field
 
+from agents.pipelines.chat import workspace_chat
 from agents.pipelines.outreach import grounding
 
 from backend.tests.live.offers import GEO, Offer
 
 _PROMISE = re.compile(r"\bI(?:'ll| will) (?:draft|prepare|send|schedule|create|put together|build)\b", re.I)
-_AS_AI = re.compile(r"\bas an ai\b|\blanguage model\b", re.I)
+_AS_AI = re.compile(r"\bas an ai\b(?!-)|\blanguage model\b", re.I)  # not "as an AI-native bank"
 _FIRST_PERSON = re.compile(r"\bI(?:'m|'d|'ve)?\b|\b(?i:my|we|we're|our|us)\b")
 
 
@@ -223,4 +224,7 @@ def check_chat(card: Scorecard, question: str, expected: set[str], message) -> N
     card.check("chat", not _PROMISE.search(content), "no promises of later actions", "major",
                (_PROMISE.search(content) or [""])[0])
     card.check("chat", not _AS_AI.search(content), "never calls itself an AI", "major")
+    claimed = workspace_chat.voice_problems(content)
+    card.check("chat", not any("haven't done that" in p for p in claimed), "claims no work it didn't do", "major",
+               "; ".join(claimed))
     card.check("chat", len(content) > 400, "answer has depth", "minor", f"{len(content)} chars")

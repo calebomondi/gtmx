@@ -166,15 +166,28 @@ def answer(question: str, history: list[tuple[str, str]], context: ChatContext) 
 
 _PROMISE = re.compile(r"\bI(?:'ll|’ll| will| can) (?:draft|prepare|send|schedule|create|put together|build|follow up)\b", re.I)
 _FIRST_PERSON = re.compile(r"\bI(?:'m|’m|'d|’d|'ve|’ve)?\b|\b(?i:my|we|we're|we’re|our|us)\b")
+# Work the chat never did: it can't send or book anything, and a draft it
+# claims to have left somewhere else doesn't exist. A draft written out in
+# the answer itself ("I've drafted it below") is fine.
+_CLAIMED = re.compile(
+    r"\bI(?:'ve|’ve| have)? (?:already )?(?:sent|scheduled|booked|emailed|messaged|launched|posted)\b|"
+    r"\bI(?:'ve|’ve| have)? (?:already )?(?:drafted|prepared|created|set up|queued)\b[^.\n]{0,80}?"
+    r"\b(?:tab|inbox|folder|calendar|queue)\b",
+    re.I,
+)
 
 
 def voice_problems(content: str) -> list[str]:
     """What breaks the specialist's voice: promising work after the
-    conversation, or not speaking as themselves at all."""
+    conversation, claiming work that never happened, or not speaking as
+    themselves at all."""
     problems = []
     if match := _PROMISE.search(content):
         problems.append(f'You can\'t act after this conversation ("{match.group(0)}"): write it here, or say where in '
                         "GTMX it gets done.")
+    if match := _CLAIMED.search(content):
+        problems.append(f'You haven\'t done that ("{match.group(0)}"): describe only what is in this answer, and say '
+                        "where in GTMX the user does the rest.")
     if not _FIRST_PERSON.search(content):
         problems.append("Answer in your own voice, in the first person (I / we), as the specialist you are.")
     return problems

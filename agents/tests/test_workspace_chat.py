@@ -92,3 +92,12 @@ def test_voice_checks():
     assert wc.voice_problems("I'd start with Lagos fintechs.") == []
     assert len(wc.voice_problems("The market is large.")) == 1
     assert any("can't act" in p for p in wc.voice_problems("We should. I’ll prepare a one-pager."))
+
+
+def test_claiming_work_that_never_happened_forces_a_rewrite():
+    claimed = ("I have drafted a proposal in the **Reach Out tab** targeting the YC community managers.",
+               "I've sent Amara the deck.", "I already scheduled the call.")
+    for text in claimed:
+        assert any("haven't done that" in p for p in wc.voice_problems(text)), text
+    assert wc.voice_problems("I've drafted it below:\n\nHi Amara, ...") == []
+    assert wc.voice_problems("I prepared this from our market research.") == []
