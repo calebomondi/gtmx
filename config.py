@@ -159,7 +159,6 @@ class Settings(BaseSettings):
     account_socials_workers: int = 6
     account_search_cache_ttl: float = 600.0
     account_discovery_fast: bool = False
-    account_discovery_strict_reachability: bool = False
 
     @computed_field
     @property

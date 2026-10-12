@@ -80,6 +80,8 @@ def run_deterministic_checks() -> None:
         return {"name": 'Foo Inc', "website": 'https://foo.com', "domain": 'foo.com', "logo": 'https://foo.com/logo.png'}
 
     discovery.search_and_scrape = fake_search_and_scrape
+    discovery.contacts.search_and_scrape = lambda *a, **k: []
+    discovery.contacts.scrape_url = lambda *a, **k: ''
     discovery.invoke_structured_with_fallback = fake_invoke_structured_with_fallback
     discovery.linkedin.get_company = fake_linkedin_get_company
     discovery.instagram.get_profile = lambda url, config=None: {"url": url, "name": 'Foo Inc'}
@@ -88,7 +90,6 @@ def run_deterministic_checks() -> None:
 
     old_discovery_fast = discovery._FAST_DISCOVERY
     old_env = os.environ.get('ACCOUNT_DISCOVERY_FAST')
-    env_strict_old = os.environ.pop('ACCOUNT_DISCOVERY_STRICT_REACHABILITY', None)
     discovery._FAST_DISCOVERY = True
     os.environ['ACCOUNT_DISCOVERY_FAST'] = '1'
     try:
@@ -135,25 +136,17 @@ def run_deterministic_checks() -> None:
             os.environ['ACCOUNT_DISCOVERY_FAST'] = old_env
         else:
             os.environ.pop('ACCOUNT_DISCOVERY_FAST', None)
-        if env_strict_old is not None:
-            os.environ['ACCOUNT_DISCOVERY_STRICT_REACHABILITY'] = env_strict_old
-        else:
-            os.environ.pop('ACCOUNT_DISCOVERY_STRICT_REACHABILITY', None)
 
-    # Strict reachability drop check: with no socials/emails/LinkedIn trigger,
-    # strict mode must drop even a website-present company.
+    # Reachability: with no contact, LinkedIn person or social page, even a
+    # website-present company is dropped.
     bad = _deterministic_account('BadCo', 'bad.com')
     bad.website = 'https://bad.com'
     bad.domain = 'bad.com'
     bad.trigger_event = TriggerEvent(event='saw a thing', signal_type='hiring_post', source='https://bad.com/news')
     bad.sources = [SourceRecord(title='n', url='https://bad.com/news')]
-    os.environ['ACCOUNT_DISCOVERY_STRICT_REACHABILITY'] = '1'
-    try:
-        result_bad = discovery.verify_accounts({'accounts': AccountList(accounts=[bad])})
-        assert len(result_bad['accounts'].accounts) == 0, 'strict mode should drop zero-reachability accounts'
-        print(' strict reachability gate dropped zero-channel account OK')
-    finally:
-        os.environ.pop('ACCOUNT_DISCOVERY_STRICT_REACHABILITY', None)
+    result_bad = discovery.verify_accounts({'accounts': AccountList(accounts=[bad])})
+    assert len(result_bad['accounts'].accounts) == 0, 'zero-reachability accounts are dropped'
+    print(' reachability gate dropped zero-channel account OK')
 
 
 def main():

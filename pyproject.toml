@@ -9,6 +9,7 @@ dependencies = [
     "brightdata-sdk>=2.5.2",
     "composio>=0.22.0",
     "composio-langgraph>=0.25.0",
+    "dnspython>=2.7",
     "exa-py>=2.18.1",
     "fastapi[standard]>=0.115.0",
     "httpx>=0.28",
