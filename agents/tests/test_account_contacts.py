@@ -78,3 +78,33 @@ def test_accounts_nobody_can_be_reached_at_are_dropped():
     nobody.name, nobody.domain, nobody.website = "Gamma", "gamma.example", "https://gamma.example"
     kept = discovery.verify_accounts({"accounts": AccountList(accounts=[reachable, social_only, nobody])})
     assert [a.name for a in kept["accounts"].accounts] == ["Acme", "Beta"]
+
+
+def _named(name, domain, event):
+    acc = _account(key_contacts=[ContactRecord(email=f"info@{domain}")])
+    acc.name, acc.domain, acc.website = name, domain, f"https://{domain}"
+    acc.trigger_event.event = event
+    return acc
+
+
+def test_competitors_and_the_offer_itself_are_never_targets():
+    """Geviton was both a tracked competitor and a target account."""
+    accounts = [
+        _named("Geviton", "geviton.co.ke", "Launched Darubini at Aga Khan University Hospital"),
+        _named("Shanga Labs", "shangalabs.com", "Opened a new lab"),
+        _named("Africhips", "africhip.com", "Signed an MoU with RMRDC for a semiconductor factory"),
+    ]
+    kept = discovery.verify_accounts({"accounts": AccountList(accounts=accounts),
+                                      "exclude_domains": ["geviton.co.ke", "www.shangalabs.com"]})
+    assert [a.name for a in kept["accounts"].accounts] == ["Africhips"]
+
+
+@pytest.mark.parametrize("event", [
+    "Long-established player (since 1997) with consistent focus on traceability",
+    "Company profile indicates ongoing growth (+9.1% YoY)",
+    "Active sales of electronics cases and filaments",
+    "Maintaining high growth with 8 million+ customers",
+])
+def test_triggers_that_describe_the_company_are_not_triggers(event):
+    kept = discovery.verify_accounts({"accounts": AccountList(accounts=[_named("Acme", "acme.example", event)])})
+    assert kept["accounts"].accounts == []
