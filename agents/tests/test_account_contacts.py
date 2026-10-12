@@ -108,3 +108,23 @@ def test_competitors_and_the_offer_itself_are_never_targets():
 def test_triggers_that_describe_the_company_are_not_triggers(event):
     kept = discovery.verify_accounts({"accounts": AccountList(accounts=[_named("Acme", "acme.example", event)])})
     assert kept["accounts"].accounts == []
+
+
+def test_each_target_country_gets_its_own_search(monkeypatch):
+    """One search over three countries returned Nigerian accounts only."""
+    from agents.schemas.icp import ICP
+
+    searched = []
+
+    class Graph:
+        def invoke(self, state):
+            geo = state["target_market"][0]
+            searched.append((geo, state["icp_data"].geo))
+            acc = _named(f"Acme {geo}", f"acme-{geo.lower().replace(' ', '')}.example", "Raised a Series A")
+            acc.score = 0.5
+            return {"accounts": AccountList(accounts=[acc]), "account_discovery_docs": []}
+    monkeypatch.setattr(discovery, "build_account_discovery_graph", lambda checkpointer: Graph())
+    state = {"icp_data": ICP(geo=["Kenya", "Nigeria", "South Africa"]), "target_market": ["Kenya", "Nigeria", "South Africa"]}
+    result = discovery.run_account_discovery_by_country(state)
+    assert sorted(searched) == [("Kenya", ["Kenya"]), ("Nigeria", ["Nigeria"]), ("South Africa", ["South Africa"])]
+    assert len(result["accounts"].accounts) == 3

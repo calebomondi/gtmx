@@ -58,10 +58,9 @@ async def test_account_runs_exclude_the_offer_and_its_competitors(user, seed_wor
         )
     seen = {}
 
-    class Graph:
-        def invoke(self, state):
-            seen.update(state)
-            return {"accounts": None}
-    monkeypatch.setattr(account_runner, "build_account_discovery_graph", lambda checkpointer: Graph())
+    def run(state):
+        seen.update(state)
+        return {"accounts": None}
+    monkeypatch.setattr(account_runner, "run_account_discovery_by_country", run)
     await account_runner.run_account_discovery_for_workspace(_uuid.UUID(workspace_id))
     assert sorted(seen["exclude_domains"]) == ["geviton.co.ke", "shangalabs.com"]
