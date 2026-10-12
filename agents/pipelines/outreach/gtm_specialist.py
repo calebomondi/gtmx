@@ -22,6 +22,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from agents.llm.main import cheap_providers, invoke_structured_with_fallback
 from agents.pipelines import team
+from agents.pipelines.outreach import grounding
 from agents.pipelines.web_utils import call_with_timeout
 from agents.schemas.outreach import AccountResearch, DraftReview, OutreachDraft, OutreachPlan
 from config import get_settings
@@ -29,13 +30,6 @@ from data_sources.scraping.exa import scrape_url
 from utils.log import logger
 
 _PAGE_CHARS = 6_000
-# Copy a good seller never writes, checked mechanically on top of the review.
-BANNED = re.compile(
-    r"\b(synerg\w*|leverag\w*|revolutioni[sz]\w*|cutting[- ]edge|game[- ]chang\w*|enhanc\w*|"
-    r"drive (?:further )?impact|impressive|hope (?:this|you)|came across|quick intro|"
-    r"we(?:'re| are) aware|touch base|circle back|unlock\w*|empower\w*|seamless\w*)\b",
-    re.I,
-)
 _WORD_LIMITS = {"email": (50, 140), "linkedin": (25, 90)}
 _SCRAPE_TIMEOUT_S = 25
 
@@ -208,10 +202,11 @@ def _write(brief: OutreachBrief, plan: OutreachPlan, notes: str, feedback: str =
     return draft.model_copy(update={"subject": ""}) if brief.channel == "linkedin" else draft
 
 
-def lint(brief: OutreachBrief, draft: OutreachDraft) -> list[str]:
-    """Mechanical checks the reviewer model can miss."""
+def lint(brief: OutreachBrief, draft: OutreachDraft, sources: str | None = None) -> list[str]:
+    """Mechanical checks the reviewer model can miss. `sources` is everything
+    the writer was given; every quantity in the draft must appear in it."""
     body = draft.body.strip()
-    problems = [f'Remove "{m}"' for m in dict.fromkeys(m.group(0) for m in BANNED.finditer(f"{draft.subject} {body}"))]
+    problems = grounding.problems(f"{draft.subject}\n{body}", sources if sources is not None else _brief_sources(brief))
     if not re.match(r"^(hi|hello|dear)\b", body, re.I):
         problems.append("Open with a greeting (Hi <first name>, or Hi <account> team,)")
     if re.match(r"^hi team\b", body, re.I):
@@ -227,6 +222,10 @@ def lint(brief: OutreachBrief, draft: OutreachDraft) -> list[str]:
     if not low <= words <= high:
         problems.append(f"Keep it between {low} and {high} words (it has {words})")
     return problems
+
+
+def _brief_sources(brief: OutreachBrief, *extra: str) -> str:
+    return "\n".join([brief.offer, brief.account, *brief.research.values(), *extra])
 
 
 def review(brief: OutreachBrief, research: AccountResearch, plan: OutreachPlan, draft: OutreachDraft) -> DraftReview:
@@ -248,7 +247,8 @@ def write_first_touch(brief: OutreachBrief, offer_name: str) -> OutreachDraft:
                              "outreach_consult")
     draft = _write(brief, plan, notes)
     verdict = review(brief, research, plan, draft)
-    problems = lint(brief, draft) + ([] if verdict.passes else verdict.problems)
+    sources = _brief_sources(brief, research.model_dump_json(), notes)
+    problems = lint(brief, draft, sources) + ([] if verdict.passes else verdict.problems)
     if problems:
         logger.info("Outreach draft rewritten after review: %s", "; ".join(problems))
         draft = _write(brief, plan, notes, feedback="; ".join(problems))

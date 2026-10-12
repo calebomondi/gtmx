@@ -9,13 +9,14 @@ product, market or competition specialist on what they asked -> write the
 answer in the sender's voice -> mechanical checks, one rewrite on failure.
 """
 
+import re
 from dataclasses import dataclass, field
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from agents.llm.main import cheap_providers, invoke_structured_with_fallback
 from agents.pipelines import team
-from agents.pipelines.outreach.gtm_specialist import BANNED
+from agents.pipelines.outreach import grounding
 from agents.schemas.outreach import ReplyAnalysis, ReplyDraft
 from utils.log import logger
 
@@ -74,8 +75,9 @@ How to answer:
 - not_now: thank them, ask when to follow up.
 - unsubscribe: confirm in one or two sentences that you won't contact them again. No pitch.
 - referral: thank them and ask for the right person's name or an intro.
-No greeting beyond "Hi <first name>," (or "Hi," if unknown). No buzzwords, no
-exclamation marks, no repeating the original pitch.
+Greet the contact: "Hi {contact}," -- you are {sender}, never greet yourself.
+No buzzwords, no exclamation marks, no repeating the original pitch, and no
+number, customer or result that isn't in the notes, offer or conversation.
 {feedback}
 SPECIALIST NOTES
 {notes}
@@ -109,9 +111,14 @@ def _slots_line(brief: ReplyBrief, analysis: ReplyAnalysis) -> str:
     return "Ask which day and time suits them this week or next."
 
 
-def lint(brief: ReplyBrief, draft: ReplyDraft) -> list[str]:
+def lint(brief: ReplyBrief, draft: ReplyDraft, notes: str = "") -> list[str]:
     body = draft.body.strip()
-    problems = [f'Remove "{m}"' for m in dict.fromkeys(m.group(0) for m in BANNED.finditer(body))]
+    sources = "\n".join([brief.offer, brief.account, _thread_text(brief), notes, *brief.free_slots,
+                          *brief.research.values()])
+    problems = grounding.problems(body, sources)
+    sender_first = (brief.sender_name or "").split(" ")[0]
+    if sender_first and re.match(rf"^(hi|hello|dear)\s+{re.escape(sender_first)}\b", body, re.I):
+        problems.append(f"You are {brief.sender_name}: greet the contact (or just 'Hi,'), never yourself")
     if "!" in body:
         problems.append("Remove exclamation marks")
     if brief.sender_name and not body.rstrip().endswith(brief.sender_name):
@@ -125,6 +132,7 @@ def _write(brief: ReplyBrief, analysis: ReplyAnalysis, notes: str, feedback: str
     return invoke_structured_with_fallback(
         [SystemMessage(content=_REPLY_PROMPT.format(
             persona=team.persona(team.member(brief.team, "gtm")), sender=brief.sender_name, max_words=_MAX_WORDS,
+            contact=(brief.contact_name or "").split(" ")[0] or "there",
             intent=analysis.intent, summary=analysis.summary, slots=_slots_line(brief, analysis),
             notes=notes, offer=brief.offer, thread=_thread_text(brief),
             feedback=f"\nA reviewer rejected your last version. Fix: {feedback}\n" if feedback else "",
@@ -142,7 +150,7 @@ def draft_reply(brief: ReplyBrief) -> ReplyResult:
                              "The GTM specialist, answering a reply,",
                              "outreach_consult")
     draft = _write(brief, analysis, notes)
-    problems = lint(brief, draft)
+    problems = lint(brief, draft, notes)
     if problems:
         logger.info("Reply draft rewritten: %s", "; ".join(problems))
         draft = _write(brief, analysis, notes, feedback="; ".join(problems))
