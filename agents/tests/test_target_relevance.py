@@ -104,3 +104,35 @@ def test_adjacent_companies_are_stopped_before_profiling(monkeypatch):
     offer = {"offer_name": "HeatherDB", "offer_description": "An intelligent database", "offer_type": "product"}
     assert gc._profile_one({"name": "AIGN Global", "website": "https://aign.global"}, offer) == (None, "not_a_competitor")
     assert calls == [CompetitorRelevance]  # no expensive profile call
+
+
+def test_the_hunt_runs_the_planners_queries_before_label_fallbacks(monkeypatch):
+    """Label queries ran first and the hunt stopped at their first hit, so the
+    planner's good queries never ran (Sasol, GridCars as 'competitors')."""
+    from agents.schemas.competition import CompetitorHuntPlan, CompetitorHuntTask
+
+    plan = CompetitorHuntPlan(tasks=[CompetitorHuntTask(
+        archetype_label="Local Full-Stack ODM", geography_scope="local", objective="Find local ODMs",
+        queries=["hardware product development firm Nairobi", "electronics ODM Kenya"],
+    )])
+    monkeypatch.setattr(gc, "invoke_structured_with_fallback", lambda *a, **k: plan)
+    state = {"ideal_competitor_profile": {"archetypes": [{"label": "Local Full-Stack ODM"}]},
+             "target_market": ["Kenya"], "offer_name": "Engineering and Innovation Consultancy"}
+    [task] = gc.plan_hunt(state)["competitor_hunt_tasks"]
+    assert task.queries[:2] == ["hardware product development firm Nairobi", "electronics ODM Kenya"]
+    assert task.queries[-1] == "Local Full-Stack ODM companies in Kenya"
+
+    searched = []
+
+    def search(query, cfg, num_results, start_published_date):
+        searched.append(query)
+        return [{"url": f"https://{len(searched)}-{i}.example", "text": "x"} for i in range(3)]
+    monkeypatch.setattr(gc, "_search_and_scrape", search)
+    monkeypatch.setattr(gc, "distill_documents", lambda docs, **k: "notes")
+    monkeypatch.setattr(gc, "invoke_structured_with_fallback", lambda *a, **k: gc.CompetitorHuntBundle(
+        archetype_label="x", geography_scope="local", queries=[], search_failed=False, sources=[]))
+    try:
+        gc._hunt_one(task)
+    except Exception:  # noqa: BLE001 -- only the searches issued matter here
+        pass
+    assert searched == task.queries[:3]  # 3 results each: keeps going past the first hit
