@@ -185,7 +185,12 @@ export function AccountDetailDialog({
 
         <Separator className="my-2" />
 
-        {draft ? (
+        {account.do_not_contact ? (
+          <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+            Someone at {account.name} asked not to be contacted, so your GTM specialist won't draft to them and
+            nothing can be sent.
+          </p>
+        ) : draft ? (
           <DraftEditor
             key={draft.id}
             workspaceId={workspaceId}

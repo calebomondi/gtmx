@@ -51,7 +51,10 @@ async def accounts_for_drafting(db: AsyncSession, workspace_id: uuid.UUID, accou
     ))).scalars().all())
     if not rows:
         raise InvalidInputError("Pick at least one target account to draft for.")
-    return rows
+    allowed = [a for a in rows if not a.do_not_contact]
+    if not allowed:
+        raise ConflictError("These accounts asked not to be contacted.")
+    return allowed
 
 
 # Inboxes that must never receive cold outreach: wrong audience, and mailing
@@ -127,6 +130,8 @@ async def send(db: AsyncSession, message: models.OutreachMessage) -> models.Outr
         raise ConflictError("LinkedIn messages are sent by you: copy the draft into LinkedIn.")
     if message.direction != "outbound":
         raise ConflictError("Replies you received can't be sent.")
+    if message.account_id and (account := await db.get(models.Account, message.account_id)) and account.do_not_contact:
+        raise ConflictError(f"{account.name} asked not to be contacted.")
     if message.status not in _EDITABLE:
         raise ConflictError("This message was already sent.")
     if not _EMAIL_RE.match(message.recipient_address or ""):
@@ -248,6 +253,14 @@ async def thread(db: AsyncSession, message: models.OutreachMessage) -> list[mode
             models.OutreachMessage.thread_id == message.thread_id,
         ).order_by(func.coalesce(models.OutreachMessage.sent_at, models.OutreachMessage.created_at))
     )).scalars().all())
+
+
+async def mark_do_not_contact(db: AsyncSession, account_id: uuid.UUID | None) -> None:
+    """Someone at the account asked to stop: no more drafts or sends to it."""
+    account = await db.get(models.Account, account_id) if account_id else None
+    if account is not None and not account.do_not_contact:
+        account.do_not_contact = True
+        await db.commit()
 
 
 async def add_reply_draft(db: AsyncSession, reply: models.OutreachMessage, body: str,

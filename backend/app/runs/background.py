@@ -175,6 +175,8 @@ async def outreach_reply(run_id: uuid.UUID, workspace_id: uuid.UUID, params: dic
         reply = await db.get(models.OutreachMessage, reply.id)
         reply.intent = result.analysis.intent
         await db.commit()
+        if result.analysis.intent == "unsubscribe":
+            await outreach_service.mark_do_not_contact(db, reply.account_id)
         draft = None
         if result.draft is not None:
             draft = await outreach_service.add_reply_draft(

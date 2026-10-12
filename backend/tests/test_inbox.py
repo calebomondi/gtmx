@@ -195,3 +195,24 @@ def test_an_agreed_time_becomes_a_meeting_added_only_on_click(client, drafted, m
 def test_only_received_replies_can_be_answered(client, drafted):  # noqa: F811
     path = f"{API}/{drafted['workspace']}/outreach/messages/{drafted['messages'][0]['id']}/reply-draft"
     assert client.post(path).status_code == 409
+
+
+def test_an_unsubscribe_stops_all_further_outreach_to_the_account(client, drafted, mailbox, specialist, account_id):  # noqa: F811
+    specialist["analysis"] = ReplyAnalysis(intent="unsubscribe", summary="Stop", reply_needed=False)
+    _sent(client, drafted)
+    mailbox["messages"] = [{"messageId": "u1", "threadId": "t1", "sender": "ada@acme.example", "messageText": "Remove me."}]
+    client.post(f"{API}/{drafted['workspace']}/outreach/sync")
+    client.portal.call(_drain)
+
+    [account] = client.get(f"{API}/{drafted['workspace']}/accounts").json()["accounts"]
+    assert account["do_not_contact"] is True
+    assert client.post(f"{API}/{drafted['workspace']}/outreach/drafts",
+                       json={"account_ids": [account_id]}).status_code == 409
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        draft_id = conn.execute(
+            "INSERT INTO outreach_messages (id, workspace_id, user_id, account_id, channel, recipient_company,"
+            " recipient_address, subject, body, status) SELECT %s, w.id, w.user_id, %s, 'email', 'Acme',"
+            " 'ada@acme.example', 'Hi', 'Hello', 'draft' FROM workspaces w WHERE w.id = %s RETURNING id",
+            (uuid.uuid4(), account_id, drafted["workspace"]),
+        ).fetchone()[0]
+    assert client.post(f"{API}/{drafted['workspace']}/outreach/messages/{draft_id}/send").status_code == 409

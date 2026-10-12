@@ -461,6 +461,10 @@ class Account(Base):
     selected: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=false(),
     )
+    # Someone at the account asked not to be contacted: no drafts, no sends.
+    do_not_contact: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false(),
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC),
         server_default=func.now(),

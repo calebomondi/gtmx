@@ -38,6 +38,7 @@ class AccountResponse(BaseModel):
     why_reach_out: list[str] = []
     trigger_event: dict | None = None
     selected: bool = False
+    do_not_contact: bool = False
     created_at: datetime
 
 
