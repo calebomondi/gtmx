@@ -18,7 +18,7 @@ class Specialist(LenientModel):
         description="Name of the specialist."
     )
     role: str = Field(
-        description="Role of the specialist in the context of the topic.",
+        description="The specialist's job title, under 8 words, e.g. 'Head of Channel Partnerships, East Africa'. Shown under the domain label ('GTM Specialist'), so it must not restate the domain or use the word 'Specialist'.",
     )
     description: str = Field(
         description="Description of the specialist focus, concerns, and motives.",

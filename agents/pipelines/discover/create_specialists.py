@@ -53,6 +53,11 @@ CONSTRUCTION RULES
 - Specialists are domain experts, not insiders: none of them built or shaped
   this product/service. Their perspective comes from the product/service description and their
   category/domain expertise alone.
+- `role` is a concrete job title of under 8 words (e.g. "Head of Channel
+  Partnerships, East Africa"). The app already shows the domain as a label
+  ("GTM Specialist"), so the role must NOT restate the domain ("Go-to-Market
+  Strategist", "Market Analyst", "Competition Expert") and must not contain the
+  word "Specialist". Put the sub-focus in the description, not the title.
 - Each specialist’s role, affiliation, and description must reflect the supplied
   product/service context: the role name should match their domain and the
   offer description, the affiliation should be plausible for that kind of role,
