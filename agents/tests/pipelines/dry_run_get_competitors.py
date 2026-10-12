@@ -71,6 +71,10 @@ def _fake_llm(messages, schema=None, **kw):
     which is the filter working, and the reason this stub builds real ones.
     """
     name = getattr(schema, "__name__", "")
+    if name == "CompetitorRelevance":
+        from agents.schemas.competition import CompetitorRelevance
+
+        return CompetitorRelevance(offer_job="x", their_job="x", same_buyer=True, substitute=True)
     if name == "CompetitorHuntPlan":
         return schema(
             tasks=[
@@ -289,7 +293,10 @@ async def main() -> None:
 
     # -- opportunities with NO pain signals, which the brief requires -------
     def _no_pain(messages, schema=None, **kw):
-        from agents.schemas.competition import CompetitorProfile
+        from agents.schemas.competition import CompetitorProfile, CompetitorRelevance
+
+        if schema is CompetitorRelevance:
+            return CompetitorRelevance(offer_job="x", their_job="x", same_buyer=True, substitute=True)
 
         return CompetitorProfile(
             name="Quiet Co",

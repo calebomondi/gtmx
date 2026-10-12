@@ -59,7 +59,8 @@ from langgraph.graph import END, START, StateGraph
 
 from config import get_settings
 from agents.context_budget import distill_documents
-from agents.llm.main import LlmProvidersExhaustedError, invoke_structured_with_fallback
+from agents.llm.main import LlmProvidersExhaustedError, cheap_providers, invoke_structured_with_fallback
+from langchain_core.messages import HumanMessage, SystemMessage
 from agents.schemas.competition import IdealCompetitorProfile
 from data_sources.scraping.exa import scrape_url, search_and_scrape
 from data_sources.socials import profiles as social_profiles
@@ -87,7 +88,7 @@ def _search_and_scrape(query, config, num_results=5, start_published_date=None):
     )
     return search_cache_put(key, results or [])
 
-from agents.schemas.competition import CandidateFinding, CompetitorHuntBundle, CompetitorHuntPlan, CompetitorHuntTask, CompetitorProfile, CompetitorRunOutcome, CompetitorSocial, SourcedFinding
+from agents.schemas.competition import CandidateFinding, CompetitorHuntBundle, CompetitorHuntPlan, CompetitorHuntTask, CompetitorProfile, CompetitorRelevance, CompetitorRunOutcome, CompetitorSocial, SourcedFinding
 from agents.schemas.sessions import CompetitorSessionState
 
 
@@ -812,6 +813,35 @@ def _add_site_socials(profile: CompetitorProfile, website: str) -> None:
             profile.tracking_sources.append(CompetitorSocial(kind=platform, value=url, confidence="high"))
 
 
+_RELEVANCE_PROMPT = """You decide whether a company competes with the user's {noun}. Be strict: a
+competitor is a SUBSTITUTE -- the buyer would pick it instead, to get the same
+job done. Adjacent companies (governance, consulting, design agencies, tools
+that integrate or sit alongside, infrastructure underneath) are not competitors,
+however related the topic.
+
+THE USER'S {noun_upper}
+{offer}
+
+THE COMPANY: {name} ({website})
+{material}"""
+_RELEVANCE_CHARS = 5_000
+
+
+def is_substitute(survivor: dict, offer: dict, evidence: str) -> tuple[bool, str]:
+    """(competes, why): the cheap gate run before a full profile."""
+    noun = "service" if offer.get("offer_type") == "service" else "product"
+    verdict = invoke_structured_with_fallback(
+        [SystemMessage(content=_RELEVANCE_PROMPT.format(
+            noun=noun, noun_upper=noun.upper(), name=survivor["name"], website=survivor["website"],
+            offer=f"{offer.get('offer_name')}: {offer.get('offer_description')}",
+            material=evidence[:_RELEVANCE_CHARS],
+        )), HumanMessage(content="Decide now.")],
+        CompetitorRelevance, providers=cheap_providers(), log_label=f"get_competitors:relevance:{survivor['name']}",
+    )
+    why = f"offer: {verdict.offer_job} / {survivor['name']}: {verdict.their_job}"
+    return verdict.same_buyer and verdict.substitute, why
+
+
 def _profile_one(survivor: dict, offer: dict) -> tuple[Optional[CompetitorProfile], Optional[str]]:
     """Deep-research one surviving firm into a sourced profile.
 
@@ -823,6 +853,14 @@ def _profile_one(survivor: dict, offer: dict) -> tuple[Optional[CompetitorProfil
     if not evidence:
         logger.info("profile_competitors: dropping %s -- nothing retrievable", survivor["name"])
         return None, "unprofiled"
+
+    try:
+        competes, why = is_substitute(survivor, offer, evidence)
+    except LlmProvidersExhaustedError:
+        competes, why = True, "relevance gate unavailable; the profile decides"
+    if not competes:
+        logger.info("profile_competitors: dropping %s -- not a substitute (%s)", survivor["name"], why)
+        return None, "not_a_competitor"
 
     noun = "service" if offer.get("offer_type") == "service" else "product"
     user_message = (

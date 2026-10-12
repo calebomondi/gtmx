@@ -443,3 +443,16 @@ class CompetitorRunOutcome(LenientModel):
 		description="{reason: count}. 'no_public_website' is expected to dominate: "
 		"that is the brief's filter working, not a lossy run",
 	)
+
+
+class CompetitorRelevance(LenientModel):
+	"""The competitor gate: same job for the same buyer, or not a competitor."""
+
+	offer_job: str = Field(description="The one job the user's offer does for its buyer, in under 15 words")
+	their_job: str = Field(description="The one job this company's main offering does for its buyer, in under 15 words")
+	same_buyer: bool = Field(description="Would the same person or team buy both?")
+	substitute: bool = Field(
+		description="Would that buyer choose this company's offering INSTEAD of the user's offer, to get the same "
+		"job done? False for tools that integrate with it, sit beside it, run underneath it, govern or advise on "
+		"it, or do a different job for the same buyer.",
+	)
