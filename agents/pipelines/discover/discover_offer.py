@@ -13,6 +13,7 @@ from agents.schemas.offer import SnapshotFeature
 from agents.helpers import as_follow_up, gather_content, normalize_optional_text
 from data_sources.scraping.quality import decode_entities
 from agents.schemas.sessions import DiscoverOfferState
+from utils.log import logger
 
 
 # ---------------------------------------------------------------------------
@@ -348,17 +349,17 @@ def _extract_candidates(content: str, offer_name: str | None = None) -> list[str
             if not name:
                 continue
             if not candidate.is_product:
-                print(
+                logger.warning(
                     f"⚠️ Excluded '{name}' — {candidate.reason or 'not a product/service of the site'}"
                 )
                 continue
             key = norm(name)
             if sought and key == sought:
-                print(f"⚠️ Excluded '{name}' — same as the name you queried")
+                logger.warning(f"⚠️ Excluded '{name}' — same as the name you queried")
                 continue
             if company and key and (key == company or company in key or key in company):
                 why = candidate.reason or "matches the site's organization name"
-                print(f"⚠️ Excluded '{name}' — {why}")
+                logger.warning(f"⚠️ Excluded '{name}' — {why}")
                 continue
             if key and key not in seen:
                 seen.add(key)
@@ -374,7 +375,7 @@ def _extract_candidates(content: str, offer_name: str | None = None) -> list[str
             candidates_instructions_second_pass, known, thinking=False
         )
         if kept:
-            print(f"✅ Products found on page: {kept} (company: {company or 'unknown'})")
+            logger.info(f"✅ Products found on page: {kept} (company: {company or 'unknown'})")
         candidates = kept
     return candidates
 

@@ -856,12 +856,12 @@ def create_tasks_research(state: CompetitionSessionState) -> dict:
         queries = [_scrub_brand(q, brand_patterns) for q in (task.queries or [])]
         queries = [q for q in queries if q]
         if queries != list(task.queries or []):
-            print(f"create_tasks_research: scrubbed the offer's brand out of a query in '{task.area}'")
+            logger.info(f"create_tasks_research: scrubbed the offer's brand out of a query in '{task.area}'")
         scrubbed_tasks.append(task.model_copy(update={"queries": queries}))
 
-    print(f"create_tasks_research: planned {len(scrubbed_tasks)} competition research task(s)")
+    logger.info(f"create_tasks_research: planned {len(scrubbed_tasks)} competition research task(s)")
     for i, task in enumerate(scrubbed_tasks, start=1):
-        print(f"  {i}. {task.area} ({len(task.queries or [])} queries)")
+        logger.info(f"  {i}. {task.area} ({len(task.queries or [])} queries)")
 
     return {"competition_tasks": plan.model_copy(update={"tasks": scrubbed_tasks})}
 
@@ -895,7 +895,7 @@ def _research_one(task: ResearchTask) -> TaskResearchBundle:
                 start_published_date=cutoff,
             )
         except Exception as exc:  # noqa: BLE001 - one dead query must not kill the task
-            print(f"conduct_research: query failed ({area}): {query} -> {exc}")
+            logger.warning(f"conduct_research: query failed ({area}): {query} -> {exc}")
             continue
         for doc in results or []:
             url = doc.get("url") or ""
@@ -963,19 +963,19 @@ def conduct_research(state: CompetitionSessionState) -> dict:
     plan = state.get("competition_tasks")
     tasks = list(plan.tasks or []) if plan else []
     if not tasks:
-        print("conduct_research: no tasks planned, nothing to research")
+        logger.info("conduct_research: no tasks planned, nothing to research")
         return {"competition_task_research": []}
 
-    print(f"conduct_research: plan\n{_render_task_plan(tasks)}")
+    logger.info(f"conduct_research: plan\n{_render_task_plan(tasks)}")
 
     workers = min(len(tasks), TASK_RESEARCH_MAX_WORKERS)
-    print(f"conduct_research: running {len(tasks)} task(s) over {workers} worker(s)")
+    logger.info(f"conduct_research: running {len(tasks)} task(s) over {workers} worker(s)")
 
     def _guarded(task: ResearchTask) -> TaskResearchBundle:
         try:
             return _research_one(task)
         except Exception as exc:  # noqa: BLE001 - a dead task is a gap, not a crash
-            print(f"conduct_research: task failed ({task.area}): {exc}")
+            logger.warning(f"conduct_research: task failed ({task.area}): {exc}")
             return TaskResearchBundle(
                 task_id=task.area or "unnamed area",
                 area=task.area or "unnamed area",
@@ -990,7 +990,7 @@ def conduct_research(state: CompetitionSessionState) -> dict:
 
     for bundle in bundles:
         status = "EMPTY" if bundle.search_failed else f"{len(bundle.sources)} source(s)"
-        print(f"  {bundle.area}: {status}")
+        logger.info(f"  {bundle.area}: {status}")
 
     return {"competition_task_research": bundles}
 
@@ -1163,7 +1163,7 @@ def note_down_record(state: CompetitionSessionState) -> dict:
     positioning_words = positioning.split()
     if len(positioning_words) > 50:
         positioning = " ".join(positioning_words[:50])
-        print(
+        logger.info(
             f"note_down_record: positioning understanding clamped from "
             f"{len(positioning_words)} to 50 words"
         )
@@ -1176,7 +1176,7 @@ def note_down_record(state: CompetitionSessionState) -> dict:
     findings_words = findings.split()
     if len(findings_words) > COMPETITION_FINDINGS_WORD_CAP:
         findings = " ".join(findings_words[:COMPETITION_FINDINGS_WORD_CAP])
-        print(
+        logger.info(
             f"note_down_record: findings clamped from {len(findings_words)} "
             f"to {COMPETITION_FINDINGS_WORD_CAP} words"
         )
@@ -1188,7 +1188,7 @@ def note_down_record(state: CompetitionSessionState) -> dict:
     if findings and sources_block:
         findings = f"{findings}\n\n{sources_block}"
 
-    print(
+    logger.info(
         f"note_down_record: {len(bundles)} bundle(s) read, "
         f"{len(findings.split())} words of notes, "
         f"positioning understanding in {len(positioning.split())} words"
