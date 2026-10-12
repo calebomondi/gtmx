@@ -90,8 +90,10 @@ def _fake_llm(messages, schema=None, **kw):
                 ),
             ]
         )
-    if name == "CandidateFinding":
-        return [
+    if name == "CandidateFindingList":
+        from agents.schemas.competition import CandidateFindingList
+
+        return CandidateFindingList(candidates=[
             _candidate("Acme Vector", "https://acme.com", evidence_urls=["https://directory.example/list"]),
             _candidate("Acme Vector", "https://www.acme.com/about"),  # dup spelling
             _candidate("Globex", "https://globex.io"),
@@ -100,7 +102,7 @@ def _fake_llm(messages, schema=None, **kw):
             _candidate("Directory Entry", "https://g2.com/products/nosite"),
             _candidate("Social Only", "https://linkedin.com/company/socialonly"),
             _candidate("Plausible But Invented", "https://acme-vector-db.io"),
-        ]
+        ])
     if name == "CompetitorProfile":
         PROFILE_CALLS.append({"messages": messages})
         return _profile()

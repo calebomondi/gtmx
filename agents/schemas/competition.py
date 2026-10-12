@@ -456,3 +456,9 @@ class CompetitorRelevance(LenientModel):
 		"job done -- even with different technology, or for a substantial part of the job? False for tools that integrate with it, sit beside it, run "
 		"underneath it, govern or advise on it, or do a different job for the same buyer.",
 	)
+
+
+class CandidateFindingList(LenientModel):
+	"""Every company one hunt task's notes name (the extraction's output)."""
+
+	candidates: list[CandidateFinding] = Field(default_factory=list)

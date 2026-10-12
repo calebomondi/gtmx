@@ -88,7 +88,7 @@ def _search_and_scrape(query, config, num_results=5, start_published_date=None):
     )
     return search_cache_put(key, results or [])
 
-from agents.schemas.competition import CandidateFinding, CompetitorHuntBundle, CompetitorHuntPlan, CompetitorHuntTask, CompetitorProfile, CompetitorRelevance, CompetitorRunOutcome, CompetitorSocial, SourcedFinding
+from agents.schemas.competition import CandidateFinding, CandidateFindingList, CompetitorHuntBundle, CompetitorHuntPlan, CompetitorHuntTask, CompetitorProfile, CompetitorRelevance, CompetitorRunOutcome, CompetitorSocial, SourcedFinding
 from agents.schemas.sessions import CompetitorSessionState
 
 
@@ -636,19 +636,11 @@ def _hunt_one(task: CompetitorHuntTask) -> CompetitorHuntBundle:
                 notes=notes,
             )
         ],
-        CandidateFinding,
+        CandidateFindingList,
         log_label=f"get_competitors:extract:{task.archetype_label}",
     )
-
-    # The schema is a single candidate; the prompt asks for a list, so accept
-    # either shape. A model returning one finding where a list was requested is a
-    # shape mismatch, not an empty result, and must not read as "found nothing".
-    if isinstance(extracted, CandidateFinding):
-        candidates = [extracted]
-    elif isinstance(extracted, list):
-        candidates = [c for c in extracted if isinstance(c, CandidateFinding)]
-    else:  # pragma: no cover -- defensive
-        candidates = []
+    # A list schema: the single-candidate one capped every task at one company.
+    candidates = [c for c in (getattr(extracted, "candidates", None) or []) if isinstance(c, CandidateFinding)]
     bundle.candidates = candidates[:MAX_CANDIDATES_PER_TASK]
     logger.info(
         f"hunt_candidates: {task.archetype_label}: {len(bundle.candidates)} candidate(s) "
