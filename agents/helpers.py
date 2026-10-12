@@ -101,7 +101,12 @@ def format_offer_material(snapshot: OfferDataSnapshot, scraped_content: str | No
     body = offer_brief(name, body)
 
     href = url or f"{name} (user-provided material)"
-    return f'<Document href="{href}"/>\n{name} — {noun}\'s own material\n-----\n{body}\n</Document>'
+    scope = (
+        f"SCOPE: this material is about {name} only. The same company may sell other products or "
+        f"services; anything about them is out of scope -- never attribute their features, claims or "
+        f"numbers to {name}."
+    )
+    return f'<Document href="{href}"/>\n{name} — {noun}\'s own material\n{scope}\n-----\n{body}\n</Document>'
 
 
 _URL_RE = re.compile(r"^\s*(https?://)", re.IGNORECASE)
