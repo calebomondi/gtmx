@@ -53,6 +53,7 @@ from langchain_core.messages import SystemMessage
 
 from config import get_settings
 from agents.llm.main import invoke_structured_with_fallback
+from agents.helpers import with_target_geo
 from agents.context_budget import _truncate_to_tokens, budget_context, distill_documents
 from agents.schemas.market import MarketExtraction, MarketFindings
 from agents.schemas.research import TaskResearchBundle
@@ -184,6 +185,10 @@ settle, in an area such as:
   in this category, and what blocks adoption (trust, switching cost, cost,
   regulatory, awareness)
 - how all of the above differs across the target geographies
+
+COVERAGE: the target market is {target_market}. Every one of these countries must
+be covered by at least one task, named in its queries. Do not narrow the market
+to the countries that are easiest to research.
 
 The research MUST be current: markets change. Favour recent sources, because a
 verdict built on stale conditions is worse than a thin one.
@@ -716,6 +721,9 @@ def extract_market_data(state: MarketSessionState) -> dict:
         f"buyer_type={getattr(extraction, 'buyer_type', None)!r}, "
         f"{len(getattr(extraction, 'pricing', None) or [])} pricing tier(s)"
     )
+    extraction = extraction.model_copy(update={
+        "target_geo": with_target_geo(state.get("target_market"), extraction.target_geo),
+    })
     return {"market_data": extraction}
 
 

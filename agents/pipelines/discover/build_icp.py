@@ -63,6 +63,7 @@ from typing import Optional
 from langgraph.graph import START, END, StateGraph
 from langchain_core.messages import SystemMessage
 
+from agents.helpers import with_target_geo
 from agents.llm.main import invoke_structured_with_fallback, cheap_providers
 from agents.context_budget import budget_context
 from agents.schemas.icp import ICP, ICPRevision, IcpFindings
@@ -549,6 +550,7 @@ def create_icp(state: IcpSessionState) -> dict:
         f"{len(draft.target_channels or [])} channel(s), "
         f"{len(draft.competitor_leads or [])} competitor lead(s)"
     )
+    draft = draft.model_copy(update={"geo": with_target_geo(state.get("target_market"), draft.geo)})
     return {"icp_data": draft}
 
 
@@ -612,6 +614,7 @@ def refine_icp(state: IcpSessionState) -> dict:
         f"{len(final.target_channels or [])} channel(s), "
         f"{len(final.competitor_leads or [])} competitor lead(s)"
     )
+    final = final.model_copy(update={"geo": with_target_geo(state.get("target_market"), final.geo)})
     return {"icp_data": final}
 
 

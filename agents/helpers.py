@@ -137,3 +137,12 @@ def gather_content(source: str) -> str:
         logger.warning("Rejected unusable body for %r: %s", url, rejection_reason(raw))
         return ""
     return raw
+
+
+def with_target_geo(chosen: list[str] | None, found: list[str] | None) -> list[str]:
+    """The user's target countries, always, plus any further markets the
+    evidence adds. A stage may widen the market; it may not drop a country the
+    user asked for."""
+    out = [g for g in (chosen or []) if g]
+    seen = {g.lower() for g in out}
+    return out + [g for g in (found or []) if g and g.lower() not in seen]

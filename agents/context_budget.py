@@ -391,19 +391,26 @@ def distill_documents(
     return "\n\n---\n\n".join(notes)
 
 
-_OFFER_BRIEF_SYSTEM = """You condense a scraped company/product page into a dense factual brief.
+_OFFER_BRIEF_SYSTEM = """You condense a scraped company/product page into a dense factual brief about
+ONE named product or service.
 
 Write the brief using these rules:
+- The page may describe several products or services from the same company.
+  Brief ONLY the named one. Never attribute another offer's features, claims,
+  numbers or capabilities to it -- even where the company is the same.
 - Lead with what the product IS, how it works mechanically, who it is for, and what it claims.
 - Keep concrete claims, numbers, named technologies and differentiators exactly as written.
 - Keep the substance a domain expert would need to judge the product seriously.
 - Drop navigation, boilerplate, cookie notices, marketing filler and repeated CTAs.
 - Never invent. If a claim is not on the page, leave it out.
 - Aim for roughly {target} tokens. Plain prose or tight bullets. No preamble, no heading.
+- If the page lists other offers, end with one line: "Other offers on this page (out of
+  scope): <names>" -- names only, no descriptions.
 
 Return only the brief."""
 
 
+_OFFER_BRIEF_VERSION = 2
 _OFFER_BRIEF_CACHE: dict[str, str] = _load_cache_file("offer_brief")
 
 
@@ -423,7 +430,8 @@ def offer_brief(
     if not body:
         return ""
 
-    digest = hashlib.sha256(f"{name}\x00{body}".encode()).hexdigest()
+    # Versioned: briefs from an earlier prompt are cached on disk and must not be reused.
+    digest = hashlib.sha256(f"{_OFFER_BRIEF_VERSION}\x00{name}\x00{body}".encode()).hexdigest()
     cached = _OFFER_BRIEF_CACHE.get(digest)
     if cached is not None:
         return cached
