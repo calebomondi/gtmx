@@ -95,7 +95,7 @@ def test_lint_catches_what_a_lenient_reviewer_misses():
 
 def test_lint_failures_force_a_rewrite_even_when_the_review_passes(llm, monkeypatch):
     calls, _ = llm
-    monkeypatch.setattr(gs, "lint", lambda brief, draft: ["Remove \"enhance\""])
+    monkeypatch.setattr(gs, "lint", lambda brief, draft, sources=None: ["Remove \"enhance\""])
     gs.write_first_touch(_brief(), "Cloud of Association")
     writes = [prompt for label, prompt in calls if label.startswith("outreach_write")]
     assert len(writes) == 2 and 'Remove "enhance"' in writes[1]
