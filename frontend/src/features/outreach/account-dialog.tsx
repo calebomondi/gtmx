@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
 import { draftOutreach, listOutreach, type AccountRecord, type OutreachMessageDto } from '@/lib/api'
+import { pitchFor } from '@/lib/buyer-type'
 import { useSpecialistTeam } from '@/lib/specialists'
 import { cn } from '@/lib/utils'
 
@@ -141,6 +142,7 @@ export function AccountDetailDialog({
 
   if (!account || !workspaceId) return null
   const draftable = channel && DRAFTABLE.has(channel.kind)
+  const pitch = pitchFor(account.account_type)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -149,6 +151,7 @@ export function AccountDetailDialog({
           <DialogTitle className="text-lg">{account.name}</DialogTitle>
           <DialogDescription className="flex flex-wrap items-center gap-2 text-xs">
             <Badge variant="secondary" className="capitalize">{account.account_type}</Badge>
+            <Badge variant="outline" className="border-amber-500/40 text-amber-500" title={pitch.hint}>{pitch.label}</Badge>
             {account.industry && <span className="text-muted-foreground">· {account.industry}</span>}
             {account.geo && <span className="text-muted-foreground">· {account.geo}</span>}
             {account.score != null && <span className="text-amber-500">· fit {Math.round(account.score * 100)}%</span>}
@@ -202,7 +205,7 @@ export function AccountDetailDialog({
           <div className="flex flex-col items-start gap-2 rounded-lg border border-dashed border-border p-4">
             <p className="text-sm text-muted-foreground">
               {gtm ? `${gtm.name}, your GTM specialist,` : 'Your GTM specialist'} researches {account.name}, picks the
-              angle with the rest of the team, and drafts a {channel.label} message for you to review. Nothing is sent without you.
+              angle with the rest of the team, and drafts a {channel.label} message for you to review. {pitch.hint} Nothing is sent without you.
             </p>
             <Button
               type="button"

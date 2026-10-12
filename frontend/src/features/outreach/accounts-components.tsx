@@ -20,6 +20,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 import { AccountDetailDialog } from './account-dialog'
+import { AccountKindFilter } from './account-kind-filter'
+import { useAccountKinds } from './use-account-kinds'
 
 import {
   getAccountRun,
@@ -280,6 +282,7 @@ export default function AccountsComponent({ workspaceId }: { workspaceId?: strin
   )
 
   const hunting = starting || (run != null && LIVE_STATUSES.has(run.status))
+  const kinds = useAccountKinds(accounts)
 
   return (
     <Card className="flex min-h-0 flex-1 flex-col">
@@ -363,11 +366,16 @@ export default function AccountsComponent({ workspaceId }: { workspaceId?: strin
               </p>
             </div>
           ) : (
-            <div className="flex flex-col gap-3">
-              {accounts.map((account) => (
-                <AccountCard key={account.id} account={account} onOpenDetail={setDetailAccount} />
-              ))}
-            </div>
+            <>
+              {kinds.split && (
+                <AccountKindFilter kind={kinds.kind} counts={kinds.counts} onChange={kinds.setKind} />
+              )}
+              <div className="flex flex-col gap-3">
+                {kinds.visible.map((account) => (
+                  <AccountCard key={account.id} account={account} onOpenDetail={setDetailAccount} />
+                ))}
+              </div>
+            </>
           )
         ) : runs.length === 0 ? (
           <p className="py-6 text-center text-xs text-muted-foreground">No account runs yet.</p>
