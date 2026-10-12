@@ -29,6 +29,49 @@ def test_linkedin_result_titles_become_named_people():
     assert contacts._person_from_result("Jane Doe - Head of Growth - Other Co", "Acme") == (None, None)
 
 
+_PROFILE = """# Nathan Nwachuku
+
+CEO, Terra Industries
+
+## Experience
+
+### Co-founder and CEO - [Terra Industries](https://www.linkedin.com/company/terrahaptix)
+"""
+
+
+def test_profiles_titled_with_only_a_name_are_read_from_their_text():
+    assert contacts._person_from_profile("nathan nwachuku", _PROFILE, "Terra Industries") == (
+        "Nathan Nwachuku", "Co-founder and CEO")
+    assert contacts._person_from_profile("Jo Bloggs", "# Jo Bloggs\n\nCTO at Acme\n", "Acme") == ("Jo Bloggs", "CTO")
+    assert contacts._person_from_profile("Jo Bloggs", "# Jo Bloggs\n\nCTO at Other Co\n", "Acme") == (None, None)
+    assert contacts._person_from_profile("Acme", "# Acme\n\nAcme is a software company\n", "Acme") == (None, None)
+
+
+def test_a_namesake_company_page_is_not_the_account():
+    page = "https://ng.linkedin.com/company/terra-mining"
+    assert contacts._person_from_profile("n", _PROFILE, "Terra Industries", page) == (None, None)
+    assert contacts._person_from_profile("n", _PROFILE, "Terra Industries", "https://linkedin.com/company/terrahaptix")[0]
+
+
+def test_only_decision_makers_are_kept():
+    assert contacts._decides("Co-founder and CEO", [])
+    assert contacts._decides("Procurement Officer", ["procurement officer"])
+    assert contacts._decides(None, [])
+    assert not contacts._decides("Warehouse Assistant", ["CEO"])
+
+
+def test_people_search_reads_profiles_and_skips_junior_staff(monkeypatch):
+    hits = [
+        {"url": "https://linkedin.com/in/nathan", "title": "nathan nwachuku", "text": _PROFILE},
+        {"url": "https://linkedin.com/in/ajayi", "title": "Ajayi", "text": "# Ajayi\n\nWarehouse Assistant at Terra Industries\n"},
+    ]
+    monkeypatch.setattr(contacts, "search_and_scrape", lambda *a, **k: hits)
+    acc = _account(socials={"linkedin": "https://www.linkedin.com/company/terrahaptix"})
+    acc.name = "Terra Industries"
+    people = contacts.people_on_linkedin(acc, ["CEO"], None)
+    assert [(p.name, p.title) for p in people] == [("Nathan Nwachuku", "Co-founder and CEO")]
+
+
 def test_merge_ranks_people_first_and_drops_dead_addresses():
     merged = contacts.merge(
         [ContactRecord(email="info@acme.example")],

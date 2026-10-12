@@ -106,6 +106,58 @@ def _person_from_result(title: str, company: str) -> tuple[str | None, str | Non
     return parts[0], role
 
 
+_PROFILE_NAME_RE = re.compile(r"^#\s+(.+)$", re.M)
+# '### Co-founder and CEO - [Acme](https://linkedin.com/company/acme)'
+_PROFILE_ROLE_RE = re.compile(r"^###\s+(.+?)\s[-–—]\s\[?([^\]\n]+)\]?(?:\((\S+?)\))?", re.M)
+_COMPANY_SLUG_RE = re.compile(r"linkedin\.com/company/([^/?#)\s]+)", re.I)
+# Roles that can say yes to a purchase or a partnership.
+_SENIOR_RE = re.compile(
+    r"\b(?:co-?founder|founder|owner|chief|ceo|cto|coo|cfo|cio|cmo|president|vp|vice president|director|head|"
+    r"partner|principal|managing|general manager|lead|dean|professor|editor|organi[sz]er|curator|host)\b", re.I)
+
+
+def _company_slug(url: str | None) -> str | None:
+    match = _COMPANY_SLUG_RE.search(url or "")
+    return match.group(1).lower() if match else None
+
+
+def _person_from_profile(title: str, text: str, company: str,
+                         company_page: str | None = None) -> tuple[str | None, str | None]:
+    """Name and role from a scraped profile whose result title is only the
+    person's name. Kept only when the headline or the most recent role names
+    `company`, and, when both sides link a LinkedIn company page, the pages
+    match, so a namesake company elsewhere isn't mistaken for the account."""
+    name_match = _PROFILE_NAME_RE.search(text)
+    name = (name_match.group(1) if name_match else title.split("|")[0]).strip()
+    if not name or company.lower() in name.lower():  # the company's own page, not a person
+        return None, None
+    after_name = text[name_match.end():] if name_match else text
+    headline = next((ln.strip() for ln in after_name.splitlines() if ln.strip()), "")
+    if headline.startswith("#"):
+        headline = ""
+    latest = _PROFILE_ROLE_RE.search(text)
+    wanted = company.lower()
+    if latest and wanted in latest.group(2).lower():
+        ours, theirs = _company_slug(company_page), _company_slug(latest.group(3))
+        if ours and theirs and ours != theirs:
+            return None, None
+        return name, latest.group(1).strip()
+    if wanted in headline.lower():
+        role = re.split(rf"\s*(?:,|\bat\b|@|[-–—|])\s*{re.escape(company)}", headline, maxsplit=1, flags=re.I)[0]
+        return name, role.strip() or None
+    return None, None
+
+
+def _decides(role: str | None, buyer_titles: list[str]) -> bool:
+    """Whether someone in `role` can plausibly buy or partner: a senior role
+    or one of the ICP's buyer titles. Unknown roles are kept (the title format
+    often omits it)."""
+    if not role:
+        return True
+    lowered = role.lower()
+    return bool(_SENIOR_RE.search(role)) or any(t.lower() in lowered for t in buyer_titles if t)
+
+
 def people_on_linkedin(acc: AccountRecord, titles: list[str], cfg: Settings) -> list[ContactRecord]:
     """Named decision makers at the account, from a LinkedIn people search
     for the ICP's buyer titles. Only results naming the account are kept."""
@@ -119,6 +171,12 @@ def people_on_linkedin(acc: AccountRecord, titles: list[str], cfg: Settings) -> 
     for hit in hits:
         url = (_PERSON_LINKEDIN_RE.search(hit.get("url") or "") or [None])[0]
         name, role = _person_from_result(hit.get("title") or "", acc.name)
+        if not name:
+            name, role = _person_from_profile(hit.get("title") or "", hit.get("text") or "", acc.name,
+                                              (acc.socials or {}).get("linkedin"))
+        if name and not _decides(role, titles):
+            logger.info("Skipping %s (%s) at %s: not a decision maker", name, role, acc.name)
+            continue
         if url and name:
             people.append(ContactRecord(name=name, title=role, linkedin=url))
     return people
