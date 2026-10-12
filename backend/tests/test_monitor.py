@@ -42,7 +42,7 @@ def _run_monitor(client, workspace):
 def test_baseline_then_changes_become_signals(client, owned, monkeypatch):
     seen_previous = []
 
-    def fake_check(name, website, previous, offer):
+    def fake_check(name, website, previous, offer, posts=None):
         seen_previous.append(previous)
         state = {"site_hash": "h1", "site_text": "Pro $10/seat", "news_urls": []}
         if previous is None:
@@ -53,15 +53,17 @@ def test_baseline_then_changes_become_signals(client, owned, monkeypatch):
         ]
     monkeypatch.setattr(background.check_competitor, "check", fake_check)
 
-    _run_monitor(client, owned["workspace"])  # baseline
-    assert client.get("/api/v1/signals").json() == []
+    _run_monitor(client, owned["workspace"])  # baseline: tracking starts, no changes yet
+    assert [s["title"] for s in client.get("/api/v1/signals").json()] == ["Now monitoring 1 competitor"]
     competitors = client.get(f"{API}/{owned['workspace']}/competitors").json()["competitors"]
     assert competitors[0]["last_checked_at"] is not None
 
     _run_monitor(client, owned["workspace"])  # second check sees the baseline
     assert seen_previous[-1] == {"site_hash": "h1", "site_text": "Pro $10/seat", "news_urls": []}
     feed = client.get("/api/v1/signals").json()
-    assert [(s["title"], s["hot"]) for s in feed] == [("rival.example: Cut Pro to $8/seat", True)]
+    assert [(s["title"], s["hot"]) for s in feed if s["entity"] != "Competitor monitoring"] == [
+        ("rival.example: Cut Pro to $8/seat", True),
+    ]
 
 
 def test_check_now_needs_competitors(client, user, seed_workspace):
@@ -89,14 +91,16 @@ async def test_scheduler_picks_only_stale_live_workspaces(owned, monkeypatch):
 
 
 def test_socials_refresh_weekly_and_record_found_handles(client, owned, monkeypatch, socials_calls):
-    monkeypatch.setattr(background.check_competitor, "check", lambda *a: ({}, []))
+    checked_posts = []
+    monkeypatch.setattr(background.check_competitor, "check",
+                        lambda *a, posts=None: checked_posts.append(posts) or ({}, []))
     _run_monitor(client, owned["workspace"])
     competitor = client.get(f"{API}/{owned['workspace']}/competitors").json()["competitors"][0]
     assert competitor["social_profiles"]["x"]["followers"] == 1200 and competitor["socials_checked_at"]
     assert {"kind": "x", "value": "https://x.com/rival", "confidence": "high"} in competitor["tracking_sources"]
 
     _run_monitor(client, owned["workspace"])  # stats are fresh: no second paid scrape
-    assert len(socials_calls) == 1
+    assert len(socials_calls) == 1 and checked_posts == [[], []]
 
 
 def test_finished_competitor_run_starts_monitoring(client, owned, monkeypatch):
