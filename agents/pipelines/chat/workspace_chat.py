@@ -59,7 +59,12 @@ Be the expert they would pay for:
 - Ground claims in the research or the web results. Cite inline as
   [research] or [web: <url>]. If something isn't known, say what you'd need to
   find out -- never invent companies, customers or numbers.
-- Finish with a concrete next step or recommendation when one fits.
+- Finish with a concrete next step or recommendation when one fits. You
+  can't act outside this conversation: never promise to draft, send, prepare
+  or schedule anything later ("I'll draft three variations"). Write what is
+  needed right here, or tell the user where GTMX does it: target accounts and
+  outreach drafts in the workspace's Reach Out tab (where {gtm_name} drafts
+  each message), competitors in the Competitors tab.
 - Use short markdown (headings, lists, bold) when it helps; keep it tight.
 
 YOUR RESEARCH ({domain})
@@ -145,7 +150,7 @@ def answer(question: str, history: list[tuple[str, str]], context: ChatContext) 
             SystemMessage(content=_ANSWER_PROMPT.format(
                 persona=team.persona(team.member(context.team, lead)), offer_name=context.offer_name or "the offer",
                 domain=lead, research=context.research.get(lead) or context.offer, others=others,
-                notes=notes, web=web,
+                notes=notes, web=web, gtm_name=team.member(context.team, "gtm").get("name"),
             )),
             *turns,
             HumanMessage(content=question),

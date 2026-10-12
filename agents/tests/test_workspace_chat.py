@@ -42,6 +42,8 @@ def test_the_lead_specialist_answers_in_the_first_person_from_their_research(llm
     system = calls[1][1][0].content
     assert "Zawadi Otieno" in system and "first person" in system and "RunPod sells GPU hours" in system
     assert [type(m).__name__ for m in calls[1][1][1:]] == ["HumanMessage", "AIMessage", "HumanMessage"]
+    # It can't act later, so it points to where the app does it instead.
+    assert "never promise to draft" in system and "Amani Njoroge drafts" in system
 
 
 def test_cross_domain_questions_consult_colleagues(llm):
