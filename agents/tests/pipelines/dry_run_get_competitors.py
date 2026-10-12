@@ -16,6 +16,7 @@ import asyncio
 
 
 PASS: list[str] = []
+_real_search_and_scrape = None
 
 
 def check(label: str, condition: bool, detail: str = "") -> None:
@@ -116,9 +117,12 @@ def _install_stubs():
 
     gc.search_and_scrape = _stub_search
     gc.scrape_url = _stub_scrape
+    gc.social_profiles.find_on_site = lambda website, name: {}
     gc.distill_documents = _stub_distill
 
     gc.invoke_structured_with_fallback = _fake_llm
+    global _real_search_and_scrape
+    _real_search_and_scrape = gc._search_and_scrape
 
 
 def _task(label, geo, queries):
@@ -321,11 +325,15 @@ async def main() -> None:
 
     gc.scrape_url = _no_read
     gc.invoke_structured_with_fallback = _fake_llm
+    # An unreadable site falls back to search; with search empty too, there is
+    # nothing to profile from.
+    gc._search_and_scrape = lambda *a, **k: []
     dropped = gc.profile_competitors(
         {**_state(), "competitor_survivors": [surv[0] | {"sources": []}]}
     )
+    gc._search_and_scrape = _real_search_and_scrape
     check(
-        "a firm with no readable site yields no profile",
+        "a firm with nothing readable anywhere yields no profile",
         dropped["competitor_profiles"] == [],
         str(dropped["competitor_profiles"]),
     )
@@ -364,18 +372,6 @@ async def main() -> None:
             "no identity/provenance field is emitted for the runner",
             not ({"source", "notes", "first_seen_at", "run_id", "id"} & set(values)),
             str(sorted(values)),
-        )
-
-    # -- survivors that could not be profiled are still stored -------------
-    survivors_rows = gc.surviving_row_values(
-        {**_state(), "competitor_survivors": survivors, "competitor_profiles": []}
-    )
-    check("unprofiled survivors still produce rows", len(survivors_rows) == len(survivors))
-    if survivors_rows:
-        check(
-            "they are marked wholly not-researched",
-            len(survivors_rows[0]["unsourced_fields"]) > 5,
-            str(survivors_rows[0]["unsourced_fields"]),
         )
 
     # -- state_from_workspace refuses to hunt without a shape --------------

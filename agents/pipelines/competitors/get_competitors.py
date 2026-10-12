@@ -59,9 +59,10 @@ from langgraph.graph import END, START, StateGraph
 
 from config import get_settings
 from agents.context_budget import distill_documents
-from agents.llm.main import invoke_structured_with_fallback
+from agents.llm.main import LlmProvidersExhaustedError, invoke_structured_with_fallback
 from agents.schemas.competition import IdealCompetitorProfile
 from data_sources.scraping.exa import scrape_url, search_and_scrape
+from data_sources.socials import profiles as social_profiles
 from utils.log import logger
 
 from ..web_utils import call_with_timeout, search_cache_get, search_cache_put, timed_node
@@ -86,7 +87,7 @@ def _search_and_scrape(query, config, num_results=5, start_published_date=None):
     )
     return search_cache_put(key, results or [])
 
-from agents.schemas.competition import CandidateFinding, CompetitorHuntBundle, CompetitorHuntPlan, CompetitorHuntTask, CompetitorProfile, CompetitorRunOutcome, SourcedFinding
+from agents.schemas.competition import CandidateFinding, CompetitorHuntBundle, CompetitorHuntPlan, CompetitorHuntTask, CompetitorProfile, CompetitorRunOutcome, CompetitorSocial, SourcedFinding
 from agents.schemas.sessions import CompetitorSessionState
 
 
@@ -750,6 +751,22 @@ def screen_candidates(state: CompetitorSessionState) -> dict:
 # ---------------------------------------------------------------------------
 
 
+# Searches run when a firm's own site would not serve text or the hunt captured
+# little about it: pricing and reviews are where third parties describe a firm.
+_FALLBACK_QUERIES = ('"{name}" pricing plans', '"{name}" reviews customers', '"{name}" {host}')
+_FALLBACK_RESULTS = 3
+_THIN_EVIDENCE_CHUNKS = 2
+
+
+def _fallback_docs(survivor: dict) -> list[dict]:
+    cfg = get_settings()
+    host = urlparse(survivor["website"]).netloc.removeprefix("www.")
+    docs: list[dict] = []
+    for template in _FALLBACK_QUERIES:
+        docs.extend(_search_and_scrape(template.format(name=survivor["name"], host=host), cfg, num_results=_FALLBACK_RESULTS))
+    return docs
+
+
 def _gather_profile_evidence(survivor: dict) -> tuple[str, str]:
     """Everything retrievable about one firm, as notes for the profiling call.
 
@@ -757,54 +774,55 @@ def _gather_profile_evidence(survivor: dict) -> tuple[str, str]:
     party's read of it -- pricing comparisons, review roundups, "alternatives to
     X" listicles -- which is where customer sentiment and pain signals actually
     live. The company's OWN site carries what it claims about itself, which is
-    where socials, pricing and geography come from. Neither source can be
-    substituted for the other, so both are collected and labelled.
+    where socials, pricing and geography come from. When either is missing or the
+    hunt captured little, a few targeted searches fill in before profiling, so a
+    firm that blocks scrapers still gets a profile instead of a row of gaps.
     """
     cfg = get_settings()
     chunks: list[str] = []
     seen: set[str] = set()
 
-    for doc in survivor.get("sources") or []:
-        url = doc.get("url") or ""
-        text = (doc.get("text") or "").strip()
-        if not url or url in seen or not text:
-            continue
-        seen.add(url)
-        chunks.append(f"[third-party page] {url}\n{text[:4000]}")
+    def add_docs(docs: list[dict]) -> None:
+        for doc in docs:
+            url = doc.get("url") or ""
+            text = (doc.get("text") or "").strip()
+            if not url or url in seen or not text:
+                continue
+            seen.add(url)
+            chunks.append(f"[third-party page] {url}\n{text[:4000]}")
 
-    site_text = ""
-    try:
-        site_text = call_with_timeout(lambda: scrape_url(survivor["website"], cfg), _SCRAPE_TIMEOUT_S, default="", label=f"scrape[{survivor['website']}]") or ""
-    except Exception as exc:  # noqa: BLE001 -- many sites block scrapers
-        print(f"profile_competitors: could not read {survivor['website']} -> {exc}")
+    add_docs(survivor.get("sources") or [])
+    site_text = call_with_timeout(
+        lambda: scrape_url(survivor["website"], cfg), _SCRAPE_TIMEOUT_S, default="",
+        label=f"scrape[{survivor['website']}]",
+    ) or ""
+    if not site_text.strip() or len(chunks) < _THIN_EVIDENCE_CHUNKS:
+        add_docs(_fallback_docs(survivor))
     if site_text.strip():
         chunks.append(f"[the company's own site] {survivor['website']}\n{site_text[:8000]}")
-
-    evidence = "\n\n".join(chunks)
-    if not evidence:
-        # Nothing retrievable at all. The firm still passed the website filter --
-        # the site exists, it just would not serve text -- so it stays, and the
-        # profiler is told it has nothing to work from rather than being handed
-        # an empty prompt that invites it to fill the gap from memory.
-        evidence = (
-            "[no retrievable material: the site returned no readable text and no "
-            "third-party page was captured]"
-        )
-    return evidence, site_text
+    return "\n\n".join(chunks), site_text
 
 
-def _profile_one(survivor: dict, offer: dict) -> Optional[CompetitorProfile]:
+def _add_site_socials(profile: CompetitorProfile, website: str) -> None:
+    """Socials linked from the firm's own homepage, which the monitor tracks.
+    Read off the site itself, so they outrank what the profiler inferred."""
+    known = {source.kind for source in profile.tracking_sources}
+    for platform, url in social_profiles.find_on_site(website, profile.name).items():
+        if platform not in known:
+            profile.tracking_sources.append(CompetitorSocial(kind=platform, value=url, confidence="high"))
+
+
+def _profile_one(survivor: dict, offer: dict) -> tuple[Optional[CompetitorProfile], Optional[str]]:
     """Deep-research one surviving firm into a sourced profile.
 
-    Returns None when the profile cannot be built at all, which is different from
-    a profile full of gaps: a company with no readable site and no third-party
-    mention cannot be described honestly even as "mostly unknown", and storing
-    that would be a row of nulls pretending to be research.
+    Returns (profile, None) or (None, reason). A firm that cannot be profiled is
+    dropped with its reason rather than stored as a row of nulls pretending to be
+    research; one judged not a competitor is dropped the same way.
     """
     evidence, site_text = _gather_profile_evidence(survivor)
-    if evidence.startswith("[no retrievable material"):
-        print(f"profile_competitors: dropping {survivor['name']} -- nothing retrievable")
-        return None
+    if not evidence:
+        logger.info("profile_competitors: dropping %s -- nothing retrievable", survivor["name"])
+        return None, "unprofiled"
 
     noun = "service" if offer.get("offer_type") == "service" else "product"
     user_message = (
@@ -821,28 +839,32 @@ def _profile_one(survivor: dict, offer: dict) -> Optional[CompetitorProfile]:
         f"Build the profile. Cite or record as not-found; do not fill gaps."
     )
 
-    batch = invoke_structured_with_fallback(
-        [profile_instructions.format(
-            finding_type="sourced findings, each with a quote",
-            name=survivor["name"],
-            website=survivor["website"],
-            archetype=survivor.get("matched_archetype") or "unspecified",
-            offer_noun=noun,
-            evidence=evidence[:16000],
-            site=site_text[:6000] or "(could not read)",
-        ), user_message],
-        CompetitorProfile,
-        log_label=f"get_competitors:profile:{survivor['name']}",
-    )
+    messages = [profile_instructions.format(
+        finding_type="sourced findings, each with a quote",
+        name=survivor["name"],
+        website=survivor["website"],
+        archetype=survivor.get("matched_archetype") or "unspecified",
+        offer_noun=noun,
+        evidence=evidence[:16000],
+        site=site_text[:6000] or "(could not read)",
+    ), user_message]
+    try:
+        batch = invoke_structured_with_fallback(
+            messages, CompetitorProfile, log_label=f"get_competitors:profile:{survivor['name']}",
+        )
+    except LlmProvidersExhaustedError:
+        # One firm's failure must not sink the rest of the run's profiles.
+        logger.exception("profile_competitors: profiling %s failed", survivor["name"])
+        return None, "unprofiled"
 
     profile = batch if isinstance(batch, CompetitorProfile) else None
     if profile is None:
-        print(f"profile_competitors: {survivor['name']} produced no profile")
-        return None
+        logger.info("profile_competitors: %s produced no profile", survivor["name"])
+        return None, "unprofiled"
     if profile.relevance == "not_a_competitor":
         logger.info("profile_competitors: dropping %s -- not a competitor (%s)",
                     survivor["name"], profile.relevance_reason or "no reason given")
-        return None
+        return None, "not_a_competitor"
 
     # The website is the one field the agent does not get a vote on. The screening
     # stage already verified it; letting a model re-assert a possibly social URL
@@ -860,16 +882,17 @@ def _profile_one(survivor: dict, offer: dict) -> Optional[CompetitorProfile]:
     profile.evidence = merged
 
     found = len(profile.strengths) + len(profile.weaknesses) + len(profile.pain_signals) + len(profile.customer_sentiment)
-    print(
-        f"profile_competitors: {profile.name} -- {len(profile.strengths)} strength(s), "
-        f"{len(profile.weaknesses)} weakness(es), {len(profile.pain_signals)} pain signal(s), "
-        f"{len(profile.opportunities)} opportunit(ies), {len(profile.tracking_sources)} social(s), "
-        f"{len(profile.unsourced_fields)} field(s) not found"
+    if not found and not profile.opportunities and not profile.description:
+        logger.info("profile_competitors: %s yielded nothing -- dropping", profile.name)
+        return None, "unprofiled"
+    _add_site_socials(profile, survivor["website"])
+    logger.info(
+        "profile_competitors: %s -- %d strength(s), %d weakness(es), %d pain signal(s), "
+        "%d social(s), %d field(s) not found", profile.name, len(profile.strengths),
+        len(profile.weaknesses), len(profile.pain_signals), len(profile.tracking_sources),
+        len(profile.unsourced_fields),
     )
-    if not found and not profile.opportunities:
-        print(f"profile_competitors: {profile.name} yielded nothing -- dropping")
-        return None
-    return profile
+    return profile, None
 
 
 def profile_competitors(state: CompetitorSessionState) -> dict:
@@ -892,9 +915,18 @@ def profile_competitors(state: CompetitorSessionState) -> dict:
     with ContextThreadPoolExecutor(max_workers=PROFILE_WORKERS) as pool:
         results = list(pool.map(lambda s: _profile_one(s, offer), survivors))
 
-    profiles = [p for p in results if p is not None]
-    print(f"profile_competitors: {len(profiles)} profile(s) built from {len(survivors)} survivor(s)")
-    return {"competitor_profiles": profiles}
+    profiles = [profile for profile, _ in results if profile is not None]
+    rejected = [reason for _, reason in results if reason]
+    logger.info("profile_competitors: %d profile(s) built from %d survivor(s)", len(profiles), len(survivors))
+    outcome = state.get("competitor_outcome")
+    if outcome is not None and rejected:
+        reasons = dict(outcome.dropped_reasons)
+        for reason in rejected:
+            reasons[reason] = reasons.get(reason, 0) + 1
+        outcome = outcome.model_copy(update={
+            "found": len(profiles), "dropped": outcome.dropped + len(rejected), "dropped_reasons": reasons,
+        })
+    return {"competitor_profiles": profiles, "competitor_outcome": outcome}
 
 
 # ---------------------------------------------------------------------------
@@ -1004,7 +1036,7 @@ _LIST_FIELDS = ("opportunities", "notable_customers")
 # Every field a profile would research. Used to mark an UNPROFILED competitor as
 # wholly not-yet-researched, so it renders as "not found" throughout rather than
 # as a profile that legitimately found nothing in any of them.
-_PROFILE_FIELDS = (
+PROFILE_FIELDS = (
     *_TEXT_FIELDS,
     *_LIST_FIELDS,
     "strengths",
@@ -1078,47 +1110,3 @@ def row_values_from_profile(profile: CompetitorProfile) -> dict:
     values["unsourced_fields"] = [f for f in profile.unsourced_fields if f not in filled]
 
     return values
-
-
-def surviving_row_values(state: CompetitorSessionState) -> list[dict]:
-    """Rows for candidates that survived screening but could not be profiled.
-
-    The brief drops a candidate with no website; it does not drop one whose site
-    simply would not serve text or whose profile came back empty. A named
-    competitor with a verified site is still a competitor the user asked to track,
-    so it is stored with its fields declared unsourced -- visible as "not
-    researched yet" rather than silently absent, which would understate what the
-    run actually found.
-    """
-    profiled = {p.website for p in state.get("competitor_profiles") or []}
-    rows: list[dict] = []
-    for survivor in state.get("competitor_survivors") or []:
-        if survivor["website"] in profiled:
-            continue
-        rows.append(
-            {
-                "name": survivor.get("name") or survivor["domain_key"],
-                "website": survivor["website"],
-                "domain_key": survivor["domain_key"],
-                "description": None,
-                "offering": None,
-                "positioning": None,
-                "business_model": None,
-                "pricing": None,
-                "target_customers": None,
-                "headquarters": None,
-                "geography_scope": survivor.get("geography_scope"),
-                "comparison": None,
-                "matched_archetype": survivor.get("matched_archetype"),
-                "strengths": [],
-                "weaknesses": [],
-                "opportunities": [],
-                "notable_customers": [],
-                "pain_signals": [],
-                "customer_sentiment": [],
-                "tracking_sources": [],
-                "evidence": {"identity": list(survivor.get("evidence_urls") or [])},
-                "unsourced_fields": list(_PROFILE_FIELDS),
-            }
-        )
-    return rows

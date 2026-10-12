@@ -39,10 +39,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from agents.pipelines.competitors.get_competitors import (
+    PROFILE_FIELDS,
     build_competitors_graph,
     row_values_from_profile,
     state_from_workspace,
-    surviving_row_values,
 )
 
 from backend.app.database.connect import AsyncSessionLocal
@@ -218,15 +218,13 @@ async def run_competitor_discovery(
     outcome = final.get("competitor_outcome")
     profiles = list(final.get("competitor_profiles") or [])
     rows = [row_values_from_profile(p) for p in profiles]
-    # Survivors that could not be profiled are still stored, with their fields
-    # declared unsourced. Dropping them would understate what the run found.
-    rows.extend(surviving_row_values(final))
 
     async with AsyncSessionLocal() as db:
         async with db.begin():
             inserted, refreshed = await _upsert_profiles(
                 db, workspace_id, run_id, rows
             )
+    repaired, removed = await _repair_empty_rows(workspace_id, state, {r["domain_key"] for r in rows})
 
     found = len(rows)
     return {
@@ -241,6 +239,53 @@ async def run_competitor_discovery(
         "inserted": inserted,
         "refreshed": refreshed,
         "profiled": len(profiles),
+        "repaired": repaired,
+        "removed_empty": removed,
+    }
+
+
+async def _repair_empty_rows(workspace_id: uuid.UUID, state: dict, refreshed: set[str]) -> tuple[int, int]:
+    """Re-research agent-found rows that were stored with every field unsourced
+    (earlier runs kept firms they could not profile). A firm that now profiles
+    is filled in; one judged not a competitor, or still unreadable, is removed
+    unless the user wrote notes on it. Returns (repaired, removed)."""
+    async with AsyncSessionLocal() as db:
+        empty = [
+            c for c in (await db.execute(
+                select(Competitor).where(Competitor.workspace_id == workspace_id, Competitor.source == "agent")
+            )).scalars()
+            if c.domain_key not in refreshed and set(PROFILE_FIELDS) <= set(c.unsourced_fields or [])
+        ]
+        survivors = [(c.id, c.notes, _survivor(c)) for c in empty]
+    repaired = removed = 0
+    for competitor_id, notes, survivor in survivors:
+        profile = await _profile_one_public(survivor, state)
+        async with AsyncSessionLocal() as db:
+            async with db.begin():
+                competitor = await db.get(Competitor, competitor_id)
+                if competitor is None:
+                    continue
+                if profile is not None:
+                    for field, value in row_values_from_profile(profile).items():
+                        setattr(competitor, field, value)
+                    competitor.deep_researched_at = datetime.now(UTC)
+                    repaired += 1
+                elif not notes:
+                    await db.delete(competitor)
+                    removed += 1
+    return repaired, removed
+
+
+def _survivor(competitor: Competitor) -> dict:
+    """A stored competitor in the shape the profiler takes."""
+    return {
+        "name": competitor.name,
+        "website": competitor.website,
+        "domain_key": competitor.domain_key,
+        "matched_archetype": competitor.matched_archetype,
+        "geography_scope": competitor.geography_scope or "any",
+        "evidence_urls": [],
+        "sources": [],
     }
 
 
@@ -288,15 +333,7 @@ async def research_competitor_site(
                     "features": [],
                     "own_website": None,
                 }
-            survivor = {
-                "name": competitor.name,
-                "website": competitor.website,
-                "domain_key": competitor.domain_key,
-                "matched_archetype": competitor.matched_archetype,
-                "geography_scope": competitor.geography_scope or "any",
-                "evidence_urls": [],
-                "sources": [],
-            }
+            survivor = _survivor(competitor)
 
     profile = await _profile_one_public(survivor, state)
     if profile is None:
@@ -335,4 +372,5 @@ async def _profile_one_public(survivor: dict, state: dict):
     }
     # Run on a worker thread: the profiler does blocking HTTP and LLM calls, and
     # this runs inside a request's background task on the event loop.
-    return await asyncio.to_thread(_profile_one, survivor, offer)
+    profile, _reason = await asyncio.to_thread(_profile_one, survivor, offer)
+    return profile
