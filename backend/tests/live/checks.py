@@ -95,7 +95,13 @@ def check_discovery(card: Scorecard, offer: Offer, insights: dict, workspace) ->
     card.check("competition", all(swod.get(k) for k in ("strengths", "weaknesses", "differentiators")),
                "offer-vs-category SWOD filled", "major")
 
+    buyer = _text(market.get("buyer_type"))
+    expected = {"b2c", "both"} if offer.buyer == "b2c" else {"b2b", "both"}
+    card.check("market", buyer in expected, f"buyer type read as {offer.buyer.upper()}", "critical", f"got {buyer}")
     icp = insights.get("icp") or {}
+    if offer.buyer == "b2c":
+        card.check("icp", bool(icp.get("buyer_personas")), "ICP names consumer personas", "major")
+        card.check("icp", bool(icp.get("target_channels")), "ICP names channels where they gather", "major")
     card.check("icp", not covers(icp.get("geo") or []), "ICP covers all three countries", "major", f"geo={icp.get('geo')}")
     for key in ("buyer_titles", "messaging_angles", "pain_signals"):
         card.check("icp", bool(icp.get(key)), f"ICP {key} filled", "major")
@@ -141,13 +147,32 @@ def check_accounts(card: Scorecard, offer: Offer, accounts: list, competitors: l
     for a in accounts:
         contacts = [c for c in a.key_contacts or [] if c.get("email") or c.get("linkedin")]
         card.check("accounts", bool(contacts or a.socials), f"{a.name}: someone to contact", "critical")
-        card.check("accounts", bool(contacts), f"{a.name}: an email or LinkedIn contact", "major", f"socials only: {a.socials}")
+        if a.account_type == "company":
+            card.check("accounts", bool(contacts), f"{a.name}: an email or LinkedIn contact", "major",
+                       f"socials only: {a.socials}")
         card.check("accounts", len(covers([a.geo])) < len(GEO), f"{a.name}: in a target country", "major", f"geo={a.geo}")
         card.check("accounts", bool((a.trigger_event or {}).get("source")), f"{a.name}: trigger has a source", "critical")
         card.check("accounts", bool(a.summary), f"{a.name}: summary written", "minor")
-    named = [a for a in accounts if any(c.get("name") for c in a.key_contacts or [])]
-    card.check("accounts", len(named) * 2 >= len(accounts), "most accounts name a person", "major",
-               f"{len(named)}/{len(accounts)}")
+    companies = [a for a in accounts if a.account_type == "company"]
+    named = [a for a in companies if any(c.get("name") for c in a.key_contacts or [])]
+    card.check("accounts", len(named) * 2 >= len(companies), "most companies name a person", "major",
+               f"{len(named)}/{len(companies)}")
+
+
+def check_b2c_reach(card: Scorecard, accounts: list, drafts: list) -> None:
+    """Consumer offers reach people through venues, pitched as partners."""
+    venues = [a for a in accounts if a.account_type != "company"]
+    card.check("accounts", bool(venues), "B2C: some targets are venues (communities, creators, events)", "major",
+               f"types={sorted({a.account_type for a in accounts})}")
+    by_id = {a.id: a for a in accounts}
+    for draft in drafts:
+        account = by_id.get(draft.account_id)
+        if account is not None and account.account_type != "company":
+            body = _text(draft.body)
+            card.check("outreach", any(w in body for w in ("partner", "collab", "co-host", "sponsor", "your members",
+                                                          "your audience", "your community", "your followers",
+                                                          "workshop", "session", "feature")),
+                       f"{account.name}: pitched as a partnership", "major", draft.body[:160])
 
 
 def check_outreach(card: Scorecard, offer: Offer, draft, account, problems: list[str], sources: str) -> None:

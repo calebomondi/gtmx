@@ -24,6 +24,8 @@ class Offer:
     must_mention: list[list[str]] = field(default_factory=list)
     conflations: list[str] = field(default_factory=list)
     own_domains: tuple[str, ...] = ()
+    # What the market stage should find: "b2b", or "b2c" (which also accepts "both").
+    buyer: str = "b2b"
 
 
 HEATHERDB = Offer(
@@ -66,7 +68,8 @@ ENGINEERING_CONSULTANCY = Offer(
         "from idea to deployed fleet."
     ),
     must_mention=[["prototyp"], ["hardware", "electronics", "firmware"], ["pilot", "manufactur", "feasibility"]],
-    conflations=["crypto atm", "lora", "over-the-air", "ota update", "depin"],
+    # DePIN is in Shanga's company-wide capability list, so it isn't a sibling-only claim.
+    conflations=["crypto atm", "lora", "over-the-air", "ota update", "satellite connectivity"],
     own_domains=("shangalabs.com",),
 )
 
@@ -84,4 +87,30 @@ HARDWARE_INTEGRATION = Offer(
     own_domains=("shangalabs.com",),
 )
 
-OFFERS = [HEATHERDB, ENGINEERING_CONSULTANCY, CLOUD_OF_ASSOCIATIONS, HARDWARE_INTEGRATION]
+POCKETAUTHOR = Offer(
+    key="pocketauthor", name="PocketAuthor", url="https://pocketauthor.com/", offer_type="product", depth="full",
+    buyer="b2c",
+    truth=(
+        "PocketAuthor is book writing and publishing software: it turns the notes, drafts, recordings and expertise "
+        "an author already has into a structured, source-backed manuscript, then prepares ebook (EPUB) and print "
+        "editions with metadata, ISBN and preflight checks, and a handoff to KDP or other distributors. Built for "
+        "founders, consultants, professors and creators (plus ghostwriters, publishers and teams)."
+    ),
+    must_mention=[["book"], ["publish"], ["note", "draft", "manuscript", "expertise", "recording"]],
+    conflations=[],
+    own_domains=("pocketauthor.com",),
+)
+
+NOTION = Offer(
+    key="notion", name="Notion", url="https://notion.so/", offer_type="product", depth="full", buyer="b2c",
+    truth=(
+        "Notion is an AI workspace for notes, docs, wikis and projects, with AI agents, enterprise search and "
+        "automation. It has a free plan for individuals and 100M users in 50+ countries, and is also sold to teams "
+        "and enterprises."
+    ),
+    must_mention=[["workspace", "notes", "docs", "wiki"], ["ai", "agent"]],
+    conflations=[],
+    own_domains=("notion.so", "notion.com"),
+)
+
+OFFERS = [HEATHERDB, ENGINEERING_CONSULTANCY, CLOUD_OF_ASSOCIATIONS, HARDWARE_INTEGRATION, POCKETAUTHOR, NOTION]
