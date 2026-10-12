@@ -84,12 +84,17 @@ async def chat(run_id: uuid.UUID, workspace_id: uuid.UUID, params: dict) -> None
     async with AsyncSessionLocal() as db:
         run = await db.get(models.Run, run_id)
         history = [(m.role, m.content) for m in await chat_service.list_messages(db, workspace_id)]
-        context, offer_name = await chat_service.workspace_context(db, workspace_id)
+        specialists = await specialist_service.load(db, workspace_id)
+    context = workspace_chat.ChatContext(
+        offer_name=specialists.offer_name, offer=specialists.offer, team=specialists.team, research=specialists.research,
+    )
     question, prior = history[-1][1], history[:-1][-chat_service.HISTORY_TURNS:]
-    reply = await asyncio.to_thread(workspace_chat.answer, question, context, prior, offer_name)
+    reply = await asyncio.to_thread(workspace_chat.answer, question, prior, context)
     async with AsyncSessionLocal() as db:
-        message = await chat_service.add_assistant_message(db, workspace_id, run.user_id, run_id, reply)
-    await _finish(run_id, {"message_id": str(message.id)})
+        message = await chat_service.add_assistant_message(
+            db, workspace_id, run.user_id, run_id, reply.content, reply.domain,
+        )
+    await _finish(run_id, {"message_id": str(message.id), "specialist": reply.domain})
 
 
 _DRAFT_WORKERS = 4
@@ -221,7 +226,7 @@ async def monitor(run_id: uuid.UUID, workspace_id: uuid.UUID, _params: dict) -> 
         competitors = (await db.execute(
             select(models.Competitor).where(models.Competitor.workspace_id == workspace_id)
         )).scalars().all()
-        offer = (await chat_service.workspace_context(db, workspace_id))[1]
+        offer = (await specialist_service.load(db, workspace_id)).offer_name
     socials_cutoff = datetime.now(UTC) - timedelta(hours=settings.socials_max_age_h)
     targets = [
         (c.id, c.name, c.website, c.monitor_state, list(c.tracking_sources or []), c.social_profiles,

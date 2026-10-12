@@ -5,6 +5,8 @@ export interface ChatMessageDto {
   id: string
   role: "user" | "assistant"
   content: string
+  /** The specialist who answered: product (or service), market, competition, gtm. */
+  specialist_domain: string | null
   created_at: string
 }
 

@@ -19,9 +19,9 @@ async def _drain():
 def test_reply_is_grounded_and_stored(client, owned, monkeypatch):
     seen = {}
 
-    def fake_answer(question, context, history, offer_name):
+    def fake_answer(question, history, context):
         seen.update(question=question, context=context, history=history)
-        return f"Answer to: {question}"
+        return background.workspace_chat.ChatAnswer(domain="competition", content=f"Answer to: {question}")
     monkeypatch.setattr(background.workspace_chat, "answer", fake_answer)
 
     path = f"{API}/workspaces/{owned['workspace']}/chat"
@@ -31,11 +31,11 @@ def test_reply_is_grounded_and_stored(client, owned, monkeypatch):
     client.portal.call(_drain)
 
     thread = client.get(path).json()
-    assert [(m["role"], m["content"]) for m in thread["messages"]] == [
-        ("user", "Who are my top rivals?"), ("assistant", "Answer to: Who are my top rivals?"),
+    assert [(m["role"], m["content"], m["specialist_domain"]) for m in thread["messages"]] == [
+        ("user", "Who are my top rivals?", None), ("assistant", "Answer to: Who are my top rivals?", "competition"),
     ]
     assert thread["reply_run"] is None
-    assert "rival.example" in seen["context"]  # tracked competitors are in context
+    assert "rival.example" in seen["context"].research["competition"]  # tracked competitors reach that specialist
     assert seen["history"] == []
 
     second = client.post(path, json={"message": "And their weaknesses?"}).json()
@@ -51,7 +51,7 @@ def test_one_reply_at_a_time_and_ownership(client, owned, monkeypatch):
         import time
         while not gate["open"]:
             time.sleep(0.02)
-        return "done"
+        return background.workspace_chat.ChatAnswer(domain="gtm", content="done")
     monkeypatch.setattr(background.workspace_chat, "answer", slow_answer)
     path = f"{API}/workspaces/{owned['workspace']}/chat"
     run_id = client.post(path, json={"message": "first"}).json()["reply_run"]["id"]

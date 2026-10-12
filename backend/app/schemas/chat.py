@@ -14,6 +14,7 @@ class ChatMessageResponse(BaseModel):
     id: uuid.UUID
     role: str
     content: str
+    specialist_domain: str | None = None
     created_at: datetime
 
 

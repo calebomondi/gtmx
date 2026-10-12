@@ -4,6 +4,7 @@ review fails."""
 
 import pytest
 
+from agents.pipelines import team
 from agents.pipelines.outreach import gtm_specialist as gs
 from agents.schemas.outreach import AccountResearch, Consultation, DraftReview, OutreachDraft, OutreachPlan
 
@@ -50,6 +51,7 @@ def llm(monkeypatch):
             return script["reviews"].pop(0)
         return "Rival X needs GPUs; we don't."  # a consultation (plain text)
     monkeypatch.setattr(gs, "invoke_structured_with_fallback", fake)
+    monkeypatch.setattr(team, "invoke_structured_with_fallback", fake)
     return calls, script
 
 

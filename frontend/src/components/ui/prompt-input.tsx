@@ -211,11 +211,14 @@ function PromptInputAction({
 
   return (
     <Tooltip {...props}>
+      {/* Render the trigger AS the child (a button or label), not around it:
+          a button wrapping a button is invalid HTML. */}
       <TooltipTrigger
         disabled={disabled}
         onClick={(event) => event.stopPropagation()}
+        render={React.isValidElement(children) ? (children as React.ReactElement<Record<string, unknown>>) : undefined}
       >
-        {children}
+        {React.isValidElement(children) ? undefined : children}
       </TooltipTrigger>
       <TooltipContent side={side} className={className}>
         {tooltip}

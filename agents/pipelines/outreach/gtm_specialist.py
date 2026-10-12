@@ -20,10 +20,10 @@ from dataclasses import dataclass, field
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from agents.concurrency import ContextThreadPoolExecutor
 from agents.llm.main import cheap_providers, invoke_structured_with_fallback
+from agents.pipelines import team
 from agents.pipelines.web_utils import call_with_timeout
-from agents.schemas.outreach import AccountResearch, Consultation, DraftReview, OutreachDraft, OutreachPlan
+from agents.schemas.outreach import AccountResearch, DraftReview, OutreachDraft, OutreachPlan
 from config import get_settings
 from data_sources.scraping.exa import scrape_url
 from utils.log import logger
@@ -38,19 +38,11 @@ BANNED = re.compile(
 )
 _WORD_LIMITS = {"email": (50, 140), "linkedin": (25, 90)}
 _SCRAPE_TIMEOUT_S = 25
-MAX_CONSULTS = 2
 
 CHANNEL_RULES = {
     "email": "A cold email: a subject under 8 words built on the hook (their name, event or number, not a generic benefit), and a body of 60-120 words in 3 short paragraphs after the greeting.",
     "linkedin": "A LinkedIn connection note or message: no subject, 40-80 words, conversational, one paragraph or two.",
 }
-
-_GENERIC_GTM = {
-    "name": "the GTM specialist",
-    "role": "Go-to-market lead",
-    "description": "Owns positioning, channels and outbound for this offer.",
-}
-
 
 @dataclass
 class OutreachBrief:
@@ -69,11 +61,6 @@ class OutreachBrief:
     team: dict[str, dict] = field(default_factory=dict)
     # Each specialist's own research, by domain, as text.
     research: dict[str, str] = field(default_factory=dict)
-
-
-def persona(member: dict | None) -> str:
-    member = member or _GENERIC_GTM
-    return f"{member.get('name')}, {member.get('role')}. {member.get('description') or ''}".strip()
 
 
 def _sources(brief: OutreachBrief) -> str:
@@ -125,16 +112,6 @@ ACCOUNT RECORD
 {account}
 
 CONTACT: {contact}"""
-
-_CONSULT_PROMPT = """You are {persona}, the team's {domain} specialist. The GTM specialist is
-writing outreach and asks you one question. Answer in 2-4 sentences, from your
-research below only; say plainly if it does not cover the question.
-
-YOUR RESEARCH
-{research}
-
-QUESTION
-{question}"""
 
 _WRITE_PROMPT = """You are {persona}. Write the message {sender} will send. Write as {sender},
 in the first person, plain text, signed "{sender}".
@@ -211,36 +188,17 @@ def research_account(brief: OutreachBrief) -> AccountResearch:
 def plan_message(brief: OutreachBrief, research: AccountResearch, offer_name: str) -> OutreachPlan:
     return invoke_structured_with_fallback(
         [SystemMessage(content=_PLAN_PROMPT.format(
-            persona=persona(brief.team.get("gtm")), offer_name=offer_name, offer=brief.offer,
+            persona=team.persona(team.member(brief.team, "gtm")), offer_name=offer_name, offer=brief.offer,
             research=research.model_dump_json(indent=1), account=brief.account, contact=_contact(brief),
         )), HumanMessage(content="Plan the message now.")],
         OutreachPlan, log_label="outreach_plan",
     )
 
 
-def specialist_for(brief: OutreachBrief, domain: str) -> dict | None:
-    if domain == "product":
-        return brief.team.get("product") or brief.team.get("service")
-    return brief.team.get(domain)
-
-
-def consult(brief: OutreachBrief, ask: Consultation) -> str:
-    """One specialist's answer, from their own research."""
-    research = brief.research.get(ask.domain) or "(no research on file)"
-    answer = invoke_structured_with_fallback(
-        [SystemMessage(content=_CONSULT_PROMPT.format(
-            persona=persona(specialist_for(brief, ask.domain)), domain=ask.domain,
-            research=research, question=ask.question,
-        )), HumanMessage(content="Answer now.")],
-        providers=cheap_providers(), log_label=f"outreach_consult:{ask.domain}",
-    )
-    return f"{ask.domain} specialist on '{ask.question}': {answer}"
-
-
 def _write(brief: OutreachBrief, plan: OutreachPlan, notes: str, feedback: str = "") -> OutreachDraft:
     draft = invoke_structured_with_fallback(
         [SystemMessage(content=_WRITE_PROMPT.format(
-            persona=persona(brief.team.get("gtm")), sender=brief.sender_name,
+            persona=team.persona(team.member(brief.team, "gtm")), sender=brief.sender_name,
             channel_rule=CHANNEL_RULES[brief.channel], contact=_contact(brief),
             plan=plan.model_dump_json(indent=1, exclude={"consult"}), notes=notes, offer=brief.offer,
             feedback=f"\nA reviewer rejected your last version. Fix: {feedback}\n" if feedback else "",
@@ -286,12 +244,8 @@ def write_first_touch(brief: OutreachBrief, offer_name: str) -> OutreachDraft:
     """Research, plan, consult, write and review one first-touch message."""
     research = research_account(brief)
     plan = plan_message(brief, research, offer_name)
-    asks = plan.consult[:MAX_CONSULTS]
-    if asks:
-        with ContextThreadPoolExecutor(max_workers=len(asks)) as pool:
-            notes = "\n".join(pool.map(lambda a: consult(brief, a), asks))
-    else:
-        notes = "(none)"
+    notes = team.consult_all(brief.team, brief.research, plan.consult, "gtm", "The GTM specialist, writing outreach,",
+                             "outreach_consult")
     draft = _write(brief, plan, notes)
     verdict = review(brief, research, plan, draft)
     problems = lint(brief, draft) + ([] if verdict.passes else verdict.problems)

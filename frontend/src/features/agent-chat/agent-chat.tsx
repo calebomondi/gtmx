@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Bot, Loader2 } from 'lucide-react'
 
 import { PromptInputWithActions } from '@/components/chat-input'
-import { SpecialistAvatarGroup } from '@/components/specialist-avatargroup'
+import { AvatarImg, SpecialistAvatarGroup, type Specialist } from '@/components/specialist-avatargroup'
 import { Markdown } from '@/components/ui/markdown'
 import { getChat, sendChat, workspaceDisplayName, type ChatThread } from '@/lib/api'
 import { useWorkspaces } from '@/lib/workspaces-store'
@@ -10,6 +10,30 @@ import { useWorkspaceSpecialists } from '@/lib/specialists'
 import { cn } from '@/lib/utils'
 
 const POLL_MS = 2000
+
+/** The team member who answered, matching "product" to a service expert too. */
+function speakerFor(specialists: Specialist[], domain: string | null): { specialist: Specialist; index: number } | null {
+  if (!domain) return null
+  const index = specialists.findIndex((s) => s.id === domain || (domain === 'product' && s.id === 'service'))
+  return index === -1 ? null : { specialist: specialists[index], index }
+}
+
+function SpeakerLine({ specialists, domain }: { specialists: Specialist[]; domain: string | null }) {
+  const speaker = speakerFor(specialists, domain)
+  if (!speaker) return null
+  const { specialist, index } = speaker
+  return (
+    <div className='mb-1 flex items-center gap-2'>
+      <img
+        src={AvatarImg[index % AvatarImg.length]}
+        alt=''
+        className={cn('size-6 rounded-full border-2 object-cover', specialist.borderClass)}
+      />
+      <span className='text-xs font-medium text-foreground'>{specialist.name}</span>
+      <span className='truncate text-xs text-muted-foreground'>{specialist.domain} · {specialist.role}</span>
+    </div>
+  )
+}
 
 function isReplying(thread: ChatThread | null): boolean {
   const status = thread?.reply_run?.status
@@ -97,14 +121,16 @@ export function AgentChat({ workspaceId }: { workspaceId?: string }) {
               <Bot className='size-6' />
             </div>
             <p className='max-w-sm text-sm text-muted-foreground'>
-              Ask about your market, competitors, ideal customers or accounts. Answers come from
-              {scopeName ? ` ${scopeName}'s` : ' this workspace’s'} research, with a quick web check when needed.
+              Ask about your product, market, competitors, customers or outreach. The specialist who owns the
+              topic answers you directly, checks with their colleagues when it helps, and grounds the answer
+              in {scopeName ? `${scopeName}'s` : 'this workspace’s'} research.
             </p>
           </div>
         ) : (
           <div className='mx-auto flex max-w-3xl flex-col gap-4'>
             {messages.map((m) => (
-              <div key={m.id} className={cn('flex', m.role === 'user' ? 'justify-end' : 'justify-start')}>
+              <div key={m.id} className={cn('flex flex-col', m.role === 'user' ? 'items-end' : 'items-start')}>
+                {m.role === 'assistant' && <SpeakerLine specialists={specialists} domain={m.specialist_domain} />}
                 <div
                   className={cn(
                     'max-w-[85%] rounded-2xl px-4 py-2.5 text-sm',
@@ -121,7 +147,7 @@ export function AgentChat({ workspaceId }: { workspaceId?: string }) {
             ))}
             {replying && (
               <div className='flex items-center gap-2 text-sm text-muted-foreground'>
-                <Loader2 className='size-4 animate-spin' /> Your specialist team is thinking…
+                <Loader2 className='size-4 animate-spin' /> The right specialist is looking into it…
               </div>
             )}
             {failedRun && (

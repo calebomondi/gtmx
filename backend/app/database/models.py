@@ -665,6 +665,9 @@ class ChatMessage(Base):
     # user | assistant
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    # The specialist who answered (product, market, competition, gtm);
+    # null for the user's own messages and answers from before routing.
+    specialist_domain: Mapped[str | None] = mapped_column(String(16), nullable=True)
     run_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True,
     )
