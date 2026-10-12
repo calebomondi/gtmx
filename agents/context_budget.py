@@ -399,6 +399,11 @@ Write the brief using these rules:
 - The page may describe several products or services from the same company.
   Brief ONLY the named one. Never attribute another offer's features, claims,
   numbers or capabilities to it -- even where the company is the same.
+- When the page has a section per offer, take the named offer's capabilities
+  from ITS section only. Capabilities listed under another offer's section
+  belong to that offer. Company-wide facts (location, founding, how they
+  work, clients) may be kept; a company-wide capability list may not be
+  presented as this offer's features.
 - Lead with what the product IS, how it works mechanically, who it is for, and what it claims.
 - Keep concrete claims, numbers, named technologies and differentiators exactly as written.
 - Keep the substance a domain expert would need to judge the product seriously.
@@ -411,7 +416,7 @@ Write the brief using these rules:
 Return only the brief."""
 
 
-_OFFER_BRIEF_VERSION = 3
+_OFFER_BRIEF_VERSION = 4
 _BRIEF_MIN_TOKENS = 120
 _OUT_OF_SCOPE = re.compile(r"^\W*other offers on this page \(out of scope\):\s*(.+)$", re.I | re.M)
 
