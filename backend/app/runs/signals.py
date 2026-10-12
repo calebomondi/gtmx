@@ -16,6 +16,7 @@ _KIND_LABEL = {
     "accounts": "Account discovery",
     "competitor_research": "Competitor profiling",
     "outreach_drafts": "Outreach drafting",
+    "outreach_reply": "Reply drafting",
     "monitor": "Competitor monitoring",
 }
 _MAX_ACCOUNT_SIGNALS = 5
@@ -150,6 +151,26 @@ async def inbox_synced(result) -> None:
             reason="The recipient's mail server rejected the message.",
         ) for m in result.bounced]
         return replies + bounces
+    await _emit(build)
+
+
+_INTENT_LABEL = {
+    "interested": "is interested", "question": "asked a question", "objection": "raised an objection",
+    "meeting_request": "wants to meet", "not_now": "said not now", "unsubscribe": "asked to stop",
+    "referral": "referred you on",
+}
+
+
+async def reply_drafted(run_id: uuid.UUID, contact: str, intent: str) -> None:
+    async def build(db):
+        run = await db.get(models.Run, run_id)
+        return [signal_service.build(
+            user_id=run.user_id, workspace_id=run.workspace_id, run_id=run_id, category="outbound",
+            title=f"Reply drafted for {contact}", entity="Outreach",
+            summary=f"{contact} {_INTENT_LABEL.get(intent, 'replied')}. Your GTM specialist drafted an answer: "
+                    "review it in Reach Out. Nothing is sent without you.",
+            reason="A reply to your outreach arrived.", hot=intent in ("interested", "meeting_request"),
+        )]
     await _emit(build)
 
 

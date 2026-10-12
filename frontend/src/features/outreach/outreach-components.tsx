@@ -388,6 +388,10 @@ export function OutReachComponent({ focusEmail = null, onFocusHandled, workspace
         open={threadOpen}
         onOpenChange={setThreadOpen}
         onChanged={onMessageChanged}
+        onDraftRequested={() => {
+          setDrafting(true)
+          void refresh()
+        }}
         onDeleted={(id) => setMessages((prev) => prev.filter((m) => m.id !== id))}
       />
       <AgentConnectionsDialog

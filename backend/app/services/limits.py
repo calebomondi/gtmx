@@ -40,6 +40,8 @@ def default_daily_cap(kind: str) -> int:
         "competitor_research": settings.max_competitor_runs_per_day * 5,
         "chat": settings.max_chat_messages_per_day,
         "outreach_drafts": settings.max_account_runs_per_day,
+        # One per reply received: bounded by what the user sends.
+        "outreach_reply": settings.max_outreach_sends_per_day,
         "monitor": settings.max_monitor_runs_per_day,
     }[kind]
 

@@ -30,7 +30,7 @@ from utils.log import logger
 
 _PAGE_CHARS = 6_000
 # Copy a good seller never writes, checked mechanically on top of the review.
-_BANNED = re.compile(
+BANNED = re.compile(
     r"\b(synerg\w*|leverag\w*|revolutioni[sz]\w*|cutting[- ]edge|game[- ]chang\w*|enhanc\w*|"
     r"drive (?:further )?impact|impressive|hope (?:this|you)|came across|quick intro|"
     r"we(?:'re| are) aware|touch base|circle back|unlock\w*|empower\w*|seamless\w*)\b",
@@ -71,7 +71,7 @@ class OutreachBrief:
     research: dict[str, str] = field(default_factory=dict)
 
 
-def _persona(member: dict | None) -> str:
+def persona(member: dict | None) -> str:
     member = member or _GENERIC_GTM
     return f"{member.get('name')}, {member.get('role')}. {member.get('description') or ''}".strip()
 
@@ -211,14 +211,14 @@ def research_account(brief: OutreachBrief) -> AccountResearch:
 def plan_message(brief: OutreachBrief, research: AccountResearch, offer_name: str) -> OutreachPlan:
     return invoke_structured_with_fallback(
         [SystemMessage(content=_PLAN_PROMPT.format(
-            persona=_persona(brief.team.get("gtm")), offer_name=offer_name, offer=brief.offer,
+            persona=persona(brief.team.get("gtm")), offer_name=offer_name, offer=brief.offer,
             research=research.model_dump_json(indent=1), account=brief.account, contact=_contact(brief),
         )), HumanMessage(content="Plan the message now.")],
         OutreachPlan, log_label="outreach_plan",
     )
 
 
-def _specialist_for(brief: OutreachBrief, domain: str) -> dict | None:
+def specialist_for(brief: OutreachBrief, domain: str) -> dict | None:
     if domain == "product":
         return brief.team.get("product") or brief.team.get("service")
     return brief.team.get(domain)
@@ -229,7 +229,7 @@ def consult(brief: OutreachBrief, ask: Consultation) -> str:
     research = brief.research.get(ask.domain) or "(no research on file)"
     answer = invoke_structured_with_fallback(
         [SystemMessage(content=_CONSULT_PROMPT.format(
-            persona=_persona(_specialist_for(brief, ask.domain)), domain=ask.domain,
+            persona=persona(specialist_for(brief, ask.domain)), domain=ask.domain,
             research=research, question=ask.question,
         )), HumanMessage(content="Answer now.")],
         providers=cheap_providers(), log_label=f"outreach_consult:{ask.domain}",
@@ -240,7 +240,7 @@ def consult(brief: OutreachBrief, ask: Consultation) -> str:
 def _write(brief: OutreachBrief, plan: OutreachPlan, notes: str, feedback: str = "") -> OutreachDraft:
     draft = invoke_structured_with_fallback(
         [SystemMessage(content=_WRITE_PROMPT.format(
-            persona=_persona(brief.team.get("gtm")), sender=brief.sender_name,
+            persona=persona(brief.team.get("gtm")), sender=brief.sender_name,
             channel_rule=CHANNEL_RULES[brief.channel], contact=_contact(brief),
             plan=plan.model_dump_json(indent=1, exclude={"consult"}), notes=notes, offer=brief.offer,
             feedback=f"\nA reviewer rejected your last version. Fix: {feedback}\n" if feedback else "",
@@ -253,7 +253,7 @@ def _write(brief: OutreachBrief, plan: OutreachPlan, notes: str, feedback: str =
 def lint(brief: OutreachBrief, draft: OutreachDraft) -> list[str]:
     """Mechanical checks the reviewer model can miss."""
     body = draft.body.strip()
-    problems = [f'Remove "{m}"' for m in dict.fromkeys(m.group(0) for m in _BANNED.finditer(f"{draft.subject} {body}"))]
+    problems = [f'Remove "{m}"' for m in dict.fromkeys(m.group(0) for m in BANNED.finditer(f"{draft.subject} {body}"))]
     if not re.match(r"^(hi|hello|dear)\b", body, re.I):
         problems.append("Open with a greeting (Hi <first name>, or Hi <account> team,)")
     if re.match(r"^hi team\b", body, re.I):

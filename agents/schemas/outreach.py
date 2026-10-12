@@ -55,3 +55,30 @@ class OutreachDraft(LenientModel):
 class DraftReview(LenientModel):
     passes: bool = Field(description="True only if every check passes")
     problems: list[str] = Field(default_factory=list, description="Each failed check, stated as what to fix")
+
+
+ReplyIntent = Literal[
+    "interested", "question", "objection", "meeting_request", "not_now",
+    "unsubscribe", "out_of_office", "referral", "other",
+]
+
+
+class ReplyAnalysis(LenientModel):
+    """How the GTM specialist reads a contact's reply."""
+
+    intent: ReplyIntent
+    summary: str = Field(description="One sentence: what they said and want")
+    questions: list[str] = Field(default_factory=list, description="Each question they asked, verbatim or close to it")
+    consult: list[Consultation] = Field(
+        default_factory=list,
+        description="At most 2 questions for the product, market or competition specialist needed to answer them well",
+    )
+    agreed_time: str = Field(
+        default="",
+        description="If they proposed or accepted ONE specific meeting time, it in ISO 8601 (YYYY-MM-DDTHH:MM:SS) in the timezone stated; else empty",
+    )
+    reply_needed: bool = Field(description="False for out-of-office notes and anything that needs no answer")
+
+
+class ReplyDraft(LenientModel):
+    body: str = Field(description="The reply, plain text, signed off with the sender's name")

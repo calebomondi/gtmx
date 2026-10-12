@@ -10,7 +10,7 @@ from sqlalchemy import func, or_, select
 
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
-from backend.app.runs import manager, signals
+from backend.app.runs import background, manager
 from backend.app.services import inbox as inbox_service
 from backend.app.services.errors import RateLimitedError
 from backend.app.services.runs import TERMINAL_STATUSES
@@ -63,7 +63,7 @@ async def sync_inboxes() -> int:
         try:
             async with AsyncSessionLocal() as db:
                 result = await inbox_service.sync_user(db, user_id)
-            await signals.inbox_synced(result)
+            await background.after_inbox_sync(result)
             arrived += len(result.replies)
         except Exception:  # noqa: BLE001 -- one user's mailbox must not stop the rest
             logger.exception("Inbox sync failed for user %s", user_id)

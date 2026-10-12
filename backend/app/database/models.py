@@ -708,6 +708,12 @@ class OutreachMessage(Base):
     provider_message_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     # When the user opened an inbound message; null = unread.
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # inbound: how the GTM specialist read the reply (interested, question,
+    # objection, meeting_request, not_now, unsubscribe, out_of_office, ...).
+    intent: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    # A reply draft's meeting, when the contact agreed a time: {start, end,
+    # timezone, title, attendee, event_url once the user adds it to Calendar}.
+    meeting: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     recipient_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     recipient_company: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     # The email address for email; null for LinkedIn (sent by the user by hand).
