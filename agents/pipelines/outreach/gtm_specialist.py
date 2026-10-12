@@ -182,9 +182,9 @@ def _contact(brief: OutreachBrief) -> str:
     return f"{brief.contact_name}" + (f", {brief.contact_title}" if brief.contact_title else "")
 
 
-def research_account(brief: OutreachBrief) -> AccountResearch:
+def research_account(brief: OutreachBrief, pages: str) -> AccountResearch:
     return invoke_structured_with_fallback(
-        [SystemMessage(content=_RESEARCH_PROMPT.format(account=brief.account, sources=_sources(brief))),
+        [SystemMessage(content=_RESEARCH_PROMPT.format(account=brief.account, sources=pages)),
          HumanMessage(content="Extract the research now.")],
         AccountResearch, providers=cheap_providers(), log_label="outreach_research",
     )
@@ -268,13 +268,17 @@ def review(brief: OutreachBrief, research: AccountResearch, plan: OutreachPlan, 
 
 def write_first_touch(brief: OutreachBrief, offer_name: str) -> OutreachDraft:
     """Research, plan, consult, write and review one first-touch message."""
-    research = research_account(brief)
+    pages = _sources(brief)
+    research = research_account(brief, pages)
     plan = plan_message(brief, research, offer_name)
     notes = team.consult_all(brief.team, brief.research, plan.consult, "gtm", "The GTM specialist, writing outreach,",
                              "outreach_consult")
     draft = _write(brief, plan, notes)
     verdict = review(brief, research, plan, draft)
-    sources = _brief_sources(brief, research.model_dump_json(), notes)
+    # Numbers must trace to evidence: the offer, the account, the saved research
+    # and the pages read here. The research notes and the specialists' advice
+    # are model-written, so a figure they invent can't vouch for itself.
+    sources = _brief_sources(brief, pages)
     problems = lint(brief, draft, sources) + ([] if verdict.passes else verdict.problems)
     # The review's verdict counts once; the mechanical checks are re-run after
     # each rewrite, because a rewrite can keep (or add) the same mistake.

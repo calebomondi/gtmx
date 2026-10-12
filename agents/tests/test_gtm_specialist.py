@@ -122,3 +122,12 @@ def test_venues_get_a_partnership_pitch_not_a_sales_pitch(llm):
     script["reviews"] = [DraftReview(passes=True)]
     gs.write_first_touch(_brief(), "PocketAuthor")
     assert "SALES message" in calls[1][1]
+
+
+def test_a_number_only_a_specialist_or_the_research_notes_state_is_not_sourced(llm, monkeypatch):
+    seen = []
+    monkeypatch.setattr(gs, "lint", lambda brief, draft, sources=None: seen.append(sources) or [])
+    gs.write_first_touch(_brief(), "Cloud of Association")
+    sources = seen[0]
+    assert "Acme is hiring two ML engineers" in sources and "Rival X charges $40/seat" in sources
+    assert "Payments for SMEs" not in sources  # the model's research notes
