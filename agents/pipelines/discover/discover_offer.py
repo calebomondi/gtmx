@@ -858,23 +858,35 @@ def ask_for_clarity(state: DiscoverOfferState) -> Command[Literal["check_product
     return Command(update=update, goto="check_product_service_exist")
 
 
-def notify_unscrappable_url(state: DiscoverOfferState) -> Command[Literal["scrape_website", "check_product_service_exist", "__end__"]]:
-    """Interrupt and tell the user their URL could not be fetched. The reply is
-    recorded in messages/follow_up, scrape_failed is set, and the workflow ends
-    immediately — this is a terminal failure, not a retry point."""
+# A reply this long to "I can't read your site" is the user describing the
+# offer, not a name or a "continue".
+_MIN_DESCRIPTION_WORDS = 8
+
+
+def notify_unscrappable_url(state: DiscoverOfferState) -> Command[Literal[
+    "scrape_website", "proceed_to_description", "notify_unscrappable_url"
+]]:
+    """Tell the user their URL could not be read and get something real to
+    work from. A working URL is re-scraped. A description is taken as the
+    user's own words, as on the no-website path, so there is nothing to
+    confirm. A bare "continue" or a name is asked once more for one of the
+    two: without either, every later stage would research a name alone."""
 
     follow_up = as_follow_up(state.get("follow_up"))
     url = normalize_optional_text(state.get("website_url"))
+    name = normalize_optional_text(state.get("offer_name")) or "your offer"
 
-    user_answer = interrupt({
-        "type": "url_unscrappable",
-        "question": (
-            f"I couldn't fetch any content from {url or 'the link you shared'} — "
-            "the page may be dead or blocking access. Reply with a working URL, "
-            "or say 'continue' and I'll work from the name/description you give me."
-        ),
-        "url": url,
-    })
+    if state.get("asked_to_describe"):
+        question = (
+            f"I still can't read {url or 'the website'}, and I won't guess what {name} does from its name. "
+            "Describe it in a sentence or two (what it is, who it's for and what it does), or send a working URL."
+        )
+    else:
+        question = (
+            f"I couldn't fetch any content from {url or 'the link you shared'}: the page may be down or "
+            f"blocking access. Send a working URL, or describe {name} in a sentence or two instead."
+        )
+    user_answer = interrupt({"type": "url_unscrappable", "question": question, "url": url})
 
     reply = str(user_answer or "").strip()
     new_url = _first_url(reply)
@@ -889,18 +901,18 @@ def notify_unscrappable_url(state: DiscoverOfferState) -> Command[Literal["scrap
     }
 
     if new_url:
-        # Re-gather with the corrected link.
-        update["website_url"] = new_url
-        update["scrape_failed"] = False
-        update["scraped_content"] = None
+        update.update({"website_url": new_url, "scrape_failed": False, "scraped_content": None,
+                       "asked_to_describe": False})
         return Command(update=update, goto="scrape_website")
 
-    # No usable URL — fold a short name-like reply into the state so the
-    # next node sees the corrected name; description drafting picks up the rest.
+    if len(reply.split()) >= _MIN_DESCRIPTION_WORDS:
+        update.update({"offer_description": reply, "confirmed": True, "asked_to_describe": False})
+        return Command(update=update, goto="proceed_to_description")
+
     if _is_short_name(reply):
         update["offer_name"] = reply
-
-    return Command(update=update, goto=END)
+    update["asked_to_describe"] = True
+    return Command(update=update, goto="notify_unscrappable_url")
 
 
 def _next_after_offer_decided(state: DiscoverOfferState) -> Literal[
@@ -1180,13 +1192,13 @@ def build_offer_discovery_graph(checkpointer: bool = True):
     # routes directly to understand_scraped_content via its Command; understand
     # then falls through to check_product_service_exist via the explicit edge
     # below. On a failed scrape scrape_website routes directly to
-    # notify_unscrappable_url (terminal).
+    # notify_unscrappable_url.
     agent.add_edge("understand_scraped_content", "check_product_service_exist")
     # check_product_service_exist returns Command → ask_for_clarity |
     #     proceed_to_description | notify_unscrappable_url
     # ask_for_clarity returns Command → check_product_service_exist
     # notify_unscrappable_url returns Command → scrape_website |
-    #     check_product_service_exist
+    #     proceed_to_description | notify_unscrappable_url
     # proceed_to_description returns Command → get_product_service_description |
     #     retrieve_rest_product_service_info
     agent.add_edge("get_product_service_description", "ask_for_confirmation")
