@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils'
 import type { StepProgress } from '@/lib/agent-run-store'
 import { useAutoFollowScroll } from '@/features/chain-of-thought/use-auto-follow-scroll'
 import { ActualWorkspace } from '@/features/workspace/actual-workspace'
+import { BuyerBadge } from '@/features/workspace/buyer-badge'
 import { useAgentRun } from '@/lib/agent-run-store'
 import { refetchWorkspaces, useWorkspaces } from '@/lib/workspaces-store'
 import { useSession } from '@/lib/session-context'
@@ -264,7 +265,10 @@ export default function Workspace() {
             <BreadcrumbList>
               <BreadcrumbItem>
                 {workspace ? (
-                  <WorkspaceManager workspace={workspace} />
+                  <div className="flex items-center gap-2">
+                    <WorkspaceManager workspace={workspace} />
+                    <BuyerBadge workspaceId={workspace.id} />
+                  </div>
                 ) : (
                   <span className="max-w-72 truncate px-2 text-sm font-medium">
                     Workspace

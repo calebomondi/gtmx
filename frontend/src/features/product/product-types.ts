@@ -1,6 +1,9 @@
 import type { OfferSnapshot } from '@/lib/api'
 
-export type BuyerType = 'b2b' | 'b2c' | 'both'
+import type { BuyerType } from '@/lib/buyer-type'
+
+export type { BuyerType } from '@/lib/buyer-type'
+export { BUYER_TYPES } from '@/lib/buyer-type'
 
 export type ProductCategory =
   | 'saas'
@@ -68,7 +71,6 @@ export interface ProductState {
   icp: ICP | null
 }
 
-export const BUYER_TYPES: BuyerType[] = ['b2b', 'b2c', 'both']
 
 export const PRODUCT_CATEGORIES: ProductCategory[] = [
   'saas',
