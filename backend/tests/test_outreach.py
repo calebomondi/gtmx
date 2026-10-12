@@ -53,7 +53,7 @@ def drafted(client, owned, account_id, monkeypatch):
 def gmail(monkeypatch, user):
     calls = []
 
-    async def connections(user_id):
+    async def connections(db, user_id):
         return [ConnectionInfo("ca_gmail", "gmail", "live", "me@acme.example", None, None)]
     monkeypatch.setattr(connection_service, "list_for_user", connections)
 
@@ -94,7 +94,7 @@ def test_send_guards(client, drafted, gmail, monkeypatch):
     assert client.post(f"{path}/send").status_code == 429
     monkeypatch.setattr(settings, "max_outreach_sends_per_day", 50)
 
-    async def none(user_id):
+    async def none(db, user_id):
         return []
     monkeypatch.setattr(connection_service, "list_for_user", none)
     assert client.post(f"{path}/send").status_code == 409  # no Gmail connected

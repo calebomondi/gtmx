@@ -749,3 +749,20 @@ class WorkspaceActivity(Base):
     active_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     visits: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ConnectionIdentity(Base):
+    """Who a connected channel account is (an email, a name, an @handle), read
+    once from the provider through Composio. Composio holds the tokens and the
+    connection itself; this is only the label shown for it."""
+
+    __tablename__ = "connection_identities"
+
+    # Composio's connected-account id.
+    connection_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    platform: Mapped[str] = mapped_column(String(32), nullable=False)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), server_default=func.now(),
+    )

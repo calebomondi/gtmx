@@ -1,6 +1,8 @@
-"""Users' connected channel accounts (Gmail, LinkedIn, Instagram, TikTok, X),
-held by Composio under the user's id. Composio is the source of truth: it
-stores and refreshes the tokens, so there is no local table to drift.
+"""Users' connected channel accounts (Gmail, Google Calendar, LinkedIn,
+Instagram, Facebook, TikTok, X), held by Composio under the user's id.
+Composio is the source of truth: it stores and refreshes the tokens. The only
+local state is each account's display label (`ConnectionIdentity`), read once
+from the provider so the accounts page can say which account is connected.
 
 Composio's SDK is synchronous; every call runs in a worker thread.
 """
@@ -13,22 +15,28 @@ from datetime import datetime
 from functools import lru_cache
 
 from composio import Composio
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.database import models
 from backend.app.services.errors import ConflictError, NotFoundError
 from config import settings
+from utils.log import logger
 
 # App platform -> Composio toolkit slug (verified against the live API).
 TOOLKITS = {
     "gmail": "gmail",
+    "googlecalendar": "googlecalendar",
     "linkedin": "linkedin",
     "instagram": "instagram",
+    "facebook": "facebook",
     "tiktok": "tiktok",
     "x": "twitter",
 }
 PLATFORM_OF = {toolkit: platform for platform, toolkit in TOOLKITS.items()}
 # Toolkits Composio manages auth for (verified 2026-10-10). The others need an
 # auth config backed by our own OAuth app (settings.composio_auth_configs).
-MANAGED = {"gmail", "linkedin", "instagram"}
+MANAGED = {"gmail", "googlecalendar", "linkedin", "instagram", "facebook"}
 
 _STATUS = {"ACTIVE": "live", "INITIATED": "pending", "INITIALIZING": "pending"}
 
@@ -72,7 +80,70 @@ def _info(account) -> ConnectionInfo | None:
     )
 
 
-async def list_for_user(user_id: uuid.UUID) -> list[ConnectionInfo]:
+def _handle(value) -> str | None:
+    return f"@{value}" if value else None
+
+
+def _linkedin_name(data: dict) -> str | None:
+    first = data.get("localizedFirstName") or data.get("firstName")
+    last = data.get("localizedLastName") or data.get("lastName")
+    name = " ".join(part for part in (first, last) if isinstance(part, str) and part)
+    return name or None
+
+
+# Platform -> (Composio tool that returns the account's own profile, its
+# arguments, how to read the label from the response). Response fields were
+# checked against each tool's published output schema (2026-10-12).
+_IDENTITY = {
+    "gmail": ("GMAIL_GET_PROFILE", {"user_id": "me"}, lambda d: d.get("emailAddress")),
+    "googlecalendar": ("GOOGLECALENDAR_GET_CALENDAR_PROFILE", {}, lambda d: d.get("id") or d.get("summary")),
+    "linkedin": ("LINKEDIN_GET_MY_INFO", {}, _linkedin_name),
+    "instagram": ("INSTAGRAM_GET_USER_INFO", {}, lambda d: _handle(d.get("username"))),
+    "facebook": ("FACEBOOK_GET_CURRENT_USER", {}, lambda d: d.get("name")),
+    "x": ("TWITTER_USER_LOOKUP_ME", {}, lambda d: _handle((d.get("data") or {}).get("username"))),
+}
+_IDENTITY_TIMEOUT_S = 15.0
+
+
+def _read_identity(user_id: uuid.UUID, info: ConnectionInfo) -> str | None:
+    """The account's label from the provider, or None if it can't be read."""
+    tool, arguments, label_of = _IDENTITY[info.platform]
+    try:
+        result = execute_tool(user_id, tool, arguments, info.id)
+    except Exception:  # noqa: BLE001 -- the label is cosmetic; listing must not fail on it
+        logger.exception("Reading the %s identity for connection %s failed", info.platform, info.id)
+        return None
+    if result["error"] or not isinstance(result["data"], dict):
+        logger.info("No %s identity for connection %s: %s", info.platform, info.id, result["error"])
+        return None
+    label = label_of(result["data"])
+    return label.strip()[:255] if isinstance(label, str) and label.strip() else None
+
+
+async def _with_identities(db: AsyncSession, user_id: uuid.UUID, infos: list[ConnectionInfo]) -> list[ConnectionInfo]:
+    """Label each live connection with who it is, reading unknown ones from
+    the provider once and remembering them."""
+    stored = {
+        row.connection_id: row.label for row in (await db.execute(
+            select(models.ConnectionIdentity).where(models.ConnectionIdentity.user_id == user_id)
+        )).scalars()
+    }
+    missing = [i for i in infos if i.status == "live" and i.id not in stored and i.platform in _IDENTITY]
+    if missing:
+        labels = await asyncio.gather(*(
+            asyncio.wait_for(asyncio.to_thread(_read_identity, user_id, i), _IDENTITY_TIMEOUT_S) for i in missing
+        ), return_exceptions=True)
+        for info, label in zip(missing, labels):
+            if isinstance(label, str):
+                db.add(models.ConnectionIdentity(connection_id=info.id, user_id=user_id, platform=info.platform, label=label))
+                stored[info.id] = label
+        await db.commit()
+    return [
+        ConnectionInfo(**{**i.__dict__, "display_name": stored.get(i.id) or i.display_name}) for i in infos
+    ]
+
+
+async def list_for_user(db: AsyncSession, user_id: uuid.UUID) -> list[ConnectionInfo]:
     def fetch():
         return _client().connected_accounts.list(
             user_ids=[str(user_id)], toolkit_slugs=list(TOOLKITS.values()),
@@ -83,7 +154,8 @@ async def list_for_user(user_id: uuid.UUID) -> list[ConnectionInfo]:
     # An abandoned Connect Link stays INITIATED until it expires; only show a
     # pending row when the user has nothing live for that platform.
     live = {i.platform for i in infos if i and i.status == "live"}
-    return [i for i in infos if i and not (i.status == "pending" and i.platform in live)]
+    shown = [i for i in infos if i and not (i.status == "pending" and i.platform in live)]
+    return await _with_identities(db, user_id, shown)
 
 
 # Bounds the admin-wide listing: 20 pages x 100 covers far past launch scale.
@@ -164,7 +236,7 @@ async def start(user_id: uuid.UUID, platform: str, origin: str | None = None) ->
     return await asyncio.to_thread(authorize)
 
 
-async def disconnect(user_id: uuid.UUID, connection_id: str) -> None:
+async def disconnect(db: AsyncSession, user_id: uuid.UUID, connection_id: str) -> None:
     """Delete the connection (revoking the provider token) if it is the user's."""
     def remove():
         client = _client()
@@ -176,6 +248,10 @@ async def disconnect(user_id: uuid.UUID, connection_id: str) -> None:
             raise NotFoundError("Connection not found")
         client.connected_accounts.delete(connection_id, revoke_on_delete=True)
     await asyncio.to_thread(remove)
+    identity = await db.get(models.ConnectionIdentity, connection_id)
+    if identity is not None:
+        await db.delete(identity)
+        await db.commit()
 
 
 def execute_tool(user_id: uuid.UUID, tool_slug: str, arguments: dict, connected_account_id: str) -> dict:

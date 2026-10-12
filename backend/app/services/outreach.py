@@ -125,7 +125,7 @@ async def send(db: AsyncSession, message: models.OutreachMessage) -> models.Outr
             f"You've reached today's limit of {settings.max_outreach_sends_per_day} sent emails.",
             retry_after_s=3600,
         )
-    gmail = next((c for c in await connection_service.list_for_user(message.user_id)
+    gmail = next((c for c in await connection_service.list_for_user(db, message.user_id)
                   if c.platform == "gmail" and c.status == "live"), None)
     if gmail is None:
         raise ConflictError("Connect your Gmail account (Accounts page) to send email.")

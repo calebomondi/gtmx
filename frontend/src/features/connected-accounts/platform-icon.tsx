@@ -1,8 +1,10 @@
+import { CalendarDays } from "lucide-react"
+
 import { cn } from "@/lib/utils"
 import { PLATFORM_ICON, type Platform } from "./accounts-type"
 
 /** Platform glyph used by both the /accounts board and the agent
- *  connections dialog. Falls back to a letter badge when no icon asset
+ *  connections dialog. Falls back to a glyph badge when no icon asset
  *  exists for the platform. */
 export function PlatformIcon({
   platform,
@@ -20,7 +22,7 @@ export function PlatformIcon({
         className,
       )}
     >
-      X
+      {platform === "googlecalendar" ? <CalendarDays className="size-1/2 text-blue-500" /> : "X"}
     </span>
   )
 }
