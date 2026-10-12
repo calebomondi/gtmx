@@ -163,6 +163,7 @@ function AccountCard({
             <Badge variant="secondary" className="capitalize">
               {account.account_type}
             </Badge>
+            {account.do_not_contact && <Badge variant="destructive">Do not contact</Badge>}
             {account.geo && (
               <span className="inline-flex items-center gap-1">
                 <MapPin className="size-3" />

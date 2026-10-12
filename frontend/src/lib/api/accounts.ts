@@ -17,6 +17,8 @@ export interface AccountRecord {
   event_date: string | null
   member_size: string | null
   summary: string | null
+  /** Someone at the account asked not to be contacted. */
+  do_not_contact: boolean
   /** The account's own social pages, by platform. */
   socials: Record<string, string>
   industry: string | null
