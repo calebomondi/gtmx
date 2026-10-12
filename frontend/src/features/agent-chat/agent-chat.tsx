@@ -23,14 +23,16 @@ function SpeakerLine({ specialists, domain }: { specialists: Specialist[]; domai
   if (!speaker) return null
   const { specialist, index } = speaker
   return (
-    <div className='mb-1 flex items-center gap-2'>
+    <div className='mb-1 flex w-full max-w-[85%] min-w-0 items-center gap-2'>
       <img
         src={AvatarImg[index % AvatarImg.length]}
         alt=''
-        className={cn('size-6 rounded-full border-2 object-cover', specialist.borderClass)}
+        className={cn('size-6 shrink-0 rounded-full border-2 object-cover', specialist.borderClass)}
       />
-      <span className='text-xs font-medium text-foreground'>{specialist.name}</span>
-      <span className='truncate text-xs text-muted-foreground'>{specialist.domain} · {specialist.role}</span>
+      <span className='shrink-0 whitespace-nowrap text-xs font-medium text-foreground'>{specialist.name}</span>
+      <span className='min-w-0 truncate text-xs text-muted-foreground' title={`${specialist.domain} · ${specialist.role}`}>
+        {specialist.domain} · {specialist.role}
+      </span>
     </div>
   )
 }

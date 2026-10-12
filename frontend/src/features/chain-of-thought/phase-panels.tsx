@@ -16,6 +16,7 @@ import {
 
 import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
 import { AvatarImg } from '@/components/specialist-avatargroup'
+import { displayRole } from '@/lib/specialists'
 import type {
   CompetitionDataDto,
   IcpDto,
@@ -126,7 +127,7 @@ export function SpecialistsPanel({ team }: { team: SpecialistDto[] }) {
             </div>
             <div className="px-2 text-start">
               <p className="text-sm font-medium">{specialist.name}</p>
-              <p className="text-sm font-medium text-muted-foreground">{specialist.role}</p>
+              <p className="text-sm font-medium text-muted-foreground">{displayRole(specialist)}</p>
               <p className="text-xs font-medium text-muted-foreground">{specialist.description}</p>
             </div>
           </div>
