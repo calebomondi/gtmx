@@ -104,6 +104,15 @@ def build_insights(values: dict) -> dict:
         "ideal_competitor_profile": dump(values.get("ideal_competitor_profile")),
         "icp": dump(values.get("icp_data")),
         "specialists": dump(values.get("specialists")),
+        # Each specialist's full research notes (with sources), not just the
+        # 40-50 word understanding above: what the specialists answer from in
+        # chat, outreach and replies, and what later agent runs build on.
+        "research": {
+            "offer": values.get("offer_findings"),
+            "market": values.get("market_findings"),
+            "competition": values.get("competition_findings"),
+            "icp": values.get("icp_findings"),
+        },
         "completed_at": datetime.now(UTC).isoformat(),
     }
 
