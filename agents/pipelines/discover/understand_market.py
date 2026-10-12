@@ -60,6 +60,7 @@ from data_sources.scraping.exa import search_and_scrape
 
 from agents.schemas.research import ResearchTask, Specialist, TaskList
 from agents.schemas.sessions import MarketSessionState
+from utils.log import logger
 from .understand_offer import (
     _dedupe_sources,
     _known_facts,
@@ -407,9 +408,9 @@ def create_tasks_research(state: MarketSessionState) -> dict:
     )
 
     tasks = list(plan.tasks or [])[:MAX_RESEARCH_TASKS]
-    print(f"create_tasks_research: planned {len(tasks)} market research task(s)")
+    logger.info(f"create_tasks_research: planned {len(tasks)} market research task(s)")
     for i, task in enumerate(tasks, start=1):
-        print(f"  {i}. {task.area} ({len(task.queries or [])} queries)")
+        logger.info(f"  {i}. {task.area} ({len(task.queries or [])} queries)")
 
     return {"market_tasks": plan.model_copy(update={"tasks": tasks})}
 
@@ -443,7 +444,7 @@ def _research_one(task: ResearchTask) -> TaskResearchBundle:
                 start_published_date=cutoff,
             )
         except Exception as exc:  # noqa: BLE001 - one dead query must not kill the task
-            print(f"conduct_research: query failed ({area}): {query} -> {exc}")
+            logger.warning(f"conduct_research: query failed ({area}): {query} -> {exc}")
             continue
         for doc in results or []:
             url = doc.get("url") or ""
@@ -510,22 +511,22 @@ def conduct_research(state: MarketSessionState) -> dict:
     plan = state.get("market_tasks")
     tasks = list(plan.tasks or []) if plan else []
     if not tasks:
-        print("conduct_research: no tasks planned, nothing to research")
+        logger.info("conduct_research: no tasks planned, nothing to research")
         return {"market_task_research": []}
 
     # Logged in full rather than as a count, because a bad query is only visible
     # once you can read it, and the plan is the one artefact a failing run's
     # author cannot reconstruct.
-    print(f"conduct_research: plan\n{_render_task_plan(tasks)}")
+    logger.info(f"conduct_research: plan\n{_render_task_plan(tasks)}")
 
     workers = min(len(tasks), TASK_RESEARCH_MAX_WORKERS)
-    print(f"conduct_research: running {len(tasks)} task(s) over {workers} worker(s)")
+    logger.info(f"conduct_research: running {len(tasks)} task(s) over {workers} worker(s)")
 
     def _guarded(task: ResearchTask) -> TaskResearchBundle:
         try:
             return _research_one(task)
         except Exception as exc:  # noqa: BLE001 - a dead task is a gap, not a crash
-            print(f"conduct_research: task failed ({task.area}): {exc}")
+            logger.warning(f"conduct_research: task failed ({task.area}): {exc}")
             return TaskResearchBundle(
                 task_id=task.area or "unnamed area",
                 area=task.area or "unnamed area",
@@ -540,7 +541,7 @@ def conduct_research(state: MarketSessionState) -> dict:
 
     for bundle in bundles:
         status = "EMPTY" if bundle.search_failed else f"{len(bundle.sources)} source(s)"
-        print(f"  {bundle.area}: {status}")
+        logger.info(f"  {bundle.area}: {status}")
 
     return {"market_task_research": bundles}
 
@@ -616,7 +617,7 @@ def note_down_record(state: MarketSessionState) -> dict:
     fit_words = fit.split()
     if len(fit_words) > 50:
         fit = " ".join(fit_words[:50])
-        print(
+        logger.info(
             f"note_down_record: fit understanding clamped from {len(fit_words)} "
             f"to 50 words"
         )
@@ -629,7 +630,7 @@ def note_down_record(state: MarketSessionState) -> dict:
     findings_words = findings.split()
     if len(findings_words) > MARKET_FINDINGS_WORD_CAP:
         findings = " ".join(findings_words[:MARKET_FINDINGS_WORD_CAP])
-        print(
+        logger.info(
             f"note_down_record: findings clamped from {len(findings_words)} "
             f"to {MARKET_FINDINGS_WORD_CAP} words"
         )
@@ -641,7 +642,7 @@ def note_down_record(state: MarketSessionState) -> dict:
     if findings and sources_block:
         findings = f"{findings}\n\n{sources_block}"
 
-    print(
+    logger.info(
         f"note_down_record: {len(bundles)} bundle(s) read, "
         f"{len(findings.split())} words of notes, "
         f"fit understanding in {len(fit.split())} words"
@@ -707,10 +708,10 @@ def extract_market_data(state: MarketSessionState) -> dict:
             thinking=False,
         )
     except Exception as exc:  # noqa: BLE001 - soft-fail by design, see docstring
-        print(f"extract_market_data: failed ({exc}); market_data left unset")
+        logger.warning(f"extract_market_data: failed ({exc}); market_data left unset")
         return {}
 
-    print(
+    logger.info(
         f"extract_market_data: fit={getattr(extraction, 'market_fit', None)!r}, "
         f"buyer_type={getattr(extraction, 'buyer_type', None)!r}, "
         f"{len(getattr(extraction, 'pricing', None) or [])} pricing tier(s)"

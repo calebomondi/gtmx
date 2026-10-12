@@ -27,7 +27,7 @@ def timed_node(fn: Callable[[dict], dict]) -> Callable[[dict], dict]:
         try:
             return fn(state)
         finally:
-            print(f"⏱ node '{fn.__name__}' took {time.perf_counter() - t0:.1f}s", flush=True)
+            logger.info(f"⏱ node '{fn.__name__}' took {time.perf_counter() - t0:.1f}s")
 
     wrapper.__name__ = fn.__name__
     return wrapper

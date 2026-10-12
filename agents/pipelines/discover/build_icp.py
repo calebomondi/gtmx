@@ -71,6 +71,7 @@ from agents.schemas.research import Specialist
 from agents.schemas.sessions import IcpSessionState
 from .understand_competition import _market_context_block, _sibling_block
 from .understand_offer import _offer_material, _offer_noun, _offer_nouns, _specialist_lens
+from utils.log import logger
 
 
 # The ICP findings feed the report's GTM section. IcpSessionState carries no
@@ -526,7 +527,7 @@ def create_icp(state: IcpSessionState) -> dict:
         buyer_type_value=buyer_value,
     )
 
-    print(f"create_icp: drafting the ICP ({buyer_label}, buyer_type={buyer_value!r})")
+    logger.info(f"create_icp: drafting the ICP ({buyer_label}, buyer_type={buyer_value!r})")
     draft = invoke_structured_with_fallback(
         messages=[
             SystemMessage(content=system_message),
@@ -541,7 +542,7 @@ def create_icp(state: IcpSessionState) -> dict:
         thinking=False,
     )
 
-    print(
+    logger.info(
         f"create_icp: draft has {len(draft.industries or [])} industrie(s), "
         f"{len(draft.company_sizes or [])} size band(s), {len(draft.buyer_titles or [])} "
         f"title(s), {len(draft.buyer_personas or [])} persona(s), "
@@ -591,7 +592,7 @@ def refine_icp(state: IcpSessionState) -> dict:
             thinking=False,
         )
         changes = revision.changed_fields()
-        print(f"refine_icp: {len(changes)} field(s) revised: {', '.join(sorted(changes)) or 'none'}")
+        logger.info(f"refine_icp: {len(changes)} field(s) revised: {', '.join(sorted(changes)) or 'none'}")
         # Re-validate the merged profile so the patch goes through ICP's own
         # coercion rules.
         final = ICP.model_validate({**draft.model_dump(), **changes})
@@ -601,10 +602,10 @@ def refine_icp(state: IcpSessionState) -> dict:
     # the task-count and competitor-set clamps in the sibling pipelines.
     industries = list(final.industries or [])[:3]
     if len(final.industries or []) > 3:
-        print(f"refine_icp: industries clamped from {len(final.industries)} to 3")
+        logger.info(f"refine_icp: industries clamped from {len(final.industries)} to 3")
     final = final.model_copy(update={"industries": industries})
 
-    print(
+    logger.info(
         f"refine_icp: finalized -- {len(final.industries)} industrie(s), "
         f"{len(final.company_sizes or [])} size band(s), {len(final.buyer_titles or [])} "
         f"title(s), {len(final.buyer_personas or [])} persona(s), "
@@ -661,7 +662,7 @@ def note_down_record(state: IcpSessionState) -> dict:
     understanding_words = understanding.split()
     if len(understanding_words) > 50:
         understanding = " ".join(understanding_words[:50])
-        print(
+        logger.info(
             f"note_down_record: icp_understanding clamped from "
             f"{len(understanding_words)} to 50 words"
         )
@@ -673,12 +674,12 @@ def note_down_record(state: IcpSessionState) -> dict:
     findings_words = findings.split()
     if len(findings_words) > ICP_FINDINGS_WORD_CAP:
         findings = " ".join(findings_words[:ICP_FINDINGS_WORD_CAP])
-        print(
+        logger.info(
             f"note_down_record: findings clamped from {len(findings_words)} "
             f"to {ICP_FINDINGS_WORD_CAP} words"
         )
 
-    print(
+    logger.info(
         f"note_down_record: {len(findings.split())} words of notes, "
         f"icp_understanding in {len(understanding.split())} words"
     )

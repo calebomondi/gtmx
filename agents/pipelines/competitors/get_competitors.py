@@ -544,11 +544,11 @@ def plan_hunt(state: CompetitorSessionState) -> dict:
             continue
         cleaned.append(task.model_copy(update={"queries": queries}))
 
-    print(
+    logger.info(
         f"plan_hunt: {len(cleaned)} hunt task(s) from {len(archetypes)} archetype(s)"
     )
     for i, task in enumerate(cleaned, start=1):
-        print(f"  {i}. [{task.geography_scope}] {task.archetype_label} ({len(task.queries)} queries)")
+        logger.info(f"  {i}. [{task.geography_scope}] {task.archetype_label} ({len(task.queries)} queries)")
     return {"competitor_hunt_tasks": cleaned}
 
 
@@ -586,7 +586,7 @@ def _hunt_one(task: CompetitorHuntTask) -> CompetitorHuntBundle:
                 start_published_date=recency_cutoff,
             )
         except Exception as exc:  # noqa: BLE001 -- one dead query must not kill the task
-            print(f"hunt_candidates: query failed ({task.archetype_label}): {query} -> {exc}")
+            logger.warning(f"hunt_candidates: query failed ({task.archetype_label}): {query} -> {exc}")
             continue
         for doc in results or []:
             url = doc.get("url") or ""
@@ -608,7 +608,7 @@ def _hunt_one(task: CompetitorHuntTask) -> CompetitorHuntBundle:
         sources=docs,
     )
     if not docs:
-        print(f"hunt_candidates: {task.archetype_label}: no sources")
+        logger.info(f"hunt_candidates: {task.archetype_label}: no sources")
         return bundle
 
     notes = distill_documents(
@@ -643,7 +643,7 @@ def _hunt_one(task: CompetitorHuntTask) -> CompetitorHuntBundle:
     else:  # pragma: no cover -- defensive
         candidates = []
     bundle.candidates = candidates[:MAX_CANDIDATES_PER_TASK]
-    print(
+    logger.info(
         f"hunt_candidates: {task.archetype_label}: {len(bundle.candidates)} candidate(s) "
         f"from {len(issued)} query/queries"
     )
@@ -653,14 +653,14 @@ def _hunt_one(task: CompetitorHuntTask) -> CompetitorHuntBundle:
 def hunt_candidates(state: CompetitorSessionState) -> dict:
     tasks = list(state.get("competitor_hunt_tasks") or [])
     if not tasks:
-        print("hunt_candidates: no tasks")
+        logger.info("hunt_candidates: no tasks")
         return {"competitor_hunt_bundles": []}
 
     with ContextThreadPoolExecutor(max_workers=min(len(tasks), MAX_HUNT_TASKS)) as pool:
         bundles = list(pool.map(_hunt_one, tasks))
 
     total = sum(len(b.candidates) for b in bundles)
-    print(f"hunt_candidates: {total} raw candidate(s) across {len(bundles)} task(s)")
+    logger.info(f"hunt_candidates: {total} raw candidate(s) across {len(bundles)} task(s)")
     return {"competitor_hunt_bundles": bundles}
 
 
@@ -739,7 +739,7 @@ def screen_candidates(state: CompetitorSessionState) -> dict:
         dropped=candidates_seen - len(survivors),
         dropped_reasons=reasons,
     )
-    print(
+    logger.info(
         f"screen_candidates: {candidates_seen} seen -> {len(survivors)} kept "
         f"({outcome.dropped} dropped: {reasons or 'none'})"
     )
@@ -899,7 +899,7 @@ def profile_competitors(state: CompetitorSessionState) -> dict:
     """Profile every survivor, in parallel."""
     survivors = list(state.get("competitor_survivors") or [])
     if not survivors:
-        print("profile_competitors: nothing survived screening")
+        logger.info("profile_competitors: nothing survived screening")
         return {"competitor_profiles": []}
 
     offer = {

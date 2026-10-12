@@ -207,7 +207,7 @@ def create_account_queries(state: IcpSessionState) -> dict:
         queries = [f"{noun}s in {g}" for g in geos]
 
     queries = list(dict.fromkeys(queries))[:8 if _FAST_DISCOVERY else 20]
-    print(f"Account discovery queries: {queries}")
+    logger.info(f"Account discovery queries: {queries}")
     return {"account_discovery_queries": queries}
 
 
@@ -233,13 +233,13 @@ def search_accounts(state: IcpSessionState) -> dict:
     seen: set[str] = set()
     for q, results in zip(todo, per_query):
         if not results:
-            print(f"  -> empty: {q}")
+            logger.info(f"  -> empty: {q}")
             continue
         for r in results:
             if r.get("url") and r["url"] not in seen:
                 seen.add(r["url"])
                 docs.append({"url": r.get("url"), "title": r.get("title"), "text": r.get("text")})
-    print(f"search_accounts produced {len(docs)} docs from {len(queries)} queries (after {cutoff})")
+    logger.info(f"search_accounts produced {len(docs)} docs from {len(queries)} queries (after {cutoff})")
     return {"account_discovery_docs": docs}
 
 
@@ -277,7 +277,7 @@ def extract_accounts(state: IcpSessionState) -> dict:
         "and, for companies, `company_sizes`.\n\n"
         "Return only the structured fields — no commentary."
     )
-    print("Extracting account list from documents...")
+    logger.info("Extracting account list from documents...")
     accounts = invoke_structured_with_fallback(
         messages=[
             SystemMessage(content=system_prompt),
@@ -293,7 +293,7 @@ def extract_accounts(state: IcpSessionState) -> dict:
     # with no trigger-carrying targets. One retry aimed at where the ICP's
     # buyers actually congregate before accepting an empty list.
     if not accounts.accounts:
-        print("⚠️ extract returned 0 accounts — one fallback round on channels/personas.")
+        logger.warning("⚠️ extract returned 0 accounts — one fallback round on channels/personas.")
         noun = _offer_noun_for(state)
         geos = _geos_for(state, icp)
         fallback_queries: list[str] = []
@@ -330,7 +330,7 @@ def extract_accounts(state: IcpSessionState) -> dict:
             for d in docs[:8 if _FAST_DISCOVERY else 12]
         )
         if fallback_queries:
-            print(f"Fallback queries: {fallback_queries}")
+            logger.info(f"Fallback queries: {fallback_queries}")
             system_prompt_fb = system_prompt.replace(
                 old_context or "No research context available.", context
             )
@@ -414,7 +414,7 @@ def _domain_emails_from_queries(queries: list[str], acc: AccountRecord, cfg: Set
         try:
             hits = _search_and_scrape(query, cfg, num_results=3, start_published_date=cutoff)
         except Exception as e:
-            print(f"⚠️ email search failed for '{acc.name}': {e}")
+            logger.warning(f"⚠️ email search failed for '{acc.name}': {e}")
             continue
         for hit in hits:
             text = f"{hit.get('title', '') or ''}\n{hit.get('text', '') or ''}"
@@ -547,7 +547,7 @@ def collect_socials_and_emails(state: IcpSessionState) -> dict:
                 try:
                     hits = _search_and_scrape(query, cfg, num_results=MAX_QUERY_RESULTS, start_published_date=cutoff)
                 except Exception as e:
-                    print(f"⚠️ social search failed for '{acc.name}' ({platform_name}): {e}")
+                    logger.warning(f"⚠️ social search failed for '{acc.name}' ({platform_name}): {e}")
                     continue
                 for hit in hits:
                     candidate_url = _platform_url_for(platform_name, hit.get("url", "") or "") or _platform_url_for(
@@ -561,7 +561,7 @@ def collect_socials_and_emails(state: IcpSessionState) -> dict:
                     slug_ok = bool(acc.domain) and acc.domain.split(".")[0].lower() in candidate_url.lower()
                     if slug_ok:
                         acc.socials = {**(acc.socials or {}), platform_name: candidate_url}
-                        print(f"🔗 '{acc.name}' {platform_name} -> {candidate_url} (url match, no hydration)")
+                        logger.info(f"🔗 '{acc.name}' {platform_name} -> {candidate_url} (url match, no hydration)")
                         break
                     handler = {
                         "linkedin": linkedin.get_company,
@@ -574,7 +574,7 @@ def collect_socials_and_emails(state: IcpSessionState) -> dict:
                         acc.socials = {**(acc.socials or {}), platform_name: candidate_url}
                         if platform_name == "linkedin" and raw.get("company_size"):
                             acc.size = raw["company_size"]  # real headcount beats any model claim
-                        print(f"🔗 '{acc.name}' {platform_name} -> {candidate_url}")
+                        logger.info(f"🔗 '{acc.name}' {platform_name} -> {candidate_url}")
                         break
         else:
             inferred = (acc.platform or "").lower()
@@ -608,9 +608,9 @@ def collect_socials_and_emails(state: IcpSessionState) -> dict:
                     for e in _bio_emails(raw):
                         if not any(c.email == e for c in acc.key_contacts):
                             acc.key_contacts.append(ContactRecord(email=e))
-                            print(f"📧 '{acc.name}' bio email -> {e}")
+                            logger.info(f"📧 '{acc.name}' bio email -> {e}")
                             break
-                    print(f"🔗 venue '{acc.name}' {platform_key} -> {url}")
+                    logger.info(f"🔗 venue '{acc.name}' {platform_key} -> {url}")
 
         # Hydrate contact details for people who already have a LinkedIn URL.
         for contact in acc.key_contacts[:1 if _FAST_DISCOVERY else 3]:
@@ -630,7 +630,7 @@ def collect_socials_and_emails(state: IcpSessionState) -> dict:
             free = [e for e in _docs_emails(acc) if any(p in e for p in [p for p in re.split(r"[^a-z]+", contact.name.lower()) if len(p) >= 3])]
             if free:
                 contact.email = free[0]
-                print(f"📧 '{acc.name}' person '{contact.name}' -> {free[0]} (from retrieved pages)")
+                logger.info(f"📧 '{acc.name}' person '{contact.name}' -> {free[0]} (from retrieved pages)")
                 continue
             queries = [
                 f'"{contact.name}" "{acc.domain}" email' if acc.domain else f'"{contact.name}" "{acc.name}" email',
@@ -639,7 +639,7 @@ def collect_socials_and_emails(state: IcpSessionState) -> dict:
             chosen = _pick_email(emails, contact.name)
             if chosen:
                 contact.email = chosen
-                print(f"📧 '{acc.name}' person '{contact.name}' -> {chosen}")
+                logger.info(f"📧 '{acc.name}' person '{contact.name}' -> {chosen}")
 
         # Org-level email: harvest already-retrieved page text first, then one
         # careful Exa query, then (only when nothing found) a broad one.
@@ -649,7 +649,7 @@ def collect_socials_and_emails(state: IcpSessionState) -> dict:
             chosen = _pick_email(free_org, None)
             if chosen:
                 acc.key_contacts.append(ContactRecord(email=chosen))
-                print(f"📧 '{acc.name}' org email -> {chosen} (from retrieved pages)")
+                logger.info(f"📧 '{acc.name}' org email -> {chosen} (from retrieved pages)")
             else:
                 org_queries = [
                     f'"{acc.name}" "{acc.domain}" email contact' if acc.domain else f'"{acc.name}" email contact',
@@ -659,7 +659,7 @@ def collect_socials_and_emails(state: IcpSessionState) -> dict:
                 chosen = _pick_email(org_emails, None)
                 if chosen:
                     acc.key_contacts.append(ContactRecord(email=chosen))
-                    print(f"📧 '{acc.name}' org email -> {chosen}")
+                    logger.info(f"📧 '{acc.name}' org email -> {chosen}")
 
         # Fill in contacts until there is a named person to reach, best first;
         # undeliverable addresses are dropped here.
@@ -683,16 +683,16 @@ def _enrich_one_account(acc, cfg):
     try:
         hits = _search_and_scrape(query, cfg, num_results=3)
     except Exception as e:  # search failure must not sink the run
-        print(f"⚠️ enrich search failed for '{acc.name}': {e}")
+        logger.warning(f"⚠️ enrich search failed for '{acc.name}': {e}")
         return acc
     site = next((h for h in hits if _host_ok(h.get("url", "")) and _is_homepage_like(h.get("url", ""))), None)
     if site is None:
-        print(f"⚠️ no own-site hit for '{acc.name}'")
+        logger.warning(f"⚠️ no own-site hit for '{acc.name}'")
         return acc
     url = site["url"]
     acc.website = acc.website or url
     acc.domain = acc.domain or re.sub(r"^https?://(www\.)?", "", url).split("/")[0]
-    print(f"🔧 enriched '{acc.name}' -> {acc.website}")
+    logger.info(f"🔧 enriched '{acc.name}' -> {acc.website}")
 
     # Pull any public contact details off the page text we already have.
     try:
@@ -775,24 +775,24 @@ def verify_accounts(state: IcpSessionState) -> dict:
     kept, seen = [], set()
     for acc in accounts.accounts:
         if (not acc.account_type or acc.account_type == "company") and _size_verdict(acc, icp_sizes) == "too_large":
-            print(f"❌ Dropping '{acc.name}' — {acc.size} is larger than any ICP size band.")
+            logger.warning(f"❌ Dropping '{acc.name}' — {acc.size} is larger than any ICP size band.")
             continue
         if acc.trigger_event is None:
-            print(f"❌ Dropping '{acc.name}' — no current trigger_event.")
+            logger.warning(f"❌ Dropping '{acc.name}' — no current trigger_event.")
             continue
         src = acc.trigger_event.source if isinstance(acc.trigger_event, TriggerEvent) else None
         if not src:
-            print(f"❌ Dropping '{acc.name}' — trigger has no source.")
+            logger.warning(f"❌ Dropping '{acc.name}' — trigger has no source.")
             continue
         if src not in doc_urls:
-            print(f"⚠️ '{acc.name}' trigger source not in retrieved docs: {src}")
+            logger.warning(f"⚠️ '{acc.name}' trigger source not in retrieved docs: {src}")
         is_company = not acc.account_type or acc.account_type == "company"
         if is_company:
             # Website is a hard requirement for companies: without it the
             # account is not verifiable. Contacts are NOT hard-dropped —
             # many real SMEs publish none; flagged instead.
             if not acc.website:
-                print(f"❌ Dropping '{acc.name}' — no verifiable website after enrichment.")
+                logger.warning(f"❌ Dropping '{acc.name}' — no verifiable website after enrichment.")
                 continue
         else:
             # Venues (community/event/creator/platform): require the reach
@@ -811,10 +811,10 @@ def verify_accounts(state: IcpSessionState) -> dict:
                         acc.platform = label
                         break
             if not acc.platform:
-                print(f"❌ Dropping '{acc.name}' — venue target has no platform.")
+                logger.warning(f"❌ Dropping '{acc.name}' — venue target has no platform.")
                 continue
             if not (acc.member_size or acc.event_date):
-                print(f"⚠️ '{acc.name}' kept without audience size / event date.")
+                logger.warning(f"⚠️ '{acc.name}' kept without audience size / event date.")
 
         # Contacts are what makes a target actionable: no email, no person on
         # LinkedIn and no social page means nobody to reach, so it is dropped
@@ -827,15 +827,15 @@ def verify_accounts(state: IcpSessionState) -> dict:
         else:
             key = (acc.domain or acc.website or acc.name).strip().lower()
         if key in seen:
-            print(f"❌ Dropping duplicate '{acc.name}' (already kept).")
+            logger.warning(f"❌ Dropping duplicate '{acc.name}' (already kept).")
             continue
         seen.add(key)
         kept.append(acc)
 
     kept = kept[:MAX_ACCOUNT_ROWS]
-    print(f"✅ Verified targets: {len(kept)} (dropped {len(accounts.accounts) - len(kept)})")
+    logger.info(f"✅ Verified targets: {len(kept)} (dropped {len(accounts.accounts) - len(kept)})")
     if len(kept) < MIN_DEFENSIBLE:
-        print(f"⚠️ Fewer than {MIN_DEFENSIBLE} defensible targets — keeping the defensible set, not inventing more.")
+        logger.warning(f"⚠️ Fewer than {MIN_DEFENSIBLE} defensible targets — keeping the defensible set, not inventing more.")
     return {"accounts": AccountList(accounts=kept)}
 
 
@@ -923,7 +923,7 @@ def run_account_discovery_segmented(state: IcpSessionState) -> dict:
     from agents.concurrency import ContextThreadPoolExecutor
 
     segments = _segments_for(state)
-    print(f"Segmented account discovery over {len(segments)} segments: "
+    logger.info(f"Segmented account discovery over {len(segments)} segments: "
           f"{[(s['kind'], s['label'], s['geo']) for s in segments]}")
 
     def _run(seg: dict) -> dict:
@@ -932,7 +932,7 @@ def run_account_discovery_segmented(state: IcpSessionState) -> dict:
             return result
         except Exception as e:
             # A single segment's LLM/Exa failure must not sink the merged run.
-            print(f"⚠️ segment {seg} failed, continuing with the rest: {e}")
+            logger.warning(f"⚠️ segment {seg} failed, continuing with the rest: {e}")
             return {}
 
     results: list[dict] = []
@@ -962,5 +962,5 @@ def run_account_discovery_segmented(state: IcpSessionState) -> dict:
                 docs.append(d)
 
     ranked = sorted(merged.values(), key=lambda a: a.score or 0.0, reverse=True)[:MAX_MERGED_ACCOUNTS]
-    print(f"Merged {len(ranked)} unique accounts across segments (was {sum(len(r.get('accounts').accounts) if r.get('accounts') else 0 for r in results)} pre-dedupe)")
+    logger.info(f"Merged {len(ranked)} unique accounts across segments (was {sum(len(r.get('accounts').accounts) if r.get('accounts') else 0 for r in results)} pre-dedupe)")
     return {"accounts": AccountList(accounts=ranked), "account_discovery_docs": docs}
