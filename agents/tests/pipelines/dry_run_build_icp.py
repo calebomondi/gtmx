@@ -55,6 +55,12 @@ def fake_llm(messages, schema=None, **kw):
                 "w56 w57 w58 w59 w60",
         )
 
+    if getattr(schema, "__name__", "") == "ICPRevision":
+        # The refine pass returns a PATCH to the draft (null = keep), not a whole ICP.
+        assert "DRAFT ICP" in body and "industry-1" in body, "refine prompt missing the drafted ICP JSON"
+        assert "PRODUCT x B2B" in body, "refine missing the buyer-type label"
+        return schema(industries=[f"industry-{i}" for i in range(1, 7)])
+
     if schema is ICP:
         if "DRAFT ICP" in body:
             # The refine pass: it must see the draft it is asked to finalize,
