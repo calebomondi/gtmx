@@ -13,7 +13,7 @@ from agents.concurrency import ContextThreadPoolExecutor
 from agents.pipelines.chat import workspace_chat
 from agents.pipelines.monitor import check_competitor
 from agents.pipelines.monitor import socials as competitor_socials
-from agents.pipelines.outreach import draft_messages
+from agents.pipelines.outreach import gtm_specialist
 from backend.app.account_runner import run_account_discovery_for_workspace
 from backend.app.competitor_runner import research_competitor_site, run_competitor_discovery
 from backend.app.database import models
@@ -22,6 +22,7 @@ from backend.app.runs import events, signals
 from backend.app.services import chat as chat_service
 from backend.app.services import competitors as competitor_service
 from backend.app.services import outreach as outreach_service
+from backend.app.services import specialists as specialist_service
 from backend.app.services.errors import RateLimitedError
 from config import settings
 from utils.log import logger
@@ -94,19 +95,33 @@ _DRAFT_WORKERS = 4
 
 
 async def outreach_drafts(run_id: uuid.UUID, workspace_id: uuid.UUID, params: dict) -> None:
-    """Draft one message per selected account; the user reviews every one."""
+    """The GTM specialist drafts one message per account; the user reviews
+    every one. A single-account request may name the recipient to write to."""
     channel, sender = params["channel"], params.get("sender") or ""
+    override = params.get("recipient") or {}
     async with AsyncSessionLocal() as db:
         run = await db.get(models.Run, run_id)
         accounts = await outreach_service.accounts_for_drafting(
             db, workspace_id, [uuid.UUID(a) for a in params["account_ids"]],
         )
-        context = await outreach_service.offer_context(db, workspace_id)
-    targets = [(a, *outreach_service.recipient_for(a, channel)) for a in accounts]
+        context = await specialist_service.load(db, workspace_id)
+        offer = await outreach_service.offer_context(db, workspace_id)
+    targets = []
+    for account in accounts:
+        name, address = outreach_service.recipient_for(account, channel)
+        if override and len(accounts) == 1:
+            name, address = override.get("name") or name, override.get("address") or address
+        targets.append((account, name, address))
 
     def write(target):
         account, name, _address = target
-        return draft_messages.draft(channel, context, outreach_service.account_brief(account, name), sender)
+        brief = gtm_specialist.OutreachBrief(
+            channel=channel, sender_name=sender, offer=offer, account=outreach_service.account_brief(account),
+            contact_name=name, contact_title=outreach_service.contact_title(account, name),
+            website=account.website, trigger_source=(account.trigger_event or {}).get("source"),
+            team=context.team, research=context.research,
+        )
+        return gtm_specialist.write_first_touch(brief, context.offer_name or "our offer")
 
     def draft_all():
         with ContextThreadPoolExecutor(max_workers=_DRAFT_WORKERS) as pool:

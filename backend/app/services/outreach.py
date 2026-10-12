@@ -192,16 +192,25 @@ async def offer_context(db: AsyncSession, workspace_id: uuid.UUID) -> str:
     return "\n".join(p for p in parts if p)
 
 
-def account_brief(account: models.Account, recipient_name: str | None) -> str:
+def contact_title(account: models.Account, name: str | None) -> str | None:
+    return next((c.get("title") for c in account.key_contacts or []
+                 if isinstance(c, dict) and name and c.get("name") == name), None)
+
+
+def account_brief(account: models.Account) -> str:
+    """Everything account discovery found about the account, for the GTM specialist."""
     trigger = account.trigger_event or {}
     parts = [
-        f"Company: {account.name} ({account.website or 'no website'})",
+        f"Account: {account.name} ({account.account_type}; {account.website or 'no website'})",
+        f"What they do: {account.summary}" if account.summary else "",
         f"Industry: {account.industry or 'n/a'}; size: {account.size or 'n/a'}; geo: {account.geo or 'n/a'}",
-        f"Contact first name: {recipient_name.split()[0]}" if recipient_name else "Contact: unknown",
-        _lines("Why it fits", account.why_selected),
-        _lines("Why reach out now", account.why_reach_out),
+        f"Trigger event: {trigger.get('event')} (source: {trigger.get('source')})" if trigger.get("event") else "",
+        _lines("Why it fits our ICP", account.why_selected),
+        _lines("Angles to reach out now", account.why_reach_out),
         _lines("Pain signals", account.pain_signals),
-        f"Trigger event: {trigger.get('description') or trigger}" if trigger else "",
-        _lines("Recent news", (account.recent_news or [])[:3]),
+        _lines("Hiring signals", account.hiring_signals),
+        _lines("Recent news", (account.recent_news or [])[:4]),
+        _lines("Tech stack", account.tech_stack),
+        _lines("Sources", [s.get("url") for s in (account.sources or [])[:5] if isinstance(s, dict)]),
     ]
     return "\n".join(p for p in parts if p)

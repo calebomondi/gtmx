@@ -34,11 +34,17 @@ export function listOutreach(workspaceId: string): Promise<OutreachList> {
   return apiFetch(base(workspaceId))
 }
 
-/** Ask the agent to draft one message per account; poll listOutreach. */
-export function draftOutreach(workspaceId: string, accountIds: string[], channel: "email" | "linkedin"): Promise<RunDto> {
+/** Ask the GTM specialist to draft one message per account; poll listOutreach.
+ *  `recipient` picks the contact when drafting for a single account. */
+export function draftOutreach(
+  workspaceId: string,
+  accountIds: string[],
+  channel: "email" | "linkedin",
+  recipient?: { name?: string; address?: string },
+): Promise<RunDto> {
   return apiFetch(`${base(workspaceId)}/drafts`, {
     method: "POST",
-    body: JSON.stringify({ account_ids: accountIds, channel }),
+    body: JSON.stringify({ account_ids: accountIds, channel, recipient: recipient ?? null }),
   })
 }
 

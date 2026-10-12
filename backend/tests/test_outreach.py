@@ -38,10 +38,11 @@ def account_id(owned):
 def drafted(client, owned, account_id, monkeypatch):
     seen = {}
 
-    def fake_draft(channel, context, account, sender):
-        seen.update(channel=channel, account=account, sender=sender)
+    def fake_draft(brief, offer_name):
+        seen.update(channel=brief.channel, account=brief.account, sender=brief.sender_name,
+                    contact=brief.contact_name, team=brief.team, research=brief.research)
         return OutreachDraft(subject="Quick idea for Acme", body="Hi Ada, ...")
-    monkeypatch.setattr(background.draft_messages, "draft", fake_draft)
+    monkeypatch.setattr(background.gtm_specialist, "write_first_touch", fake_draft)
     run = client.post(f"{API}/{owned['workspace']}/outreach/drafts", json={"account_ids": [account_id]}).json()
     client.portal.call(_wait_for_status, uuid.UUID(run["id"]), {"completed"})
     client.portal.call(_drain)
@@ -68,7 +69,8 @@ def test_drafts_are_grounded_and_addressed(drafted):
     [message] = drafted["messages"]
     assert (message["status"], message["recipient_address"], message["recipient_name"]) == ("draft", "ada@acme.example", "Ada Lovelace")
     assert message["subject"] == "Quick idea for Acme"
-    assert "Hiring 3 SDRs" in drafted["seen"]["account"] and "Contact first name: Ada" in drafted["seen"]["account"]
+    assert "Hiring 3 SDRs" in drafted["seen"]["account"] and drafted["seen"]["contact"] == "Ada Lovelace"
+    assert set(drafted["seen"]["research"]) >= {"product", "market", "competition", "gtm"}
     assert drafted["seen"]["sender"] == "Owner"
 
 
@@ -118,7 +120,7 @@ def test_gmail_failures_are_recorded_not_raised(client, drafted, gmail, monkeypa
 
 
 def test_linkedin_drafts_are_copied_not_sent(client, owned, account_id, monkeypatch, gmail):
-    monkeypatch.setattr(background.draft_messages, "draft", lambda *a: OutreachDraft(subject="", body="Hi"))
+    monkeypatch.setattr(background.gtm_specialist, "write_first_touch", lambda *a: OutreachDraft(subject="", body="Hi"))
     run = client.post(f"{API}/{owned['workspace']}/outreach/drafts", json={"account_ids": [account_id], "channel": "linkedin"}).json()
     client.portal.call(_wait_for_status, uuid.UUID(run["id"]), {"completed"})
     client.portal.call(_drain)
@@ -140,3 +142,27 @@ def test_recipient_prefers_people_and_never_role_inboxes():
     assert pick([{"email": "accommodations@harvey.ai"}, {"email": "hi@halmoslabs.com"}]) == (None, "hi@halmoslabs.com")
     assert pick([{"name": "Ada"}, {"email": "linus@halmoslabs.com"}])[1] == "linus@halmoslabs.com"
     assert pick([{"email": "not-an-email"}]) == (None, None)
+
+
+def test_single_account_drafts_go_to_the_chosen_contact(client, owned, account_id, monkeypatch):
+    seen = {}
+
+    def fake_draft(brief, offer_name):
+        seen.update(contact=brief.contact_name, sender=brief.sender_name)
+        return OutreachDraft(subject="Hi", body="Hello Grace")
+    monkeypatch.setattr(background.gtm_specialist, "write_first_touch", fake_draft)
+    run = client.post(f"{API}/{owned['workspace']}/outreach/drafts", json={
+        "account_ids": [account_id], "channel": "email",
+        "recipient": {"name": "Grace Hopper", "address": "grace@acme.example"},
+    }).json()
+    client.portal.call(_wait_for_status, uuid.UUID(run["id"]), {"completed"})
+    client.portal.call(_drain)
+    [message] = client.get(f"{API}/{owned['workspace']}/outreach").json()["messages"]
+    assert (message["recipient_name"], message["recipient_address"]) == ("Grace Hopper", "grace@acme.example")
+    assert seen == {"contact": "Grace Hopper", "sender": "Owner"}
+
+
+def test_drafts_are_signed_with_the_email_name_when_the_profile_has_none():
+    from backend.app.api.deps import AuthUser
+    from backend.app.api.v1.endpoints.outreach import sender_name
+    assert sender_name(AuthUser(id=uuid.uuid4(), email="jane.doe@acme.example", name=None, avatar_url=None)) == "Jane Doe"
