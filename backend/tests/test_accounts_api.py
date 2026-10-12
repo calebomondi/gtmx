@@ -34,3 +34,34 @@ def test_socials_are_stored_and_returned(client, owned):
                      ('{"instagram": "https://instagram.com/acme"}', owned["account"]))
     [account] = client.get(f"{settings.api_v1_str}/workspaces/{owned['workspace']}/accounts").json()["accounts"]
     assert account["socials"] == {"instagram": "https://instagram.com/acme"}
+
+
+async def test_account_runs_exclude_the_offer_and_its_competitors(user, seed_workspace, monkeypatch):
+    import uuid as _uuid
+
+    from psycopg.types.json import Jsonb
+
+    from backend.app import account_runner
+
+    workspace_id = seed_workspace(user.id, "WS")
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        conn.execute(
+            "INSERT INTO product_profiles (id, workspace_id, product_url, target_geo, insights) VALUES (%s, %s, %s, %s, %s)",
+            (_uuid.uuid4(), workspace_id, "https://www.shangalabs.com/", Jsonb([]), Jsonb({"icp": {"industries": ["IoT"]}})),
+        )
+        conn.execute(
+            "INSERT INTO competitors (id, workspace_id, name, website, domain_key, source, strengths, weaknesses,"
+            " opportunities, notable_customers, pain_signals, customer_sentiment, tracking_sources, evidence,"
+            " unsourced_fields) VALUES (%s, %s, 'Geviton', 'https://geviton.co.ke', 'geviton.co.ke', 'agent',"
+            " '[]', '[]', '[]', '[]', '[]', '[]', '[]', '{}', '[]')",
+            (_uuid.uuid4(), workspace_id),
+        )
+    seen = {}
+
+    class Graph:
+        def invoke(self, state):
+            seen.update(state)
+            return {"accounts": None}
+    monkeypatch.setattr(account_runner, "build_account_discovery_graph", lambda checkpointer: Graph())
+    await account_runner.run_account_discovery_for_workspace(_uuid.UUID(workspace_id))
+    assert sorted(seen["exclude_domains"]) == ["geviton.co.ke", "shangalabs.com"]

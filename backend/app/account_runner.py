@@ -13,6 +13,7 @@ import asyncio
 import uuid
 from datetime import UTC, datetime
 from typing import Optional
+from urllib.parse import urlsplit
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -24,7 +25,7 @@ from agents.pipelines.accounts.account_discovery import (
 )
 
 from backend.app.database.connect import AsyncSessionLocal
-from backend.app.database.models import Account, ProductProfile
+from backend.app.database.models import Account, Competitor, ProductProfile
 
 _PRESERVED_ON_REFRESH = ("id", "source", "selected", "run_id")
 
@@ -147,6 +148,12 @@ async def run_account_discovery_for_workspace(
         raise RuntimeError("No product profile for this workspace — run discovery first.")
 
     state = _hydrate(profile)
+    async with AsyncSessionLocal() as db:
+        rivals = (await db.execute(
+            select(Competitor.domain_key).where(Competitor.workspace_id == workspace_id)
+        )).scalars().all()
+    own = urlsplit(profile.product_url or "").netloc.lower().removeprefix("www.")
+    state["exclude_domains"] = [d for d in [own, *rivals] if d]
     if not state.get("icp_data"):
         raise RuntimeError(
             "No ICP found for this workspace — finish the Offer run first."

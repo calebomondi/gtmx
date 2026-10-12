@@ -761,6 +761,27 @@ def _size_verdict(acc, icp_sizes: list[str]) -> str | None:
     return "too_large" if account[0] > max(hi for _, hi in bands) else None
 
 
+# A trigger must be something that HAPPENED recently. These describe the
+# company instead ("since 1997", "ongoing growth", "active sales of ..."),
+# which is no reason to reach out now.
+_EVERGREEN_TRIGGER = re.compile(
+    r"\b(since (?:19|20)\d{2}|long[- ]established|established in|founded in|in business for|company profile|"
+    r"ongoing|continues to|consistent(?:ly)? focus|active (?:sales|promotion|recruitment)|well[- ]known|"
+    r"highlighting growth|maintaining (?:high )?growth)\b",
+    re.I,
+)
+
+
+def _host(url: str | None) -> str:
+    host = re.sub(r"^https?://", "", (url or "").lower()).split("/")[0]
+    return host.removeprefix("www.")
+
+
+def _excluded(acc: AccountRecord, domains: set[str]) -> bool:
+    host = _host(acc.website) or (acc.domain or "").lower().removeprefix("www.")
+    return bool(host) and any(host == d or host.endswith("." + d) for d in domains)
+
+
 def verify_accounts(state: IcpSessionState) -> dict:
     """Hard-constraint pass: drop trigger-less targets, require the trigger's
     source to exist in the retrieved docs, dedupe by domain (or platform::name
@@ -772,8 +793,16 @@ def verify_accounts(state: IcpSessionState) -> dict:
     doc_urls = {d.get("url") for d in (state.get("account_discovery_docs") or [])}
     icp = state.get("icp_data")
     icp_sizes = list(icp.company_sizes or []) if icp else []
+    excluded = {d.lower().removeprefix("www.") for d in state.get("exclude_domains") or [] if d}
     kept, seen = [], set()
     for acc in accounts.accounts:
+        if _excluded(acc, excluded):
+            logger.info("Dropping %s -- it is the offer's own company or a tracked competitor", acc.name)
+            continue
+        if acc.trigger_event is not None and _EVERGREEN_TRIGGER.search(acc.trigger_event.event or ""):
+            logger.info("Dropping %s -- trigger describes the company, not a recent event: %s",
+                        acc.name, acc.trigger_event.event)
+            continue
         if (not acc.account_type or acc.account_type == "company") and _size_verdict(acc, icp_sizes) == "too_large":
             logger.warning(f"❌ Dropping '{acc.name}' — {acc.size} is larger than any ICP size band.")
             continue
