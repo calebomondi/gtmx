@@ -100,6 +100,28 @@ async def outreach_drafted(run_id: uuid.UUID, count: int) -> None:
     await _emit(build)
 
 
+async def monitoring_started(run_id: uuid.UUID, names: list[str]) -> None:
+    """Competitors checked for the first time: tracking is now live for them."""
+    async def build(db):
+        run = await db.get(models.Run, run_id)
+        shown = ", ".join(names[:5]) + (f" and {len(names) - 5} more" if len(names) > 5 else "")
+        return [signal_service.build(
+            user_id=run.user_id, workspace_id=run.workspace_id, run_id=run_id, category="competitor",
+            title=f"Now monitoring {len(names)} competitor{'s' if len(names) != 1 else ''}",
+            entity="Competitor monitoring",
+            summary=f"Watching {shown}: their sites, news, events and social posts. Changes land here.",
+            reason="Competitors were added to this workspace.",
+        )]
+    await _emit(build)
+
+
+_CHANGE_REASON = {
+    "event": "Monitoring spotted an event.",
+    "social": "Monitoring spotted a social post.",
+    "news": "Monitoring spotted news.",
+}
+
+
 async def competitor_changes(run_id: uuid.UUID, changes: list) -> None:
     """One signal per material change a monitoring run found."""
     async def build(db):
@@ -107,7 +129,7 @@ async def competitor_changes(run_id: uuid.UUID, changes: list) -> None:
         return [signal_service.build(
             user_id=run.user_id, workspace_id=run.workspace_id, run_id=run_id, category="competitor",
             title=f"{name}: {change.title}", entity=name, summary=change.summary,
-            reason=f"Monitoring spotted a {change.kind} change.",
+            reason=_CHANGE_REASON.get(change.kind, f"Monitoring spotted a {change.kind} change."),
             source_url=change.source_url or website, hot=change.importance == "high",
         ) for name, website, change in changes]
     await _emit(build)

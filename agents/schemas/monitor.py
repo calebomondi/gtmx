@@ -1,5 +1,5 @@
 """Competitor monitoring: the GTM-relevant changes a rival made, found by
-comparing its raw site text and news between checks."""
+comparing its raw site text, news, events and social posts between checks."""
 
 from typing import Literal
 
@@ -9,7 +9,7 @@ from agents.schemas.coercion import LenientModel
 
 
 class CompetitorChange(LenientModel):
-    kind: Literal["pricing", "product", "positioning", "funding", "leadership", "partnership", "news"]
+    kind: Literal["pricing", "product", "positioning", "funding", "leadership", "partnership", "event", "social", "news"]
     title: str = Field(description="Under 10 words, e.g. 'Cut Pro plan price to $8/seat'")
     summary: str = Field(description="What changed and why it matters to us, two sentences max")
     source_url: str = ""

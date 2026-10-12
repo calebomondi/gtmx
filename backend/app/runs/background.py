@@ -147,16 +147,17 @@ async def monitor(run_id: uuid.UUID, workspace_id: uuid.UUID, _params: dict) -> 
 
     def check_one(target):
         _id, name, website, previous, tracking, prev_socials, socials_due = target
-        try:
-            checked = check_competitor.check(name, website, previous, offer)
-        except Exception:  # noqa: BLE001 -- one rival failing must not stop the rest
-            logger.exception("Monitoring %s failed", name)
-            checked = None
+        # Socials first: their new posts are part of what the check compares.
         try:
             socials = competitor_socials.refresh(name, website, tracking, prev_socials) if socials_due else None
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 -- one rival failing must not stop the rest
             logger.exception("Refreshing socials for %s failed", name)
             socials = None
+        try:
+            checked = check_competitor.check(name, website, previous, offer, posts=_recent_posts(socials))
+        except Exception:  # noqa: BLE001
+            logger.exception("Monitoring %s failed", name)
+            checked = None
         return checked, socials
 
     def check_all():
@@ -165,7 +166,7 @@ async def monitor(run_id: uuid.UUID, workspace_id: uuid.UUID, _params: dict) -> 
     results = await asyncio.to_thread(check_all)
 
     now = datetime.now(UTC)
-    found = []
+    found, first_checked = [], []
     async with AsyncSessionLocal() as db:
         for (competitor_id, name, website, *_), (checked, socials) in zip(targets, results):
             competitor = await db.get(models.Competitor, competitor_id)
@@ -173,6 +174,8 @@ async def monitor(run_id: uuid.UUID, workspace_id: uuid.UUID, _params: dict) -> 
                 continue
             if checked is not None:
                 state, changes = checked
+                if not competitor.monitor_state:
+                    first_checked.append(name)
                 competitor.monitor_state = state
                 competitor.last_checked_at = now
                 found += [(name, website, change) for change in changes if change.importance != "low"]
@@ -190,7 +193,23 @@ async def monitor(run_id: uuid.UUID, workspace_id: uuid.UUID, _params: dict) -> 
         "socials": sum(s is not None for _, s in results),
         "changes": len(found),
     })
+    if first_checked:
+        await signals.monitoring_started(run_id, first_checked)
     await signals.competitor_changes(run_id, found)
+
+
+_POSTS_PER_PLATFORM = 3
+
+
+def _recent_posts(socials: tuple[dict, dict] | None) -> list[dict]:
+    """The newest posts from freshly scraped profiles, tagged by platform."""
+    if not socials:
+        return []
+    return [
+        {**post, "platform": platform}
+        for platform, profile in socials[0].items()
+        for post in (profile.get("recent_posts") or [])[:_POSTS_PER_PLATFORM]
+    ]
 
 
 EXECUTORS: dict[str, Callable[[uuid.UUID, uuid.UUID, dict], Awaitable[None]]] = {
