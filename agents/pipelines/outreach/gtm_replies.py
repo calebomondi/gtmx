@@ -13,9 +13,9 @@ from dataclasses import dataclass, field
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from agents.concurrency import ContextThreadPoolExecutor
 from agents.llm.main import cheap_providers, invoke_structured_with_fallback
-from agents.pipelines.outreach.gtm_specialist import BANNED, MAX_CONSULTS, OutreachBrief, consult, persona
+from agents.pipelines import team
+from agents.pipelines.outreach.gtm_specialist import BANNED
 from agents.schemas.outreach import ReplyAnalysis, ReplyDraft
 from utils.log import logger
 
@@ -91,16 +91,10 @@ def _thread_text(brief: ReplyBrief) -> str:
     return "\n\n".join(f"[{'us' if who == 'us' else 'them'}] {text.strip()[:3000]}" for who, text in brief.thread)
 
 
-def _as_outreach(brief: ReplyBrief) -> OutreachBrief:
-    """The consult helper's view of this brief."""
-    return OutreachBrief(channel="email", sender_name=brief.sender_name, offer=brief.offer, account=brief.account,
-                         team=brief.team, research=brief.research)
-
-
 def analyze(brief: ReplyBrief) -> ReplyAnalysis:
     return invoke_structured_with_fallback(
         [SystemMessage(content=_ANALYZE_PROMPT.format(
-            persona=persona(brief.team.get("gtm")), sender=brief.sender_name, account=brief.account,
+            persona=team.persona(team.member(brief.team, "gtm")), sender=brief.sender_name, account=brief.account,
             thread=_thread_text(brief), timezone=brief.timezone or "the timezone they state",
         )), HumanMessage(content="Classify the reply now.")],
         ReplyAnalysis, providers=cheap_providers(), log_label="reply_analyze",
@@ -130,7 +124,7 @@ def lint(brief: ReplyBrief, draft: ReplyDraft) -> list[str]:
 def _write(brief: ReplyBrief, analysis: ReplyAnalysis, notes: str, feedback: str = "") -> ReplyDraft:
     return invoke_structured_with_fallback(
         [SystemMessage(content=_REPLY_PROMPT.format(
-            persona=persona(brief.team.get("gtm")), sender=brief.sender_name, max_words=_MAX_WORDS,
+            persona=team.persona(team.member(brief.team, "gtm")), sender=brief.sender_name, max_words=_MAX_WORDS,
             intent=analysis.intent, summary=analysis.summary, slots=_slots_line(brief, analysis),
             notes=notes, offer=brief.offer, thread=_thread_text(brief),
             feedback=f"\nA reviewer rejected your last version. Fix: {feedback}\n" if feedback else "",
@@ -144,13 +138,9 @@ def draft_reply(brief: ReplyBrief) -> ReplyResult:
     analysis = analyze(brief)
     if not analysis.reply_needed or analysis.intent == "out_of_office":
         return ReplyResult(analysis, None)
-    asks = analysis.consult[:MAX_CONSULTS]
-    if asks:
-        outreach = _as_outreach(brief)
-        with ContextThreadPoolExecutor(max_workers=len(asks)) as pool:
-            notes = "\n".join(pool.map(lambda a: consult(outreach, a), asks))
-    else:
-        notes = "(none)"
+    notes = team.consult_all(brief.team, brief.research, analysis.consult, "gtm",
+                             "The GTM specialist, answering a reply,",
+                             "outreach_consult")
     draft = _write(brief, analysis, notes)
     problems = lint(brief, draft)
     if problems:

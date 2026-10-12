@@ -4,6 +4,7 @@ calendar slots, and skip messages that need no answer."""
 import pytest
 
 from agents.pipelines.outreach import gtm_replies as gr
+from agents.pipelines import team
 from agents.pipelines.outreach import gtm_specialist as gs
 from agents.schemas.outreach import Consultation, ReplyAnalysis, ReplyDraft
 
@@ -32,6 +33,7 @@ def llm(monkeypatch):
         return "It runs fully offline."
     monkeypatch.setattr(gr, "invoke_structured_with_fallback", fake)
     monkeypatch.setattr(gs, "invoke_structured_with_fallback", fake)
+    monkeypatch.setattr(team, "invoke_structured_with_fallback", fake)
     return calls, script
 
 

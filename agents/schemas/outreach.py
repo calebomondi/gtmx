@@ -7,7 +7,7 @@ from pydantic import Field
 
 from agents.schemas.coercion import LenientModel
 
-ConsultDomain = Literal["product", "market", "competition"]
+ConsultDomain = Literal["product", "market", "competition", "gtm"]
 
 
 class AccountFact(LenientModel):
