@@ -26,6 +26,8 @@ from agents.schemas.icp import ICP
 from agents.schemas.sessions import IcpSessionState
 from data_sources.scraping.exa import search_and_scrape
 from data_sources.socials import instagram, linkedin, tiktok, x
+from utils.log import logger
+from agents.pipelines.accounts import contacts
 from agents.pipelines.web_utils import (
     call_with_timeout,
     run_parallel,
@@ -61,6 +63,9 @@ def _search_and_scrape(query, config, num_results=5, start_published_date=None):
     )
     return search_cache_put(key, results or [])
 MAX_ACCOUNT_ROWS = 8
+# Extraction over-fetches so accounts dropped for having no contact are
+# replaced by the next candidates instead of shrinking the list.
+MAX_ACCOUNT_CANDIDATES = 10
 MIN_DEFENSIBLE = 4
 MAX_ACCOUNT_CONTACTS = 6
 MAX_PERSONAL_EMAIL_LOOKUPS = 3
@@ -254,7 +259,7 @@ def extract_accounts(state: IcpSessionState) -> dict:
         f"REACH EMPHASIS\n{_reach_emphasis(icp)}\n\n"
         f"Research context:\n{context or 'No research context available.'}\n\n"
         "Rules:\n"
-        f"- Find between 4 and {MAX_ACCOUNT_ROWS} REAL targets that fit the ICP. Each must be grounded "
+        f"- Find between 4 and {MAX_ACCOUNT_CANDIDATES} REAL targets that fit the ICP. Each must be grounded "
         "in the research context and MUST have a `trigger_event` — a current, verifiable signal observed "
         "in the sources that makes outreach timely now. If a candidate has no current trigger, exclude it. "
         "Never invent a target, a trigger, or a source. Leave `socials` empty — enrichment fills it.\n"
@@ -344,7 +349,7 @@ def extract_accounts(state: IcpSessionState) -> dict:
 
 import re
 
-_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+_EMAIL_RE = contacts.EMAIL_RE
 _LINKEDIN_RE = re.compile(r"https?://(?:www\.)?linkedin\.com/(?:in|company)/[^\s\"')]+", re.I)
 # Aggregator/directory hosts that should never be picked as an account's own site.
 _BAD_HOSTS = ("linkedin.com", "facebook.com", "twitter.com", "x.com", "instagram.com",
@@ -399,7 +404,7 @@ def _record_matches_account(raw: dict, account: AccountRecord) -> bool:
     return False
 
 
-_GENERIC_EMAIL_LOCALS = ("hello", "info", "sales", "contact", "support", "team", "office", "admin")
+_GENERIC_EMAIL_LOCALS = contacts.GENERIC_LOCALS
 
 
 def _domain_emails_from_queries(queries: list[str], acc: AccountRecord, cfg: Settings, cutoff: str) -> list[str]:
@@ -471,6 +476,7 @@ def collect_socials_and_emails(state: IcpSessionState) -> dict:
     icp = state.get("icp_data")
     buyer_type = (icp.buyer_type or "b2b").lower() if icp else "b2b"
     consumer_first = buyer_type in ("b2c", "both")
+    buyer_titles = list(icp.buyer_titles or []) if icp else []
     if _FAST_DISCOVERY or buyer_type == "b2b":
         _platforms = ("linkedin", "x", "instagram", "tiktok")
     else:
@@ -655,19 +661,9 @@ def collect_socials_and_emails(state: IcpSessionState) -> dict:
                     acc.key_contacts.append(ContactRecord(email=chosen))
                     print(f"📧 '{acc.name}' org email -> {chosen}")
 
-        # De-duplicate and cap the contact list so accounts stay concise.
-        seen_contacts: set[str] = set()
-        deduped: list = []
-        for c in acc.key_contacts:
-            email_key = (c.email or "").strip().lower()
-            if email_key:
-                if email_key in seen_contacts:
-                    continue
-                seen_contacts.add(email_key)
-                deduped.append(c)
-            else:
-                deduped.append(c)
-        acc.key_contacts = deduped[:MAX_ACCOUNT_CONTACTS]
+        # Fill in contacts until there is a named person to reach, best first;
+        # undeliverable addresses are dropped here.
+        contacts.complete(acc, buyer_titles, cfg, MAX_ACCOUNT_CONTACTS)
 
     run_parallel(
         [lambda a=acc: (_enrich_one_account(a, cfg), _process(a))[1] for acc in accounts.accounts],
@@ -798,8 +794,6 @@ def verify_accounts(state: IcpSessionState) -> dict:
             if not acc.website:
                 print(f"❌ Dropping '{acc.name}' — no verifiable website after enrichment.")
                 continue
-            if not acc.key_contacts:
-                print(f"⚠️ '{acc.name}' kept without public contact records.")
         else:
             # Venues (community/event/creator/platform): require the reach
             # evidence instead of a homepage — platform + a size or date.
@@ -822,18 +816,12 @@ def verify_accounts(state: IcpSessionState) -> dict:
             if not (acc.member_size or acc.event_date):
                 print(f"⚠️ '{acc.name}' kept without audience size / event date.")
 
-        strict_reachability = get_settings().account_discovery_strict_reachability
-        has_socials = bool(acc.socials)
-        has_email_contacts = any(c.email for c in acc.key_contacts)
-        has_linkedin_trigger = bool(acc.trigger_event and acc.trigger_event.source and _LINKEDIN_RE.search(acc.trigger_event.source))
-        reachable_channels = has_socials or has_email_contacts or has_linkedin_trigger
-        if not reachable_channels:
-            if strict_reachability:
-                print(f"❌ Dropping '{acc.name}' — no socials, no contact emails, and no LinkedIn trigger source.")
-                continue
-            print(f"⚠️ '{acc.name}' kept but has reduced reachability (no socials/emails/LinkedIn source).")
-        elif acc.account_type and acc.account_type != "company" and not has_socials and not has_linkedin_trigger:
-            print(f"⚠️ '{acc.name}' kept; no validated social page found.")
+        # Contacts are what makes a target actionable: no email, no person on
+        # LinkedIn and no social page means nobody to reach, so it is dropped
+        # (extraction over-fetches to make up for it).
+        if not contacts.reachable(acc):
+            logger.info("Dropping %s -- no contact, LinkedIn person or social page found", acc.name)
+            continue
         if acc.account_type and acc.account_type != "company":
             key = f"{acc.platform or acc.account_type}::{acc.name}".strip().lower()
         else:
