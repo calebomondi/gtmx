@@ -26,6 +26,7 @@ enough headroom that the estimate does not have to be exact.
 from __future__ import annotations
 
 import hashlib
+import re
 import json
 import threading
 from agents.concurrency import ContextThreadPoolExecutor
@@ -410,7 +411,23 @@ Write the brief using these rules:
 Return only the brief."""
 
 
-_OFFER_BRIEF_VERSION = 2
+_OFFER_BRIEF_VERSION = 3
+_BRIEF_MIN_TOKENS = 120
+_OUT_OF_SCOPE = re.compile(r"^\W*other offers on this page \(out of scope\):\s*(.+)$", re.I | re.M)
+
+
+def strip_out_of_scope(brief: str) -> str:
+    """Drop every line that mentions an offer the brief itself lists as out of
+    scope -- the condenser is told not to describe them, and this makes sure."""
+    match = _OUT_OF_SCOPE.search(brief)
+    if not match:
+        return brief
+    names = [n.strip(" .;").lower() for n in re.split(r"[;,]", match.group(1)) if len(n.strip(" .;")) > 2]
+    if not names:
+        return brief
+    kept = [line for line in brief.splitlines()
+            if _OUT_OF_SCOPE.match(line) or not any(n in line.lower() for n in names)]
+    return "\n".join(kept)
 _OFFER_BRIEF_CACHE: dict[str, str] = _load_cache_file("offer_brief")
 
 
@@ -436,7 +453,10 @@ def offer_brief(
     if cached is not None:
         return cached
 
-    if count_tokens(body) <= target_tokens:
+    # Always condensed, short pages included: the condenser is what scopes a
+    # multi-offer company page to the named offer. A short page kept raw went
+    # to every stage with its sibling products in it.
+    if count_tokens(body) <= _BRIEF_MIN_TOKENS:
         brief = body
     else:
         try:
@@ -453,6 +473,7 @@ def offer_brief(
             logger.warning("offer_brief failed for %s (%s); keeping head instead", name, exc)
             brief = _truncate_to_tokens(body, DISTILL_HARD_CAP)
         brief = (brief or "").strip() or _truncate_to_tokens(body, DISTILL_HARD_CAP)
+        brief = strip_out_of_scope(brief)
 
     _cache_set("offer_brief", _OFFER_BRIEF_CACHE, digest, brief)
     logger.info(
