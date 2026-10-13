@@ -184,3 +184,18 @@ def test_each_target_country_gets_its_own_search(monkeypatch):
     result = discovery.run_account_discovery_by_country(state)
     assert sorted(searched) == [("Kenya", ["Kenya"]), ("Nigeria", ["Nigeria"]), ("South Africa", ["South Africa"])]
     assert len(result["accounts"].accounts) == 3
+
+
+@pytest.mark.parametrize("name, person", [
+    ("Faith Ochieng", True), ("Nathan Nwachuku", True), ("Mina K.", True), ("Jane", True),
+    ("Sovereign AI Integrator", False), ("Head of Growth", False), ("KenGen Sales Team", False),
+    ("Technical leader in African public-sector IT", False),
+])
+def test_a_role_or_persona_is_not_a_contact_name(name, person):
+    assert contacts.is_person_name(name) is person
+
+
+def test_merge_keeps_the_address_but_not_a_persona_name():
+    """KenGen's draft greeted "Hi Sovereign AI Integrator team": an ICP persona stored as a name."""
+    [kept] = contacts.merge([ContactRecord(name="Sovereign AI Integrator", email="fochieng@acme.example")], [], limit=3)
+    assert (kept.name, kept.email) == (None, "fochieng@acme.example")
