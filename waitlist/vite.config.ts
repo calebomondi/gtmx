@@ -8,6 +8,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: 5174,
-    proxy: { '/api': 'http://localhost:8000' },
+    // GTMX_API_URL points dev at another backend (e.g. one on a test database).
+    proxy: { '/api': process.env.GTMX_API_URL ?? 'http://localhost:8000' },
   },
 })
