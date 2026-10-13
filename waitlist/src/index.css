@@ -2,6 +2,10 @@
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";
 
+/* Phones held sideways: little height, so the hero tightens to keep the
+   signup in reach. */
+@custom-variant short (@media (max-height: 30rem));
+
 /* An intelligence tool for African founders: warm off-white paper, strong
    black type, and #FEA853 as the signature. On light surfaces orange is a
    fill behind black text (it is too light to be text there); orange text
