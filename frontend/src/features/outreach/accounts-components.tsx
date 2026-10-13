@@ -368,7 +368,7 @@ export default function AccountsComponent({ workspaceId }: { workspaceId?: strin
           ) : (
             <>
               {kinds.split && (
-                <AccountKindFilter kind={kinds.kind} counts={kinds.counts} onChange={kinds.setKind} />
+                <AccountKindFilter kind={kinds.kind} kinds={kinds.kinds} counts={kinds.counts} onChange={kinds.setKind} />
               )}
               <div className="flex flex-col gap-3">
                 {kinds.visible.map((account) => (

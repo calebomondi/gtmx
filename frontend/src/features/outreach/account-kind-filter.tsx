@@ -1,19 +1,21 @@
 import { cn } from '@/lib/utils'
 
-import { KIND_LABEL, KINDS, type AccountKind } from './use-account-kinds'
+import { KIND_LABEL, type AccountKind } from './use-account-kinds'
 
 export function AccountKindFilter({
   kind,
+  kinds,
   counts,
   onChange,
 }: {
   kind: AccountKind
+  kinds: AccountKind[]
   counts: Record<AccountKind, number>
   onChange: (kind: AccountKind) => void
 }) {
   return (
     <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label="Filter targets by kind">
-      {KINDS.map((k) => (
+      {kinds.map((k) => (
         <button
           key={k}
           type="button"
