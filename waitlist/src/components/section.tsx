@@ -1,26 +1,55 @@
 import type { ReactNode } from 'react'
 
-/** A page section: a small mono label, a headline, then its content. */
+import { stagger } from '../lib/stagger'
+
+export type Tone = 'paper' | 'white' | 'night' | 'brand'
+
+const TONE: Record<Tone, { section: string; label: string; intro: string }> = {
+  paper: { section: 'bg-paper text-ink', label: 'text-brand-ink', intro: 'text-muted' },
+  white: { section: 'bg-panel text-ink', label: 'text-brand-ink', intro: 'text-muted' },
+  night: { section: 'on-dark bg-night text-paper', label: 'text-brand', intro: 'text-night-muted' },
+  brand: { section: 'bg-brand text-ink', label: 'text-ink', intro: 'text-ink/75' },
+}
+
+/** A page section: a mono label, a headline and an intro that rise in as the
+ * section scrolls into view, then its content. The tone sets its surface, so
+ * consecutive sections alternate. */
 export function Section({
   id,
+  tone = 'paper',
   label,
   title,
   intro,
   children,
 }: {
   id?: string
+  tone?: Tone
   label: string
   title: string
   intro?: string
   children: ReactNode
 }) {
+  const t = TONE[tone]
   return (
-    <section id={id} className="scroll-mt-20 border-t border-line py-16 sm:py-24">
+    <section id={id} className={`scroll-mt-14 py-20 sm:py-28 ${t.section}`}>
       <div className="mx-auto max-w-6xl px-5 sm:px-8">
-        <p className="font-mono text-xs uppercase tracking-wider text-brand-ink">{label}</p>
-        <h2 className="mt-3 max-w-3xl text-3xl font-semibold tracking-tight text-balance sm:text-4xl">{title}</h2>
-        {intro && <p className="mt-4 max-w-2xl text-lg leading-relaxed text-muted">{intro}</p>}
-        <div className="mt-10 sm:mt-12">{children}</div>
+        <p data-reveal className={`flex items-center gap-2 font-mono text-xs uppercase tracking-wider ${t.label}`}>
+          <span aria-hidden className={`h-px w-6 ${tone === 'brand' ? 'bg-ink' : 'bg-brand'}`} />
+          {label}
+        </p>
+        <h2
+          data-reveal
+          style={stagger(1)}
+          className="mt-4 max-w-3xl text-[2rem] leading-[1.08] font-semibold tracking-[-0.03em] text-balance sm:text-5xl"
+        >
+          {title}
+        </h2>
+        {intro && (
+          <p data-reveal style={stagger(2)} className={`mt-5 max-w-2xl text-lg leading-relaxed ${t.intro}`}>
+            {intro}
+          </p>
+        )}
+        <div className="mt-12 sm:mt-14">{children}</div>
       </div>
     </section>
   )

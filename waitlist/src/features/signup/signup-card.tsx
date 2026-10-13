@@ -5,10 +5,19 @@ import { EmailStep } from './email-step'
 import { useSignup } from './use-signup'
 
 /** The signup, in place: email first, then the optional details, then done. */
-export function SignupCard({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; onPilotSpotsLeft: (left: number) => void }) {
+export function SignupCard({
+  pilot,
+  onPilotSpotsLeft,
+  id,
+}: {
+  pilot: PilotSpots | null
+  onPilotSpotsLeft: (left: number) => void
+  /** The page's #join target sets this; only one form can carry it. */
+  id?: string
+}) {
   const signup = useSignup(onPilotSpotsLeft)
   return (
-    <div id="join" className="scroll-mt-24">
+    <div id={id} className="scroll-mt-24">
       {signup.step === 'email' && <EmailStep busy={signup.busy} error={signup.error} onJoin={signup.join} />}
       {signup.step === 'details' && (
         <div className="rounded-xl border border-line bg-panel p-5 shadow-sm sm:p-6">

@@ -2,25 +2,38 @@
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";
 
-/* A market brief, not a SaaS splash: off-white paper, near-black ink, and the
-   brand orange used only the way a highlighter would be, on what matters. */
+/* An intelligence tool for African founders: warm off-white paper, strong
+   black type, and #FEA853 as the signature. On light surfaces orange is a
+   fill behind black text (it is too light to be text there); orange text
+   appears only on black, where it reads at ~9:1. */
 @theme {
   --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'Geist Mono Variable', ui-monospace, monospace;
 
-  --color-paper: #fafaf8;
+  --color-paper: #fbf8f3;
   --color-panel: #ffffff;
-  --color-ink: #14161a;
-  --color-muted: #5b616b;
-  --color-line: #e3e5e8;
+  --color-ink: #121212;
+  --color-night: #141312;
+  --color-muted: #5f5a54;
+  --color-night-muted: #b3ada5;
+  --color-line: #e7e1d8;
+  --color-night-line: #2c2a27;
   --color-brand: #fea853;
-  --color-brand-ink: #a2510c;
-  --color-highlight: #ffe6c7;
+  --color-brand-deep: #f08a24;
+  --color-brand-ink: #9a4a08;
+  --color-highlight: #ffe1bb;
   --color-kept: #1f7a4d;
   --color-dropped: #b42318;
+
+  --shadow-lift: 0 1px 0 rgb(18 18 18 / 0.04), 0 18px 40px -22px rgb(18 18 18 / 0.35);
+  --shadow-card: 0 1px 1px rgb(18 18 18 / 0.04), 0 8px 16px -8px rgb(18 18 18 / 0.12),
+    0 32px 64px -32px rgb(154 74 8 / 0.35);
 }
 
 @layer base {
+  :root {
+    interpolate-size: allow-keywords;
+  }
   html {
     scroll-behavior: smooth;
     -webkit-text-size-adjust: 100%;
@@ -29,37 +42,163 @@
     @apply bg-paper font-sans text-ink antialiased;
   }
   ::selection {
-    @apply bg-highlight;
+    @apply bg-brand text-ink;
   }
   :focus-visible {
-    outline: 2px solid var(--color-brand-ink);
-    outline-offset: 2px;
+    outline: 2px solid var(--color-ink);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+  .on-dark :focus-visible {
+    outline-color: var(--color-brand);
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
+@layer components {
+  /* Primary action: black, turning signature orange under the pointer. */
+  .btn-primary {
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-md bg-ink font-semibold text-paper transition duration-200 hover:bg-brand hover:text-ink active:translate-y-px disabled:cursor-not-allowed disabled:bg-ink/35 disabled:text-paper;
   }
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
+  /* On black and orange surfaces the primary action is orange or white. */
+  .btn-brand {
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-md bg-brand font-semibold text-ink transition duration-200 hover:bg-panel active:translate-y-px;
+  }
+
+  /* The hero's paper: a faint ledger grid under a warm orange glow. */
+  .hero-paper {
+    background-image:
+      radial-gradient(60rem 30rem at 85% 20%, rgb(254 168 83 / 0.28), transparent 60%),
+      radial-gradient(40rem 24rem at 5% 90%, rgb(254 168 83 / 0.14), transparent 60%),
+      linear-gradient(rgb(18 18 18 / 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(18 18 18 / 0.045) 1px, transparent 1px);
+    background-size: auto, auto, 44px 44px, 44px 44px;
+  }
+
+  /* Marker-pen highlight behind words that carry the point. */
+  .marker {
+    background: linear-gradient(transparent 58%, var(--color-brand) 58%, var(--color-brand) 92%, transparent 92%);
+    padding-inline: 0.06em;
   }
 }
 
+/* -- Scroll reveal: `useScrollReveal` adds .is-visible. Without JS (no .js on
+   <html>) nothing is hidden, so content never depends on the script. -- */
+.js [data-reveal] {
+  opacity: 0;
+  transform: translateY(22px);
+  transition:
+    opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition-delay: calc(var(--i, 0) * 90ms);
+}
+.js [data-reveal].is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* A line that draws itself once its section is in view. */
+.js [data-draw] {
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 1.2s cubic-bezier(0.65, 0, 0.35, 1) 0.2s;
+}
+.js [data-draw="y"] {
+  transform: scaleY(0);
+  transform-origin: top;
+}
+.js [data-draw].is-visible {
+  transform: none;
+}
+
+/* Pilot dots fill in one after another. */
+.js [data-dots] .dot-taken {
+  background: transparent;
+  transition: background-color 0.3s ease;
+  transition-delay: calc(var(--i, 0) * 35ms + 200ms);
+}
+.js [data-dots].is-visible .dot-taken {
+  background: var(--color-ink);
+}
+
+/* -- The example run -- */
 @keyframes step-in {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
     transform: none;
   }
 }
-
 .animate-step-in {
-  animation: step-in 0.35s ease-out both;
+  animation: step-in 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes caret {
+  50% {
+    opacity: 0;
+  }
+}
+.caret {
+  animation: caret 1s steps(1) infinite;
+}
+
+/* A rival struck through as it is dropped; follows wrapped lines. */
+@keyframes strike {
+  to {
+    text-decoration-color: var(--color-dropped);
+    color: var(--color-muted);
+  }
+}
+.strike {
+  text-decoration: line-through 1.5px transparent;
+  animation: strike 0.45s ease 0.35s forwards;
+}
+
+@keyframes send-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(254 168 83 / 0.7);
+  }
+  100% {
+    box-shadow: 0 0 0 14px rgb(254 168 83 / 0);
+  }
+}
+.send-pulse {
+  animation: send-pulse 1.4s ease-out 0.4s 2;
+}
+
+/* -- FAQ: answers open smoothly where the browser can animate <details>. -- */
+.faq details::details-content {
+  block-size: 0;
+  overflow: hidden;
+  transition:
+    block-size 0.35s cubic-bezier(0.2, 0.7, 0.2, 1),
+    content-visibility 0.35s allow-discrete;
+}
+.faq details[open]::details-content {
+  block-size: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .js [data-reveal],
+  .js [data-draw],
+  .js [data-dots] .dot-taken {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .js [data-dots] .dot-taken {
+    background: var(--color-ink);
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

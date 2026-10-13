@@ -7,9 +7,11 @@ import { Markets } from './components/markets'
 import { Pilot } from './components/pilot'
 import { SiteHeader } from './components/site-header'
 import { usePilotSpots } from './lib/use-pilot-spots'
+import { useScrollReveal } from './lib/use-scroll-reveal'
 
 export default function App() {
   const [pilot, setPilotSpotsLeft] = usePilotSpots()
+  useScrollReveal()
   return (
     <>
       <SiteHeader />
@@ -21,7 +23,7 @@ export default function App() {
         <Pilot pilot={pilot} />
         <Faq />
       </main>
-      <Closing />
+      <Closing pilot={pilot} onPilotSpotsLeft={setPilotSpotsLeft} />
     </>
   )
 }

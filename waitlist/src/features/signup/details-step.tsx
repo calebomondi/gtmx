@@ -138,7 +138,7 @@ export function DetailsStep({
         <button
           type="submit"
           disabled={busy}
-          className="h-11 cursor-pointer rounded-md bg-ink px-5 text-sm font-semibold text-paper transition hover:bg-ink/85 disabled:opacity-40"
+          className="btn-primary h-11 px-5 text-sm"
         >
           {busy ? 'Saving…' : wantsPilot ? 'Save and join the pilot' : 'Save'}
         </button>

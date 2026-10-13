@@ -2,31 +2,44 @@ import { SignupCard } from '../features/signup/signup-card'
 import type { PilotSpots } from '../lib/api'
 import { RunPreview } from './run-preview'
 
+const PROOF = ['Kenya · Nigeria · South Africa', 'Four specialists on every run', 'You approve every send']
+
 export function Hero({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; onPilotSpotsLeft: (left: number) => void }) {
   return (
-    <section id="top" className="mx-auto grid max-w-6xl gap-12 px-5 pt-12 pb-16 sm:px-8 sm:pt-20 sm:pb-24 lg:grid-cols-[1.05fr_1fr] lg:items-start lg:gap-14">
-      <div className="flex min-w-0 flex-col gap-7">
-        <p className="font-mono text-xs uppercase tracking-wider text-muted">
-          For founders selling in Kenya, Nigeria &amp; South Africa
-        </p>
-        <h1 className="text-[2.6rem] leading-[1.05] font-semibold tracking-tight text-balance sm:text-6xl">
-          Know who to sell to, and{' '}
-          <span className="bg-[linear-gradient(transparent_62%,var(--color-highlight)_62%)] px-0.5">why now.</span>
-        </h1>
-        <p className="max-w-xl text-lg leading-relaxed text-muted">
-          GTMX is a go-to-market team you don’t have to hire. It studies your offer, maps your market and
-          rivals, finds the companies and communities with a reason to buy this month, and drafts the first
-          message. You approve every send.
-        </p>
-        <SignupCard pilot={pilot} onPilotSpotsLeft={onPilotSpotsLeft} />
-        {pilot && pilot.left > 0 && (
-          <p className="font-mono text-xs text-muted">
-            Pilot: <span className="text-ink">{pilot.left} of {pilot.total}</span> spots open
+    <section id="top" className="hero-paper flex min-h-[calc(100svh-3.5rem)] items-center">
+      <div className="mx-auto grid w-full max-w-6xl gap-14 px-5 py-14 sm:px-8 lg:grid-cols-[1.08fr_1fr] lg:items-center lg:gap-16">
+        <div className="flex min-w-0 flex-col gap-6">
+          <p className="inline-flex w-fit items-center gap-2 rounded-full border border-ink/15 bg-panel/70 px-3 py-1 font-mono text-[11px] uppercase tracking-wider">
+            <span aria-hidden className="size-1.5 rounded-full bg-brand" />
+            For founders selling in Kenya, Nigeria &amp; South Africa
           </p>
-        )}
-      </div>
-      <div className="min-w-0">
-        <RunPreview />
+          <h1 className="text-[2.75rem] leading-[1.02] font-semibold tracking-[-0.035em] text-balance sm:text-[4.1rem]">
+            Know who to sell to, and <span className="marker whitespace-nowrap">why now.</span>
+          </h1>
+          <p className="max-w-xl text-lg leading-relaxed text-muted">
+            GTMX is a go-to-market team you don’t have to hire. It studies your offer, maps your market and
+            rivals, finds the companies and communities with a reason to buy this month, and drafts the first
+            message. You approve every send.
+          </p>
+          <SignupCard id="join" pilot={pilot} onPilotSpotsLeft={onPilotSpotsLeft} />
+          <ul className="flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-muted">
+            {PROOF.map((item) => (
+              <li key={item} className="flex items-center gap-2">
+                <span aria-hidden className="size-2 rounded-[2px] bg-brand" />
+                {item}
+              </li>
+            ))}
+            {pilot && pilot.left > 0 && (
+              <li className="flex items-center gap-2 font-medium text-ink">
+                <span aria-hidden className="size-2 rounded-[2px] bg-ink" />
+                {pilot.left} of {pilot.total} pilot spots open
+              </li>
+            )}
+          </ul>
+        </div>
+        <div className="min-w-0 pr-3 pb-3 sm:pr-4 sm:pb-4">
+          <RunPreview />
+        </div>
       </div>
     </section>
   )

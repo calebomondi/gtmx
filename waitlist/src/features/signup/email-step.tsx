@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useId, useState, type FormEvent } from 'react'
 
 /** Step one: just an email and consent. Everything else is optional, later. */
 export function EmailStep({
@@ -10,6 +10,8 @@ export function EmailStep({
   error: string | null
   onJoin: (email: string, nickname: string) => void
 }) {
+  // Unique per form: the signup appears twice on the page.
+  const id = useId()
   const [email, setEmail] = useState('')
   const [consent, setConsent] = useState(false)
   const [nickname, setNickname] = useState('')
@@ -21,12 +23,12 @@ export function EmailStep({
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">
-      <label htmlFor="join-email" className="text-sm font-medium">
+      <label htmlFor={`${id}-email`} className="text-sm font-medium">
         Work email
       </label>
       <div className="flex flex-col gap-2 sm:flex-row">
         <input
-          id="join-email"
+          id={`${id}-email`}
           type="email"
           required
           autoComplete="email"
@@ -34,12 +36,12 @@ export function EmailStep({
           placeholder="you@company.co.ke"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="h-12 w-full min-w-0 rounded-md border border-line bg-panel px-3.5 text-base outline-none transition focus:border-ink sm:flex-1"
+          className="h-12 w-full min-w-0 rounded-md border border-ink/20 bg-panel px-3.5 text-base outline-none transition focus:border-ink focus:ring-4 focus:ring-brand/40 sm:flex-1"
         />
         <button
           type="submit"
           disabled={busy || !consent || !email.trim()}
-          className="h-12 shrink-0 cursor-pointer rounded-md bg-ink px-5 text-sm font-semibold text-paper transition hover:bg-ink/85 disabled:cursor-not-allowed disabled:opacity-40"
+          className="btn-primary h-12 shrink-0 px-5 text-sm"
         >
           {busy ? 'Joining…' : 'Join the waitlist'}
         </button>
@@ -57,7 +59,7 @@ export function EmailStep({
       />
       <label className="flex cursor-pointer items-start gap-2.5 text-[13px] leading-snug text-muted">
         <input
-          id="join-consent"
+          id={`${id}-consent`}
           type="checkbox"
           checked={consent}
           onChange={(e) => setConsent(e.target.checked)}
