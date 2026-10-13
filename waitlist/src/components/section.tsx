@@ -32,7 +32,7 @@ export function Section({
   const t = TONE[tone]
   return (
     <section id={id} className={`scroll-mt-14 py-20 sm:py-28 ${t.section}`}>
-      <div className="mx-auto max-w-6xl px-5 sm:px-8">
+      <div className="mx-auto max-w-7xl px-5 sm:px-8">
         <p data-reveal className={`flex items-center gap-2 font-mono text-xs uppercase tracking-wider ${t.label}`}>
           <span aria-hidden className={`h-px w-6 ${tone === 'brand' ? 'bg-ink' : 'bg-brand'}`} />
           {label}

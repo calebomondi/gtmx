@@ -6,7 +6,7 @@ export function FooterWordmark() {
   return (
     <div
       aria-hidden="true"
-      className="group mx-auto max-w-6xl overflow-hidden px-5 select-none sm:px-8"
+      className="group mx-auto max-w-7xl overflow-hidden px-5 select-none sm:px-8"
       style={{ fontSize: 'clamp(6rem, 25vw, 21rem)' }}
     >
       {/* 0.8 line-height, cropped to ~85% of it: the bottom bleeds off. */}

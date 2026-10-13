@@ -8,7 +8,7 @@ const PROOF = ['Kenya · Nigeria · South Africa', 'Four specialists on every ru
 export function Hero({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; onPilotSpotsLeft: (left: number) => void }) {
   return (
     <section id="top" className="hero-paper flex min-h-[calc(100svh-3.5rem)] items-center">
-      <div className="mx-auto grid w-full max-w-6xl gap-14 px-5 py-14 sm:px-8 lg:grid-cols-[1.08fr_1fr] lg:items-center lg:gap-16">
+      <div className="mx-auto grid w-full max-w-7xl gap-14 px-5 py-14 sm:px-8 lg:grid-cols-[0.95fr_1.15fr] lg:items-center lg:gap-16">
         <div className="flex min-w-0 flex-col gap-6">
           <p className="inline-flex w-fit items-center gap-2 rounded-full border border-ink/15 bg-panel/70 px-3 py-1 font-mono text-[11px] uppercase tracking-wider">
             <span aria-hidden className="size-1.5 rounded-full bg-brand" />
