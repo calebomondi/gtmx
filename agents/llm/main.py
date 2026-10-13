@@ -53,6 +53,14 @@ CHEAP_QWEN_MODELS: list[str] = [m for m in cfg.llm_cheap_models if m.strip()]
 
 FALLBACK_MODELS: list[str] = [m for m in cfg.llm_fallback_models if m.strip()]
 
+# Output ceiling for every call. Above the largest real structured output
+# (~8k tokens), so it only stops a runaway: one page summary on a model that
+# forces thinking once wrote 16k tokens over 169s.
+MAX_OUTPUT_TOKENS = 12_000
+# Reasoning allowed when a call asked for none but the model only runs with
+# thinking on. Enough to plan an answer, not to write an essay first.
+FORCED_THINKING_BUDGET = 1_024
+
 
 def _with_fallback(primary: list[tuple[str, list[str]]]) -> list[tuple[str, list[str]]]:
     """Append the second provider when it is configured, so an outage or an
@@ -223,6 +231,8 @@ _BILLING_WALL_MARKERS = (
     "exceeded your current quota",
     "quota exhausted",
     "free quota exhausted",
+    # DashScope's free tier: "The free quota has been exhausted."
+    "quota has been exhausted",
     "out of credit",
     "add funds",
     "arrearage",
@@ -432,9 +442,11 @@ def _llm(
             # Learned to reject enable_thinking — run it non-thinking.
             thinking = False
             thinking_budget = None
-        if (provider, m) in _FORCE_THINKING_MODELS:
-            # Learned to require thinking — always send it enabled.
+        if (provider, m) in _FORCE_THINKING_MODELS and not thinking:
+            # Learned to require thinking, on a call that wanted none: allow
+            # only a short budget so a quick job stays quick.
             thinking = True
+            thinking_budget = thinking_budget or FORCED_THINKING_BUDGET
         logger.info("Using Qwen (%s, thinking=%s, budget=%s)", m, thinking, thinking_budget)
         kwargs = {"enable_thinking": thinking}
         if thinking_budget is not None:
@@ -452,6 +464,7 @@ def _llm(
             # Retries are this module's ladder's job (it knows a throttle from a
             # dead model); SDK-level retries would just multiply the wait.
             max_retries=0,
+            max_tokens=MAX_OUTPUT_TOKENS,
             **kwargs,
         )
     if provider == "openrouter":
@@ -463,6 +476,7 @@ def _llm(
             base_url=cfg.openrouter_base_url,
             timeout=cfg.llm_call_timeout_s,
             max_retries=0,
+            max_tokens=MAX_OUTPUT_TOKENS,
         )
     raise ValueError(f"Unknown LLM provider {provider!r}")
 

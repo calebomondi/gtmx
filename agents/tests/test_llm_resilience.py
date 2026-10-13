@@ -112,3 +112,18 @@ def test_calls_per_provider_are_capped(monkeypatch):
     with ContextThreadPoolExecutor(max_workers=8) as pool:
         results = list(pool.map(call, range(8)))
     assert all(r.ok for r in results) and state["peak"] == 2
+
+
+def test_dashscope_free_quota_wall_is_billing_not_a_missing_model():
+    err = Exception("Error code: 403 - The free quota has been exhausted. To continue accessing the model on a paid basis")
+    assert llm.classify_llm_error(err) == "billing"
+
+
+def test_a_quick_call_on_a_thinking_only_model_gets_a_short_budget(monkeypatch):
+    monkeypatch.setattr(llm.cfg, "dashscope_api_key", "test-key")  # building a client needs one; nothing is sent
+    monkeypatch.setattr(llm, "_FORCE_THINKING_MODELS", {("qwen", "thinker")})
+    quick = llm._llm("qwen", "thinker", thinking=False)
+    assert quick.enable_thinking and quick.thinking_budget == llm.FORCED_THINKING_BUDGET
+    assert quick.max_tokens == llm.MAX_OUTPUT_TOKENS
+    deep = llm._llm("qwen", "thinker", thinking=True, thinking_budget=8000)
+    assert deep.thinking_budget == 8000
