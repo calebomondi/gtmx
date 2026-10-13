@@ -9,12 +9,15 @@ nor delivered twice.
 import asyncio
 import uuid
 from collections import defaultdict
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
+from contextlib import contextmanager
 
 from sqlalchemy import select
 
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
+from utils import progress
+from utils.log import logger
 
 # Frames after which a run stops emitting until something resumes it.
 TERMINAL_FRAME_TYPES = frozenset({"complete", "error", "cancelled"})
@@ -70,3 +73,36 @@ async def subscribe(run_id: uuid.UUID, after_id: int = 0) -> AsyncIterator[dict]
         _subscribers[run_id].discard(queue)
         if not _subscribers[run_id]:
             _subscribers.pop(run_id, None)
+
+
+@contextmanager
+def reporting_steps(run_id: uuid.UUID) -> Iterator[None]:
+    """While inside, agent progress steps (`utils.progress.report`) are saved
+    as the run's "step" frames, in the order reported. Steps come from worker
+    threads, so each is handed to this event loop; the agent never waits for
+    one to be written."""
+    loop = asyncio.get_running_loop()
+    # One step at a time, in the order reported: each save is its own task and
+    # session, and two quick steps could otherwise commit (and get ids) out of
+    # order. Tasks reach this lock in submission order, and it is FIFO.
+    in_order = asyncio.Lock()
+
+    async def save(text: str) -> None:
+        async with in_order:
+            await publish(run_id, "step", {"text": text})
+
+    def publish_step(text: str) -> None:
+        future = asyncio.run_coroutine_threadsafe(save(text), loop)
+        future.add_done_callback(_log_failure)
+
+    token = progress.current_reporter.set(publish_step)
+    try:
+        yield
+    finally:
+        progress.current_reporter.reset(token)
+
+
+def _log_failure(future) -> None:
+    if not future.cancelled() and future.exception() is not None:
+        logger.warning("Could not save a progress step: %s", future.exception())
+

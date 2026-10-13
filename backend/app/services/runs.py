@@ -39,6 +39,19 @@ async def get_owned(db: AsyncSession, owner_id: uuid.UUID, run_id: uuid.UUID) ->
     return run
 
 
+async def list_steps(db: AsyncSession, owner_id: uuid.UUID, run_id: uuid.UUID,
+                     after: int, limit: int) -> list[models.RunEvent]:
+    """The owned run's progress steps after the `after` cursor, oldest first."""
+    await get_owned(db, owner_id, run_id)
+    result = await db.execute(
+        select(models.RunEvent)
+        .where(models.RunEvent.run_id == run_id, models.RunEvent.type == "step", models.RunEvent.id > after)
+        .order_by(models.RunEvent.id)
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
 async def list_active(db: AsyncSession, owner_id: uuid.UUID) -> list[models.Run]:
     """The user's runs that are not finished, newest first -- what a reloaded
     client reattaches to."""

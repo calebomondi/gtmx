@@ -28,6 +28,7 @@ from agents.schemas.sessions import IcpSessionState
 from data_sources.scraping.exa import search_and_scrape
 from data_sources.socials import instagram, linkedin, tiktok, x
 from utils.log import logger
+from utils.progress import report
 from agents.pipelines.accounts import contacts
 from agents.pipelines.web_utils import (
     call_with_timeout,
@@ -212,6 +213,12 @@ def create_account_queries(state: IcpSessionState) -> dict:
     return {"account_discovery_queries": queries}
 
 
+def _where(state: IcpSessionState) -> str:
+    """' in Kenya' for a progress step, from the segment's geography."""
+    geos = [g for g in _geos_for(state, state.get("icp_data")) if g != "the target market"]
+    return f" in {', '.join(geos)}" if geos else ""
+
+
 def search_accounts(state: IcpSessionState) -> dict:
     """Run the queries through Exa, recency-gated, deduplicated by URL."""
     queries = state.get("account_discovery_queries") or []
@@ -220,6 +227,7 @@ def search_accounts(state: IcpSessionState) -> dict:
     cfg = get_settings()
     cutoff = _recency_cutoff(cfg.market_recency_days)
     todo = queries[:8 if _FAST_DISCOVERY else 16]
+    report(f"Searching for targets{_where(state)}: {len(todo)} searches")
     per_query = run_parallel(
         [
             (lambda q=q: _search_and_scrape(
@@ -241,6 +249,7 @@ def search_accounts(state: IcpSessionState) -> dict:
                 seen.add(r["url"])
                 docs.append({"url": r.get("url"), "title": r.get("title"), "text": r.get("text")})
     logger.info(f"search_accounts produced {len(docs)} docs from {len(queries)} queries (after {cutoff})")
+    report(f"Reading {len(docs)} recent pages{_where(state)} for buying signals")
     return {"account_discovery_docs": docs}
 
 
@@ -352,6 +361,8 @@ def extract_accounts(state: IcpSessionState) -> dict:
                 providers=cheap_providers(),
                 thinking=False,
             )
+    found = len(accounts.accounts) if accounts else 0
+    report(f"{found} possible targets{_where(state)}: " + ", ".join(a.name for a in (accounts.accounts if accounts else [])[:5]))
     return {"accounts": accounts, "account_discovery_docs": docs}
 
 
@@ -510,6 +521,7 @@ def collect_socials_and_emails(state: IcpSessionState) -> dict:
         return list(dict.fromkeys(out))
 
     def _process(acc):
+        report(f"Finding people to contact at {acc.name}")
         # Seed socials from URLs we already collected (trigger source /
         # sources list) — those hosts are a free, authoritative hit and
         # let us skip the paid Exa search for that platform entirely.
@@ -835,6 +847,7 @@ def verify_accounts(state: IcpSessionState) -> dict:
             logger.warning(f"⚠️ '{acc.name}' trigger source not in retrieved docs: {src}")
         elif not _trigger_names_account(acc, doc_texts[src]):
             logger.info("Dropping %s -- its trigger's source never mentions it: %s", acc.name, src)
+            report(f"Dropped {acc.name}: the news behind it isn't about them")
             continue
         is_company = not acc.account_type or acc.account_type == "company"
         if is_company:
@@ -871,6 +884,7 @@ def verify_accounts(state: IcpSessionState) -> dict:
         # (extraction over-fetches to make up for it).
         if not contacts.reachable(acc):
             logger.info("Dropping %s -- no contact, LinkedIn person or social page found", acc.name)
+            report(f"Dropped {acc.name}: no one to contact")
             continue
         if acc.account_type and acc.account_type != "company":
             key = f"{acc.platform or acc.account_type}::{acc.name}".strip().lower()
@@ -884,6 +898,7 @@ def verify_accounts(state: IcpSessionState) -> dict:
 
     kept = kept[:MAX_ACCOUNT_ROWS]
     logger.info(f"✅ Verified targets: {len(kept)} (dropped {len(accounts.accounts) - len(kept)})")
+    report(f"Kept {len(kept)} of {len(accounts.accounts)} targets{_where(state)}")
     if len(kept) < MIN_DEFENSIBLE:
         logger.warning(f"⚠️ Fewer than {MIN_DEFENSIBLE} defensible targets — keeping the defensible set, not inventing more.")
     return {"accounts": AccountList(accounts=kept)}

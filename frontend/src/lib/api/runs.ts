@@ -35,3 +35,15 @@ export function answerRun(runId: string, answer: string): Promise<void> {
 export function cancelRun(runId: string): Promise<RunDto> {
   return apiFetch<RunDto>(`/api/v1/runs/${runId}/cancel`, { method: "POST" })
 }
+
+/** One progress step a long run reported ("Searching: direct substitutes"). */
+export interface RunStepDto {
+  /** Cursor: pass the last one as `after` to get only newer steps. */
+  id: number
+  text: string
+  created_at: string
+}
+
+export function listRunSteps(runId: string, after = 0): Promise<RunStepDto[]> {
+  return apiFetch<RunStepDto[]>(`/api/v1/runs/${runId}/steps?after=${after}`)
+}

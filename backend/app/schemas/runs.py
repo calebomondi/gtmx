@@ -22,3 +22,12 @@ class RunResponse(BaseModel):
 
 class RunAnswer(BaseModel):
     answer: str = Field(min_length=1)
+
+
+class RunStepResponse(BaseModel):
+    """One progress step a run reported, oldest first."""
+
+    id: int = Field(description="Cursor: pass the last one as `after` to get only newer steps")
+    text: str
+    created_at: datetime
+

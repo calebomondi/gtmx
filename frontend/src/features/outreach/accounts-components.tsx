@@ -17,6 +17,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { RunActivity } from '@/components/run-activity'
 import { cn } from '@/lib/utils'
 
 import { AccountDetailDialog } from './account-dialog'
@@ -296,12 +297,12 @@ export default function AccountsComponent({ workspaceId }: { workspaceId?: strin
       </CardHeader>
 
       {run && LIVE_STATUSES.has(run.status) && (
-        <div className="mx-4 mb-2 flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          <Loader2 className="size-3.5 animate-spin text-amber-500" />
-          <span>
-            Hunting accounts… {run.candidates_seen > 0 ? `· ${run.candidates_seen} sources checked` : ''}
-            {run.found > 0 ? ` · ${run.found} found` : ''}
-          </span>
+        <div className="mx-4 mb-2 flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          <Loader2 className="mt-0.5 size-3.5 shrink-0 animate-spin text-amber-500" />
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <span>Hunting accounts…</span>
+            <RunActivity runId={run.id} live startedAt={run.started_at ?? run.created_at} typical="3–6 minutes" />
+          </div>
         </div>
       )}
       {run && run.status === 'failed' && (

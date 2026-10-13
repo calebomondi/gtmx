@@ -59,13 +59,17 @@ async def _start_monitoring(run_id: uuid.UUID, workspace_id: uuid.UUID) -> None:
 
 
 async def competitors(run_id: uuid.UUID, workspace_id: uuid.UUID, _params: dict) -> None:
-    await _finish(run_id, await run_competitor_discovery(workspace_id=workspace_id, run_id=run_id))
+    with events.reporting_steps(run_id):
+        outcome = await run_competitor_discovery(workspace_id=workspace_id, run_id=run_id)
+    await _finish(run_id, outcome)
     await signals.competitors_found(run_id)
     await _start_monitoring(run_id, workspace_id)
 
 
 async def accounts(run_id: uuid.UUID, workspace_id: uuid.UUID, _params: dict) -> None:
-    await _finish(run_id, await run_account_discovery_for_workspace(workspace_id=workspace_id, run_id=run_id))
+    with events.reporting_steps(run_id):
+        outcome = await run_account_discovery_for_workspace(workspace_id=workspace_id, run_id=run_id)
+    await _finish(run_id, outcome)
     await signals.accounts_found(run_id)
 
 

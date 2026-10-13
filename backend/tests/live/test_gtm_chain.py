@@ -124,6 +124,15 @@ async def _discover(card: checks.Scorecard, offer: Offer, user_id: uuid.UUID) ->
     return run
 
 
+async def _check_steps(card: checks.Scorecard, stage: str, run: models.Run) -> None:
+    """A long run shows the user what it is doing while it works."""
+    async with AsyncSessionLocal() as db:
+        steps = (await db.execute(select(models.RunEvent.payload).where(
+            models.RunEvent.run_id == run.id, models.RunEvent.type == "step"))).scalars().all()
+    card.check(stage, len(steps) >= 3, "reports progress steps while it runs", "major",
+               f"{len(steps)} steps, e.g. {[p.get('text') for p in steps[:3]]}")
+
+
 def _row(obj, *fields: str) -> dict:
     return {f: getattr(obj, f) for f in fields}
 
@@ -163,7 +172,8 @@ async def _stages(offer: Offer, card: checks.Scorecard, artifacts: dict) -> None
     artifacts["insights"] = insights
     checks.check_discovery(card, offer, insights, workspace)
 
-    await _run("competitors", user_id, workspace.id)
+    run = await _run("competitors", user_id, workspace.id)
+    await _check_steps(card, "competitors", run)
     lap("competitors")
     await _run("monitor", user_id, workspace.id)
     lap("monitor")
@@ -179,7 +189,8 @@ async def _stages(offer: Offer, card: checks.Scorecard, artifacts: dict) -> None
     checks.check_competitors(card, offer, competitors)
     checks.check_monitor(card, competitors, signals)
 
-    await _run("accounts", user_id, workspace.id)
+    run = await _run("accounts", user_id, workspace.id)
+    await _check_steps(card, "accounts", run)
     lap("accounts")
     async with AsyncSessionLocal() as db:
         accounts = (await db.execute(select(models.Account).where(models.Account.workspace_id == workspace.id)
