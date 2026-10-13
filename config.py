@@ -118,6 +118,20 @@ class Settings(BaseSettings):
     # Only threads sent within this window are watched for replies.
     inbox_sync_window_days: int = 30
 
+    # -- Waitlist (public landing page at gtmx.co) --
+    # Resend sends the signup confirmation. It only delivers to any address
+    # once the sending domain is verified in Resend; until `waitlist_from_email`
+    # is set (e.g. "GTMX <hello@gtmx.co>"), signups are saved and no email goes.
+    resend_api_key: str = ""
+    resend_timeout_s: float = 15.0
+    waitlist_from_email: str = ""
+    waitlist_pilot_spots: int = 50
+    # Days after signup the team reaches out to pilot opt-ins (said in the email).
+    waitlist_pilot_contact_days: int = 14
+    waitlist_signups_per_ip_per_hour: int = 5
+    # Salt for the stored IP hash (rate limiting without keeping raw IPs).
+    waitlist_ip_salt: str = "gtmx-waitlist"
+
     # -- Observability (all opt-in: empty means off) --
     sentry_dsn: str = ""
     sentry_environment: str = "development"
