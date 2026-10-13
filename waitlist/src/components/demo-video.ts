@@ -1,5 +1,5 @@
 /** The product recording shown in the hero. While `DEMO_VIDEO` is null the
- * hero plays the coded example run instead.
+ * hero shows the empty frame (`DemoPlaceholder`).
  *
  * To publish a recording: run scripts/encode-demo.sh on the raw capture
  * (it writes public/media/demo.{mp4,webm} and demo-poster.webp), then fill

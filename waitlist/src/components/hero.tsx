@@ -1,8 +1,7 @@
 import { SignupCard } from '../features/signup/signup-card'
 import type { PilotSpots } from '../lib/api'
 import { DEMO_VIDEO } from './demo-video'
-import { ProductDemo } from './product-demo'
-import { RunPreview } from './run-preview'
+import { DemoPlaceholder, ProductDemo } from './product-demo'
 
 const PROOF = ['Kenya · Nigeria · South Africa', 'Four specialists on every run', 'You approve every send']
 
@@ -40,7 +39,7 @@ export function Hero({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; on
           </ul>
         </div>
         <div className="min-w-0 pr-3 pb-3 sm:pr-4 sm:pb-4">
-          {DEMO_VIDEO ? <ProductDemo video={DEMO_VIDEO} /> : <RunPreview />}
+          {DEMO_VIDEO ? <ProductDemo video={DEMO_VIDEO} /> : <DemoPlaceholder />}
         </div>
       </div>
     </section>
