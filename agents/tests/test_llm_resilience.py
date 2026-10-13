@@ -120,6 +120,7 @@ def test_dashscope_free_quota_wall_is_billing_not_a_missing_model():
 
 
 def test_a_quick_call_on_a_thinking_only_model_gets_a_short_budget(monkeypatch):
+    monkeypatch.setattr(llm.cfg, "dashscope_api_key", "test-key")  # building a client needs one; nothing is sent
     monkeypatch.setattr(llm, "_FORCE_THINKING_MODELS", {("qwen", "thinker")})
     quick = llm._llm("qwen", "thinker", thinking=False)
     assert quick.enable_thinking and quick.thinking_budget == llm.FORCED_THINKING_BUDGET
