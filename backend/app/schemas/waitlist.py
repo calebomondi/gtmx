@@ -1,11 +1,14 @@
-"""Request/response models for the public waitlist."""
+"""Request/response models for the public waitlist and its admin views."""
 
+import uuid
+from datetime import date, datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 Stage = Literal["idea", "pre_revenue", "revenue", "scaling"]
 SellsTo = Literal["b2b", "b2c", "both"]
+WaitlistStatus = Literal["new", "contacted", "invited", "onboarded"]
 
 EXPECTATIONS_MAX_CHARS = 500
 MAX_COUNTRIES = 12
@@ -55,3 +58,44 @@ class PilotSpots(BaseModel):
     total: int
     taken: int
     left: int
+
+
+class WaitlistSignupRow(BaseModel):
+    """One signup as the admin dashboard sees it."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    email: str
+    name: str | None
+    company: str | None
+    role: str | None
+    stage: Stage | None
+    sells_to: SellsTo | None
+    countries: list[str]
+    wants_pilot: bool
+    expectations: str | None
+    source: dict
+    status: WaitlistStatus
+    confirmation_sent_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class WaitlistStatusUpdate(BaseModel):
+    status: WaitlistStatus
+
+
+class SignupsOnDay(BaseModel):
+    day: date
+    signups: int
+
+
+class WaitlistStats(BaseModel):
+    total: int
+    last_7_days: int
+    pilot: PilotSpots
+    by_day: list[SignupsOnDay] = Field(description="Signups per day, oldest first, days without signups included")
+    by_stage: dict[str, int] = Field(description="Signups per stage; 'unknown' for those who didn't say")
+    by_sells_to: dict[str, int]
+
