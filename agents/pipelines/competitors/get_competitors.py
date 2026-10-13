@@ -65,6 +65,7 @@ from agents.schemas.competition import IdealCompetitorProfile
 from data_sources.scraping.exa import scrape_url, search_and_scrape
 from data_sources.socials import profiles as social_profiles
 from utils.log import logger
+from utils.progress import report
 
 from ..web_utils import call_with_timeout, search_cache_get, search_cache_put, timed_node
 
@@ -566,6 +567,7 @@ def plan_hunt(state: CompetitorSessionState) -> dict:
     )
     for i, task in enumerate(cleaned, start=1):
         logger.info(f"  {i}. [{task.geography_scope}] {task.archetype_label} ({len(task.queries)} queries)")
+    report(f"Planned {len(cleaned)} searches: " + ", ".join(t.archetype_label for t in cleaned))
     return {"competitor_hunt_tasks": cleaned}
 
 
@@ -583,6 +585,7 @@ def _hunt_one(task: CompetitorHuntTask) -> CompetitorHuntBundle:
     issued: list[str] = []
     docs: list[dict] = []
     seen: set[str] = set()
+    report(f"Searching: {task.archetype_label}")
 
     for query in task.queries or []:
         query = (query or "").strip()
@@ -656,6 +659,8 @@ def _hunt_one(task: CompetitorHuntTask) -> CompetitorHuntBundle:
         f"hunt_candidates: {task.archetype_label}: {len(bundle.candidates)} candidate(s) "
         f"from {len(issued)} query/queries"
     )
+    names = ", ".join(c.name for c in bundle.candidates[:4] if getattr(c, "name", None))
+    report(f"{task.archetype_label}: {len(bundle.candidates)} candidates" + (f" ({names}…)" if names else ""))
     return bundle
 
 
@@ -752,6 +757,7 @@ def screen_candidates(state: CompetitorSessionState) -> dict:
         f"screen_candidates: {candidates_seen} seen -> {len(survivors)} kept "
         f"({outcome.dropped} dropped: {reasons or 'none'})"
     )
+    report(f"{len(survivors)} of {candidates_seen} candidates have a real website; checking each one")
     return {"competitor_survivors": survivors, "competitor_outcome": outcome}
 
 
@@ -876,7 +882,9 @@ def _profile_one(survivor: dict, offer: dict) -> tuple[Optional[CompetitorProfil
         competes, why = True, "relevance gate unavailable; the profile decides"
     if not competes:
         logger.info("profile_competitors: dropping %s -- not a substitute (%s)", survivor["name"], why)
+        report(f"Dropped {survivor['name']}: {why}" if why else f"Dropped {survivor['name']}: not a rival")
         return None, "not_a_competitor"
+    report(f"Profiling {survivor['name']}")
 
     noun = "service" if offer.get("offer_type") == "service" else "product"
     user_message = (
@@ -940,6 +948,7 @@ def _profile_one(survivor: dict, offer: dict) -> tuple[Optional[CompetitorProfil
         logger.info("profile_competitors: %s yielded nothing -- dropping", profile.name)
         return None, "unprofiled"
     _add_site_socials(profile, survivor["website"])
+    report(f"Added {profile.name}")
     logger.info(
         "profile_competitors: %s -- %d strength(s), %d weakness(es), %d pain signal(s), "
         "%d social(s), %d field(s) not found", profile.name, len(profile.strengths),
@@ -972,6 +981,7 @@ def profile_competitors(state: CompetitorSessionState) -> dict:
     profiles = [profile for profile, _ in results if profile is not None]
     rejected = [reason for _, reason in results if reason]
     logger.info("profile_competitors: %d profile(s) built from %d survivor(s)", len(profiles), len(survivors))
+    report(f"Saving {len(profiles)} competitors")
     outcome = state.get("competitor_outcome")
     if outcome is not None and rejected:
         reasons = dict(outcome.dropped_reasons)

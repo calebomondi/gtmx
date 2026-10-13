@@ -69,3 +69,43 @@ def test_adding_a_competitor_starts_a_research_run(client, owned, monkeypatch):
         run_id = conn.execute("SELECT id FROM runs WHERE kind = 'competitor_research'").fetchone()[0]
     client.portal.call(_wait_for_status, run_id, {"completed"})
     assert [str(c) for c in researched] == [competitor["id"]]
+
+
+def test_a_run_reports_its_steps_as_it_works(client, discovered, monkeypatch):
+    """Steps reported from the agent's worker threads reach the run, in order."""
+    import asyncio
+
+    from utils.progress import report
+
+    async def fake(workspace_id, run_id):
+        def hunt():
+            report("Searching: direct substitutes")
+            report("Dropped Upwork: a marketplace, not a rival")
+        await asyncio.to_thread(hunt)
+        report("Saving 1 competitors")
+        await asyncio.sleep(0.2)  # let the queued steps land before the run finishes
+        return {"candidates_seen": 2, "found": 1, "dropped": 1, "dropped_reasons": {}}
+    monkeypatch.setattr(background, "run_competitor_discovery", fake)
+
+    run = client.post(f"{API}/workspaces/{discovered['workspace']}/competitors/runs").json()["run"]
+    client.portal.call(_wait_for_status, uuid.UUID(run["id"]), {"completed"})
+    steps = client.get(f"{API}/runs/{run['id']}/steps").json()
+    assert [s["text"] for s in steps] == [
+        "Searching: direct substitutes", "Dropped Upwork: a marketplace, not a rival", "Saving 1 competitors",
+    ]
+    newer = client.get(f"{API}/runs/{run['id']}/steps", params={"after": steps[0]["id"]}).json()
+    assert [s["text"] for s in newer] == [s["text"] for s in steps[1:]]
+    assert client.get(f"{API}/runs/{uuid.uuid4()}/steps").status_code == 404
+
+
+def test_a_step_never_breaks_the_work_it_describes():
+    from utils import progress
+
+    def broken(text):
+        raise RuntimeError("event store down")
+    token = progress.current_reporter.set(broken)
+    try:
+        progress.report("Searching")  # must not raise
+    finally:
+        progress.current_reporter.reset(token)
+    progress.report("no reporter set: a no-op")

@@ -42,6 +42,7 @@ import {
   startCompetitorRun,
   updateCompetitor,
 } from '@/lib/api'
+import { RunActivity } from '@/components/run-activity'
 import { ensureInsightsLoaded, useInsights } from '@/lib/insights-store'
 import { cn } from 'cn'
 
@@ -389,6 +390,8 @@ function RunStatusStrip({
           </Button>
         )}
       </div>
+
+      {live && <RunActivity runId={run.id} live={live} startedAt={run.started_at ?? run.created_at} typical="3–6 minutes" />}
 
       {run.status === 'failed' && run.error && (
         <p className="text-[12px] leading-relaxed text-destructive/90">
