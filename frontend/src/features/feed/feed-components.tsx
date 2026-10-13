@@ -263,7 +263,7 @@ function SignalDetail({
 
   return (
     <>
-      <DialogHeader className="border-b">
+      <DialogHeader className="border-b pr-12">
         <div className="flex items-center gap-2">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/15 text-amber-500">
             <Icon className="size-4" />
