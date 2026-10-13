@@ -96,7 +96,7 @@ def test_lint_catches_what_a_lenient_reviewer_misses():
 def test_lint_failures_force_a_rewrite_even_when_the_review_passes(llm, monkeypatch):
     calls, _ = llm
     verdicts = iter([["Remove \"enhance\""], []])
-    monkeypatch.setattr(gs, "lint", lambda brief, draft, sources=None: next(verdicts))
+    monkeypatch.setattr(gs, "lint", lambda brief, draft, sources=None, offer_name="": next(verdicts))
     gs.write_first_touch(_brief(), "Cloud of Association")
     writes = [prompt for label, prompt in calls if label.startswith("outreach_write")]
     assert len(writes) == 2 and 'Remove "enhance"' in writes[1]
@@ -105,7 +105,7 @@ def test_lint_failures_force_a_rewrite_even_when_the_review_passes(llm, monkeypa
 def test_a_rewrite_that_keeps_the_mistake_gets_a_second_one(llm, monkeypatch):
     calls, _ = llm
     verdicts = iter([["Remove \"similar fintechs\""], ["Remove \"similar fintechs\""], []])
-    monkeypatch.setattr(gs, "lint", lambda brief, draft, sources=None: next(verdicts))
+    monkeypatch.setattr(gs, "lint", lambda brief, draft, sources=None, offer_name="": next(verdicts))
     gs.write_first_touch(_brief(), "Cloud of Association")
     assert len([label for label, _ in calls if label.startswith("outreach_write")]) == 3
 
@@ -126,7 +126,7 @@ def test_venues_get_a_partnership_pitch_not_a_sales_pitch(llm):
 
 def test_a_number_only_a_specialist_or_the_research_notes_state_is_not_sourced(llm, monkeypatch):
     seen = []
-    monkeypatch.setattr(gs, "lint", lambda brief, draft, sources=None: seen.append(sources) or [])
+    monkeypatch.setattr(gs, "lint", lambda brief, draft, sources=None, offer_name="": seen.append(sources) or [])
     gs.write_first_touch(_brief(), "Cloud of Association")
     sources = seen[0]
     assert "Acme is hiring two ML engineers" in sources and "Rival X charges $40/seat" in sources
@@ -141,3 +141,17 @@ def test_a_claim_that_survives_every_rewrite_is_cut_before_the_draft_is_kept(llm
     draft = gs.write_first_touch(_brief(), "Cloud of Association")
     assert "other fintechs" not in draft.body
     assert draft.body.count("?") == 1 and "15-minute call?" in draft.body and draft.body.endswith("Wanjiku")
+
+
+def test_a_draft_only_about_their_news_is_sent_back_to_name_the_offer(llm, monkeypatch):
+    calls, _ = llm
+    news_only = ("Hi Ada,\n\nCongratulations on hiring two ML engineers this month; growing an ML team that fast "
+                 "puts real pressure on infrastructure budgets and hiring plans across the board.\n\n"
+                 "Would a 15-minute call next week be useful?\n\nWanjiku")
+    drafts = iter([OutreachDraft(subject="Your ML hires", body=news_only), OutreachDraft(subject="Your ML hires", body=GOOD_BODY)])
+    monkeypatch.setattr(gs, "_write", lambda *a, **k: next(drafts))
+    assert any("Name Cloud of Association" in p for p in gs.lint(_brief(), OutreachDraft(subject="s", body=news_only),
+                                                                   offer_name="Cloud of Association"))
+    assert gs.write_first_touch(_brief(), "Cloud of Association").body == GOOD_BODY
+    plan_prompt = next(prompt for label, prompt in calls if label == "outreach_plan")
+    assert "FIT" in plan_prompt
