@@ -120,21 +120,7 @@
   background: var(--color-ink);
 }
 
-/* -- The example run -- */
-@keyframes step-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-.animate-step-in {
-  animation: step-in 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) both;
-}
-
+/* The status dot blinking while the demo plays. */
 @keyframes caret {
   50% {
     opacity: 0;
@@ -142,30 +128,6 @@
 }
 .caret {
   animation: caret 1s steps(1) infinite;
-}
-
-/* A rival struck through as it is dropped; follows wrapped lines. */
-@keyframes strike {
-  to {
-    text-decoration-color: var(--color-dropped);
-    color: var(--color-muted);
-  }
-}
-.strike {
-  text-decoration: line-through 1.5px transparent;
-  animation: strike 0.45s ease 0.35s forwards;
-}
-
-@keyframes send-pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgb(254 168 83 / 0.7);
-  }
-  100% {
-    box-shadow: 0 0 0 14px rgb(254 168 83 / 0);
-  }
-}
-.send-pulse {
-  animation: send-pulse 1.4s ease-out 0.4s 2;
 }
 
 /* -- FAQ: answers open smoothly where the browser can animate <details>. -- */

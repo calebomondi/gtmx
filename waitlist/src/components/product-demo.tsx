@@ -109,3 +109,13 @@ export function ProductDemo({ video }: { video: DemoVideo }) {
     </DemoFrame>
   )
 }
+
+/** The frame without a recording yet: a blank 4:3 panel holding the space
+ * the video will fill, so the hero's layout doesn't move when it arrives. */
+export function DemoPlaceholder() {
+  return (
+    <DemoFrame status="Real product" live={false} detail="Recording coming soon">
+      <div className="aspect-[4/3] bg-panel" />
+    </DemoFrame>
+  )
+}
