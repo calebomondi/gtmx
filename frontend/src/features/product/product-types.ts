@@ -1,4 +1,4 @@
-import type { OfferSnapshot } from '@/lib/api'
+import type { CompetitorLeadDto, IcpDto, OfferSnapshot } from '@/lib/api'
 
 import type { BuyerType } from '@/lib/buyer-type'
 
@@ -44,24 +44,9 @@ export interface MarketExtraction {
   market_fit_reasoning: string | null
 }
 
-export interface CompetitorLead {
-  competitor_name: string
-  search_queries: string[]
-  pain_angles: string[]
-}
-
-export interface ICP {
-  product_name: string | null
-  buyer_type: string | null
-  industries: string[]
-  company_sizes: string[]
-  geo: string[]
-  buyer_titles: string[]
-  exclusions: string[]
-  pain_signals: string[]
-  intent_keywords: string[]
-  competitor_leads: CompetitorLead[]
-}
+/** The ICP exactly as the API returns it (B2C fields included). */
+export type ICP = IcpDto
+export type CompetitorLead = CompetitorLeadDto
 
 export interface ProductState {
   product_snapshot: OfferSnapshot | null

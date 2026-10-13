@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Row, SectionCard, TagPills } from './product-sections'
+import { BuyerPersonas, ReachGroups } from './icp-reach'
+import { useVenueAccounts } from './use-venue-accounts'
 import { CompetitionPanel, OfferTabNav, type OfferTab } from './offer-tabs'
 
 import {
@@ -30,6 +32,7 @@ import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useSession } from '@/lib/session-context'
 import { useAgentRun, type PhaseResults } from '@/lib/agent-run-store'
+import { BUYER_LABEL, asBuyerType } from '@/lib/buyer-type'
 import { ensureInsightsLoaded, useInsights } from '@/lib/insights-store'
 import type { IcpDto, MarketDataDto, OfferSnapshot, WorkspaceInsights } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -979,7 +982,7 @@ function buildProductState(args: {
   }
 }
 
-export function ProductComponent({ workspaceId }: { workspaceId?: string }) {
+export function ProductComponent({ workspaceId, onOpenReachOut }: { workspaceId?: string; onOpenReachOut?: () => void }) {
   const { product: sessionProduct, workspaceId: sessionWorkspaceId } = useSession()
   const { insights } = useInsights(workspaceId)
   const run = useAgentRun()
@@ -1032,6 +1035,12 @@ export function ProductComponent({ workspaceId }: { workspaceId?: string }) {
   const snapshot = state.product_snapshot
   const market = state.market_data
   const icp = state.icp
+  // B2B rows describe companies; consumer offers are described by people and
+  // reached through communities, creators and events.
+  const buyer = asBuyerType(icp?.buyer_type ?? market?.buyer_type)
+  const sellsToCompanies = buyer !== 'b2c'
+  const reachesPeople = buyer === 'b2c' || buyer === 'both'
+  const venues = useVenueAccounts(workspaceId, reachesPeople)
 
   // The competition stage's two outputs, read live off the run when it is
   // streaming and off the persisted insights otherwise. `swod` is the
@@ -1300,17 +1309,25 @@ export function ProductComponent({ workspaceId }: { workspaceId?: string }) {
               onEdit={() => setIcpEditOpen(true)}
             >
               <Row label="Product" value={icp.product_name ?? '—'} />
-              <Row label="Buyer type" value={icp.buyer_type ?? '—'} />
-              <Row label="Industries" value={<TagPills items={icp.industries} />} />
-              <Row
-                label="Company sizes"
-                value={<TagPills items={icp.company_sizes} />}
-              />
+              <Row label="Buyer type" value={buyer ? BUYER_LABEL[buyer] : '—'} />
               <Row label="Geography" value={<TagPills items={icp.geo} />} />
-              <Row
-                label="Buyer titles"
-                value={<TagPills items={icp.buyer_titles} />}
-              />
+              {reachesPeople && <BuyerPersonas personas={icp.buyer_personas ?? []} />}
+              {reachesPeople && (
+                <ReachGroups channels={icp.target_channels ?? []} venues={venues} onOpenReachOut={onOpenReachOut} />
+              )}
+              {sellsToCompanies && (
+                <>
+                  <Row label="Industries" value={<TagPills items={icp.industries} />} />
+                  <Row
+                    label="Company sizes"
+                    value={<TagPills items={icp.company_sizes} />}
+                  />
+                  <Row
+                    label="Buyer titles"
+                    value={<TagPills items={icp.buyer_titles} />}
+                  />
+                </>
+              )}
               <Row
                 label="Exclusions"
                 value={<TagPills items={icp.exclusions} />}

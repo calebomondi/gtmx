@@ -47,3 +47,35 @@ export const PITCH = {
 export function pitchFor(accountType: string) {
   return isVenue(accountType) ? PITCH.partnership : PITCH.sales
 }
+
+
+/** The three ways a consumer offer reaches people, each with its own pitch. */
+export type VenueGroup = 'community' | 'creator' | 'event'
+
+export const VENUE_GROUPS: VenueGroup[] = ['community', 'creator', 'event']
+
+export const VENUE_GROUP_LABEL: Record<VenueGroup, string> = {
+  community: 'Communities',
+  creator: 'Creators & influencers',
+  event: 'Events',
+}
+
+const ACCOUNT_GROUP: Record<string, VenueGroup> = {
+  community: 'community', platform: 'community', creator: 'creator', event: 'event',
+}
+
+const CHANNEL_GROUP: Record<string, VenueGroup> = {
+  community: 'community', forum: 'community', marketplace: 'community', social_platform: 'community',
+  creator: 'creator', newsletter: 'creator', event: 'event',
+}
+
+/** A found target's group; null for a company. */
+export function venueGroupOfAccount(accountType: string): VenueGroup | null {
+  return ACCOUNT_GROUP[accountType.toLowerCase()] ?? null
+}
+
+/** An ICP channel's group, from the kind of venue it is. */
+export function venueGroupOfChannel(channelType: string): VenueGroup | null {
+  return CHANNEL_GROUP[channelType.toLowerCase()] ?? null
+}
+

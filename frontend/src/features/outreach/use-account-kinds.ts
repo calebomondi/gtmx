@@ -1,33 +1,40 @@
 import { useMemo, useState } from 'react'
 
 import type { AccountRecord } from '@/lib/api'
-import { isVenue } from '@/lib/buyer-type'
+import { VENUE_GROUP_LABEL, VENUE_GROUPS, venueGroupOfAccount, type VenueGroup } from '@/lib/buyer-type'
 
-export type AccountKind = 'all' | 'company' | 'venue'
+export type AccountKind = 'all' | 'company' | VenueGroup
 
 export const KIND_LABEL: Record<AccountKind, string> = {
   all: 'All',
   company: 'Companies',
-  venue: 'Communities, creators & events',
+  ...VENUE_GROUP_LABEL,
 }
 
-export const KINDS: AccountKind[] = ['all', 'company', 'venue']
+export const KINDS: AccountKind[] = ['all', 'company', ...VENUE_GROUPS]
 
-function matches(account: AccountRecord, kind: AccountKind): boolean {
-  if (kind === 'all') return true
-  return kind === 'venue' ? isVenue(account.account_type) : !isVenue(account.account_type)
+function kindOf(account: AccountRecord): Exclude<AccountKind, 'all'> {
+  return venueGroupOfAccount(account.account_type) ?? 'company'
 }
 
-/** Companies are sold to; venues are partnered with. The split only shows when
- * the list has both, so a B2B workspace keeps its plain list. */
+/** Companies are sold to; communities, creators and events are partnered
+ * with, each in its own way. The chips only show when the list holds more
+ * than one kind, so a B2B workspace keeps its plain list. Empty kinds are
+ * left out. */
 export function useAccountKinds(accounts: AccountRecord[]) {
   const [kind, setKind] = useState<AccountKind>('all')
-  const counts = useMemo(
-    () => Object.fromEntries(KINDS.map((k) => [k, accounts.filter((a) => matches(a, k)).length])) as Record<AccountKind, number>,
-    [accounts],
+  const counts = useMemo(() => {
+    const tally = Object.fromEntries(KINDS.map((k) => [k, 0])) as Record<AccountKind, number>
+    for (const account of accounts) tally[kindOf(account)] += 1
+    tally.all = accounts.length
+    return tally
+  }, [accounts])
+  const kinds = KINDS.filter((k) => k === 'all' || counts[k] > 0)
+  const split = kinds.length > 2
+  const active = split && kinds.includes(kind) ? kind : 'all'
+  const visible = useMemo(
+    () => (active === 'all' ? accounts : accounts.filter((a) => kindOf(a) === active)),
+    [accounts, active],
   )
-  const split = counts.company > 0 && counts.venue > 0
-  const active = split ? kind : 'all'
-  const visible = useMemo(() => accounts.filter((a) => matches(a, active)), [accounts, active])
-  return { kind: active, setKind, counts, split, visible }
+  return { kind: active, setKind, counts, kinds, split, visible }
 }
