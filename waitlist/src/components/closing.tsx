@@ -2,11 +2,12 @@ import { SignupCard } from '../features/signup/signup-card'
 import type { PilotSpots } from '../lib/api'
 import { stagger } from '../lib/stagger'
 import { BrandMark } from './brand-mark'
+import { FooterWordmark } from './footer-wordmark'
 
 /** The last word: a full-width black block with the signup inline. */
 export function Closing({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; onPilotSpotsLeft: (left: number) => void }) {
   return (
-    <footer className="on-dark bg-night text-paper">
+    <footer className="on-dark overflow-hidden bg-night text-paper">
       <div className="mx-auto grid max-w-6xl gap-10 px-5 pt-20 pb-12 sm:px-8 sm:pt-28 lg:grid-cols-[1.1fr_1fr] lg:items-center">
         <div data-reveal className="flex flex-col gap-5">
           <p className="flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-brand">
@@ -28,6 +29,7 @@ export function Closing({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null;
         <BrandMark className="text-paper" />
         <p>For founders selling across Africa.</p>
       </div>
+      <FooterWordmark />
     </footer>
   )
 }
