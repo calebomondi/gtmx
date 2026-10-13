@@ -6,10 +6,13 @@ const SELECTOR = '[data-reveal], [data-draw], [data-dots]'
  * `data-reveal` (fade and rise; `--i` staggers siblings), `data-draw` (a line
  * draws itself), `data-dots` (pilot dots fill in). Elements rendered later
  * (e.g. once the pilot count loads) are picked up too. The page marks <html>
- * with `.js` first, so without this script nothing is ever hidden. */
+ * with `.js` first, so without this script nothing is ever hidden. Shown
+ * elements get `data-shown`. */
 export function useScrollReveal() {
   useEffect(() => {
-    const show = (el: Element) => el.classList.add('is-visible')
+    // An attribute React never rendered, so a re-render (or hot reload) that
+    // rewrites the element's classes can't take it away and hide it again.
+    const show = (el: Element) => el.setAttribute('data-shown', '')
     if (!('IntersectionObserver' in window)) {
       document.querySelectorAll(SELECTOR).forEach(show)
       return
