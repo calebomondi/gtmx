@@ -62,7 +62,7 @@ const TabsVerticalLined = ({ workspaceId }: { workspaceId?: string }) => {
       value={tab}
       onValueChange={setTab}
       orientation='vertical'
-      className='relative w-full grid min-h-[calc(100vh-3rem)] place-items-center bg-muted'
+      className='relative w-full grid min-h-[calc(100dvh-3rem)] place-items-center bg-muted'
     >
       {/* Floating left rail — animated agent bubble above the vertical tab nav */}
       <div className='absolute top-1/2 left-4 z-10 flex -translate-y-1/2 flex-col items-start gap-3'>

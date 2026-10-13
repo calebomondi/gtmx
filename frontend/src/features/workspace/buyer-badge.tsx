@@ -14,7 +14,7 @@ export function BuyerBadge({ workspaceId }: { workspaceId: string | undefined })
 
   return (
     <Tooltip>
-      <TooltipTrigger render={<Badge variant="outline" className="cursor-default border-amber-500/40 text-amber-500" />}>
+      <TooltipTrigger render={<Badge variant="outline" className="shrink-0 cursor-default border-amber-500/40 text-amber-500" />}>
         {BUYER_LABEL[buyer]}
       </TooltipTrigger>
       <TooltipContent side="bottom">{BUYER_EXPLAINER[buyer]}</TooltipContent>

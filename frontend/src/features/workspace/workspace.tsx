@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from "react"
+import { SidebarTrigger } from '@/components/ui/sidebar'
 import { Navigate, useParams, useSearchParams } from "react-router-dom"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import {
@@ -130,7 +131,7 @@ const AgentRunProductUnderstanding = () => {
   }, [progress, finished, followCotIfNear])
 
   return (
-    <div className='flex min-h-[calc(100vh-3rem)] w-full items-center justify-center'>
+    <div className='flex min-h-[calc(100dvh-3rem)] w-full items-center justify-center'>
       {/* When getting info for first time, show prgoress */}
       <Stepper
         steps={steps}
@@ -260,12 +261,13 @@ export default function Workspace() {
     <div className="bg-muted">
       {/* Fixed header — stays pinned at the top while content scrolls below */}
       <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b backdrop-blur transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
-        <div className="flex items-center gap-2 px-4">
+        <SidebarTrigger className="ml-2 md:hidden" aria-label="Open menu" />
+        <div className="flex min-w-0 items-center gap-2 px-2 sm:px-4">
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem>
                 {workspace ? (
-                  <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
                     <WorkspaceManager workspace={workspace} />
                     <BuyerBadge workspaceId={workspace.id} />
                   </div>
@@ -294,7 +296,8 @@ export default function Workspace() {
                       }}
                       transition={TEAM_FADE}
                     >
-                      <div className="flex items-center justify-center gap-4">
+                      {/* The team's faces don't fit beside the name on phones. */}
+                      <div className="hidden items-center justify-center gap-4 sm:flex">
                         <SpecialistAvatarGroup specialists={headerSpecialists} />
                       </div>
                     </motion.div>
