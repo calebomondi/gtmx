@@ -39,6 +39,8 @@ import {
 import { workspaceDisplayName } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
+import { SignalDetailBody } from './signal-detail-body'
+
 import { dismiss as dismissSignal, markRead, togglePin as toggleSignalPin, useSignals } from './feed-store'
 import {
   formatTimeAgo,
@@ -231,19 +233,33 @@ function SignalCard({
   )
 }
 
+/** Where in the workspace each kind of item is worked on. */
+const OPEN_IN: Partial<Record<Signal['category'], { tab: WorkspaceTab; label: string }>> = {
+  product: { tab: 'product', label: 'Open the research' },
+  competitor: { tab: 'competition', label: 'Open in Competitors' },
+  opportunity: { tab: 'outreach', label: 'Open in Reach Out' },
+}
+
+export type WorkspaceTab = 'feed' | 'outreach' | 'product' | 'competition' | 'agent'
+
 function SignalDetail({
   signal,
+  workspaceId,
   onTogglePin,
   onDismiss,
   onAction,
+  onOpenTab,
 }: {
   signal: Signal
+  workspaceId: string | undefined
   onTogglePin: () => void
   onDismiss: () => void
   onAction: (action: SignalAction) => void
+  onOpenTab?: (tab: WorkspaceTab) => void
 }) {
   const category = CATEGORY_META[signal.category]
   const Icon = category.icon
+  const openIn = onOpenTab ? OPEN_IN[signal.category] : undefined
 
   return (
     <>
@@ -313,6 +329,8 @@ function SignalDetail({
           </a>
         )}
 
+        <SignalDetailBody signal={signal} workspaceId={workspaceId} />
+
         <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3">
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-amber-500">
             Why this matters
@@ -323,6 +341,15 @@ function SignalDetail({
 
       <DialogFooter className="border-t">
         <div className="flex flex-wrap items-center gap-2">
+          {openIn && onOpenTab && (
+            <Button
+              type="button"
+              className="cursor-pointer bg-amber-500 text-amber-950 hover:bg-amber-400 hover:text-amber-950"
+              onClick={() => onOpenTab(openIn.tab)}
+            >
+              {openIn.label}
+            </Button>
+          )}
           {signal.actions.map((action) => {
             const meta = ACTION_META[action.kind]
             return (
@@ -413,9 +440,11 @@ function EmptyFeed({ subject }: { subject: string }) {
 export function FeedComponent({
   workspaceId,
   onOpenOutreach,
+  onOpenTab,
 }: {
   workspaceId?: string
   onOpenOutreach?: (contactEmail?: string) => void
+  onOpenTab?: (tab: WorkspaceTab) => void
 }) {
   const { product } = useSession()
   const { workspaces } = useWorkspaces()
@@ -611,6 +640,8 @@ export function FeedComponent({
           {selected && (
             <SignalDetail
               signal={selected}
+              workspaceId={workspaceId}
+              onOpenTab={onOpenTab ? (tab) => { setDetailOpen(false); onOpenTab(tab) } : undefined}
               onTogglePin={() => togglePin(selected.id)}
               onDismiss={() => dismiss(selected.id)}
               onAction={handleAction}
