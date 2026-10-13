@@ -38,6 +38,7 @@ import {
 } from '@/lib/workspaces-store'
 import { workspaceDisplayName } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import type { WorkspaceTab } from '@/lib/workspace-tab'
 
 import { SignalDetailBody } from './signal-detail-body'
 
@@ -240,7 +241,6 @@ const OPEN_IN: Partial<Record<Signal['category'], { tab: WorkspaceTab; label: st
   opportunity: { tab: 'outreach', label: 'Open in Reach Out' },
 }
 
-export type WorkspaceTab = 'feed' | 'outreach' | 'product' | 'competition' | 'agent'
 
 function SignalDetail({
   signal,
@@ -520,7 +520,7 @@ export function FeedComponent({
   const hasSignals = filtered.length > 0
 
   return (
-    <div className="flex h-[calc(100dvh-7rem)] min-h-0 flex-col">
+    <div className="flex h-[calc(100dvh-var(--ws-chrome,7rem))] min-h-0 flex-col">
       <div className="flex items-center justify-between gap-2 mb-5">
         <div className="flex items-center gap-2">
           <h2 className="text-xl font-medium text-foreground">{subject} Feed</h2>
