@@ -50,10 +50,11 @@ async def add_user_message(db: AsyncSession, workspace: models.Workspace, conten
 
 
 async def add_assistant_message(db: AsyncSession, workspace_id: uuid.UUID, user_id: uuid.UUID,
-                                run_id: uuid.UUID, content: str, specialist_domain: str) -> models.ChatMessage:
+                                run_id: uuid.UUID, content: str, specialist_domain: str,
+                                suggestions: list[str] | None = None) -> models.ChatMessage:
     message = models.ChatMessage(
         workspace_id=workspace_id, user_id=user_id, role="assistant", content=content, run_id=run_id,
-        specialist_domain=specialist_domain,
+        specialist_domain=specialist_domain, suggestions=suggestions or None,
     )
     db.add(message)
     await db.commit()

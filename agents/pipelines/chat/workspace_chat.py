@@ -16,12 +16,13 @@ from dataclasses import dataclass, field
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from agents.concurrency import ContextThreadPoolExecutor
-from agents.llm.main import cheap_providers, invoke_structured_with_fallback
+from agents.llm.main import LlmProvidersExhaustedError, cheap_providers, invoke_structured_with_fallback
 from agents.pipelines import team
 from agents.pipelines.web_utils import call_with_timeout
-from agents.schemas.chat import ChatDomain, ChatRoute
+from agents.schemas.chat import ChatDomain, ChatRoute, ChatSuggestions
 from config import get_settings
 from data_sources.scraping.exa import search_and_scrape
+from utils.log import logger
 
 MAX_QUERIES = 3
 _SNIPPET_CHARS = 1500
@@ -81,6 +82,40 @@ WEB RESULTS
 {web}"""
 
 
+_GREETING_PROMPT = """You are {persona} -- {offer_name}'s {domain} specialist. The user just greeted
+the team or asked who you are. Reply like a colleague would, in 2 to 4 short
+sentences, in the first person: say hello, who you are, and who else is on the
+team and what each of you can help with ({team}). Do not share any research
+yet and do not answer questions they haven't asked. Never describe yourself as
+an AI."""
+
+_SUGGEST_PROMPT = """Suggest the 3 questions the user is most likely to want to ask {offer_name}'s
+specialist team next, given the conversation below. Write them as the user
+would type them: short, specific to {offer_name} and what was just said, and
+covering different ground (for example the market, competitors, who to target,
+outreach). Never repeat a question they already asked.
+
+LAST QUESTION
+{question}
+
+ANSWER THEY GOT
+{answer}"""
+
+# Messages that greet or ask who the team is, not about the offer. They go to
+# the offer's own specialist for a short hello, never a research dump.
+_SMALL_TALK = re.compile(
+    r"^\s*(?:(?:hi|hey|hello|hiya|hola|yo|howdy|greetings|good (?:morning|afternoon|evening))(?: there| team| guys| all)?"
+    r"|who (?:are|r) (?:you|u)(?: guys| all)?|what(?:'s| is) your name|what can you (?:do|help with)"
+    r"|what do you do|thanks?(?: you)?|thank you|ok(?:ay)?|cool|great)[\s!.?,]*$",
+    re.I,
+)
+SUGGESTION_COUNT = 3
+
+
+def is_small_talk(question: str) -> bool:
+    return bool(_SMALL_TALK.match(question or ""))
+
+
 @dataclass
 class ChatContext:
     offer_name: str
@@ -93,6 +128,47 @@ class ChatContext:
 class ChatAnswer:
     domain: ChatDomain
     content: str
+    suggestions: list[str] = field(default_factory=list)
+
+
+def _greet(question: str, history: list[tuple[str, str]], context: ChatContext) -> ChatAnswer:
+    lead = "product"
+    roster = "; ".join(
+        f"{team.member(context.team, d).get('name')} ({d})" for d in ("market", "competition", "gtm")
+    )
+    turns = [HumanMessage(content=c) if role == "user" else AIMessage(content=c) for role, c in history]
+    content = invoke_structured_with_fallback(
+        [SystemMessage(content=_GREETING_PROMPT.format(
+            persona=team.persona(team.member(context.team, lead)), offer_name=context.offer_name or "the offer",
+            domain=lead, team=roster,
+        )), *turns, HumanMessage(content=question)],
+        log_label="chat_answer:greeting", providers=cheap_providers(), thinking=False,
+    )
+    return ChatAnswer(domain=lead, content=content)
+
+
+def suggest(question: str, answer_text: str, context: ChatContext) -> list[str]:
+    """What the user might ask next. Optional: on any provider failure, none."""
+    try:
+        result = invoke_structured_with_fallback(
+            [SystemMessage(content=_SUGGEST_PROMPT.format(
+                offer_name=context.offer_name or "the offer", question=question, answer=answer_text[:4000],
+            )), HumanMessage(content="Suggest them now.")],
+            ChatSuggestions, log_label="chat_suggestions", providers=cheap_providers(), thinking=False,
+        )
+    except LlmProvidersExhaustedError:
+        logger.warning("No chat suggestions: every model failed")
+        return []
+    asked = question.strip().lower()
+    return [s.strip() for s in result.suggestions if s.strip() and s.strip().lower() != asked][:SUGGESTION_COUNT]
+
+
+def reply(question: str, history: list[tuple[str, str]], context: ChatContext) -> ChatAnswer:
+    """The answer to the user's message, with suggested follow-ups. A greeting
+    gets a short hello from the offer's own specialist instead of research."""
+    result = _greet(question, history, context) if is_small_talk(question) else answer(question, history, context)
+    result.suggestions = suggest(question, result.content, context)
+    return result
 
 
 def _search(query: str) -> list[dict]:

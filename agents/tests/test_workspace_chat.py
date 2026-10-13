@@ -5,7 +5,7 @@ import pytest
 
 from agents.pipelines import team
 from agents.pipelines.chat import workspace_chat as wc
-from agents.schemas.chat import ChatRoute
+from agents.schemas.chat import ChatRoute, ChatSuggestions
 from agents.schemas.outreach import Consultation
 
 CONTEXT = wc.ChatContext(
@@ -28,6 +28,8 @@ def llm(monkeypatch):
         calls.append((kw["log_label"], messages))
         if schema is ChatRoute:
             return script["route"]
+        if schema is ChatSuggestions:
+            return ChatSuggestions(suggestions=["Who should we target first?", "hey", "How do we price it?", "Extra"])
         return "We'd answer text"
     monkeypatch.setattr(wc, "invoke_structured_with_fallback", fake)
     monkeypatch.setattr(team, "invoke_structured_with_fallback", fake)
@@ -101,3 +103,31 @@ def test_claiming_work_that_never_happened_forces_a_rewrite():
         assert any("haven't done that" in p for p in wc.voice_problems(text)), text
     assert wc.voice_problems("I've drafted it below:\n\nHi Amara, ...") == []
     assert wc.voice_problems("I prepared this from our market research.") == []
+
+
+@pytest.mark.parametrize("text", ["hi", "Hey!", "hello there", "who are you?", "Who are you guys", "thanks", "good morning"])
+def test_greetings_are_small_talk(text):
+    assert wc.is_small_talk(text)
+
+
+@pytest.mark.parametrize("text", ["hi, who are our top competitors?", "Hey can you size the Kenyan market?",
+                                  "who are our buyers?"])
+def test_real_questions_are_not_small_talk(text):
+    assert not wc.is_small_talk(text)
+
+
+def test_a_greeting_gets_a_short_hello_from_the_offer_specialist_not_research(llm):
+    calls, _ = llm
+    result = wc.reply("hey", [], CONTEXT)
+    labels = [label for label, _ in calls]
+    assert result.domain == "product" and "chat_route" not in labels and "chat_answer:greeting" in labels
+    greeting = next(m for label, m in calls if label == "chat_answer:greeting")[0].content
+    assert "Zawadi Otieno (competition)" in greeting and "RunPod" not in greeting  # the team, not the research
+
+
+def test_every_answer_ends_with_three_fresh_suggestions(llm):
+    result = wc.reply("Hey", [], CONTEXT)
+    assert result.suggestions == ["Who should we target first?", "How do we price it?", "Extra"]  # never echoes "hey"
+    answered = wc.reply("Who is our biggest threat?", [], CONTEXT)
+    assert len(answered.suggestions) == wc.SUGGESTION_COUNT
+

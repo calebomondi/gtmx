@@ -21,8 +21,9 @@ def test_reply_is_grounded_and_stored(client, owned, monkeypatch):
 
     def fake_answer(question, history, context):
         seen.update(question=question, context=context, history=history)
-        return background.workspace_chat.ChatAnswer(domain="competition", content=f"Answer to: {question}")
-    monkeypatch.setattr(background.workspace_chat, "answer", fake_answer)
+        return background.workspace_chat.ChatAnswer(domain="competition", content=f"Answer to: {question}",
+                                                    suggestions=["Where is RivalCo weakest?"])
+    monkeypatch.setattr(background.workspace_chat, "reply", fake_answer)
 
     path = f"{API}/workspaces/{owned['workspace']}/chat"
     sent = client.post(path, json={"message": "Who are my top rivals?"})
@@ -34,6 +35,7 @@ def test_reply_is_grounded_and_stored(client, owned, monkeypatch):
     assert [(m["role"], m["content"], m["specialist_domain"]) for m in thread["messages"]] == [
         ("user", "Who are my top rivals?", None), ("assistant", "Answer to: Who are my top rivals?", "competition"),
     ]
+    assert [m["suggestions"] for m in thread["messages"]] == [[], ["Where is RivalCo weakest?"]]
     assert thread["reply_run"] is None
     assert "rival.example" in seen["context"].research["competition"]  # tracked competitors reach that specialist
     assert seen["history"] == []
@@ -52,7 +54,7 @@ def test_one_reply_at_a_time_and_ownership(client, owned, monkeypatch):
         while not gate["open"]:
             time.sleep(0.02)
         return background.workspace_chat.ChatAnswer(domain="gtm", content="done")
-    monkeypatch.setattr(background.workspace_chat, "answer", slow_answer)
+    monkeypatch.setattr(background.workspace_chat, "reply", slow_answer)
     path = f"{API}/workspaces/{owned['workspace']}/chat"
     run_id = client.post(path, json={"message": "first"}).json()["reply_run"]["id"]
     assert client.post(path, json={"message": "second"}).status_code == 409
@@ -68,7 +70,7 @@ def test_one_reply_at_a_time_and_ownership(client, owned, monkeypatch):
 def test_failed_reply_is_shown_in_chat_not_feed(client, owned, monkeypatch):
     def boom(*_):
         raise RuntimeError("model exploded with internals")
-    monkeypatch.setattr(background.workspace_chat, "answer", boom)
+    monkeypatch.setattr(background.workspace_chat, "reply", boom)
     path = f"{API}/workspaces/{owned['workspace']}/chat"
     run_id = client.post(path, json={"message": "hello"}).json()["reply_run"]["id"]
     client.portal.call(_wait_for_status, uuid.UUID(run_id), {"failed"})
