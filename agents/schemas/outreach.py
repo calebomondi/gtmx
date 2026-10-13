@@ -39,6 +39,12 @@ class OutreachPlan(LenientModel):
     hook_fact: str = Field(description="The single account fact the opening line is built on (copied from the research)")
     problem: str = Field(description="The specific problem this account likely has, in their words")
     outcome: str = Field(description="The concrete outcome the offer gives them (a number or a before/after when the research supports one)")
+    fit: str = Field(
+        default="",
+        description="How the offer answers THIS account's situation, from the OFFER: name the offer, say what it is in a few "
+                    "words, the one capability that matters to them, and what changes for them (e.g. 'HeatherDB runs anomaly "
+                    "detection on the CPUs they already have, so the GPU import stops being the blocker')",
+    )
     proof: str = Field(default="", description="A credible proof point from the offer research; empty if none exists")
     ask: str = Field(description="One low-friction next step about THEIR situation; never a reference to other customers or results")
     consult: list[Consultation] = Field(

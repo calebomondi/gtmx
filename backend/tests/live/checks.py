@@ -11,6 +11,7 @@ import json
 import re
 from dataclasses import dataclass, field
 
+from agents.helpers import name_in_text
 from agents.pipelines.chat import workspace_chat
 from agents.pipelines.outreach import grounding
 
@@ -187,6 +188,9 @@ def check_outreach(card: Scorecard, offer: Offer, draft, account, problems: list
     subject = _text(draft.subject)
     card.check("outreach", draft.channel != "email" or any(t in subject for t in _text(account.name).split()[:2]),
                f"{account.name}: subject is about them", "minor", draft.subject or "")
+    body = _text(draft.body)
+    says_what = name_in_text(offer.name, draft.body) and any(t in body for fact in offer.must_mention for t in fact)
+    card.check("outreach", says_what, f"{account.name}: says what {offer.name} does for them", "major", draft.body[:200])
     mixed = [c for c in offer.conflations if c in _text(draft.body)]
     card.check("outreach", not mixed, f"{account.name}: no sibling-offer claims", "critical", f"{mixed}")
 
