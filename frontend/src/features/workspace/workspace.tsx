@@ -30,6 +30,7 @@ import { cn } from '@/lib/utils'
 import type { StepProgress } from '@/lib/agent-run-store'
 import { useAutoFollowScroll } from '@/features/chain-of-thought/use-auto-follow-scroll'
 import { ActualWorkspace } from '@/features/workspace/actual-workspace'
+import { StepStrip } from '@/features/workspace/step-strip'
 import { BuyerBadge } from '@/features/workspace/buyer-badge'
 import { useAgentRun } from '@/lib/agent-run-store'
 import { refetchWorkspaces, useWorkspaces } from '@/lib/workspaces-store'
@@ -131,16 +132,18 @@ const AgentRunProductUnderstanding = () => {
   }, [progress, finished, followCotIfNear])
 
   return (
-    <div className='flex min-h-[calc(100dvh-3rem)] w-full items-center justify-center'>
+    <div className='flex min-h-[calc(100dvh-3rem)] w-full flex-col items-stretch gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-center lg:px-0 lg:py-0'>
+      {/* Phones and tablets: a compact strip instead of the tall step list. */}
+      <StepStrip steps={steps} progress={progress} currentStepId={currentStepId} awaiting={awaiting} className='lg:hidden' />
       {/* When getting info for first time, show prgoress */}
       <Stepper
         steps={steps}
         value={currentStepId}
-        className='flex max-h-[60vh] items-center justify-center gap-5 overflow-hidden max-lg:flex-col max-lg:items-start'
+        className='flex items-stretch justify-center gap-5 max-lg:h-[calc(100dvh-13rem)] max-lg:flex-1 lg:max-h-[60vh] lg:items-center lg:overflow-hidden'
         orientation='vertical'
       >
         {/* Progress only: steps follow the run and are not navigable. */}
-        <StepperNav className='pointer-events-none w-60 select-none' aria-disabled>
+        <StepperNav className='pointer-events-none hidden w-60 select-none lg:flex' aria-disabled>
           {steps.map((step, index) => (
             <StepperItem key={step.id} stepId={step.id} className='relative items-start'>
               <StepperTrigger tabIndex={-1} className='cursor-default items-start gap-2.5 pb-15 last:pb-0'>
@@ -162,7 +165,7 @@ const AgentRunProductUnderstanding = () => {
             </StepperItem>
           ))}
         </StepperNav>
-        <StepperPanel className='flex w-xs self-stretch text-center text-sm sm:w-116'>
+        <StepperPanel className='flex w-full self-stretch text-center text-sm lg:w-116'>
           <div className='bg-muted border-primary/15 flex h-full flex-col items-center gap-5 rounded-lg border-2 border-dashed p-4 md:p-6'>
             <div className='relative min-h-0 w-full flex-1'>
               <div
