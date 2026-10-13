@@ -164,7 +164,7 @@ export function WorkspaceManager({
                 "min-w-0 cursor-pointer gap-1.5",
                 isBreadcrumb
                   ? "h-6 max-w-48 px-1 text-sm font-normal text-muted-foreground hover:text-foreground"
-                  : "h-8 max-w-72 px-2 text-sm font-medium",
+                  : "h-8 min-w-0 max-w-[45vw] px-2 text-sm font-medium sm:max-w-72",
               )}
             />
           }

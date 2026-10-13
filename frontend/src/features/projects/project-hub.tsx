@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { SidebarTrigger } from '@/components/ui/sidebar'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
@@ -163,6 +164,7 @@ export function ProjectHub() {
     <div className="bg-muted flex min-h-0 flex-1 flex-col">
       {/* Sticky project header */}
       <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b bg-background/80 backdrop-blur">
+        <SidebarTrigger className="ml-2 md:hidden" aria-label="Open menu" />
         <div className="flex items-center gap-2 px-4">
           <Breadcrumb>
             <BreadcrumbList>

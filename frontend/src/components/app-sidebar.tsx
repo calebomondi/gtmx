@@ -69,7 +69,9 @@ const data = {
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { state } = useSidebar()
+  const { state, toggleSidebar, isMobile } = useSidebar()
+  // On phones the sidebar is a slide-over, always shown in full.
+  const expanded = state === "expanded" || isMobile
   const { workspaces } = useWorkspaces()
   const { user: authUser } = useAuth()
   const [user, setUser] = React.useState<{
@@ -137,12 +139,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <div className={`flex items-center ${state === "expanded" ? 'justify-between' : 'justify-center'}`}>
-          <div className={`flex items-center ml-2.5 space-x-1 ${state === "expanded" ? 'justify-start' : 'justify-center'}`}>
-            <div className={`${state === "expanded" ? "h-4.5 w-4.5" : "h-5.5 w-5.5"} bg-[#FEA853] rounded-xs`}/>
-            {state === "expanded" && <p className="text-2xl">gtmx</p>}
-          </div>
-          {state === "expanded" ? <SidebarTrigger className="-ml-1" /> : <></>}
+        <div className={`flex items-center ${expanded ? 'justify-between' : 'justify-center'}`}>
+          {expanded ? (
+            <div className="ml-2.5 flex items-center justify-start space-x-1">
+              <div className="h-4.5 w-4.5 rounded-xs bg-[#FEA853]" />
+              <p className="text-2xl">gtmx</p>
+            </div>
+          ) : (
+            // Collapsed, the mark itself opens the sidebar again.
+            <button type="button" onClick={toggleSidebar} aria-label="Expand sidebar" className="ml-2.5 flex cursor-pointer items-center justify-center">
+              <div className="h-5.5 w-5.5 rounded-xs bg-[#FEA853]" />
+            </button>
+          )}
+          {expanded ? <SidebarTrigger className="-ml-1" /> : <></>}
         </div>
       </SidebarHeader>
       <SidebarContent>

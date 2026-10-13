@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Toaster } from 'sonner'
 import { createBrowserRouter, RouterProvider, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { AppSidebar } from "@/components/app-sidebar"
+import { MobileTopBar } from "@/components/mobile-top-bar"
 import {
   SidebarInset,
   SidebarProvider,
@@ -74,6 +75,14 @@ function GlobalInterruptDialog() {
   )
 }
 
+// Pages that render their own header, with the phone menu button in it.
+const OWN_HEADER = [/^\/workspace(\/|$)/, /^\/projects\/[^/]+/, /^\/archive\/workspace\//]
+
+// Below laptop width the expanded sidebar (16rem) squeezes the page, so it
+// starts as icons there; the user's toggle still wins for the session.
+const SIDEBAR_EXPANDED_FROM = 1024
+const sidebarOpenByDefault = () => typeof window === 'undefined' || window.innerWidth >= SIDEBAR_EXPANDED_FROM
+
 function AppLayout() {
   const { user } = useAuth()
   const location = useLocation()
@@ -93,9 +102,10 @@ function AppLayout() {
 
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-      <SidebarProvider className="h-screen">
+      <SidebarProvider className="h-dvh" defaultOpen={sidebarOpenByDefault()}>
         <AppSidebar />
-        <SidebarInset className="flex h-screen flex-col overflow-hidden">
+        <SidebarInset className="flex h-dvh min-w-0 flex-col overflow-hidden">
+          {!OWN_HEADER.some((route) => route.test(location.pathname)) && <MobileTopBar />}
           <Outlet />
           <GlobalInterruptDialog />
           <Toaster position="bottom-right" richColors closeButton />
