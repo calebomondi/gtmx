@@ -8,11 +8,12 @@ discover target accounts, and run outreach.
 - **Agents**: LangGraph pipelines in `agents/`. They are pure: web search, scraping and LLM calls only.
 - **Backend**: FastAPI in `backend/app/`. It owns persistence, auth, and running agents.
 - **Frontend**: React 19, Vite, Tailwind v4 and shadcn in `frontend/`. This is the customer app.
+- **Waitlist page**: React, Vite and Tailwind v4 in `waitlist/`. The public landing page at gtmx.co, with signup and pilot opt-in.
 - **Admin dashboard**: a **separate git repository** (Turborepo + Bun, `apps/web` + `packages/ui`) checked out at `admin_dashboard/` and ignored by this repo. It's the internal ops console and follows the same rules and git workflow in its own repo.
 - **Identity**: Supabase Auth. **Database**: Postgres (Supabase in prod, Docker locally).
 
-Dependency direction is **frontend / admin_dashboard → backend → agents → data_sources/utils**.
-Both web apps talk only to the backend API. Neither talks to the database or holds a Supabase service key.
+Dependency direction is **frontend / waitlist / admin_dashboard → backend → agents → data_sources/utils**.
+All web apps talk only to the backend API. Neither talks to the database or holds a Supabase service key.
 Nothing under `agents/` imports `backend/`. Nothing under `data_sources/` imports `agents/`.
 
 ---
@@ -36,6 +37,10 @@ bun install
 bun run dev                           # Vite on :5173, proxies /api (incl. WS) to :8000
 bun run build                         # tsc -b && vite build. Must pass before any PR.
 bun run lint                          # oxlint
+
+# Waitlist page (from waitlist/)
+bun install && bun run dev           # Vite on :5174, proxies /api to :8000
+bun run build && bun run lint
 
 # Admin dashboard (from admin_dashboard/)
 bun install

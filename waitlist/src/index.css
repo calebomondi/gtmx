@@ -1,0 +1,65 @@
+@import "tailwindcss";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+/* A market brief, not a SaaS splash: off-white paper, near-black ink, and the
+   brand orange used only the way a highlighter would be, on what matters. */
+@theme {
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, monospace;
+
+  --color-paper: #fafaf8;
+  --color-panel: #ffffff;
+  --color-ink: #14161a;
+  --color-muted: #5b616b;
+  --color-line: #e3e5e8;
+  --color-brand: #fea853;
+  --color-brand-ink: #a2510c;
+  --color-highlight: #ffe6c7;
+  --color-kept: #1f7a4d;
+  --color-dropped: #b42318;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-paper font-sans text-ink antialiased;
+  }
+  ::selection {
+    @apply bg-highlight;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-brand-ink);
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes step-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-step-in {
+  animation: step-in 0.35s ease-out both;
+}
