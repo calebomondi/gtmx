@@ -8,7 +8,7 @@ import { FooterWordmark } from './footer-wordmark'
 export function Closing({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; onPilotSpotsLeft: (left: number) => void }) {
   return (
     <footer className="on-dark overflow-hidden bg-night text-paper">
-      <div className="mx-auto grid max-w-6xl gap-10 px-5 pt-20 pb-12 sm:px-8 sm:pt-28 lg:grid-cols-[1.1fr_1fr] lg:items-center">
+      <div className="mx-auto grid max-w-7xl gap-10 px-5 pt-20 pb-12 sm:px-8 sm:pt-28 lg:grid-cols-[1.1fr_1fr] lg:items-center">
         <div data-reveal className="flex flex-col gap-5">
           <p className="flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-brand">
             <span aria-hidden className="h-px w-6 bg-brand" />
@@ -25,7 +25,7 @@ export function Closing({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null;
           <SignupCard pilot={pilot} onPilotSpotsLeft={onPilotSpotsLeft} />
         </div>
       </div>
-      <div className="mx-auto flex max-w-6xl flex-col gap-3 border-t border-night-line px-5 py-8 text-sm text-night-muted sm:flex-row sm:items-center sm:justify-between sm:px-8">
+      <div className="mx-auto flex max-w-7xl flex-col gap-3 border-t border-night-line px-5 py-8 text-sm text-night-muted sm:flex-row sm:items-center sm:justify-between sm:px-8">
         <BrandMark className="text-paper" />
         <p>For founders selling across Africa.</p>
       </div>

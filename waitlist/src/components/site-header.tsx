@@ -3,7 +3,7 @@ import { BrandMark } from './brand-mark'
 export function SiteHeader() {
   return (
     <header className="sticky top-0 z-20 border-b border-ink/10 bg-paper/90 backdrop-blur">
-      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-5 sm:px-8">
+      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-5 sm:px-8">
         <a href="#top" aria-label="GTMX home">
           <BrandMark />
         </a>
