@@ -799,3 +799,46 @@ class ConnectionIdentity(Base):
     fetched_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), server_default=func.now(),
     )
+
+
+class WaitlistSignup(Base):
+    """A person who joined the waitlist on the public landing page. Not a
+    Supabase user: they have no account until invited to the pilot."""
+
+    __tablename__ = "waitlist_signups"
+    __table_args__ = (
+        CheckConstraint("stage IS NULL OR stage IN ('idea', 'pre_revenue', 'revenue', 'scaling')",
+                        name="ck_waitlist_signups_stage"),
+        CheckConstraint("sells_to IS NULL OR sells_to IN ('b2b', 'b2c', 'both')", name="ck_waitlist_signups_sells_to"),
+        CheckConstraint("status IN ('new', 'contacted', 'invited', 'onboarded')", name="ck_waitlist_signups_status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Lowercased; the natural key, so signing up twice updates the same row.
+    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True)
+    name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    company: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    role: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    stage: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    sells_to: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    countries: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
+    wants_pilot: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false(), index=True)
+    expectations: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Where they came from: utm_source/medium/campaign and the referrer.
+    source: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="new", server_default="new", index=True)
+    # sha256 of a random token returned at signup; lets that browser add the
+    # optional details without an account.
+    update_token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    # Salted hash of the signup IP, only for the per-IP rate limit.
+    ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    consent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    confirmation_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(), nullable=False, index=True,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC),
+        server_default=func.now(), nullable=False,
+    )
+

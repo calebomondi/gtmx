@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from backend.app.api.deps import rate_limited
-from backend.app.api.v1.endpoints import accounts, activity, admin, chat, competitors, connections, outreach, discovery, projects, runs, search, signals, users, workspaces
+from backend.app.api.v1.endpoints import accounts, activity, admin, chat, competitors, connections, outreach, discovery, projects, runs, search, signals, users, waitlist, workspaces
 
 api_router = APIRouter()
 # Every REST router is rate limited per user; the discovery WebSocket is limited
@@ -8,6 +8,9 @@ api_router = APIRouter()
 _LIMITED = [Depends(rate_limited)]
 
 api_router.include_router(discovery.router, prefix="/discover", tags=["discovery"])
+# Public: the landing page's waitlist has no signed-in user, so it is limited
+# per IP inside the service instead of per user.
+api_router.include_router(waitlist.router, prefix="/waitlist", tags=["waitlist"])
 api_router.include_router(runs.router, prefix="/runs", tags=["runs"], dependencies=_LIMITED)
 api_router.include_router(activity.router, prefix="/activity", tags=["activity"], dependencies=_LIMITED)
 api_router.include_router(search.router, prefix="/search", tags=["search"], dependencies=_LIMITED)
