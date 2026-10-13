@@ -39,6 +39,10 @@ PLATFORM_OF = {toolkit: platform for platform, toolkit in TOOLKITS.items()}
 MANAGED = {"gmail", "googlecalendar", "linkedin", "instagram", "facebook"}
 
 _STATUS = {"ACTIVE": "live", "INITIATED": "pending", "INITIALIZING": "pending"}
+_LABEL = {
+    "gmail": "Gmail", "googlecalendar": "Google Calendar", "linkedin": "LinkedIn", "instagram": "Instagram",
+    "facebook": "Facebook", "tiktok": "TikTok", "x": "X",
+}
 
 
 @dataclass
@@ -226,6 +230,14 @@ async def start(user_id: uuid.UUID, platform: str, origin: str | None = None) ->
     base = return_base(origin)
 
     def authorize() -> str:
+        # One connection per app: tools can't choose between two (see execute_tool).
+        live = _client().connected_accounts.list(
+            user_ids=[str(user_id)], toolkit_slugs=[TOOLKITS[platform]], statuses=["ACTIVE"],
+        )
+        if getattr(live, "items", None):
+            raise ConflictError(
+                f"You already have a {_LABEL[platform]} account connected. Disconnect it first to connect a different one."
+            )
         session = _client().create(
             user_id=str(user_id), manage_connections=False, auth_configs=_auth_configs(),
         )
@@ -255,8 +267,15 @@ async def disconnect(db: AsyncSession, user_id: uuid.UUID, connection_id: str) -
 
 
 def execute_tool(user_id: uuid.UUID, tool_slug: str, arguments: dict, connected_account_id: str) -> dict:
-    """Run one Composio tool as the user through a specific connected account.
-    Synchronous: call it in a worker thread. Returns {data, error, log_id}."""
+    """Run one Composio tool as the user. Synchronous: call it in a worker
+    thread. Returns {data, error, log_id}.
+
+    Composio picks the user's connection for the tool's app itself: our
+    project has no multi-account selection (naming an account is rejected),
+    and `start` allows one connection per app, so that pick is the connection
+    the caller checked is live. Its id is only kept for the log."""
     session = _client().create(user_id=str(user_id), manage_connections=False, auth_configs=_auth_configs())
-    response = session.execute(tool_slug, arguments=arguments, account=connected_account_id)
+    response = session.execute(tool_slug, arguments=arguments)
+    if response.error:
+        logger.info("Composio %s via connection %s failed: %s", tool_slug, connected_account_id, response.error)
     return {"data": response.data, "error": response.error, "log_id": response.log_id}
