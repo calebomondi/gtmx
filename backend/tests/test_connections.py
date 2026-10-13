@@ -32,7 +32,8 @@ class FakeComposio:
 
     def list(self, toolkit_slugs, statuses, user_ids=None, limit=None, cursor=None, timeout=None):
         items = [a for a in self.accounts.values()
-                 if (user_ids is None or a.user_id in user_ids) and a.status in statuses]
+                 if (user_ids is None or a.user_id in user_ids) and a.status in statuses
+                 and a.toolkit.slug in toolkit_slugs]
         if limit is None:
             return SimpleNamespace(items=items, next_cursor=None)
         start = int(cursor or 0)
@@ -53,8 +54,10 @@ class FakeComposio:
                 fake.authorized.append((user_id, toolkit, callback_url, auth_configs))
                 return SimpleNamespace(redirect_url=f"https://connect.example/{toolkit}")
 
-            def execute(self, tool, arguments, account):
-                fake.executed.append((tool, account))
+            def execute(self, tool, arguments, **kwargs):
+                if "account" in kwargs:  # what the live project answers
+                    raise RuntimeError("The 'account' parameter is not supported for this project.")
+                fake.executed.append(tool)
                 data = fake.identities.get(tool)
                 return SimpleNamespace(data=data, error=None if data else "unsupported", log_id="log")
         return Session()
@@ -86,7 +89,7 @@ def test_lists_only_the_users_connections(client, composio):
 def test_identities_are_read_once_and_forgotten_on_disconnect(client, composio):
     client.get(API)
     client.get(API)
-    assert composio.executed == [("GMAIL_GET_PROFILE", "ca_live")]  # remembered after the first read
+    assert composio.executed == ["GMAIL_GET_PROFILE"]  # remembered after the first read
     assert client.delete(f"{API}/ca_live").status_code == 204
     composio.accounts["ca_live2"] = _account("ca_live2", composio.accounts["ca_live"].user_id, "gmail", "ACTIVE")
     composio.identities["GMAIL_GET_PROFILE"] = {"emailAddress": "new@acme.com"}
@@ -146,5 +149,12 @@ def test_connect_returns_to_the_origin_the_user_started_from(client, composio, m
         ("https://evil.example", "http://localhost:5173"),  # never an arbitrary origin
         ("http://127.0.0.1:9999", "http://localhost:5173"),
     ]:
-        client.post(f"{API}/gmail", headers={"Origin": origin})
-        assert composio.authorized[-1][2] == f"{expected}/accounts?connected=gmail"
+        client.post(f"{API}/linkedin", headers={"Origin": origin})
+        assert composio.authorized[-1][2] == f"{expected}/accounts?connected=linkedin"
+
+
+def test_one_connection_per_app(client, composio):
+    """Tools can't choose between two connections of the same app, so a second is refused."""
+    refused = client.post(f"{API}/gmail")
+    assert refused.status_code == 409 and "already have a Gmail account" in refused.json()["detail"]
+    assert client.post(f"{API}/linkedin").status_code == 200  # another app is fine
