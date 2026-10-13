@@ -48,7 +48,7 @@ export function Markets() {
       title="Global sales tools know Silicon Valley. GTMX starts with Nairobi, Lagos and Joburg."
       intro="It researches local rivals, local buyers and local news: the key hire, the new branch, the funding round that makes this the month to reach out."
     >
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid gap-5 sm:grid-cols-3">
         {MARKETS.map((market, i) => (
           <article
             key={market.country}
