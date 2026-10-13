@@ -182,6 +182,24 @@ def people_on_linkedin(acc: AccountRecord, titles: list[str], cfg: Settings) -> 
     return people
 
 
+# Words that make a "name" a role or a persona label ("Sovereign AI Integrator",
+# "Head of Growth", "Sales Team") rather than a person someone can greet.
+# Extraction sometimes copies an ICP persona into a contact's name.
+_ROLE_WORDS = re.compile(
+    r"\b(?:team|department|office|desk|support|sales|marketing|admin|info|integrator|leader|lead|manager|"
+    r"director|head|officer|chief|ceo|cto|cfo|coo|founder|owner|specialist|engineer|analyst|consultant|"
+    r"buyer|persona|customer|user|decision|maker|executive|professional|ai|it)\b",
+    re.I,
+)
+
+
+def is_person_name(name: str | None) -> bool:
+    """Whether `name` reads as a person's name: at most five words, none of
+    them a role."""
+    words = (name or "").replace(",", " ").split()
+    return 1 <= len(words) <= 5 and not _ROLE_WORDS.search(name or "")
+
+
 def _rank(contact: ContactRecord) -> int:
     named = bool(contact.name)
     if contact.email and named:
@@ -199,6 +217,9 @@ def merge(existing: list[ContactRecord], found: list[ContactRecord], limit: int)
     merged: list[ContactRecord] = []
     seen: set[str] = set()
     for contact in [*existing, *found]:
+        if contact.name and not is_person_name(contact.name):
+            logger.info("Contact name %r reads as a role, not a person; keeping the address only", contact.name)
+            contact = contact.model_copy(update={"name": None})
         keys = {k for k in ((contact.email or "").lower(), (contact.linkedin or "").lower().rstrip("/")) if k}
         if not keys or keys & seen:
             continue
