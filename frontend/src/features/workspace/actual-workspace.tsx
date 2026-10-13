@@ -52,14 +52,15 @@ const WorkspaceTabs = ({ workspaceId }: { workspaceId?: string }) => {
     <Tabs
       value={tab}
       onValueChange={(value) => setTab(value as WorkspaceTab)}
-      // Vertical keeps the shared Tabs from stacking its children: here the
-      // rail, column and spacer sit in one row.
-      orientation='vertical'
       // Space the page chrome takes, per layout, for the tab views' heights:
       // phones add the bottom bar (and the home indicator), tablets the tab
       // row, desktops neither (the rail sits beside the content).
       className={[
-        'flex min-h-[calc(100dvh-3rem)] w-full flex-row justify-center gap-0 bg-muted',
+        // The rail, column and spacer sit in one row. The orientation stays
+        // horizontal: a vertical root would turn every nested tab list
+        // (Watch list / Runs, …) vertical too, since its styles match any
+        // ancestor tabs root.
+        'flex min-h-[calc(100dvh-3rem)] w-full flex-row justify-center gap-0 bg-muted data-horizontal:flex-row',
         '[--ws-chrome:calc(8rem_+_env(safe-area-inset-bottom))] md:[--ws-chrome:10rem] xl:[--ws-chrome:7rem]',
         '[--ws-agent:calc(7rem_+_env(safe-area-inset-bottom))] md:[--ws-agent:6rem] xl:[--ws-agent:3rem]',
       ].join(' ')}

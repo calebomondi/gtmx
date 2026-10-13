@@ -134,12 +134,12 @@ function HomeSignalCard({
           )}
         </div>
 
-        <div className="mt-2 flex items-center gap-2">
-          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-primary/10 bg-muted/60 px-1.5 py-0.5 text-[11px] font-medium text-foreground">
-            <span aria-hidden className="size-2 rounded-[2px] bg-[#FEA853]" />
-            {signal.workspace.name}
+        <div className="mt-2 flex min-w-0 items-center gap-2">
+          <span className="inline-flex min-w-0 items-center gap-1.5 rounded-md border border-primary/10 bg-muted/60 px-1.5 py-0.5 text-[11px] font-medium text-foreground">
+            <span aria-hidden className="size-2 shrink-0 rounded-[2px] bg-[#FEA853]" />
+            <span className="truncate">{signal.workspace.name}</span>
           </span>
-          <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+          <span className="ml-auto hidden shrink-0 items-center gap-1 text-[11px] sm:inline-flex text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
             Open in {signal.workspace.name}
             <ArrowRight className="size-3" />
           </span>

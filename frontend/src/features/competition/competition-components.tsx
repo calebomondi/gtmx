@@ -596,7 +596,7 @@ function AddCompetitorDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 px-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="competitor-website">Website</Label>
             <Input
@@ -714,7 +714,7 @@ function EditCompetitorDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto">
+        <div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto px-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="edit-name">Name</Label>
             <Input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} />
@@ -919,7 +919,7 @@ export function CompetitionComponent({ workspaceId }: { workspaceId?: string }) 
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             size="sm"
