@@ -25,3 +25,12 @@ class ChatRoute(LenientModel):
         description="True only for facts the research cannot contain: recent news, a company not in the research, current prices or events",
     )
     queries: list[str] = Field(default_factory=list, description="At most 3 focused web-search queries when needs_web")
+
+
+class ChatSuggestions(LenientModel):
+    suggestions: list[str] = Field(
+        default_factory=list,
+        description="Exactly 3 short questions the user is likely to ask next, in their own voice, each under 12 words "
+                    "and specific to this offer and conversation",
+    )
+

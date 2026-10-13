@@ -7,6 +7,8 @@ export interface ChatMessageDto {
   content: string
   /** The specialist who answered: product (or service), market, competition, gtm. */
   specialist_domain: string | null
+  /** Follow-up questions offered under an assistant answer; empty otherwise. */
+  suggestions: string[]
   created_at: string
 }
 

@@ -675,6 +675,8 @@ class ChatMessage(Base):
     # The specialist who answered (product, market, competition, gtm);
     # null for the user's own messages and answers from before routing.
     specialist_domain: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Follow-up questions offered under an assistant answer; null otherwise.
+    suggestions: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     run_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True,
     )

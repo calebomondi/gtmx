@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.app.schemas.runs import RunResponse
 
@@ -15,7 +15,13 @@ class ChatMessageResponse(BaseModel):
     role: str
     content: str
     specialist_domain: str | None = None
+    suggestions: list[str] = Field(default_factory=list, description="Follow-up questions offered under an assistant answer")
     created_at: datetime
+
+    @field_validator("suggestions", mode="before")
+    @classmethod
+    def _none_is_empty(cls, value):
+        return value or []
 
 
 class ChatThreadResponse(BaseModel):

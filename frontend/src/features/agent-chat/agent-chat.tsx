@@ -9,6 +9,8 @@ import { useWorkspaces } from '@/lib/workspaces-store'
 import { useWorkspaceSpecialists } from '@/lib/specialists'
 import { cn } from '@/lib/utils'
 
+import { SuggestionChips } from './suggestion-chips'
+
 const POLL_MS = 2000
 
 /** The team member who answered, matching "product" to a service expert too. */
@@ -99,6 +101,11 @@ export function AgentChat({ workspaceId }: { workspaceId?: string }) {
 
   const messages = thread?.messages ?? []
   const failedRun = thread?.reply_run?.status === 'failed' ? thread.reply_run : null
+  const last = messages[messages.length - 1]
+  const followUps = !replying && last?.role === 'assistant' ? last.suggestions ?? [] : []
+  const starters = scopeName
+    ? [`What exactly does ${scopeName} do?`, 'Who should we sell to first?', 'Who is our biggest competitor?']
+    : []
 
   return (
     <div className='flex h-full flex-col'>
@@ -127,6 +134,7 @@ export function AgentChat({ workspaceId }: { workspaceId?: string }) {
               topic answers you directly, checks with their colleagues when it helps, and grounds the answer
               in {scopeName ? `${scopeName}'s` : 'this workspace’s'} research.
             </p>
+            <SuggestionChips suggestions={starters} disabled={sending} onPick={(q) => void handleSubmit(q)} />
           </div>
         ) : (
           <div className='mx-auto flex max-w-3xl flex-col gap-4'>
@@ -152,6 +160,7 @@ export function AgentChat({ workspaceId }: { workspaceId?: string }) {
                 <Loader2 className='size-4 animate-spin' /> The right specialist is looking into it…
               </div>
             )}
+            <SuggestionChips suggestions={followUps} disabled={sending} onPick={(q) => void handleSubmit(q)} />
             {failedRun && (
               <div className='flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive'>
                 <AlertTriangle className='mt-0.5 size-4 shrink-0' />

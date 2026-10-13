@@ -89,10 +89,10 @@ async def chat(run_id: uuid.UUID, workspace_id: uuid.UUID, params: dict) -> None
         offer_name=specialists.offer_name, offer=specialists.offer, team=specialists.team, research=specialists.research,
     )
     question, prior = history[-1][1], history[:-1][-chat_service.HISTORY_TURNS:]
-    reply = await asyncio.to_thread(workspace_chat.answer, question, prior, context)
+    reply = await asyncio.to_thread(workspace_chat.reply, question, prior, context)
     async with AsyncSessionLocal() as db:
         message = await chat_service.add_assistant_message(
-            db, workspace_id, run.user_id, run_id, reply.content, reply.domain,
+            db, workspace_id, run.user_id, run_id, reply.content, reply.domain, reply.suggestions,
         )
     await _finish(run_id, {"message_id": str(message.id), "specialist": reply.domain})
 
