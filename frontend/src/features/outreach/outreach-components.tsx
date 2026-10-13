@@ -198,7 +198,7 @@ export function OutReachComponent({ focusEmail = null, onFocusHandled, workspace
   }
 
   return (
-    <div ref={rootRef} className="flex h-[calc(100dvh-7rem)] min-h-0 flex-col">
+    <div ref={rootRef} className="flex h-[calc(100dvh-var(--ws-chrome,7rem))] min-h-0 flex-col">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <h2 className="whitespace-nowrap text-xl font-medium text-foreground">Reach Out</h2>

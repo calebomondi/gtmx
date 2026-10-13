@@ -1,36 +1,27 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { motion } from 'motion/react'
-import { Bot } from 'lucide-react'
-import { Tabs, TabsContent, TabsIndicator, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { AgentChat } from '@/features/agent-chat/agent-chat'
 import { FeedComponent } from '@/features/feed/feed-components'
 import OutReachComponent from '@/features/outreach/outreach-components'
 import ProductComponent from '@/features/product/product-components'
 import CompetitionComponent from '@/features/competition/competition-components'
+import { BottomNav, RailNav, TopNav } from '@/features/workspace/workspace-nav'
+import { WORKSPACE_TABS } from '@/features/workspace/workspace-tabs'
+import { isWorkspaceTab, type WorkspaceTab } from '@/lib/workspace-tab'
 
-const TAB_DEFS = [
-  { name: 'Feed', value: 'feed' },
-  { name: 'Reach Out', value: 'outreach' },
-  { name: 'Offer', value: 'product' },
-  { name: 'Competitors', value: 'competition' },
-  { name: 'Agent', value: 'agent' },
-]
-
-const TAB_VALUES = TAB_DEFS.map(t => t.value)
-
-const TabsVerticalLined = ({ workspaceId }: { workspaceId?: string }) => {
+const WorkspaceTabs = ({ workspaceId }: { workspaceId?: string }) => {
   // The tab lives in the URL, so a link to ?tab=… (e.g. from Search) switches
   // it even when this workspace is already open.
   const [searchParams, setSearchParams] = useSearchParams()
   const requested = searchParams.get('tab')
-  const tab = requested && TAB_VALUES.includes(requested) ? requested : 'feed'
+  const tab: WorkspaceTab = isWorkspaceTab(requested) ? requested : 'feed'
   const [focus, setFocus] = useState<{ email: string | null; nonce: number }>({
     email: null,
     nonce: 0
   })
 
-  const setTab = (next: string) => {
+  const setTab = (next: WorkspaceTab) => {
     setSearchParams({ tab: next }, { replace: true })
   }
 
@@ -60,67 +51,36 @@ const TabsVerticalLined = ({ workspaceId }: { workspaceId?: string }) => {
   return (
     <Tabs
       value={tab}
-      onValueChange={setTab}
+      onValueChange={(value) => setTab(value as WorkspaceTab)}
+      // Vertical keeps the shared Tabs from stacking its children: here the
+      // rail, column and spacer sit in one row.
       orientation='vertical'
-      className='relative w-full grid min-h-[calc(100dvh-3rem)] place-items-center bg-muted'
+      // Space the page chrome takes, per layout, for the tab views' heights:
+      // phones add the bottom bar (and the home indicator), tablets the tab
+      // row, desktops neither (the rail sits beside the content).
+      className={[
+        'flex min-h-[calc(100dvh-3rem)] w-full flex-row justify-center gap-0 bg-muted',
+        '[--ws-chrome:calc(8rem_+_env(safe-area-inset-bottom))] md:[--ws-chrome:10rem] xl:[--ws-chrome:7rem]',
+        '[--ws-agent:calc(7rem_+_env(safe-area-inset-bottom))] md:[--ws-agent:6rem] xl:[--ws-agent:3rem]',
+      ].join(' ')}
     >
-      {/* Floating left rail — animated agent bubble above the vertical tab nav */}
-      <div className='absolute top-1/2 left-4 z-10 flex -translate-y-1/2 flex-col items-start gap-3'>
-        <motion.button
-          type='button'
-          onClick={() => setTab('agent')}
-          aria-pressed={tab === 'agent'}
-          aria-label='Open agent chat'
-          title='Ask your agent'
-          animate={{ y: [0, -4, 0] }}
-          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-          whileHover={{ scale: 1.08 }}
-          whileTap={{ scale: 0.95 }}
-          className={[
-            'relative flex size-11 cursor-pointer items-center justify-center rounded-full border shadow-sm',
-            tab === 'agent'
-              ? 'border-amber-500/70 bg-amber-500 text-white shadow-md'
-              : 'border-amber-500/30 bg-amber-500/15 text-amber-500 hover:border-amber-500/60 hover:bg-amber-500/25 hover:text-amber-400',
-          ].join(' ')}
-        >
-          <span
-            aria-hidden
-            className={[
-              'absolute -inset-0.5 rounded-full blur-md animate-pulse',
-              tab === 'agent' ? 'bg-amber-500/40' : 'bg-amber-500/25',
-            ].join(' ')}
-          />
-          <Bot className='relative size-5' />
-        </motion.button>
-        <TabsList className='relative flex-col rounded-xl bg-muted px-2 py-3 shadow-sm'>
-          {TAB_DEFS
-            .filter(t => t.value !== 'agent')
-            .map(tabDef => (
-              <TabsTrigger
-                key={tabDef.value}
-                value={tabDef.value}
-                className='data-active:bg-muted data-active:text-amber-500 dark:data-active:bg-muted dark:data-active:text-amber-500 relative h-8 w-36 justify-start rounded-none border-0 px-3 data-active:shadow-none! cursor-pointer'
-              >
-                {tabDef.name}
-              </TabsTrigger>
-            ))}
-          {tab !== 'agent' && (
-            <TabsIndicator className='absolute top-0 left-0 h-(--active-tab-height) w-1 translate-x-(--active-tab-left) translate-y-(--active-tab-top) rounded-r-full bg-amber-500 transition-[translate,height] duration-300 ease-out' />
-          )}
-        </TabsList>
-      </div>
+      <aside className='hidden w-48 shrink-0 items-center justify-end pr-5 xl:flex'>
+        <RailNav current={tab} onSelect={setTab} />
+      </aside>
 
-      {/* Centered content column — the active tab's content renders here */}
-      <div className='md:max-w-[40%] w-full border-x min-h-full border-primary/15'>
-        <section className='border-b grid grid-cols-1 overflow-hidden border-primary/15'>
-          {TAB_DEFS.map(tabDef => (
+      {/* The content widens as the screen narrows: the column has a maximum
+          width, never a share of the screen, and the navigation moves. */}
+      <div className='flex w-full min-w-0 max-w-3xl flex-col border-primary/15 md:border-x'>
+        <TopNav current={tab} onSelect={setTab} className='hidden md:block xl:hidden' />
+        <section className='grid grid-cols-1 overflow-hidden border-b border-primary/15'>
+          {WORKSPACE_TABS.map(tabDef => (
             <TabsContent
               key={tabDef.value}
               value={tabDef.value}
               keepMounted
               className={[
                 'col-start-1 row-start-1 data-starting-style:opacity-0 data-ending-style:opacity-0 motion-safe:data-starting-style:data-[activation-direction=up]:translate-y-[-50%] motion-safe:data-starting-style:data-[activation-direction=down]:translate-y-[50%] motion-safe:data-ending-style:data-[activation-direction=up]:translate-y-[50%] motion-safe:data-ending-style:data-[activation-direction=down]:translate-y-[-50%] [transition:opacity_175ms_ease,translate_400ms_cubic-bezier(0.22,1,0.36,1)]',
-                tabDef.value === 'agent' ? 'h-[calc(100dvh-3rem)] p-0' : 'px-4 pt-4',
+                tabDef.value === 'agent' ? 'h-[calc(100dvh-var(--ws-agent))] p-0' : 'px-4 pt-4',
               ].join(' ')}
             >
               {renderTabContent(tabDef.value)}
@@ -128,10 +88,16 @@ const TabsVerticalLined = ({ workspaceId }: { workspaceId?: string }) => {
           ))}
         </section>
       </div>
+
+      {/* Balances the rail so the content sits dead centre on wide screens;
+          below 1536px the room goes to the content instead. */}
+      <div aria-hidden className='hidden w-48 shrink-0 2xl:block' />
+
+      <BottomNav current={tab} onSelect={setTab} className='fixed inset-x-0 bottom-0 z-20 md:hidden' />
     </Tabs>
   )
 }
 
 export function ActualWorkspace({ workspaceId }: { workspaceId?: string }) {
-  return <TabsVerticalLined workspaceId={workspaceId} />
+  return <WorkspaceTabs workspaceId={workspaceId} />
 }
