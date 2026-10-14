@@ -64,7 +64,7 @@ def serialize_offer_snapshot(values: dict) -> dict | None:
     if not offer_name:
         return None
     return {
-        "company_name": None,
+        "company_name": values.get("company_name"),
         "offer_name": offer_name,
         "offer_description": values.get("offer_description"),
         "website_url": values.get("website_url"),
