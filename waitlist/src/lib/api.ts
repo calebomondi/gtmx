@@ -39,6 +39,10 @@ export interface PilotSpots {
 
 export const EXPECTATIONS_MAX_CHARS = 500
 
+// The backend's own address when it isn't on this site's origin (Render);
+// empty when /api is proxied here (local dev, or nginx in front of both).
+const API_ORIGIN = ((import.meta.env.VITE_API_ORIGIN as string | undefined) ?? '').trim().replace(/\/$/, '')
+
 export class ApiError extends Error {
   readonly status: number
   constructor(status: number, message: string) {
@@ -58,7 +62,7 @@ function messageFor(status: number, detail: unknown): string {
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response
   try {
-    response = await fetch(`/api/v1/waitlist${path}`, {
+    response = await fetch(`${API_ORIGIN}/api/v1/waitlist${path}`, {
       ...init,
       headers: { 'Content-Type': 'application/json', ...init?.headers },
     })
