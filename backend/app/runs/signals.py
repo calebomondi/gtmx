@@ -18,6 +18,7 @@ _KIND_LABEL = {
     "outreach_drafts": "Outreach drafting",
     "outreach_reply": "Reply drafting",
     "monitor": "Competitor monitoring",
+    "account_fit": "Fit assessment",
 }
 _MAX_ACCOUNT_SIGNALS = 5
 
@@ -84,9 +85,22 @@ async def accounts_found(run_id: uuid.UUID) -> None:
             user_id=run.user_id, workspace_id=run.workspace_id, run_id=run_id, category="opportunity",
             title=f"Target account: {a.name}", entity=a.name,
             summary=(a.why_reach_out or a.why_selected or [a.industry or ""])[0],
-            reason="Matches your ideal customer profile.", source_url=a.website,
+            reason=_fit_reason(a.fit), insight=_fit_insight(a.fit), source_url=a.website,
         ) for a in rows]
     await _emit(build)
+
+
+def _fit_reason(fit: dict | None) -> str:
+    if fit and fit.get("need"):
+        return fit["need"]
+    return "Matches your ideal customer profile."
+
+
+def _fit_insight(fit: dict | None) -> dict | None:
+    """What the opening is worth to them, and how to open it."""
+    if not fit or not (fit.get("payoff") or fit.get("angle")):
+        return None
+    return {"means": fit.get("payoff") or "", "next_move": fit.get("angle") or ""}
 
 
 async def outreach_drafted(run_id: uuid.UUID, count: int) -> None:
@@ -123,6 +137,12 @@ _CHANGE_REASON = {
 }
 
 
+def _change_insight(change) -> dict | None:
+    if not (change.implication or change.counter_move):
+        return None
+    return {"means": change.implication, "next_move": change.counter_move}
+
+
 async def competitor_changes(run_id: uuid.UUID, changes: list) -> None:
     """One signal per material change a monitoring run found."""
     async def build(db):
@@ -130,7 +150,8 @@ async def competitor_changes(run_id: uuid.UUID, changes: list) -> None:
         return [signal_service.build(
             user_id=run.user_id, workspace_id=run.workspace_id, run_id=run_id, category="competitor",
             title=f"{name}: {change.title}", entity=name, summary=change.summary,
-            reason=_CHANGE_REASON.get(change.kind, f"Monitoring spotted a {change.kind} change."),
+            reason=change.implication or _CHANGE_REASON.get(change.kind, f"Monitoring spotted a {change.kind} change."),
+            insight=_change_insight(change),
             source_url=change.source_url or website, hot=change.importance == "high",
         ) for name, website, change in changes]
     await _emit(build)

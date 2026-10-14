@@ -121,3 +121,32 @@ class AccountList(LenientModel):
     accounts: list[AccountRecord] = Field(
         description="4-8 target accounts found for outreach, each with a current trigger event",
     )
+
+
+class AccountFit(LenientModel):
+    """Why THIS offer suits THIS account now: the case a seller would make,
+    written before any message. Every field comes from the offer and the
+    account record; an empty field means the record doesn't support it."""
+
+    need: str = Field(description="What the account needs right now, read off its trigger and record, in their terms")
+    capability: str = Field(
+        description="The one capability of the offer that answers that need, named as the offer describes it",
+    )
+    payoff: str = Field(
+        description="What that is worth to their business: what they save, earn, speed up or stop risking. "
+                    "Concrete to them; a number only when the record or offer states one",
+    )
+    benefit: str = Field(default="", description="The kind of payoff: lower cost, more revenue, time saved, or less risk")
+    angle: str = Field(description="How to open the conversation: the trigger tied to the payoff, one sentence")
+    strength: Literal["strong", "moderate", "weak"] = Field(
+        default="moderate",
+        description="strong = the trigger creates a need the offer directly answers; weak = only a loose link",
+    )
+
+    @field_validator("need", "payoff", "angle")
+    @classmethod
+    def _stated(cls, value: str) -> str:
+        # The card is empty without these, so a blank one is sent back.
+        if not (value or "").strip():
+            raise ValueError("must be stated, in a sentence")
+        return value.strip()

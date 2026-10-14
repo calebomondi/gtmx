@@ -25,6 +25,10 @@ export function listActiveRuns(): Promise<RunDto[]> {
   return apiFetch<RunDto[]>("/api/v1/runs/active")
 }
 
+export function getRun(runId: string): Promise<RunDto> {
+  return apiFetch<RunDto>(`/api/v1/runs/${runId}`)
+}
+
 export function answerRun(runId: string, answer: string): Promise<void> {
   return apiFetch<void>(`/api/v1/runs/${runId}/answer`, {
     method: "POST",

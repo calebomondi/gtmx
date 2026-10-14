@@ -42,13 +42,15 @@ def _run_monitor(client, workspace):
 def test_baseline_then_changes_become_signals(client, owned, monkeypatch):
     seen_previous = []
 
-    def fake_check(name, website, previous, offer, posts=None):
+    def fake_check(name, website, previous, offer, posts=None, offer_detail=""):
         seen_previous.append(previous)
         state = {"site_hash": "h1", "site_text": "Pro $10/seat", "news_urls": []}
         if previous is None:
             return state, []
         return state, [
-            CompetitorChange(kind="pricing", title="Cut Pro to $8/seat", summary="Undercuts us.", importance="high"),
+            CompetitorChange(kind="pricing", title="Cut Pro to $8/seat", summary="Undercuts us.", importance="high",
+                             implication="Price-led buyers in our pipeline will compare us on cost.",
+                             counter_move="Lead with total cost of ownership in this week's follow-ups."),
             CompetitorChange(kind="news", title="Blog redesign", summary="Cosmetic.", importance="low"),
         ]
     monkeypatch.setattr(background.check_competitor, "check", fake_check)
@@ -64,6 +66,10 @@ def test_baseline_then_changes_become_signals(client, owned, monkeypatch):
     assert [(s["title"], s["hot"]) for s in feed if s["entity"] != "Competitor monitoring"] == [
         ("rival.example: Cut Pro to $8/seat", True),
     ]
+    [change] = [s for s in feed if s["entity"] != "Competitor monitoring"]
+    assert change["reason"] == "Price-led buyers in our pipeline will compare us on cost."
+    assert change["insight"] == {"means": "Price-led buyers in our pipeline will compare us on cost.",
+                                 "next_move": "Lead with total cost of ownership in this week's follow-ups."}
 
 
 def test_check_now_needs_competitors(client, user, seed_workspace):
@@ -93,7 +99,7 @@ async def test_scheduler_picks_only_stale_live_workspaces(owned, monkeypatch):
 def test_socials_refresh_weekly_and_record_found_handles(client, owned, monkeypatch, socials_calls):
     checked_posts = []
     monkeypatch.setattr(background.check_competitor, "check",
-                        lambda *a, posts=None: checked_posts.append(posts) or ({}, []))
+                        lambda *a, posts=None, offer_detail="": checked_posts.append(posts) or ({}, []))
     _run_monitor(client, owned["workspace"])
     competitor = client.get(f"{API}/{owned['workspace']}/competitors").json()["competitors"][0]
     assert competitor["social_profiles"]["x"]["followers"] == 1200 and competitor["socials_checked_at"]

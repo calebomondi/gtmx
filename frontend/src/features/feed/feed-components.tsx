@@ -232,6 +232,22 @@ function SignalCard({
   )
 }
 
+function WhyThisMatters({ signal }: { signal: Signal }) {
+  const { insight } = signal
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-amber-500/25 bg-amber-500/5 p-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-amber-500">Why this matters</p>
+      <p className="text-sm leading-relaxed text-foreground">{insight?.means || signal.reason}</p>
+      {insight?.next_move && (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Your move</p>
+          <p className="text-sm leading-relaxed text-foreground">{insight.next_move}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** Where in the workspace each kind of item is worked on. */
 const OPEN_IN: Partial<Record<Signal['category'], { tab: WorkspaceTab; label: string }>> = {
   product: { tab: 'product', label: 'Open the research' },
@@ -317,12 +333,8 @@ function SignalDetail({
 
         <SignalDetailBody signal={signal} workspaceId={workspaceId} />
 
-        <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-amber-500">
-            Why this matters
-          </p>
-          <p className="text-sm leading-relaxed text-muted-foreground">{signal.reason}</p>
-        </div>
+        {/* An opportunity's fit sections are its "why"; repeating them here adds nothing. */}
+        {signal.category !== 'opportunity' && <WhyThisMatters signal={signal} />}
       </div>
 
       <DialogFooter className="border-t">

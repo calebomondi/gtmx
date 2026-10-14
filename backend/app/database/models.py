@@ -457,6 +457,10 @@ class Account(Base):
     why_selected: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     why_reach_out: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     trigger_event: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Why the offer suits this account now (agents.schemas.accounts.AccountFit):
+    # the need, the capability that answers it, its payoff and the angle.
+    # Null until assessed.
+    fit: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     selected: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=false(),
@@ -645,6 +649,9 @@ class Signal(Base):
     body: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Why the user is seeing this.
     reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # What the item means for the user and the move to make
+    # ({"means", "next_move"}), when the agent that raised it could say.
+    insight: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     source_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     hot: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
     read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())

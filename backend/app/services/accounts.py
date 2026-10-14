@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import models
+from backend.app.runs.kinds import RunKind
 from backend.app.services.runs import TERMINAL_STATUSES
 from backend.app.services.errors import ConflictError, NotFoundError
 
@@ -67,13 +68,13 @@ async def get_run(db: AsyncSession, workspace_id: uuid.UUID, run_id: uuid.UUID) 
     return run
 
 
-async def active_run(db: AsyncSession, workspace_id: uuid.UUID) -> models.Run | None:
-    """The run in flight, if any -- one per workspace, because concurrent runs
-    would race on the same upserts."""
+async def active_run(db: AsyncSession, workspace_id: uuid.UUID, kind: RunKind = "accounts") -> models.Run | None:
+    """The run of `kind` in flight, if any -- one per workspace, because
+    concurrent runs would race on the same rows."""
     result = await db.execute(
         select(models.Run).where(
             models.Run.workspace_id == workspace_id,
-            models.Run.kind == "accounts",
+            models.Run.kind == kind,
             models.Run.status.not_in(TERMINAL_STATUSES),
         )
     )
@@ -91,3 +92,24 @@ async def require_icp(db: AsyncSession, workspace_id: uuid.UUID) -> None:
             "This workspace has no ICP yet. Complete the Offer run first -- "
             "the account agent searches for accounts matching it."
         )
+
+
+FIT_BATCH = 40  # accounts one fit run assesses; the rest wait for the next
+
+
+async def without_fit(db: AsyncSession, workspace_id: uuid.UUID) -> list[models.Account]:
+    """Accounts whose fit hasn't been assessed, best first."""
+    return list((await db.execute(
+        select(models.Account)
+        .where(models.Account.workspace_id == workspace_id, models.Account.fit.is_(None))
+        .order_by(models.Account.score.desc().nulls_last())
+        .limit(FIT_BATCH)
+    )).scalars().all())
+
+
+async def save_fits(db: AsyncSession, fits: dict[uuid.UUID, dict]) -> None:
+    for account_id, fit in fits.items():
+        account = await db.get(models.Account, account_id)
+        if account is not None:
+            account.fit = fit
+    await db.commit()

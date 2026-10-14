@@ -2,8 +2,20 @@
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class AccountFitResponse(BaseModel):
+    """Why the offer suits the account now."""
+
+    need: str = ""
+    capability: str = ""
+    payoff: str = ""
+    benefit: str = ""
+    angle: str = ""
+    strength: Literal["strong", "moderate", "weak"] = "moderate"
 
 
 class AccountResponse(BaseModel):
@@ -37,6 +49,7 @@ class AccountResponse(BaseModel):
     why_selected: list[str] = []
     why_reach_out: list[str] = []
     trigger_event: dict | None = None
+    fit: AccountFitResponse | None = None
     selected: bool = False
     do_not_contact: bool = False
     created_at: datetime

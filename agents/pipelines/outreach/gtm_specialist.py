@@ -22,7 +22,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from agents.llm.main import cheap_providers, invoke_structured_with_fallback
 from agents.pipelines import team
-from agents.helpers import name_in_text
+from agents.helpers import name_in_text, offer_label
 from agents.pipelines.outreach import grounding
 from agents.pipelines.web_utils import call_with_timeout
 from agents.schemas.outreach import AccountResearch, DraftReview, OutreachDraft, OutreachPlan
@@ -281,14 +281,6 @@ def _names_offer(body: str, brief: OutreachBrief, offer_name: str) -> bool:
     return bool(offer_name and name_in_text(offer_name, body)) or bool(brief.seller and _names_seller(brief.seller, body))
 
 
-def _offer_label(brief: OutreachBrief, offer_name: str) -> str:
-    """How the writer refers to the offer: the company and the offer, since
-    the offer name alone is often a product label nobody recognises."""
-    if brief.seller and not name_in_text(brief.seller, offer_name):
-        return f"{brief.seller} ({offer_name})"
-    return offer_name
-
-
 def _restore_fit(body: str, fit: str) -> str:
     """Put the planned fit back in, before the ask, when cutting ungrounded
     sentences took every mention of the offer with it."""
@@ -320,7 +312,7 @@ def _plain_subject(brief: OutreachBrief) -> str:
 def write_first_touch(brief: OutreachBrief, offer_name: str) -> OutreachDraft:
     """Research, plan, consult, write and review one first-touch message."""
     pages = _sources(brief)
-    label = _offer_label(brief, offer_name)
+    label = offer_label(brief.seller, offer_name)
     research = research_account(brief, pages)
     plan = plan_message(brief, research, label)
     notes = team.consult_all(brief.team, brief.research, plan.consult, "gtm", "The GTM specialist, writing outreach,",

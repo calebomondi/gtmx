@@ -35,9 +35,13 @@ _NEWS_DAYS = 30
 _NEWS_RESULTS = 4
 _EVENT_RESULTS = 3
 _FIRST_CHECK_MAX = 3
+_OFFER_CHARS = 2_000
 _TIMEOUT_S = 30
 
-_SOURCES = """NEW NEWS
+_SOURCES = """WHAT WE OFFER (for the implication and counter-move)
+{offer_detail}
+
+NEW NEWS
 {news}
 
 NEW EVENTS (webinars, conferences, launches they run or appear at)
@@ -59,6 +63,11 @@ and anything present in both versions. If nothing material changed, return
 an empty list. Every change must be supported by the CURRENT text or a NEW
 item; cite its URL. importance: high = we should react this week.
 
+For each change, say what it means for {our_offer} (implication: the deals,
+buyers or positioning it threatens or opens up) and the one counter_move we
+should make. Ground both in the change and in what we offer; never invent
+customers or numbers.
+
 PREVIOUS WEBSITE TEXT
 {previous}
 
@@ -72,7 +81,9 @@ is what was published about them in the last month. Report at most
 {limit} items a go-to-market team should know about now: launches, pricing,
 funding, partnerships, events they run or speak at, campaigns. Skip routine
 posts and anything older or immaterial; an empty list is fine. Cite each
-item's URL. importance: high = we should react this week.
+item's URL. importance: high = we should react this week. For each item, say
+what it means for {our_offer} (implication) and the one counter_move we
+should make, grounded in the item and what we offer.
 
 """ + _SOURCES
 
@@ -117,10 +128,11 @@ def _report(prompt: str, label: str) -> list[CompetitorChange]:
 
 
 def check(name: str, website: str, previous: dict | None, our_offer: str,
-          posts: list[dict] | None = None) -> tuple[dict, list[CompetitorChange]]:
+          posts: list[dict] | None = None, offer_detail: str = "") -> tuple[dict, list[CompetitorChange]]:
     """Returns (new state, material changes). `posts` are the competitor's
     recent social posts ({platform, text, url, date}), when socials were
-    refreshed this run."""
+    refreshed this run; `offer_detail` describes our offer, so each change can
+    say what it means for us."""
     raw = call_with_timeout(lambda: scrape_url(website, get_settings()), _TIMEOUT_S, default="",
                             label=f"monitor_site[{website}]") or ""
     site = _normalize(raw)[:_SITE_CHARS]
@@ -139,7 +151,8 @@ def check(name: str, website: str, previous: dict | None, our_offer: str,
         "news_urls": sorted(seen | {d["url"] for d in news + events}),
         "post_urls": sorted(seen_posts | {p["url"] for p in posts or [] if p.get("url")}),
     }
-    sources = {"news": _items(fresh_news), "events": _items(fresh_events), "posts": _posts(fresh_posts)}
+    sources = {"news": _items(fresh_news), "events": _items(fresh_events), "posts": _posts(fresh_posts),
+               "offer_detail": offer_detail[:_OFFER_CHARS] or "(not on file)"}
 
     if not previous:
         if not (fresh_news or fresh_events or fresh_posts):
