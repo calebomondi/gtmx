@@ -52,6 +52,9 @@ class OutreachBrief:
     contact_title: str | None = None
     website: str | None = None
     trigger_source: str | None = None
+    # The selling company ("Shanga Labs"); the offer name is often a product
+    # label, and a draft may name either.
+    seller: str = ""
     # company | community | event | creator | platform: a company is a buyer;
     # the others are audiences, reached through a partnership.
     account_type: str = "company"
@@ -96,10 +99,12 @@ team's outreach. Plan ONE message to the account below before writing it.
 Pick the angle a senior seller would: the single most relevant account fact
 as the hook, the problem it implies for them, the FIT (what {offer_name} is and
 the one capability of it that answers their situation, taken from the OFFER),
-the concrete outcome that gives them (numbers or a before/after only when the
+the OUTCOME: the business payoff for them -- what they save (cost), earn
+(revenue), speed up (time) or stop risking -- stated in terms of their
+business, not the offer's features (numbers or a before/after only when the
 research supports them), a proof point if one exists, and one low-friction
-ask. Without the fit, the message is only about their news and gives them no
-reason to reply. The ask is about THEM
+ask. Without the fit and its payoff, the message is only about their news,
+or only about us, and gives them no reason to reply. The ask is about THEM
 (their workload, their timeline, a short call) -- never "how we're helping
 others" or "how other companies are doing X": that claims customers and
 results the research does not show.
@@ -134,9 +139,10 @@ Structure:
 - Then the problem, as a hypothesis: frame it as what teams in their position
   usually hit, or ask -- never claim to know their internal situation.
 - Then the fit, the heart of the message: name {offer_name}, say in plain words
-  what it does that answers their situation, and what changes for them (the
-  plan's fit and outcome). One capability tied to them, not a feature list.
-  One proof point at most.
+  what it does that answers their situation, and then the payoff for their
+  business -- what it saves them, earns them, speeds up or de-risks (the plan's
+  outcome). A capability without its payoff is not a fit. One capability tied
+  to them, not a feature list. One proof point at most.
 - One ask, as a question.
 - Sign-off: just the sender's name.
 
@@ -162,7 +168,7 @@ OFFER
 _REVIEW_PROMPT = """Review this outreach {channel} against the checks. It FAILS if any is false:
 1. It greets the contact (or the account's team), then opens on a specific fact about the account that appears in the RESEARCH.
 2. No claim, number, customer or name appears that is not in the RESEARCH, PLAN or OFFER.
-3. It names the offer and says what it does for THIS account (the plan's fit) and the outcome they get -- not only news about them, and not a feature list.
+3. It names the offer and says what it does for THIS account (the plan's fit) AND the business payoff for them: lower cost, more revenue, time saved or less risk (the plan's outcome). Describing what the offer does without what it is worth to them FAILS, as does a message only about their news, or a feature list.
 4. It has exactly one clear, low-friction ask.
 5. No generic filler ("I hope this finds you well", "quick intro", "I came across", buzzwords), and it never asserts the account's internal problems as known fact.
 6. Length fits: {channel_rule}
@@ -242,8 +248,9 @@ def lint(brief: OutreachBrief, draft: OutreachDraft, sources: str | None = None,
     `offer_name`, the draft must name the offer it is selling."""
     body = draft.body.strip()
     problems = grounding.problems(f"{draft.subject}\n{body}", sources if sources is not None else _brief_sources(brief))
-    if offer_name and not name_in_text(offer_name, body):
-        problems.append(f"Name {offer_name} and say in a sentence what it does for them (the plan's fit)")
+    if offer_name and not _names_offer(body, brief, offer_name):
+        problems.append(f"Name {brief.seller or offer_name} and say in a sentence what it does for them and what "
+                        "that is worth to their business (the plan's fit and outcome)")
     if not re.match(r"^(hi|hello|dear)\b", body, re.I):
         problems.append("Open with a greeting (Hi <first name>, or Hi <account> team,)")
     if re.match(r"^hi team\b", body, re.I):
@@ -259,6 +266,35 @@ def lint(brief: OutreachBrief, draft: OutreachDraft, sources: str | None = None,
     if not low <= words <= high:
         problems.append(f"Keep it between {low} and {high} words (it has {words})")
     return problems
+
+
+def _names_seller(seller: str, body: str) -> bool:
+    """A seller known only by its website ("shangalabs.com") is named when the
+    site name appears however it is spaced: "Shanga Labs", "ShangaLabs"."""
+    if "." in seller and " " not in seller:
+        site = seller.split(".")[0].lower()
+        return bool(site) and site in re.sub(r"[^a-z0-9]", "", body.lower())
+    return name_in_text(seller, body)
+
+
+def _names_offer(body: str, brief: OutreachBrief, offer_name: str) -> bool:
+    return bool(offer_name and name_in_text(offer_name, body)) or bool(brief.seller and _names_seller(brief.seller, body))
+
+
+def _offer_label(brief: OutreachBrief, offer_name: str) -> str:
+    """How the writer refers to the offer: the company and the offer, since
+    the offer name alone is often a product label nobody recognises."""
+    if brief.seller and not name_in_text(brief.seller, offer_name):
+        return f"{brief.seller} ({offer_name})"
+    return offer_name
+
+
+def _restore_fit(body: str, fit: str) -> str:
+    """Put the planned fit back in, before the ask, when cutting ungrounded
+    sentences took every mention of the offer with it."""
+    paragraphs = body.split("\n\n")
+    ask = next((i for i in range(len(paragraphs) - 1, -1, -1) if "?" in paragraphs[i]), max(len(paragraphs) - 1, 0))
+    return "\n\n".join([*paragraphs[:ask], fit.strip(), *paragraphs[ask:]])
 
 
 def _brief_sources(brief: OutreachBrief, *extra: str) -> str:
@@ -284,31 +320,39 @@ def _plain_subject(brief: OutreachBrief) -> str:
 def write_first_touch(brief: OutreachBrief, offer_name: str) -> OutreachDraft:
     """Research, plan, consult, write and review one first-touch message."""
     pages = _sources(brief)
+    label = _offer_label(brief, offer_name)
     research = research_account(brief, pages)
-    plan = plan_message(brief, research, offer_name)
+    plan = plan_message(brief, research, label)
     notes = team.consult_all(brief.team, brief.research, plan.consult, "gtm", "The GTM specialist, writing outreach,",
                              "outreach_consult")
-    draft = _write(brief, plan, notes, offer_name)
+    draft = _write(brief, plan, notes, label)
     verdict = review(brief, research, plan, draft)
     # Numbers must trace to evidence: the offer, the account, the saved research
     # and the pages read here. The research notes and the specialists' advice
     # are model-written, so a figure they invent can't vouch for itself.
     sources = _brief_sources(brief, pages)
     problems = lint(brief, draft, sources, offer_name) + ([] if verdict.passes else verdict.problems)
-    # The review's verdict counts once; the mechanical checks are re-run after
-    # each rewrite, because a rewrite can keep (or add) the same mistake.
+    # Every rewrite is checked again, because a rewrite can keep (or add) the
+    # same mistake: always mechanically, and by the reviewer too while it is
+    # the reviewer's objection (a missing payoff, say) being fixed.
     for _ in range(MAX_REWRITES):
         if not problems:
             break
         logger.info("Outreach draft rewritten after review: %s", "; ".join(problems))
-        draft = _write(brief, plan, notes, offer_name, feedback="; ".join(problems))
+        draft = _write(brief, plan, notes, label, feedback="; ".join(problems))
         problems = lint(brief, draft, sources, offer_name)
+        if not verdict.passes:
+            verdict = review(brief, research, plan, draft)
+            problems += [] if verdict.passes else verdict.problems
     if problems:
         logger.warning("Outreach draft still has problems after %d rewrites: %s", MAX_REWRITES, "; ".join(problems))
         # Style problems can ship for the user to edit; a claim nobody can back
         # can't, so those sentences go (an ungrounded ask becomes the planned one).
+        body = grounding.strip_ungrounded(draft.body, sources, plan.ask)
+        if plan.fit and not _names_offer(body, brief, offer_name) and not grounding.ungrounded(plan.fit, sources):
+            body = _restore_fit(body, plan.fit)
         draft = draft.model_copy(update={
             "subject": _plain_subject(brief) if grounding.ungrounded(draft.subject or "", sources) else draft.subject,
-            "body": grounding.strip_ungrounded(draft.body, sources, plan.ask),
+            "body": body,
         })
     return draft

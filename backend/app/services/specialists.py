@@ -7,6 +7,7 @@ question to the specialist whose research answers it.
 import json
 import uuid
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +31,8 @@ class SpecialistContext:
     team: dict[str, dict]
     # domain -> that specialist's research, as text.
     research: dict[str, str]
+    # The company selling the offer, when discovery found one.
+    company_name: str = ""
 
 
 def block(title: str, value, limit: int = DOMAIN_CHARS // 3) -> str:
@@ -42,6 +45,15 @@ def block(title: str, value, limit: int = DOMAIN_CHARS // 3) -> str:
 
 def _join(*parts: str) -> str:
     return "\n".join(p for p in parts if p)[:DOMAIN_CHARS] or "(no research on file yet)"
+
+
+def seller_name(offer: dict) -> str:
+    """Who is selling: the company discovery found, else the offer's website
+    host ("shangalabs.com"), which the writer turns into the spoken name."""
+    if offer.get("company_name"):
+        return offer["company_name"]
+    host = urlparse(offer.get("website_url") or "").hostname or ""
+    return host.removeprefix("www.")
 
 
 def _offer_text(offer: dict) -> str:
@@ -104,4 +116,5 @@ async def load(db: AsyncSession, workspace_id: uuid.UUID) -> SpecialistContext:
         offer=offer_text or "(no offer on file)",
         team=team,
         research={own: product, "product": product, "market": market, "competition": competition, "gtm": gtm},
+        company_name=seller_name(offer),
     )

@@ -38,3 +38,9 @@ async def test_each_specialist_gets_their_own_research(user, seed_workspace):
     assert "Banks pay $20k+." in context.research["market"]
     assert "Zilliz runs Milvus." in context.research["competition"]
     assert "Start with Lagos fintechs." in context.research["gtm"]
+
+
+def test_the_seller_falls_back_to_the_offer_website():
+    assert specialists.seller_name({"company_name": "Shanga Labs", "website_url": "https://shangalabs.com/"}) == "Shanga Labs"
+    assert specialists.seller_name({"website_url": "https://www.shangalabs.com/about"}) == "shangalabs.com"
+    assert specialists.seller_name({}) == ""

@@ -15,6 +15,7 @@ from backend.app.database import models
 from backend.app.services import calendar as calendar_service
 from backend.app.services import connections as connection_service
 from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError, RateLimitedError
+from backend.app.services.specialists import seller_name
 from config import settings
 from utils.log import logger
 
@@ -178,6 +179,9 @@ async def send(db: AsyncSession, message: models.OutreachMessage) -> models.Outr
     return message
 
 
+_OFFER_CAPABILITIES = 6  # features the drafting agent can tie a payoff to
+
+
 def _lines(label: str, values) -> str:
     values = [v for v in (values or []) if v]
     return f"{label}: " + "; ".join(str(v) for v in values) if values else ""
@@ -189,9 +193,17 @@ async def offer_context(db: AsyncSession, workspace_id: uuid.UUID) -> str:
         select(models.ProductProfile.insights).where(models.ProductProfile.workspace_id == workspace_id)
     ) or {}
     offer, icp = insights.get("offer_snapshot") or {}, insights.get("icp") or {}
+    capabilities = [
+        f"{f.get('name')}: {f.get('description') or f.get('differentiator') or ''}".rstrip(": ")
+        for f in [*(offer.get("features") or []), *(offer.get("service_uniqueness") or [])][:_OFFER_CAPABILITIES]
+        if isinstance(f, dict) and f.get("name")
+    ]
     parts = [
+        f"Seller: {seller_name(offer)}" if seller_name(offer) else "",
         f"Offer: {offer.get('offer_name') or ''} -- {offer.get('offer_description') or ''}",
         f"Problem it solves: {offer.get('problem_solved') or 'n/a'}",
+        f"How it works: {offer['how_it_works']}" if offer.get("how_it_works") else "",
+        _lines("Capabilities (tie one to their payoff)", capabilities),
         _lines("Messaging angles", icp.get("messaging_angles")),
         _lines("Buyer pain signals", icp.get("pain_signals")),
         _lines("Buyer titles", icp.get("buyer_titles")),

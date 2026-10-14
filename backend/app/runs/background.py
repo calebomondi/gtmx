@@ -129,7 +129,7 @@ async def outreach_drafts(run_id: uuid.UUID, workspace_id: uuid.UUID, params: di
             channel=channel, sender_name=sender, offer=offer, account=outreach_service.account_brief(account),
             contact_name=name, contact_title=outreach_service.contact_title(account, name),
             website=account.website, trigger_source=(account.trigger_event or {}).get("source"),
-            account_type=account.account_type or "company",
+            account_type=account.account_type or "company", seller=context.company_name,
             team=context.team, research=context.research,
         )
         return gtm_specialist.write_first_touch(brief, context.offer_name or "our offer")
