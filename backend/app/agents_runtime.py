@@ -16,6 +16,7 @@ from pydantic import BaseModel
 import agents.schemas
 from agents.discovery_agent import build_discovery_agent
 
+from config import settings
 from utils.log import logger
 
 # Session state is mostly plain dicts and strings, but the specialist team, the
@@ -53,9 +54,6 @@ _CHECKPOINT_TYPES = [
 ]
 
 
-# Checkpoint reads/writes per concurrent agent run are short, so a small pool
-# serves many runs. Sized well under Postgres/Supabase connection limits.
-_POOL_MAX_SIZE = 10
 
 _agent = None
 _pool: AsyncConnectionPool | None = None
@@ -74,8 +72,9 @@ async def start_agent_runtime(database_url: str):
         # resolves the host on the event loop's default thread pool, which
         # concurrent graph nodes can fill, and a checkpoint write waiting on a
         # new connection then deadlocks every run (seen at 10 concurrent runs).
-        min_size=_POOL_MAX_SIZE,
-        max_size=_POOL_MAX_SIZE,
+        # Checkpoint reads/writes are short, so a small pool serves many runs.
+        min_size=settings.checkpointer_pool_size,
+        max_size=settings.checkpointer_pool_size,
         open=False,
         # The settings AsyncPostgresSaver requires. prepare_threshold=None
         # disables server-side prepared statements, which Supabase's

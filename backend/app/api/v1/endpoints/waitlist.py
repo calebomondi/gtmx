@@ -9,14 +9,17 @@ from fastapi import APIRouter, BackgroundTasks, Request
 from backend.app.api.deps import DbSession
 from backend.app.schemas.waitlist import PilotSpots, WaitlistDetails, WaitlistJoin, WaitlistJoined, WaitlistSaved
 from backend.app.services import waitlist as waitlist_service
+from config import settings
 
 router = APIRouter()
 
 
 def _client_ip(request: Request) -> str | None:
-    # Behind nginx the peer is the proxy; it sets X-Real-IP (deploy/nginx.conf)
-    # and overwrites any value a client sends.
-    return request.headers.get("x-real-ip") or (request.client.host if request.client else None)
+    # The peer is the proxy in front of us, which names the visitor in
+    # `client_ip_header`: X-Real-IP from our nginx, or X-Forwarded-For on
+    # Render, whose first entry is the client the edge saw.
+    forwarded = request.headers.get(settings.client_ip_header, "")
+    return forwarded.split(",")[0].strip() or (request.client.host if request.client else None)
 
 
 @router.post("", response_model=WaitlistJoined, status_code=201)

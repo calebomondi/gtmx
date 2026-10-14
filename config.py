@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     # Postgres everywhere. The default is the docker-compose.yml service; in
     # prod, point DATABASE_URL at Supabase Postgres (its plain postgresql:// URI).
     database_url: str = "postgresql://gtmx:gtmx@localhost:5432/gtmx"
+    # Connections the app holds: SQLAlchemy's pool (size + overflow) plus the
+    # agent checkpointer's fixed pool. Their sum must fit the database's limit
+    # (Supabase's session pooler allows few on small plans).
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
+    checkpointer_pool_size: int = 10
 
     # -- LLM providers --
     dashscope_api_key: str = ""
@@ -131,6 +137,9 @@ class Settings(BaseSettings):
     waitlist_signups_per_ip_per_hour: int = 5
     # Salt for the stored IP hash (rate limiting without keeping raw IPs).
     waitlist_ip_salt: str = "gtmx-waitlist"
+    # The header the proxy in front of the backend puts the visitor's IP in:
+    # x-real-ip behind our nginx, x-forwarded-for on Render (first entry).
+    client_ip_header: str = "x-real-ip"
 
     # -- Observability (all opt-in: empty means off) --
     sentry_dsn: str = ""

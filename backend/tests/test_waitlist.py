@@ -90,3 +90,15 @@ def test_signups_are_limited_per_network(anonymous, outbox):
     limited = _join(anonymous, "one.more@startup.example")
     assert limited.status_code == 429 and limited.headers.get("retry-after")
     assert _join(anonymous, "elsewhere@startup.example", ip="10.0.0.2").status_code == 201
+
+
+def test_on_render_the_first_forwarded_address_is_the_visitor(anonymous, outbox, monkeypatch):
+    monkeypatch.setattr(settings, "client_ip_header", "x-forwarded-for")
+
+    def join(address, chain):
+        body = {"email": address, "consent": True}
+        return anonymous.post(API, json=body, headers={"X-Forwarded-For": chain})
+    for i in range(settings.waitlist_signups_per_ip_per_hour):
+        assert join(f"person{i}@startup.example", f"203.0.113.7, 10.1.0.{i}").status_code == 201
+    assert join("one.more@startup.example", "203.0.113.7, 10.9.9.9").status_code == 429
+    assert join("elsewhere@startup.example", "203.0.113.8, 10.1.0.1").status_code == 201

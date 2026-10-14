@@ -1,0 +1,144 @@
+# Render Blueprint for GTMX: the API, the app and the waitlist page.
+# The admin console deploys from its own repo (gtmx-admin/render.yaml).
+# Step-by-step setup, including what to set outside Render: docs/deploy-render.md
+#
+# Secrets are `sync: false`: Render asks for them when the Blueprint is first
+# applied, and they never live in this file.
+
+services:
+  # FastAPI + the agents. One always-on instance: agent runs, competitor
+  # monitoring and inbox sync run inside this process, so it must not sleep
+  # (free tier) or run as several copies.
+  - type: web
+    name: gtmx-api
+    runtime: python
+    plan: 1c-2g
+    region: frankfurt
+    branch: main
+    autoDeployTrigger: checksPass
+    numInstances: 1
+    buildCommand: pip install uv==0.11.21 && uv sync --frozen --no-dev
+    preDeployCommand: .venv/bin/alembic upgrade head
+    startCommand: .venv/bin/uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    buildFilter:
+      ignoredPaths:
+        - frontend/**
+        - waitlist/**
+        - docs/**
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: ENVIRONMENT
+        value: production
+      - key: GTMX_LOG_FORMAT
+        value: json
+      - key: SENTRY_ENVIRONMENT
+        value: production
+      # Render's edge puts the visitor first in X-Forwarded-For.
+      - key: CLIENT_IP_HEADER
+        value: x-forwarded-for
+      # Up to 8 SQLAlchemy + 5 checkpointer connections: under the small
+      # Supabase plans' session-pooler limit (15).
+      - key: DB_POOL_SIZE
+        value: "4"
+      - key: DB_MAX_OVERFLOW
+        value: "4"
+      - key: CHECKPOINTER_POOL_SIZE
+        value: "5"
+      - key: WAITLIST_IP_SALT
+        generateValue: true
+      # Supabase's *session* pooler URL (port 5432), not the transaction
+      # pooler (6543) and not the direct host (IPv6-only).
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_BASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      # The app, waitlist and admin URLs, comma-separated.
+      - key: ALLOWED_ORIGINS
+        sync: false
+      # The app's URL: OAuth callbacks (Composio) return here.
+      - key: FRONTEND_BASE_URL
+        sync: false
+      - key: ADMIN_BOOTSTRAP_EMAILS
+        sync: false
+      - key: DASHSCOPE_API_KEY
+        sync: false
+      - key: DASHSCOPE_BASE_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: LLM_MODELS
+        sync: false
+      - key: LLM_CHEAP_MODELS
+        sync: false
+      - key: EXA_API_KEY
+        sync: false
+      - key: BRIGHTDATA_API_KEY
+        sync: false
+      - key: COMPOSIO_API_KEY
+        sync: false
+      - key: COMPOSIO_AUTH_CONFIGS
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: WAITLIST_FROM_EMAIL
+        sync: false
+
+  # The customer app (app.gtmx.co).
+  - type: web
+    name: gtmx-app
+    runtime: static
+    branch: main
+    autoDeployTrigger: checksPass
+    buildCommand: cd frontend && bun install --frozen-lockfile && bun run build
+    staticPublishPath: ./frontend/dist
+    buildFilter:
+      paths:
+        - frontend/**
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+    envVars:
+      - key: BUN_VERSION
+        value: 1.3.14
+      # gtmx-api's URL, e.g. https://gtmx-api.onrender.com. Baked in at build
+      # time: redeploy this site after changing it.
+      - key: VITE_API_ORIGIN
+        sync: false
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+
+  # The public waitlist page (gtmx.co).
+  - type: web
+    name: gtmx-waitlist
+    runtime: static
+    branch: main
+    autoDeployTrigger: checksPass
+    buildCommand: cd waitlist && bun install --frozen-lockfile && bun run build
+    staticPublishPath: ./waitlist/dist
+    buildFilter:
+      paths:
+        - waitlist/**
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+    envVars:
+      - key: BUN_VERSION
+        value: 1.3.14
+      - key: VITE_API_ORIGIN
+        sync: false
