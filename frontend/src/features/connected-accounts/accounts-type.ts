@@ -48,6 +48,15 @@ export const ALL_PLATFORMS: Platform[] = ['gmail', 'googlecalendar', 'linkedin',
 
 /** What the agents do through each channel, as each provider allows it.
  *  Sending always needs the user's explicit click; agents draft, never send. */
+/** Platforms that only let a business answer people who wrote first. Said
+ *  up front, before connecting, so nobody expects cold DMs there. */
+export const REPLY_ONLY_NOTE: Partial<Record<string, string>> = {
+  instagram:
+    "Instagram doesn't let businesses start conversations. Engage with their posts; once someone messages you, your team picks up the conversation and drafts every reply for you to send.",
+  facebook:
+    "Facebook doesn't let Pages start conversations. Once someone messages your Page, your team picks up the conversation and drafts every reply for you to send.",
+}
+
 const CAPABILITIES: Record<Platform, Connection['capabilities']> = {
   gmail: [
     { label: 'Send emails you approve', allowed: true },
@@ -80,6 +89,8 @@ const CAPABILITIES: Record<Platform, Connection['capabilities']> = {
     { label: 'Send without your approval', allowed: false },
   ],
 }
+
+export const capabilitiesFor = (platform: Platform): Connection['capabilities'] => CAPABILITIES[platform]
 
 function toConnection(dto: ConnectionDto): Connection {
   const platform = dto.platform as Platform
