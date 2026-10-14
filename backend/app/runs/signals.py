@@ -77,7 +77,8 @@ async def accounts_found(run_id: uuid.UUID) -> None:
         run = await db.get(models.Run, run_id)
         rows = (await db.execute(
             select(models.Account)
-            .where(models.Account.run_id == run_id, models.Account.created_at >= run.started_at)
+            .where(models.Account.run_id == run_id, models.Account.created_at >= run.started_at,
+                   models.Account.review_status == "target")
             .order_by(models.Account.score.desc().nulls_last())
             .limit(_MAX_ACCOUNT_SIGNALS)
         )).scalars().all()
@@ -101,6 +102,26 @@ def _fit_insight(fit: dict | None) -> dict | None:
     if not fit or not (fit.get("payoff") or fit.get("angle")):
         return None
     return {"means": fit.get("payoff") or "", "next_move": fit.get("angle") or ""}
+
+
+async def competitor_clients_found(run_id: uuid.UUID) -> None:
+    """Competitors' clients this run suggested, for the user to accept or dismiss."""
+    async def build(db):
+        run = await db.get(models.Run, run_id)
+        rows = (await db.execute(
+            select(models.Account)
+            .where(models.Account.run_id == run_id, models.Account.created_at >= run.started_at,
+                   models.Account.review_status == "suggested")
+            .order_by(models.Account.created_at)
+            .limit(_MAX_ACCOUNT_SIGNALS)
+        )).scalars().all()
+        return [signal_service.build(
+            user_id=run.user_id, workspace_id=run.workspace_id, run_id=run_id, category="opportunity",
+            title=f"Uses {a.via_competitor_name}: {a.name}", entity=a.name,
+            summary=a.summary or "", reason=_fit_reason(a.fit), insight=_fit_insight(a.fit),
+            source_url=(a.trigger_event or {}).get("source"),
+        ) for a in rows]
+    await _emit(build)
 
 
 async def outreach_drafted(run_id: uuid.UUID, count: int) -> None:

@@ -72,7 +72,8 @@ async def load(db: AsyncSession, workspace_id: uuid.UUID) -> SpecialistContext:
         .order_by(models.Competitor.first_seen_at.desc()).limit(_COMPETITORS)
     )).scalars().all()
     accounts = (await db.execute(
-        select(models.Account).where(models.Account.workspace_id == workspace_id)
+        select(models.Account).where(models.Account.workspace_id == workspace_id,
+                                     models.Account.review_status == "target")
         .order_by(models.Account.selected.desc(), models.Account.score.desc().nulls_last()).limit(_ACCOUNTS)
     )).scalars().all()
 

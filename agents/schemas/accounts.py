@@ -150,3 +150,21 @@ class AccountFit(LenientModel):
         if not (value or "").strip():
             raise ValueError("must be stated, in a sentence")
         return value.strip()
+
+
+class CompetitorClient(LenientModel):
+    """An organization a competitor names as its customer: someone already
+    buying what the offer sells, so a switching prospect."""
+
+    name: str = Field(description="The client organization's name, exactly as the source writes it")
+    website: str | None = Field(default=None, description="The client's own website, only if a source gives it")
+    country: str | None = Field(default=None, description="Where the client operates, only if a source states it")
+    relationship: Literal["case_study", "testimonial", "customer_logo", "announced_deal", "profile"] = Field(
+        default="profile", description="How the competitor shows them as a customer",
+    )
+    evidence: str = Field(description="A short quote from the source naming them as the competitor's customer")
+    source_url: str = Field(description="The URL the evidence comes from")
+
+
+class CompetitorClients(LenientModel):
+    clients: list[CompetitorClient] = Field(default_factory=list)

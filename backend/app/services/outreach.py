@@ -224,6 +224,8 @@ def account_brief(account: models.Account) -> str:
         f"What they do: {account.summary}" if account.summary else "",
         f"Industry: {account.industry or 'n/a'}; size: {account.size or 'n/a'}; geo: {account.geo or 'n/a'}",
         f"Trigger event: {trigger.get('event')} (source: {trigger.get('source')})" if trigger.get("event") else "",
+        f"Current provider: {account.via_competitor_name}, a competitor of ours; they are named as its client. "
+        "Make the case for switching." if account.via_competitor_name else "",
         _lines("Why it fits our ICP", account.why_selected),
         _lines("Angles to reach out now", account.why_reach_out),
         _lines("Pain signals", account.pain_signals),

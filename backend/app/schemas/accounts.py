@@ -7,6 +7,9 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+ReviewStatus = Literal["target", "suggested", "dismissed"]
+
+
 class AccountFitResponse(BaseModel):
     """Why the offer suits the account now."""
 
@@ -50,6 +53,9 @@ class AccountResponse(BaseModel):
     why_reach_out: list[str] = []
     trigger_event: dict | None = None
     fit: AccountFitResponse | None = None
+    review_status: ReviewStatus = "target"
+    via_competitor_id: uuid.UUID | None = None
+    via_competitor_name: str | None = None
     selected: bool = False
     do_not_contact: bool = False
     created_at: datetime
@@ -62,6 +68,8 @@ class AccountListResponse(BaseModel):
 
 class AccountUpdateRequest(BaseModel):
     selected: bool | None = None
+    # Accepting a suggestion makes it a target; nobody re-suggests by hand.
+    review_status: Literal["target", "dismissed"] | None = None
 
 
 class AccountRunResponse(BaseModel):

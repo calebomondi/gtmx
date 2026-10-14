@@ -461,6 +461,17 @@ class Account(Base):
     # the need, the capability that answers it, its payoff and the angle.
     # Null until assessed.
     fit: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # target | suggested | dismissed (backend.app.schemas.accounts.ReviewStatus).
+    # Discovery adds targets; a competitor's client is only suggested until the
+    # user accepts it, so the target list stays theirs.
+    review_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="target", server_default="target", index=True,
+    )
+    # The competitor that names this account as its client, when that is how
+    # it was found: the switching pitch is built on it.
+    via_competitor_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("competitors.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
 
     selected: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=false(),
@@ -476,6 +487,11 @@ class Account(Base):
     )
 
     workspace: Mapped["Workspace"] = relationship()
+    via_competitor: Mapped["Competitor | None"] = relationship(lazy="selectin")
+
+    @property
+    def via_competitor_name(self) -> str | None:
+        return self.via_competitor.name if self.via_competitor else None
 
     __table_args__ = (
         # Same dedup posture as competitors: re-running the agent refreshes a
