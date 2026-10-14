@@ -17,6 +17,7 @@ from agents.pipelines.chat import workspace_chat
 from agents.pipelines.monitor import check_competitor
 from agents.pipelines.monitor import socials as competitor_socials
 from agents.pipelines.outreach import gtm_replies, gtm_specialist
+from agents.schemas.monitor import CompetitorChange
 from backend.app.account_runner import run_account_discovery_for_workspace
 from backend.app.competitor_runner import research_competitor_site, run_competitor_discovery
 from backend.app.database import models
@@ -94,27 +95,39 @@ def _in_geos(country: str | None, geos: list[str], competitor_local: bool) -> bo
     return any(g.lower() in country.lower() or country.lower() in g.lower() for g in geos)
 
 
+async def _client_reach(db, workspace_id: uuid.UUID) -> list[str] | None:
+    """The ICP's countries, for placing a competitor's clients; None for a
+    consumer offer, which has no client roster to read."""
+    insights = await db.scalar(
+        select(models.ProductProfile.insights).where(models.ProductProfile.workspace_id == workspace_id)
+    ) or {}
+    icp = insights.get("icp") or {}
+    if (icp.get("buyer_type") or "b2b").lower() == "b2c":
+        return None
+    return [g for g in icp.get("geo") or [] if isinstance(g, str)]
+
+
+def _works_in(competitor: models.Competitor, geos: list[str]) -> bool:
+    where = " ".join(filter(None, [competitor.headquarters, competitor.geography_scope])).lower()
+    return any(g.lower() in where for g in geos)
+
+
 async def _suggest_competitor_clients(workspace_id: uuid.UUID, run_id: uuid.UUID) -> int:
     """Suggest the named clients of tracked competitors as accounts: they
     already buy what the offer sells. Consumer offers have no client roster
     to read, so they are skipped."""
     async with AsyncSessionLocal() as db:
-        insights = await db.scalar(
-            select(models.ProductProfile.insights).where(models.ProductProfile.workspace_id == workspace_id)
-        ) or {}
+        geos = await _client_reach(db, workspace_id)
         competitors = (await db.execute(
             select(models.Competitor).where(models.Competitor.workspace_id == workspace_id)
             .order_by(models.Competitor.first_seen_at.desc()).limit(_CLIENT_COMPETITORS)
         )).scalars().all()
-        targets = [(c.id, c.name, c.website, list(c.notable_customers or []),
-                    " ".join(filter(None, [c.headquarters, c.geography_scope]))) for c in competitors if c.website]
-    icp = insights.get("icp") or {}
-    if (icp.get("buyer_type") or "b2b").lower() == "b2c" or not targets:
+        targets = [(c.id, c.name, c.website, list(c.notable_customers or [])) for c in competitors if c.website]
+    if geos is None or not targets:
         return 0
-    geos = [g for g in icp.get("geo") or [] if isinstance(g, str)]
 
     def find(target):
-        _id, name, website, known, _where = target
+        _id, name, website, known = target
         try:
             return competitor_clients.find(name, website, known)
         except Exception:  # noqa: BLE001 -- one competitor failing must not stop the rest
@@ -128,12 +141,37 @@ async def _suggest_competitor_clients(workspace_id: uuid.UUID, run_id: uuid.UUID
 
     added = 0
     async with AsyncSessionLocal() as db:
-        for (competitor_id, _name, _site, _known, where), clients in zip(targets, found):
-            local = any(g.lower() in where.lower() for g in geos)
-            kept = [c.model_dump() for c in clients if _in_geos(c.country, geos, local)]
+        for (competitor_id, *_), clients in zip(targets, found):
             competitor = await db.get(models.Competitor, competitor_id)
-            if kept and competitor is not None:
+            if competitor is None:
+                continue
+            kept = [c.model_dump() for c in clients if _in_geos(c.country, geos, _works_in(competitor, geos))]
+            if kept:
                 added += await account_service.suggest_clients(db, workspace_id, run_id, competitor, kept)
+    return added
+
+
+async def _suggest_from_client_moves(workspace_id: uuid.UUID, run_id: uuid.UUID,
+                                     moves: list[tuple[uuid.UUID, CompetitorChange]]) -> int:
+    """A client a competitor just won, showcased or upset is a prospect too:
+    suggest it, then make the case for it."""
+    if not moves:
+        return 0
+    added = 0
+    async with AsyncSessionLocal() as db:
+        geos = await _client_reach(db, workspace_id)
+        if geos is None:
+            return 0
+        for competitor_id, change in moves:
+            competitor = await db.get(models.Competitor, competitor_id)
+            if competitor is None or not _in_geos(change.client_country or None, geos, _works_in(competitor, geos)):
+                continue
+            added += await account_service.suggest_clients(db, workspace_id, run_id, competitor, [{
+                "name": change.client_name, "country": change.client_country or None, "relationship": "announced_deal",
+                "evidence": change.summary, "source_url": change.source_url or competitor.website,
+            }])
+    if added:
+        await _assess_fits(workspace_id)
     return added
 
 
@@ -365,7 +403,7 @@ async def monitor(run_id: uuid.UUID, workspace_id: uuid.UUID, _params: dict) -> 
     results = await asyncio.to_thread(check_all)
 
     now = datetime.now(UTC)
-    found, first_checked = [], []
+    found, first_checked, client_moves = [], [], []
     async with AsyncSessionLocal() as db:
         for (competitor_id, name, website, *_), (checked, socials) in zip(targets, results):
             competitor = await db.get(models.Competitor, competitor_id)
@@ -377,7 +415,9 @@ async def monitor(run_id: uuid.UUID, workspace_id: uuid.UUID, _params: dict) -> 
                     first_checked.append(name)
                 competitor.monitor_state = state
                 competitor.last_checked_at = now
-                found += [(name, website, change) for change in changes if change.importance != "low"]
+                material = [change for change in changes if change.importance != "low"]
+                found += [(name, website, change) for change in material]
+                client_moves += [(competitor_id, c) for c in material if c.kind == "client" and c.client_name.strip()]
             if socials is not None:
                 profiles, discovered = socials
                 competitor.social_profiles = profiles
@@ -387,14 +427,17 @@ async def monitor(run_id: uuid.UUID, workspace_id: uuid.UUID, _params: dict) -> 
                         {"kind": kind, "value": url, "confidence": "high"} for kind, url in discovered.items()
                     )]
         await db.commit()
+    suggested = await _suggest_from_client_moves(workspace_id, run_id, client_moves)
     await _finish(run_id, {
         "checked": sum(c is not None for c, _ in results),
         "socials": sum(s is not None for _, s in results),
         "changes": len(found),
+        "suggested": suggested,
     })
     if first_checked:
         await signals.monitoring_started(run_id, first_checked)
     await signals.competitor_changes(run_id, found)
+    await signals.competitor_clients_found(run_id)
 
 
 _POSTS_PER_PLATFORM = 3
