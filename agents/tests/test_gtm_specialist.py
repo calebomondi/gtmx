@@ -44,11 +44,11 @@ def llm(monkeypatch):
             return AccountResearch(what_they_do="Payments for SMEs", facts=[{"fact": "Hiring 2 ML engineers", "source": "https://jobs.example/acme"}])
         if schema is OutreachPlan:
             return OutreachPlan(hook_fact="Hiring 2 ML engineers", problem="GPU costs", outcome="Train on CPUs",
-                                ask="15-minute call?", consult=script["consult"])
+                                fit=script.get("fit", ""), ask="15-minute call?", consult=script["consult"])
         if schema is OutreachDraft:
             return OutreachDraft(subject="Your ML hires", body=GOOD_BODY)
         if schema is DraftReview:
-            return script["reviews"].pop(0)
+            return script["reviews"].pop(0) if script["reviews"] else DraftReview(passes=True)
         return "Rival X needs GPUs; we don't."  # a consultation (plain text)
     monkeypatch.setattr(gs, "invoke_structured_with_fallback", fake)
     monkeypatch.setattr(team, "invoke_structured_with_fallback", fake)
@@ -155,3 +155,59 @@ def test_a_draft_only_about_their_news_is_sent_back_to_name_the_offer(llm, monke
     assert gs.write_first_touch(_brief(), "Cloud of Association").body == GOOD_BODY
     plan_prompt = next(prompt for label, prompt in calls if label == "outreach_plan")
     assert "FIT" in plan_prompt
+
+
+def test_a_rewrite_for_a_missing_payoff_is_reviewed_again(llm):
+    calls, script = llm
+    script["reviews"] = [DraftReview(passes=False, problems=["Says what it does, not what it saves them"]),
+                         DraftReview(passes=False, problems=["Still no payoff"])]
+    gs.write_first_touch(_brief(), "Cloud of Association")
+    reviews = [prompt for label, prompt in calls if label == "outreach_review"]
+    writes = [prompt for label, prompt in calls if label.startswith("outreach_write")]
+    assert len(reviews) == 3 and len(writes) == 3
+    assert "Still no payoff" in writes[2]
+    assert "business payoff" in reviews[0]
+
+
+def test_the_plan_asks_for_the_business_payoff_not_a_feature(llm):
+    calls, _ = llm
+    gs.write_first_touch(_brief(), "Cloud of Association")
+    plan_prompt = next(prompt for label, prompt in calls if label == "outreach_plan")
+    assert "OUTCOME" in plan_prompt and "save (cost)" in plan_prompt
+
+
+def test_naming_the_seller_counts_as_naming_the_offer():
+    brief = _brief()
+    brief.seller = "Shanga Labs"
+    body = GOOD_BODY.replace("our associative memory", "Shanga Labs")
+    problems = gs.lint(brief, OutreachDraft(subject="Your ML hires", body=body), offer_name="Hardware Integration")
+    assert not any("Name " in p for p in problems)
+
+
+def test_the_writer_is_told_the_seller_and_the_offer(llm):
+    calls, _ = llm
+    brief = _brief()
+    brief.seller = "Shanga Labs"
+    gs.write_first_touch(brief, "Hardware Integration")
+    write_prompt = next(prompt for label, prompt in calls if label.startswith("outreach_write"))
+    assert "Shanga Labs (Hardware Integration)" in write_prompt
+
+
+def test_cutting_ungrounded_claims_never_leaves_a_draft_without_the_offer(llm, monkeypatch):
+    _, script = llm
+    script["fit"] = "Cloud of Association runs on the CPUs Acme already has, so the GPU bill stops growing."
+    unsourced = ("Hi Ada,\n\nAcme is hiring two ML engineers.\n\nCloud of Association cuts GPU spend by 73%.\n\n"
+                 "Would a 15-minute call next week be useful?\n\nWanjiku")
+    monkeypatch.setattr(gs, "_write", lambda *a, **k: OutreachDraft(subject="Your ML hires", body=unsourced))
+    body = gs.write_first_touch(_brief(), "Cloud of Association").body
+    assert "73%" not in body
+    assert script["fit"] in body
+    assert body.index(script["fit"]) < body.index("15-minute call")
+
+
+@pytest.mark.parametrize("body", ["Shanga Labs connects your scales", "ShangaLabs connects your scales"])
+def test_a_seller_known_by_its_website_is_named_however_it_is_spaced(body):
+    brief = _brief()
+    brief.seller = "shangalabs.com"
+    assert gs._names_offer(body, brief, "Hardware Integration")
+    assert not gs._names_offer("We connect your scales", brief, "Hardware Integration")

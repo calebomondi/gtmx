@@ -38,7 +38,15 @@ class OutreachPlan(LenientModel):
 
     hook_fact: str = Field(description="The single account fact the opening line is built on (copied from the research)")
     problem: str = Field(description="The specific problem this account likely has, in their words")
-    outcome: str = Field(description="The concrete outcome the offer gives them (a number or a before/after when the research supports one)")
+    outcome: str = Field(
+        description="The business payoff for THEM: what they save, earn, speed up or stop risking because of the offer "
+                    "(e.g. 'technicians stop driving out to read meters, so each site costs less to run'). Not a "
+                    "description of the offer. A number or before/after only when the research supports one",
+    )
+    benefit: str = Field(
+        default="",
+        description="The kind of payoff the outcome is: lower cost, more revenue, time saved, or less risk",
+    )
     fit: str = Field(
         default="",
         description="How the offer answers THIS account's situation, from the OFFER: name the offer, say what it is in a few "

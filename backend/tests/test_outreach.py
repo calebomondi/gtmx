@@ -35,12 +35,25 @@ def account_id(owned):
 
 
 @pytest.fixture
+def offer(owned):
+    insights = {"offer_snapshot": {
+        "company_name": "Shanga Labs", "offer_name": "Hardware Integration",
+        "offer_description": "Connects field hardware to business systems",
+        "features": [{"name": "Hybrid connectivity", "description": "Keeps remote devices reporting over cellular or LoRa"}],
+    }}
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        conn.execute("INSERT INTO product_profiles (id, workspace_id, target_geo, insights) VALUES (%s, %s, '[]', %s)",
+                     (uuid.uuid4(), owned["workspace"], json.dumps(insights)))
+
+
+@pytest.fixture
 def drafted(client, owned, account_id, monkeypatch):
     seen = {}
 
     def fake_draft(brief, offer_name):
         seen.update(channel=brief.channel, account=brief.account, sender=brief.sender_name,
-                    contact=brief.contact_name, team=brief.team, research=brief.research)
+                    contact=brief.contact_name, team=brief.team, research=brief.research,
+                    offer=brief.offer, seller=brief.seller)
         return OutreachDraft(subject="Quick idea for Acme", body="Hi Ada, ...")
     monkeypatch.setattr(background.gtm_specialist, "write_first_touch", fake_draft)
     run = client.post(f"{API}/{owned['workspace']}/outreach/drafts", json={"account_ids": [account_id]}).json()
@@ -166,3 +179,10 @@ def test_drafts_are_signed_with_the_email_name_when_the_profile_has_none():
     from backend.app.api.deps import AuthUser
     from backend.app.api.v1.endpoints.outreach import sender_name
     assert sender_name(AuthUser(id=uuid.uuid4(), email="jane.doe@acme.example", name=None, avatar_url=None)) == "Jane Doe"
+
+
+@pytest.mark.usefixtures("offer")
+def test_the_writer_knows_who_is_selling_and_what_the_offer_can_do(drafted):
+    assert drafted["seen"]["seller"] == "Shanga Labs"
+    assert "Seller: Shanga Labs" in drafted["seen"]["offer"]
+    assert "Hybrid connectivity: Keeps remote devices reporting" in drafted["seen"]["offer"]
