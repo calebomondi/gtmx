@@ -78,6 +78,8 @@ class DiscoverOfferState(TypedDict):
 
     # -- Offer Snapshot (the loose keys the downstream pipelines read) --
     website_url: Optional[str] = None
+    # The organization behind the offer ("Shanga Labs"), read off its site.
+    company_name: Optional[str] = None
     offer_type: Optional[Literal["product", "service"]] = None
     offer_name: str = Field(description="")
     offer_description: str = Field(description="")

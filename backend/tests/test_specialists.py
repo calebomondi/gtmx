@@ -7,7 +7,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from backend.app.database.connect import AsyncSessionLocal
-from backend.app.runs.discovery import build_insights
+from backend.app.runs.discovery import build_insights, serialize_offer_snapshot
 from backend.app.services import specialists
 from config import settings
 
@@ -44,3 +44,8 @@ def test_the_seller_falls_back_to_the_offer_website():
     assert specialists.seller_name({"company_name": "Shanga Labs", "website_url": "https://shangalabs.com/"}) == "Shanga Labs"
     assert specialists.seller_name({"website_url": "https://www.shangalabs.com/about"}) == "shangalabs.com"
     assert specialists.seller_name({}) == ""
+
+
+def test_the_offer_snapshot_keeps_the_company_discovery_found():
+    snapshot = serialize_offer_snapshot({"offer_name": "Hardware Integration", "company_name": "Shanga Labs"})
+    assert snapshot["company_name"] == "Shanga Labs"

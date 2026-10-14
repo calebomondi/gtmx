@@ -647,6 +647,7 @@ def understand_scraped_content(state: DiscoverOfferState) -> dict:
 
     prompt = f"""Read the page content below and summarize the site into structured
     fields:
+  - company_name: the organization or brand that runs the site, as the page writes it, else null
   - offer_name: primary name used on the page
   - offer_type: product or service
   - products/services_offered: list of named things the page calls products/services
@@ -673,13 +674,34 @@ Content:
     page_understanding = _try_summary(prompt)
     if page_understanding is None or ("- **offer_name**" not in page_understanding and "offer_name" not in page_understanding.lower()):
         retry_prompt = f"""You must output only a JSON object with keys:
-offer_name, offer_type, products/services_offered (list of strings), problem, how_it_works, target_market (list of strings).
+company_name, offer_name, offer_type, products/services_offered (list of strings), problem, how_it_works, target_market (list of strings).
 Do not include markdown fences. If unknown use null or empty list.
 
 Content:
 {content[:14000]}"""
         page_understanding = _try_summary(retry_prompt) or "None"
-    return {"page_understanding": page_understanding}
+    return {"page_understanding": page_understanding, "company_name": company_from_understanding(page_understanding)}
+
+
+_COMPANY_LINE = re.compile(r"company_name\W*[:=]\s*\W*(?P<name>[^\n\"*`,}]+)", re.I)
+
+
+def company_from_understanding(text: str | None) -> str | None:
+    """The site's organization name from the page summary, which comes back
+    as JSON or as a markdown list."""
+    if not text:
+        return None
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        parsed = None
+    if isinstance(parsed, dict):
+        name = parsed.get("company_name")
+    else:
+        match = _COMPANY_LINE.search(text)
+        name = match.group("name") if match else None
+    name = (name or "").strip().strip("'\"").strip()
+    return name if name and name.lower() not in ("null", "none", "unknown", "n/a") else None
 
 
 def check_product_service_exist(state: DiscoverOfferState) -> Command[Literal["ask_for_clarity", "proceed_to_description", "notify_unscrappable_url"]]:
