@@ -1,4 +1,5 @@
 import { apiFetch } from "./http"
+import type { RunDto } from "./runs"
 
 // ---------------------------------------------------------------------------
 // Accounts
@@ -36,8 +37,19 @@ export interface AccountRecord {
   why_selected: string[]
   why_reach_out: string[]
   trigger_event: Record<string, unknown> | null
+  /** Why the offer suits the account now; null until assessed. */
+  fit: AccountFit | null
   selected: boolean
   created_at: string
+}
+
+export interface AccountFit {
+  need: string
+  capability: string
+  payoff: string
+  benefit: string
+  angle: string
+  strength: 'strong' | 'moderate' | 'weak'
 }
 
 export interface AccountList {
@@ -77,6 +89,11 @@ export function listAccountRuns(workspaceId: string, limit = 20): Promise<Accoun
   return apiFetch<AccountRun[]>(
     `/api/v1/workspaces/${workspaceId}/accounts/runs?limit=${limit}`,
   )
+}
+
+/** Assess how the offer fits every account not yet assessed. */
+export function assessAccountFit(workspaceId: string): Promise<RunDto> {
+  return apiFetch<RunDto>(`/api/v1/workspaces/${workspaceId}/accounts/fit`, { method: 'POST' })
 }
 
 export function listAccounts(workspaceId: string): Promise<AccountList> {

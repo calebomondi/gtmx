@@ -33,6 +33,7 @@ def _routes(ids: dict) -> list[tuple[str, str, dict | None]]:
         ("PATCH", f"/workspaces/{ws}/accounts/{ids['account']}", {"selected": True}),
         ("GET", f"/workspaces/{ws}/accounts/runs", None),
         ("POST", f"/workspaces/{ws}/accounts/runs", None),
+        ("POST", f"/workspaces/{ws}/accounts/fit", None),
         ("GET", f"/workspaces/{ws}/accounts/runs/{ids['account_run']}", None),
     ]
 

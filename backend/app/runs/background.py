@@ -10,6 +10,8 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 
 from agents.concurrency import ContextThreadPoolExecutor
+from agents.helpers import offer_label
+from agents.pipelines.accounts import fit as account_fit
 from agents.pipelines.chat import workspace_chat
 from agents.pipelines.monitor import check_competitor
 from agents.pipelines.monitor import socials as competitor_socials
@@ -19,6 +21,7 @@ from backend.app.competitor_runner import research_competitor_site, run_competit
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.runs import events, signals
+from backend.app.services import accounts as account_service
 from backend.app.services import calendar as calendar_service
 from backend.app.services import chat as chat_service
 from backend.app.services import competitors as competitor_service
@@ -69,8 +72,47 @@ async def competitors(run_id: uuid.UUID, workspace_id: uuid.UUID, _params: dict)
 async def accounts(run_id: uuid.UUID, workspace_id: uuid.UUID, _params: dict) -> None:
     with events.reporting_steps(run_id):
         outcome = await run_account_discovery_for_workspace(workspace_id=workspace_id, run_id=run_id)
+        # The feed's opportunity cards lead with the fit, so assess it first.
+        outcome["assessed"] = await _assess_fits(workspace_id)
     await _finish(run_id, outcome)
     await signals.accounts_found(run_id)
+
+
+_FIT_WORKERS = 4
+
+
+async def _assess_fits(workspace_id: uuid.UUID) -> int:
+    """Make the case for each account not yet assessed: its need, the
+    capability that answers it, the payoff and the angle. Returns how many
+    were assessed; one account failing leaves its fit empty for next time."""
+    async with AsyncSessionLocal() as db:
+        pending = [(a.id, outreach_service.account_brief(a)) for a in await account_service.without_fit(db, workspace_id)]
+        if not pending:
+            return 0
+        context = await specialist_service.load(db, workspace_id)
+        offer = await outreach_service.offer_context(db, workspace_id)
+    seller = offer_label(context.company_name, context.offer_name)
+
+    def assess(item):
+        account_id, brief = item
+        try:
+            return account_id, account_fit.assess(offer, brief, seller).model_dump()
+        except Exception:  # noqa: BLE001 -- one account failing must not stop the rest
+            logger.exception("Assessing fit for account %s failed", account_id)
+            return account_id, None
+
+    def assess_all():
+        with ContextThreadPoolExecutor(max_workers=_FIT_WORKERS) as pool:
+            return list(pool.map(assess, pending))
+    fits = {account_id: fit for account_id, fit in await asyncio.to_thread(assess_all) if fit}
+    async with AsyncSessionLocal() as db:
+        await account_service.save_fits(db, fits)
+    return len(fits)
+
+
+async def account_fits(run_id: uuid.UUID, workspace_id: uuid.UUID, _params: dict) -> None:
+    """Assess fit for accounts found before fit existed (or whose assessment failed)."""
+    await _finish(run_id, {"assessed": await _assess_fits(workspace_id)})
 
 
 async def competitor_research(run_id: uuid.UUID, workspace_id: uuid.UUID, params: dict) -> None:
@@ -233,7 +275,8 @@ async def monitor(run_id: uuid.UUID, workspace_id: uuid.UUID, _params: dict) -> 
         competitors = (await db.execute(
             select(models.Competitor).where(models.Competitor.workspace_id == workspace_id)
         )).scalars().all()
-        offer = (await specialist_service.load(db, workspace_id)).offer_name
+        context = await specialist_service.load(db, workspace_id)
+    offer, offer_detail = context.offer_name, context.offer
     socials_cutoff = datetime.now(UTC) - timedelta(hours=settings.socials_max_age_h)
     targets = [
         (c.id, c.name, c.website, c.monitor_state, list(c.tracking_sources or []), c.social_profiles,
@@ -250,7 +293,8 @@ async def monitor(run_id: uuid.UUID, workspace_id: uuid.UUID, _params: dict) -> 
             logger.exception("Refreshing socials for %s failed", name)
             socials = None
         try:
-            checked = check_competitor.check(name, website, previous, offer, posts=_recent_posts(socials))
+            checked = check_competitor.check(name, website, previous, offer, posts=_recent_posts(socials),
+                                             offer_detail=offer_detail)
         except Exception:  # noqa: BLE001
             logger.exception("Monitoring %s failed", name)
             checked = None
@@ -316,4 +360,5 @@ EXECUTORS: dict[str, Callable[[uuid.UUID, uuid.UUID, dict], Awaitable[None]]] = 
     "outreach_drafts": outreach_drafts,
     "outreach_reply": outreach_reply,
     "monitor": monitor,
+    "account_fit": account_fits,
 }

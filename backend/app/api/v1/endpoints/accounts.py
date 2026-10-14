@@ -14,6 +14,7 @@ from backend.app.schemas.accounts import (
     AccountRunStartResponse,
     AccountUpdateRequest,
 )
+from backend.app.schemas.runs import RunResponse
 from backend.app.services import accounts as account_service
 
 router = APIRouter()
@@ -56,6 +57,16 @@ async def start_account_run(workspace: OwnedWorkspace, db: DbSession):
         run=AccountRunResponse.from_run(run),
         already_tracked=await account_service.count_for_workspace(db, workspace.id),
     )
+
+
+@router.post("/{workspace_id}/accounts/fit", response_model=RunResponse, status_code=status.HTTP_202_ACCEPTED)
+async def assess_account_fit(workspace: OwnedWorkspace, db: DbSession):
+    """Assess how the offer fits each account not yet assessed (or return the
+    assessment already in flight)."""
+    run = await account_service.active_run(db, workspace.id, "account_fit")
+    if run is None:
+        run = await run_manager.start_background("account_fit", workspace.user_id, workspace.id)
+    return RunResponse.model_validate(run)
 
 
 @router.get("/{workspace_id}/accounts/runs/{run_id}", response_model=AccountRunResponse)

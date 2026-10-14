@@ -39,6 +39,7 @@ function toSignal(dto: SignalDto): HomeSignal {
     summary: dto.summary,
     body: dto.body ?? undefined,
     reason: dto.reason,
+    insight: dto.insight ?? undefined,
     sourceUrl: dto.source_url ?? undefined,
     timestamp: Date.parse(dto.created_at),
     read: dto.read,

@@ -6,6 +6,13 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
 
+class SignalInsight(BaseModel):
+    """What a feed item means for the user, and the move to make."""
+
+    means: str = ""
+    next_move: str = ""
+
+
 class SignalResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -19,6 +26,7 @@ class SignalResponse(BaseModel):
     summary: str
     body: str | None = None
     reason: str
+    insight: SignalInsight | None = None
     source_url: str | None = None
     hot: bool
     read: bool

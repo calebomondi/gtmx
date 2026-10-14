@@ -31,11 +31,12 @@ def build(
     run_id: uuid.UUID | None = None,
     source_url: str | None = None,
     hot: bool = False,
+    insight: dict | None = None,
 ) -> models.Signal:
     return models.Signal(
         user_id=user_id, workspace_id=workspace_id, run_id=run_id, category=category,
         title=_clip(title, 255), entity=_clip(entity, 255), summary=_clip(summary, _SUMMARY_CHARS),
-        reason=reason, source_url=source_url, hot=hot,
+        reason=reason, source_url=source_url, hot=hot, insight=insight or None,
     )
 
 

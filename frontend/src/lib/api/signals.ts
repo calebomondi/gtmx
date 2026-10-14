@@ -1,5 +1,10 @@
 import { apiFetch } from "./http"
 
+export interface SignalInsight {
+  means: string
+  next_move: string
+}
+
 export interface SignalDto {
   id: string
   workspace_id: string
@@ -11,6 +16,8 @@ export interface SignalDto {
   summary: string
   body: string | null
   reason: string
+  /** What the item means for the user and the move to make. */
+  insight: SignalInsight | null
   source_url: string | null
   hot: boolean
   read: boolean

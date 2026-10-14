@@ -43,6 +43,8 @@ def default_daily_cap(kind: str) -> int:
         # One per reply received: bounded by what the user sends.
         "outreach_reply": settings.max_outreach_sends_per_day,
         "monitor": settings.max_monitor_runs_per_day,
+        # Fit is assessed for accounts discovery found: bounded by those runs.
+        "account_fit": settings.max_account_runs_per_day * 5,
     }[kind]
 
 

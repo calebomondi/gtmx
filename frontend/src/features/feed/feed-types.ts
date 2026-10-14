@@ -1,3 +1,5 @@
+import type { SignalInsight } from '@/lib/api'
+
 export type SignalCategory =
   | 'inbound'
   | 'outbound'
@@ -39,6 +41,7 @@ export interface Signal {
   pinned: boolean
   hot: boolean
   reason: string
+  insight?: SignalInsight
   sender?: SignalSender
   sourceUrl?: string
   actions: SignalAction[]

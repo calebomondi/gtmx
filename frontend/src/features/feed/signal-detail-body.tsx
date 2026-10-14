@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { BUYER_EXPLAINER, BUYER_LABEL, asBuyerType } from '@/lib/buyer-type'
 import { ensureInsightsLoaded, useInsights } from '@/lib/insights-store'
 
+import { AccountOpportunity } from './account-opportunity'
 import type { Signal } from './feed-types'
 import { useSignalSubject } from './use-signal-subject'
 
@@ -85,7 +86,7 @@ export function SignalDetailBody({ signal, workspaceId }: { signal: Signal; work
 
   return (
     <div className="flex flex-col gap-3">
-      {signal.summary && !isDiscovery && <p className="text-sm leading-relaxed text-foreground">{signal.summary}</p>}
+      {signal.summary && !isDiscovery && subject.kind !== 'account' && <p className="text-sm leading-relaxed text-foreground">{signal.summary}</p>}
       {isDiscovery && <DiscoverySummary workspaceId={workspaceId} />}
       {subject.kind === 'competitor' && (
         <>
@@ -101,23 +102,7 @@ export function SignalDetailBody({ signal, workspaceId }: { signal: Signal; work
         </>
       )}
       {subject.kind === 'account' && (
-        <>
-          {typeof subject.account.trigger_event?.event === 'string' && (
-            <Section label="Why now">{subject.account.trigger_event.event}</Section>
-          )}
-          {subject.account.why_reach_out.length > 0 && (
-            <Section label="Why reach out">
-              <ul className="list-disc pl-4">
-                {subject.account.why_reach_out.slice(0, 3).map((r) => <li key={r}>{r}</li>)}
-              </ul>
-            </Section>
-          )}
-          <Section label="Who to contact">
-            <Pills items={subject.account.key_contacts
-              .map((c) => [c.name, c.title].filter((v): v is string => typeof v === 'string' && Boolean(v)).join(', '))
-              .filter(Boolean)} />
-          </Section>
-        </>
+        <AccountOpportunity workspaceId={workspaceId} account={subject.account} messages={subject.messages} />
       )}
     </div>
   )

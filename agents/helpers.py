@@ -227,3 +227,11 @@ def name_in_text(name: str, content: str) -> bool:
     if present == len(tokens):
         return True
     return present / len(tokens) >= _NAME_MATCH_THRESHOLD
+
+
+def offer_label(seller: str, offer_name: str) -> str:
+    """How agents refer to the offer: the company and the offer, since the
+    offer name alone is often a product label nobody recognises."""
+    if seller and offer_name and not name_in_text(seller, offer_name):
+        return f"{seller} ({offer_name})"
+    return offer_name or seller
