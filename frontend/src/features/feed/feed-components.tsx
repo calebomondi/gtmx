@@ -79,8 +79,6 @@ const CATEGORY_CHIPS: { value: CategoryFilter; label: string }[] = [
   { value: 'outbound', label: 'Outbound' },
   { value: 'competitor', label: 'Competitor' },
   { value: 'market', label: 'Market' },
-  { value: 'product', label: 'Product' },
-  { value: 'agent', label: 'Agent' },
   { value: 'opportunity', label: 'Opportunity' },
 ]
 
@@ -315,18 +313,6 @@ function SignalDetail({
               {signal.body}
             </pre>
           </div>
-        )}
-
-        {signal.sourceUrl && (
-          <a
-            href={signal.sourceUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 text-sm text-amber-500 hover:text-amber-400 hover:underline"
-          >
-            <ExternalLink className="size-3.5" />
-            View source
-          </a>
         )}
 
         <SignalDetailBody signal={signal} workspaceId={workspaceId} />

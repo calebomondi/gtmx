@@ -17,6 +17,8 @@ import { pitchFor } from '@/lib/buyer-type'
 import { useSpecialistTeam } from '@/lib/specialists'
 import { cn } from '@/lib/utils'
 
+import { REPLY_ONLY_NOTE } from '@/features/connected-accounts/accounts-type'
+
 import { DraftEditor, EDITABLE_STATUSES } from './draft-editor'
 
 type ContactKind = 'email' | 'linkedin' | 'x' | 'instagram' | 'tiktok'
@@ -220,7 +222,8 @@ export function AccountDetailDialog({
           </div>
         ) : (
           <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-            {channel?.label} doesn't let apps send cold messages. Engage from the {channel?.label} app
+            {(channel && REPLY_ONLY_NOTE[channel.kind]) ?? `${channel?.label} doesn't let apps send cold messages.`}{' '}
+            Engage from the {channel?.label} app
             {channel?.address.startsWith('http') && (
               <> (<a href={channel.address} target="_blank" rel="noreferrer" className="text-amber-500 hover:underline">open their page</a>)</>
             )}, or reach this account by email or LinkedIn.

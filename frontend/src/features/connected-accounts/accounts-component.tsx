@@ -23,6 +23,8 @@ import { toast } from "sonner"
 import {
   ALL_PLATFORMS,
   PLATFORM_LABEL,
+  REPLY_ONLY_NOTE,
+  capabilitiesFor,
   beginConnection,
   disconnectConnection,
   fetchConnectionState,
@@ -299,6 +301,17 @@ function ConnectionDialog({
                     once you've signed in. Nothing is ever sent without your
                     approval.
                   </p>
+                  {REPLY_ONLY_NOTE[platform] && (
+                    <div className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-foreground">
+                      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
+                      <p>{REPLY_ONLY_NOTE[platform]}</p>
+                    </div>
+                  )}
+                  <ul className="space-y-1.5">
+                    {capabilitiesFor(platform).map((cap) => (
+                      <CapabilityRow key={cap.label} label={cap.label} allowed={cap.allowed} />
+                    ))}
+                  </ul>
                   {!ready && (
                     <p className="text-xs text-amber-600 dark:text-amber-400">
                       {PLATFORM_LABEL[platform]} needs a one-time app setup by
