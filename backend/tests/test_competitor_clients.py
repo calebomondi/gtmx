@@ -9,6 +9,7 @@ import psycopg
 import pytest
 
 from agents.schemas.accounts import AccountFit, CompetitorClient
+from agents.schemas.monitor import CompetitorChange
 from backend.app.runs import background, manager
 from backend.tests.test_runs import _wait_for_status
 from config import settings
@@ -97,3 +98,31 @@ def test_running_again_does_not_duplicate_a_suggestion(run_accounts):
 ])
 def test_clients_count_in_the_icp_countries(country, local, expected):
     assert background._in_geos(country, ["Kenya"], local) is expected
+
+
+def test_a_client_move_monitoring_spots_becomes_a_suggestion(client, b2b_offer, monkeypatch):
+    win = CompetitorChange(kind="client", title="Signed Kilimo Co-op", summary="Rival announced Kilimo Co-op as a client.",
+                           client_name="Kilimo Co-op", client_country="Kenya", source_url="https://rival.example/news",
+                           importance="high", implication="Kilimo now runs on Rival's hardware.",
+                           counter_move="Offer Kilimo a no-new-hardware pilot.")
+    minor = CompetitorChange(kind="client", title="Blog mention", summary="...", client_name="Tiny Shop",
+                             client_country="Kenya", importance="low")
+    abroad = CompetitorChange(kind="client", title="Signed Berlin Freight", summary="...", client_name="Berlin Freight",
+                              client_country="Germany", importance="high")
+    monkeypatch.setattr(background.check_competitor, "check",
+                        lambda *a, posts=None, offer_detail="": ({"site_hash": "h"}, [win, minor, abroad]))
+    monkeypatch.setattr(background.competitor_socials, "refresh", lambda *a: None)
+    monkeypatch.setattr(background.account_fit, "assess", lambda offer, account, seller: AccountFit(
+        need="n", capability="c", payoff="Keeps their trackers", angle="a"))
+
+    run = client.post(f"{API}/{b2b_offer['workspace']}/competitors/monitor").json()
+    client.portal.call(_wait_for_status, uuid.UUID(run["id"]), {"completed"})
+    client.portal.call(_drain)
+
+    accounts = {a["name"]: a for a in client.get(f"{API}/{b2b_offer['workspace']}/accounts").json()["accounts"]}
+    kilimo = accounts["Kilimo Co-op"]
+    assert kilimo["review_status"] == "suggested" and kilimo["fit"]["payoff"] == "Keeps their trackers"
+    assert kilimo["trigger_event"]["source"] == "https://rival.example/news"
+    assert "Tiny Shop" not in accounts and "Berlin Freight" not in accounts  # immaterial, and abroad
+    titles = [s["title"] for s in client.get("/api/v1/signals").json()]
+    assert "Uses rival.example: Kilimo Co-op" in titles and "rival.example: Signed Kilimo Co-op" in titles

@@ -55,8 +55,12 @@ the previous and current check, plus news, events and social posts that are
 new since then. Report only changes that matter for go-to-market: price or
 plan changes, new products or features, a positioning shift, funding,
 leadership changes, notable partnerships, launches, events they are running
-or speaking at, and social posts that announce any of these or show a
-campaign push.
+or speaking at, social posts that announce any of these or show a campaign
+push, and CLIENT moves: a new named client, a new case study or testimonial,
+a client complaining publicly or leaving them. Report a client move as
+kind=client with client_name set to the specific organization (never a
+category like "a bank"); its implication says whether we do that client's job
+better, and its counter_move how to reach that client.
 
 Ignore wording tweaks, reordering, dates, counters, routine engagement posts
 and anything present in both versions. If nothing material changed, return
@@ -81,9 +85,10 @@ is what was published about them in the last month. Report at most
 {limit} items a go-to-market team should know about now: launches, pricing,
 funding, partnerships, events they run or speak at, campaigns. Skip routine
 posts and anything older or immaterial; an empty list is fine. Cite each
-item's URL. importance: high = we should react this week. For each item, say
-what it means for {our_offer} (implication) and the one counter_move we
-should make, grounded in the item and what we offer.
+item's URL. importance: high = we should react this week. A named client
+win, case study or complaint is kind=client with client_name set. For each
+item, say what it means for {our_offer} (implication) and the one
+counter_move we should make, grounded in the item and what we offer.
 
 """ + _SOURCES
 
