@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Compass,
   ExternalLink,
@@ -22,6 +22,8 @@ import { cn } from '@/lib/utils'
 
 import { AccountDetailDialog } from './account-dialog'
 import { AccountKindFilter } from './account-kind-filter'
+import { AccountRunsList } from './account-runs-list'
+import { SuggestedAccounts, type ReviewChoice } from './suggested-accounts'
 import { useAccountKinds } from './use-account-kinds'
 
 import {
@@ -113,20 +115,6 @@ function useRunController(workspaceId: string | undefined, onSettled: () => void
 // ---------------------------------------------------------------------------
 // Small pieces
 // ---------------------------------------------------------------------------
-
-function StatusBadge({ status }: { status: AccountRun['status'] }) {
-  const tone =
-    status === 'completed'
-      ? 'bg-emerald-500/15 text-emerald-500'
-      : status === 'failed'
-        ? 'bg-red-500/15 text-red-500'
-        : 'bg-amber-500/15 text-amber-500'
-  return (
-    <Badge variant="outline" className={cn('border-transparent', tone)}>
-      {status}
-    </Badge>
-  )
-}
 
 /** What the target does. Accounts found before the agent wrote summaries fall
  * back to their firmographics. */
@@ -230,7 +218,7 @@ function AccountCard({
 // ---------------------------------------------------------------------------
 
 export default function AccountsComponent({ workspaceId }: { workspaceId?: string }) {
-  const [tab, setTab] = useState<'tracked' | 'runs'>('tracked')
+  const [tab, setTab] = useState<'tracked' | 'suggested' | 'runs'>('tracked')
   const [accounts, setAccounts] = useState<AccountRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [runs, setRuns] = useState<AccountRun[]>([])
@@ -282,8 +270,23 @@ export default function AccountsComponent({ workspaceId }: { workspaceId?: strin
     [workspaceId, refreshAccounts],
   )
 
+  const onReview = useCallback(
+    async (account: AccountRecord, choice: ReviewChoice) => {
+      if (!workspaceId) return
+      setAccounts((prev) => prev.map((a) => (a.id === account.id ? { ...a, review_status: choice } : a)))
+      try {
+        await updateAccount(workspaceId, account.id, { review_status: choice })
+      } catch {
+        void refreshAccounts()
+      }
+    },
+    [workspaceId, refreshAccounts],
+  )
+
   const hunting = starting || (run != null && LIVE_STATUSES.has(run.status))
-  const kinds = useAccountKinds(accounts)
+  const targets = useMemo(() => accounts.filter((a) => a.review_status === 'target'), [accounts])
+  const suggested = useMemo(() => accounts.filter((a) => a.review_status === 'suggested'), [accounts])
+  const kinds = useAccountKinds(targets)
 
   return (
     <Card className="flex min-h-0 flex-1 flex-col">
@@ -316,8 +319,9 @@ export default function AccountsComponent({ workspaceId }: { workspaceId?: strin
             {(
               [
                 { value: 'tracked' as const, label: 'Targets' },
+                ...(suggested.length > 0 ? [{ value: 'suggested' as const, label: `Suggested (${suggested.length})` }] : []),
                 { value: 'runs' as const, label: `Runs ${runs.length ? `(${runs.length})` : ''}` },
-              ] as const
+              ]
             ).map((chip) => (
               <button
                 key={chip.value}
@@ -352,12 +356,12 @@ export default function AccountsComponent({ workspaceId }: { workspaceId?: strin
 
         <div className="min-h-0 flex-1 overflow-y-auto">
         {tab === 'tracked' ? (
-          loading && accounts.length === 0 ? (
+          loading && targets.length === 0 ? (
             <div className="flex flex-col gap-3">
               <Skeleton className="h-28 w-full" />
               <Skeleton className="h-28 w-full" />
             </div>
-          ) : accounts.length === 0 ? (
+          ) : targets.length === 0 ? (
             <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border px-4 py-10 text-center">
               <Compass className="size-5 text-muted-foreground" />
               <p className="text-sm font-medium">No accounts yet</p>
@@ -378,24 +382,10 @@ export default function AccountsComponent({ workspaceId }: { workspaceId?: strin
               </div>
             </>
           )
-        ) : runs.length === 0 ? (
-          <p className="py-6 text-center text-xs text-muted-foreground">No account runs yet.</p>
+        ) : tab === 'suggested' ? (
+          <SuggestedAccounts accounts={suggested} onReview={onReview} onOpenDetail={setDetailAccount} />
         ) : (
-          <div className="flex flex-col gap-2">
-            {runs.map((r) => (
-              <div key={r.id} className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
-                <div className="min-w-0">
-                  <p className="text-xs font-medium">
-                    {new Date(r.created_at).toLocaleString()}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {r.found} found · {r.candidates_seen} checked
-                  </p>
-                </div>
-                <StatusBadge status={r.status} />
-              </div>
-            ))}
-          </div>
+          <AccountRunsList runs={runs} />
         )}
         </div>
       </CardContent>

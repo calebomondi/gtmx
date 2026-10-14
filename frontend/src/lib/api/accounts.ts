@@ -39,9 +39,16 @@ export interface AccountRecord {
   trigger_event: Record<string, unknown> | null
   /** Why the offer suits the account now; null until assessed. */
   fit: AccountFit | null
+  /** A competitor's client stays `suggested` until the user accepts it. */
+  review_status: AccountReviewStatus
+  via_competitor_id: string | null
+  /** The competitor that names this account as its client. */
+  via_competitor_name: string | null
   selected: boolean
   created_at: string
 }
+
+export type AccountReviewStatus = 'target' | 'suggested' | 'dismissed'
 
 export interface AccountFit {
   need: string
@@ -103,7 +110,7 @@ export function listAccounts(workspaceId: string): Promise<AccountList> {
 export function updateAccount(
   workspaceId: string,
   accountId: string,
-  patch: { selected?: boolean },
+  patch: { selected?: boolean; review_status?: Exclude<AccountReviewStatus, 'suggested'> },
 ): Promise<AccountRecord> {
   return apiFetch<AccountRecord>(
     `/api/v1/workspaces/${workspaceId}/accounts/${accountId}`,

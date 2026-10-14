@@ -31,8 +31,8 @@ async def list_accounts(workspace: OwnedWorkspace, db: DbSession):
 
 @router.patch("/{workspace_id}/accounts/{account_id}", response_model=AccountResponse)
 async def update_account(workspace: OwnedWorkspace, account_id: uuid.UUID, payload: AccountUpdateRequest, db: DbSession):
-    """Keep (or drop) an account for outreach."""
-    account = await account_service.set_selected(db, workspace.id, account_id, payload.selected)
+    """Keep (or drop) an account for outreach; accept or dismiss a suggested one."""
+    account = await account_service.update(db, workspace.id, account_id, payload.selected, payload.review_status)
     return AccountResponse.model_validate(account)
 
 

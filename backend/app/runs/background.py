@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from agents.concurrency import ContextThreadPoolExecutor
 from agents.helpers import offer_label
+from agents.pipelines.accounts import competitor_clients
 from agents.pipelines.accounts import fit as account_fit
 from agents.pipelines.chat import workspace_chat
 from agents.pipelines.monitor import check_competitor
@@ -72,10 +73,68 @@ async def competitors(run_id: uuid.UUID, workspace_id: uuid.UUID, _params: dict)
 async def accounts(run_id: uuid.UUID, workspace_id: uuid.UUID, _params: dict) -> None:
     with events.reporting_steps(run_id):
         outcome = await run_account_discovery_for_workspace(workspace_id=workspace_id, run_id=run_id)
+        outcome["suggested"] = await _suggest_competitor_clients(workspace_id, run_id)
         # The feed's opportunity cards lead with the fit, so assess it first.
         outcome["assessed"] = await _assess_fits(workspace_id)
     await _finish(run_id, outcome)
     await signals.accounts_found(run_id)
+    await signals.competitor_clients_found(run_id)
+
+
+_CLIENT_COMPETITORS = 8  # tracked competitors whose clients one run looks for
+
+
+def _in_geos(country: str | None, geos: list[str], competitor_local: bool) -> bool:
+    """A client counts when it is in the ICP's countries, or, with no country
+    stated, when its competitor works there."""
+    if not geos:
+        return True
+    if not country:
+        return competitor_local
+    return any(g.lower() in country.lower() or country.lower() in g.lower() for g in geos)
+
+
+async def _suggest_competitor_clients(workspace_id: uuid.UUID, run_id: uuid.UUID) -> int:
+    """Suggest the named clients of tracked competitors as accounts: they
+    already buy what the offer sells. Consumer offers have no client roster
+    to read, so they are skipped."""
+    async with AsyncSessionLocal() as db:
+        insights = await db.scalar(
+            select(models.ProductProfile.insights).where(models.ProductProfile.workspace_id == workspace_id)
+        ) or {}
+        competitors = (await db.execute(
+            select(models.Competitor).where(models.Competitor.workspace_id == workspace_id)
+            .order_by(models.Competitor.first_seen_at.desc()).limit(_CLIENT_COMPETITORS)
+        )).scalars().all()
+        targets = [(c.id, c.name, c.website, list(c.notable_customers or []),
+                    " ".join(filter(None, [c.headquarters, c.geography_scope]))) for c in competitors if c.website]
+    icp = insights.get("icp") or {}
+    if (icp.get("buyer_type") or "b2b").lower() == "b2c" or not targets:
+        return 0
+    geos = [g for g in icp.get("geo") or [] if isinstance(g, str)]
+
+    def find(target):
+        _id, name, website, known, _where = target
+        try:
+            return competitor_clients.find(name, website, known)
+        except Exception:  # noqa: BLE001 -- one competitor failing must not stop the rest
+            logger.exception("Finding the clients of %s failed", name)
+            return []
+
+    def find_all():
+        with ContextThreadPoolExecutor(max_workers=_FIT_WORKERS) as pool:
+            return list(pool.map(find, targets))
+    found = await asyncio.to_thread(find_all)
+
+    added = 0
+    async with AsyncSessionLocal() as db:
+        for (competitor_id, _name, _site, _known, where), clients in zip(targets, found):
+            local = any(g.lower() in where.lower() for g in geos)
+            kept = [c.model_dump() for c in clients if _in_geos(c.country, geos, local)]
+            competitor = await db.get(models.Competitor, competitor_id)
+            if kept and competitor is not None:
+                added += await account_service.suggest_clients(db, workspace_id, run_id, competitor, kept)
+    return added
 
 
 _FIT_WORKERS = 4
