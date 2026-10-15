@@ -27,6 +27,7 @@ import { DiscoveryInterruptPicker } from "@/components/interrupt-panel"
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { COUNTRIES, normalizeCountry } from "@/lib/countries"
 import { useDiscovery } from "@/hooks/use-discovery"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 import { SourceToggle, type SourceMode } from '@/features/workspace/new/toggle'
 
@@ -206,6 +207,8 @@ export function NewWorkspaceForm({
   }
 
   const reduceMotion = useReducedMotion()
+  const isMobile = useIsMobile()
+  const progressRef = useRef<HTMLDivElement>(null)
   const [branchRef, branchHeight] = useMeasuredHeight<HTMLDivElement>()
 
 
@@ -270,6 +273,13 @@ export function NewWorkspaceForm({
       setIsDiscovering(false)
     }
   }, [stage, clarifyUrl, setIsDiscovering])
+
+  // On phones the progress panel stacks below the form, off screen once the
+  // form is submitted. Bring it up when it opens and when it asks a question.
+  useEffect(() => {
+    if (!isMobile || !isDiscovering) return
+    progressRef.current?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" })
+  }, [isMobile, isDiscovering, select, confirm, reduceMotion])
 
   // The workspace exists as soon as the discovery phase finishes — jump into
   // it while the remaining phases keep streaming for the stepper.
@@ -349,7 +359,7 @@ export function NewWorkspaceForm({
                 >
                   {/* `gap-5` mirrors FieldGroup's own rhythm, which the
                       wrapper now sits between and would otherwise double up. */}
-                  <div ref={branchRef} className="flex max-h-[60vh] flex-col gap-5 overflow-y-auto">
+                  <div ref={branchRef} className="flex flex-col gap-5 md:max-h-[60vh] md:overflow-y-auto">
                     <div className='flex flex-col gap-2 items-start justify-start'>
                       <p className="text-foreground font-medium">What are you offering?</p>
                       {/* Kept at the group's intrinsic width rather than stretched
@@ -556,6 +566,7 @@ export function NewWorkspaceForm({
             </form>
           </div>
           <div
+            ref={progressRef}
             className={cn(
               "relative bg-muted flex-col gap-3 overflow-hidden md:rounded-e-xl transition-all duration-300 ease-out",
               isDiscovering
