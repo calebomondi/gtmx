@@ -34,6 +34,20 @@ function domainLabel(domain: string): string {
   return `${base} Specialist`
 }
 
+const normalized = (text: string) => text.toLowerCase().replace(/[^a-z]/g, '')
+
+/**
+ * The line shown under a specialist's name. Teams created before roles were
+ * required to be job titles often stored a role that only repeats the domain
+ * ("GTM Specialist" under "GTM Specialist"); those show the affiliation, which
+ * carries the real title and organisation, instead.
+ */
+export function displayRole(member: SpecialistDto): string {
+  const role = member.role?.trim() ?? ''
+  const repeatsDomain = !role || normalized(role) === normalized(domainLabel(member.domain))
+  return repeatsDomain ? member.affiliation?.trim() || role : role
+}
+
 /** Convert a persisted specialist team into the avatar-group DTOs. */
 export function teamToAvatarSpecialists(
   team: SpecialistDto[] | null | undefined,
@@ -44,7 +58,7 @@ export function teamToAvatarSpecialists(
     fallback: initialsFor(member.name),
     domain: domainLabel(member.domain),
     name: member.name,
-    role: member.role,
+    role: displayRole(member),
     borderClass: SPECIALIST_BORDERS[index % SPECIALIST_BORDERS.length],
   }))
 }

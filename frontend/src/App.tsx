@@ -1,5 +1,8 @@
+import { useEffect } from 'react'
+import { Toaster } from 'sonner'
 import { createBrowserRouter, RouterProvider, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { AppSidebar } from "@/components/app-sidebar"
+import { MobileTopBar } from "@/components/mobile-top-bar"
 import {
   SidebarInset,
   SidebarProvider,
@@ -12,22 +15,24 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { DiscoveryInterruptPicker } from "@/components/interrupt-panel"
-import { answerDiscovery, useAgentRun } from "@/lib/agent-run-store"
+import { answerDiscovery, resumeActiveDiscovery, useAgentRun } from "@/lib/agent-run-store"
+import { useAuth } from "@/lib/auth"
+import { useActivityHeartbeat } from "@/lib/use-activity-heartbeat"
 
-import Workspace from './sidepanel/workspace'
-import RecentSession from './sidepanel/recent_session'
-import NewWorkspace from './sidepanel/new/new_workspace'
+import Workspace from './features/workspace/workspace'
+import RecentSession from './features/workspace/recent-session'
+import NewWorkspace from './features/workspace/new/new-workspace'
 import { ThemeProvider } from "@/components/theme-provider"
-import { ProjectsComponent } from "@/projects/projects-components"
-import { ProjectHub } from "@/projects/project-hub"
-import { ArchiveComponent } from "@/archive/archive-components"
-import { AccountsComponent } from "@/connected-accounts/accounts-component"
-import { ArchivedWorkspace } from "@/archive/archived-workspace"
-import { HomeFeed } from "@/home-feed/home-feed-components"
-import AuthPage from "@/auth/auth-component"
-import AuthCallback from "@/auth/auth-callback"
-import ForgotPasswordPage from "@/auth/forgot-password"
-import UpdatePasswordPage from "@/auth/update-password"
+import { ProjectsComponent } from "@/features/projects/projects-components"
+import { ProjectHub } from "@/features/projects/project-hub"
+import { ArchiveComponent } from "@/features/archive/archive-components"
+import { AccountsComponent } from "@/features/connected-accounts/accounts-component"
+import { ArchivedWorkspace } from "@/features/archive/archived-workspace"
+import { HomeFeed } from "@/features/home-feed/home-feed-components"
+import AuthPage from "@/features/auth/auth-component"
+import AuthCallback from "@/features/auth/auth-callback"
+import ForgotPasswordPage from "@/features/auth/forgot-password"
+import UpdatePasswordPage from "@/features/auth/update-password"
 
 /**
  * Interrupts surface inline inside the /new form's right-hand panel; on every
@@ -70,14 +75,40 @@ function GlobalInterruptDialog() {
   )
 }
 
+// Pages that render their own header, with the phone menu button in it.
+const OWN_HEADER = [/^\/workspace(\/|$)/, /^\/projects\/[^/]+/, /^\/archive\/workspace\//]
+
+// Below laptop width the expanded sidebar (16rem) squeezes the page, so it
+// starts as icons there; the user's toggle still wins for the session.
+const SIDEBAR_EXPANDED_FROM = 1024
+const sidebarOpenByDefault = () => typeof window === 'undefined' || window.innerWidth >= SIDEBAR_EXPANDED_FROM
+
 function AppLayout() {
+  const { user } = useAuth()
+  const location = useLocation()
+  useActivityHeartbeat(Boolean(user))
+  // Reattach to a discovery run that outlived the last page load (or was
+  // started on another device). Runs live on the server; this only resumes
+  // watching one.
+  useEffect(() => {
+    if (user) void resumeActiveDiscovery()
+  }, [user])
+
+  // Every app route needs a session; send visitors to sign in and back here.
+  if (!user) {
+    const next = encodeURIComponent(location.pathname + location.search)
+    return <Navigate to={`/auth/login?next=${next}`} replace />
+  }
+
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-      <SidebarProvider className="h-screen">
+      <SidebarProvider className="h-dvh" defaultOpen={sidebarOpenByDefault()}>
         <AppSidebar />
-        <SidebarInset className="flex h-screen flex-col overflow-hidden">
+        <SidebarInset className="flex h-dvh min-w-0 flex-col overflow-hidden">
+          {!OWN_HEADER.some((route) => route.test(location.pathname)) && <MobileTopBar />}
           <Outlet />
           <GlobalInterruptDialog />
+          <Toaster position="bottom-right" richColors closeButton />
         </SidebarInset>
       </SidebarProvider>
     </ThemeProvider>

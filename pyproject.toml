@@ -1,35 +1,59 @@
 [project]
 name = "gtmx"
 version = "0.1.0"
-description = "Go-to-markey=t expert"
+description = "Go-to-market expert"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "aiosqlite>=0.22.1",
-    "assistant-stream>=0.0.36",
-    "axios>=0.4.0",
+    "alembic>=1.14",
     "brightdata-sdk>=2.5.2",
     "composio>=0.22.0",
     "composio-langgraph>=0.25.0",
+    "dnspython>=2.7",
     "exa-py>=2.18.1",
     "fastapi[standard]>=0.115.0",
+    "httpx>=0.28",
     "langchain>=1.3.15",
-    "langchain-groq>=1.1.3",
+    "langchain-openai>=0.3",
     "langchain-qwq>=0.3.5",
-    "langchain-tavily>=0.2.18",
-    "langchain-text-splitters>=1.1.2",
     "langgraph>=1.2.11",
     "langgraph-checkpoint-postgres>=3.1.2",
-    "langgraph-checkpoint-sqlite>=3.1.1",
     "openai>=3.1.0",
-    "psycopg-binary>=3.3.4",
-    "psycopg2-binary>=2.9.12",
-    "pypdf>=6.16.1",
-    "python-docx>=1.2.0",
+    "psycopg[binary,pool]>=3.2",
+    "pydantic-settings>=2.6",
     "python-dotenv>=1.2.3",
     "python-multipart>=0.0.18",
-    "python-pptx>=1.0.2",
+    "sentry-sdk[fastapi]>=2.40",
     "sqlalchemy>=2.0.54",
     "supabase>=2.31.0",
     "uvicorn[standard]>=0.34.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.14",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["agents/tests", "backend/tests"]
+python_files = ["test_*.py"]
+# Live tests hit real LLM / search / scraping APIs: slow, cost money, need keys.
+# Excluded by default; run them with `uv run pytest -m live`.
+addopts = "-m 'not live' -p no:cacheprovider"
+markers = [
+    "live: calls real external APIs (LLM, Exa, BrightData); opt-in with -m live",
+]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+
+[tool.ruff]
+line-length = 120
+extend-exclude = ["agents/notebooks"]
+
+[tool.ruff.lint]
+# Real-bug rules only (unused names, undefined names, syntax errors); style is
+# left to review so this never blocks a PR on formatting.
+select = ["F", "E9"]

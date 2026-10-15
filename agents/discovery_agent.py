@@ -1,11 +1,11 @@
-"""Discovery agent — the top-level workflow that amalgamates the sub_agents
-pipelines under agents/sub_agents.
+"""Discovery agent — the top-level workflow that amalgamates the pipelines
+pipelines under agents/pipelines.
 
 Mirror of `gtmx_agent.py` (same shape of wiring and parallelism reasoning), but
-over the sub_agents family instead of the interview-era subgraphs:
+over the pipelines family instead of the interview-era subgraphs:
 
     discover_offer -> create_specialists -> [understand_offer ∥ understand_market]
-        -> understand_competition -> determine_icp
+        -> [understand_competition ∥ draft_icp] -> determine_icp
 
 The intake stage is a compiled subgraph added directly as a node (interrupts in
 a nested subgraph propagate to the top-level invoke and resume via
@@ -28,14 +28,15 @@ from langgraph.graph import START, END, StateGraph
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
-from agents.sub_agents.schema_states import DiscoverySessionState
-from agents.sub_agents.discover.discover_offer import build_offer_discovery_graph
-from agents.sub_agents.discover.discover_offer_manual import build_manual_offer_discovery_graph
-from agents.sub_agents.discover.create_specialists import build_specialist_graph
-from agents.sub_agents.discover.understand_offer import build_product_graph
-from agents.sub_agents.discover.understand_market import build_market_graph
-from agents.sub_agents.discover.understand_competition import build_competition_graph
-from agents.sub_agents.discover.build_icp import build_icp_graph
+from agents.schemas.sessions import DiscoverySessionState
+from agents.pipelines.discover.discover_offer import build_offer_discovery_graph
+from agents.pipelines.discover.discover_offer_manual import build_manual_offer_discovery_graph
+from agents.pipelines.discover.create_specialists import build_specialist_graph
+from agents.pipelines.discover.understand_offer import build_product_graph
+from agents.pipelines.discover.understand_market import build_market_graph
+from agents.pipelines.discover.understand_competition import build_competition_graph
+from agents.pipelines.discover.build_icp import build_icp_graph, create_icp
+from utils.log import logger
 
 
 # Nested subgraphs can't own a checkpointer — the parent agent does. Built once
@@ -46,7 +47,7 @@ _SPECIALISTS = build_specialist_graph()
 _UNDERSTAND_OFFER = build_product_graph(checkpointer=False)
 _UNDERSTAND_MARKET = build_market_graph(checkpointer=False)
 _UNDERSTAND_COMPETITION = build_competition_graph(checkpointer=False)
-_DETERMINE_ICP = build_icp_graph(checkpointer=False)
+_DETERMINE_ICP = build_icp_graph(checkpointer=False, from_draft=True)
 
 
 # The channels each stage owns in the aggregate state. Only these are folded
@@ -91,6 +92,17 @@ def run_understand_competition(state: DiscoverySessionState) -> dict:
     return _fold(_UNDERSTAND_COMPETITION.invoke(state), _COMPETITION_KEYS)
 
 
+def run_draft_icp(state: DiscoverySessionState) -> dict:
+    """Draft the ICP from the offer + market context while competition research
+    runs (the two take about as long, so the draft costs no wall clock).
+    Soft-fails: without a draft, determine_icp builds the ICP whole."""
+    try:
+        return _fold(create_icp(state), ("icp_data",))
+    except Exception:  # noqa: BLE001 -- determine_icp falls back to a full build
+        logger.exception("ICP draft failed; it will be built after competition instead")
+        return {}
+
+
 def run_determine_icp(state: DiscoverySessionState) -> dict:
     """Run the GTM synthesis stage: the ICP drafted+refined from every earlier
     stage's outputs (no web research of its own)."""
@@ -99,14 +111,14 @@ def run_determine_icp(state: DiscoverySessionState) -> dict:
 
 def build_discovery_agent(checkpointer: BaseCheckpointSaver | None = None):
     """Build the discovery agent state graph: offer intake (interactive) ->
-    create_specialists -> understand_offer -> understand_market ->
-    understand_competition -> determine_icp.
+    create_specialists -> [understand_offer ∥ understand_market] ->
+    [understand_competition ∥ draft_icp] -> determine_icp.
 
     The discovery phase is interactive: its interrupts surface on the top-level
     invoke and resume via Command(resume=...) with the same thread config.
 
     `checkpointer` lets callers (e.g. the backend) supply a durable saver such
-    as AsyncSqliteSaver; falls back to an in-memory saver for interactive
+    as AsyncPostgresSaver; falls back to an in-memory saver for interactive
     drivers and tests."""
 
     builder = StateGraph(DiscoverySessionState)
@@ -118,6 +130,7 @@ def build_discovery_agent(checkpointer: BaseCheckpointSaver | None = None):
     builder.add_node("understand_offer", run_understand_offer)
     builder.add_node("understand_market", run_understand_market)
     builder.add_node("understand_competition", run_understand_competition)
+    builder.add_node("draft_icp", run_draft_icp)
     builder.add_node("determine_icp", run_determine_icp)
     # builder.add_node("account_discovery", run_account_discovery)
 
@@ -151,7 +164,13 @@ def build_discovery_agent(checkpointer: BaseCheckpointSaver | None = None):
     builder.add_edge("create_specialists", "understand_market")
     builder.add_edge("understand_offer", "understand_competition")
     builder.add_edge("understand_market", "understand_competition")
+    # The ICP draft needs only offer + market, so it runs in the same super-step
+    # as competition; determine_icp (refine against the competition context,
+    # then the notes) waits for both.
+    builder.add_edge("understand_offer", "draft_icp")
+    builder.add_edge("understand_market", "draft_icp")
     builder.add_edge("understand_competition", "determine_icp")
+    builder.add_edge("draft_icp", "determine_icp")
     builder.add_edge("determine_icp", END)
     # builder.add_edge("account_discovery", END)
 

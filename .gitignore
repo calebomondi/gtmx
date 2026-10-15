@@ -24,9 +24,13 @@ checkpoints.db*
 agents/.cache/
 
 # Test-run artifacts: per-run notes, final states, and timing reports written
-# by the agents/tests/sub_agents/ DAG harnesses. Regenerated on every run.
-agents/tests/sub_agents/_out/
+# by the agents/tests/pipelines/ DAG harnesses. Regenerated on every run.
+agents/tests/pipelines/_out/
 
 # Stale root-level copy of the LLM client. The live package is agents/llm/,
 # which is what every module imports; nothing references this one.
-llm/
+/llm/
+
+# Internal admin console: a separate git repository checked out here.
+admin_dashboard/
+backend/tests/live/_out/

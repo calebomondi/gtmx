@@ -8,11 +8,12 @@ discover target accounts, and run outreach.
 - **Agents**: LangGraph pipelines in `agents/`. They are pure: web search, scraping and LLM calls only.
 - **Backend**: FastAPI in `backend/app/`. It owns persistence, auth, and running agents.
 - **Frontend**: React 19, Vite, Tailwind v4 and shadcn in `frontend/`. This is the customer app.
-- **Admin dashboard**: Turborepo + Bun workspace in `admin_dashboard/` (`apps/web`, `packages/ui`). This is the internal ops console.
+- **Waitlist page**: React, Vite and Tailwind v4 in `waitlist/`. The public landing page at gtmx.co, with signup and pilot opt-in.
+- **Admin dashboard**: a **separate git repository** (Turborepo + Bun, `apps/web` + `packages/ui`) checked out at `admin_dashboard/` and ignored by this repo. It's the internal ops console and follows the same rules and git workflow in its own repo.
 - **Identity**: Supabase Auth. **Database**: Postgres (Supabase in prod, Docker locally).
 
-Dependency direction is **frontend / admin_dashboard → backend → agents → data_sources/utils**.
-Both web apps talk only to the backend API. Neither talks to the database or holds a Supabase service key.
+Dependency direction is **frontend / waitlist / admin_dashboard → backend → agents → data_sources/utils**.
+All web apps talk only to the backend API. Neither talks to the database or holds a Supabase service key.
 Nothing under `agents/` imports `backend/`. Nothing under `data_sources/` imports `agents/`.
 
 ---
@@ -21,18 +22,25 @@ Nothing under `agents/` imports `backend/`. Nothing under `data_sources/` import
 
 ```bash
 # Backend (from repo root)
+cp .env.example .env                  # first time only, then fill in keys
 uv sync                               # install Python deps (incl. dev group)
-scripts/dev.sh                        # uvicorn with scoped --reload on :8000
-uv run pytest                         # unit tests (no network)
+docker compose up -d --wait           # local Postgres 16 on :5432 (gtmx/gtmx)
+scripts/dev.sh                        # starts Postgres if needed, then uvicorn --reload on :8000
+uv run ruff check .                   # lint (real-bug rules; runs in CI)
+uv run pytest                         # offline tests, on the gtmx_test Postgres DB (auto-created + migrated)
 uv run pytest -m live                 # tests that hit real LLM/search APIs (opt-in)
 uv run alembic upgrade head           # apply migrations
 uv run alembic revision --autogenerate -m "add_x_to_y"
 
-# Frontend (from frontend/)
-npm install
-npm run dev                           # Vite on :5173, proxies /api (incl. WS) to :8000
-npm run build                         # tsc -b && vite build. Must pass before any PR.
-npm run lint                          # oxlint
+# Frontend (from frontend/). Bun is the only JS package manager in every app.
+bun install
+bun run dev                           # Vite on :5173, proxies /api (incl. WS) to :8000
+bun run build                         # tsc -b && vite build. Must pass before any PR.
+bun run lint                          # oxlint
+
+# Waitlist page (from waitlist/)
+bun install && bun run dev           # Vite on :5174, proxies /api to :8000
+bun run build && bun run lint
 
 # Admin dashboard (from admin_dashboard/)
 bun install
@@ -50,8 +58,9 @@ bun run build && bun run typecheck && bun run lint
 4. Open the PR **into `dev`** with `gh pr create --base dev`. The body covers what changed, why, how it was tested, and any migration or env changes.
 5. **Never merge your own PR.** The owner reviews and merges. `dev` is promoted to `main` for release.
 6. Commit messages are imperative and specific ("Enforce workspace ownership on competitor routes"), not "fix stuff".
-7. Before opening a PR, all of these pass for every app the PR touches: `uv run pytest`, `npm run build` and `npm run lint` (frontend), `bun run build`, `typecheck` and `lint` (admin_dashboard), and `alembic upgrade head` on an empty database.
-8. Never commit `.env*` (except `.env.example`), `*.db`, `node_modules/`, `dist/`, `agents/.cache/`, or test `_out/` artifacts.
+7. Before opening a PR, all of these pass for every app the PR touches: `uv run ruff check .`, `uv run pytest`, `bun run build` and `bun run lint` (frontend), `bun run build`, `typecheck` and `lint` (admin_dashboard), and `alembic upgrade head` on an empty database.
+8. Use **Bun only** for JavaScript (`bun install`, `bun run`, `bunx`). Never add a `package-lock.json`, `yarn.lock` or `pnpm-lock.yaml`.
+9. Never commit `.env*` (except `.env.example`), `*.db`, `node_modules/`, `dist/`, `agents/.cache/`, or test `_out/` artifacts.
 
 ---
 
@@ -72,8 +81,8 @@ backend/app/
   database/models.py        # SQLAlchemy models
   database/migrations/      # Alembic
   schemas/<resource>.py     # pydantic request/response models
-  config/settings.py        # the ONLY place env vars are read
 data_sources/               # external API adapters (Exa, BrightData, parsers)
+config.py                   # Settings: the ONLY place env vars / .env are read (all layers)
 frontend/src/
   features/<feature>/       # components, types, store for one feature
   components/ui/            # shadcn primitives. Generated, so don't hand-edit for features.
@@ -102,7 +111,7 @@ Treat each of these as a review blocker:
 
 - **Silent failure.** `except Exception: pass`, or returning `""`/`None` for a hard error the caller can't tell apart from "no data". Catch narrowly, log with context (`logger.exception`), and raise or return a typed result.
 - **Missing authorization.** Any route that touches a workspace, project, competitor, account or run without going through the ownership dependency in `api/deps.py`.
-- **Env reads outside settings.** `os.environ`/`getenv` anywhere except `config/settings.py` (backend) or `import.meta.env` outside `lib/` (frontend).
+- **Env reads outside settings.** `os.environ`/`getenv`/`load_dotenv` anywhere except root `config.py` (add a field to `Settings` instead), or `import.meta.env` outside `lib/` (frontend).
 - **Dialect-specific code in shared paths.** SQLite-only `connect_args`, raw SQL that only works on one database, or `ALTER TABLE` in app startup.
 - **Blocking the event loop.** Calling sync LLM/HTTP/graph `.invoke()` inside an `async def` without `asyncio.to_thread`, or `time.sleep` in async code.
 - **Unbounded work.** Every LLM, search and scrape call has a timeout. Every list endpoint has a limit. Every agent run has a wall-clock cap.
@@ -183,6 +192,7 @@ Treat each of these as a review blocker:
 ## Admin dashboard rules
 
 - Every admin endpoint lives under `/api/v1/admin/*` in `backend/app/api/v1/endpoints/admin/`. It's guarded by `require_admin` from `api/deps.py`, which checks the Supabase `app_metadata.role == "admin"` claim. A UI-side check alone is never enough.
+- Admins are bootstrapped from `ADMIN_BOOTSTRAP_EMAILS` at startup (idempotent). After that, admins grant or revoke the role from the dashboard through an audited endpoint. An admin can't revoke their own role, and the last admin can't be removed.
 - Admin endpoints are read-mostly. Every admin write (suspend a user, cancel a run, change a quota) goes through a service function and writes an `admin_audit_log` row recording who, what, when, and the before and after values.
 - No mock data ships. The template's `data.json` and placeholder nav items are deleted, not hidden.
 - Admin and customer app don't import each other's code. If both need the same API types, the backend's OpenAPI schema is the shared contract.

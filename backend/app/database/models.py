@@ -1,9 +1,10 @@
 from __future__ import annotations
 import uuid
 
-from datetime import datetime, UTC
+from datetime import date, datetime, UTC
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UUID, Boolean, JSON, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, String, Text, UUID, UniqueConstraint, false, func
+from sqlalchemy.dialects.postgresql import JSONB as JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.database.connect import Base
@@ -11,13 +12,15 @@ from backend.app.database.connect import Base
 
 class Workspace(Base):
     __tablename__ = "workspaces"
+    __table_args__ = (
+        CheckConstraint("offer_type IN ('product', 'service')", name="ck_workspaces_offer_type"),
+    )
 
     # Metadata
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), 
-        primary_key=True, 
-        index=True, 
-        default=uuid.uuid4
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
     )
     # Supabase Auth user id (no local users table — Supabase owns identity).
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -29,11 +32,14 @@ class Workspace(Base):
     # User-owned label, seeded with the product/service name at creation time
     # (product_profile.product_name stays the agent's own understanding).
     name: Mapped[str | None] = mapped_column(String(100))
+    # Asserted by the user at intake. A real column (not only insights JSON)
+    # so the admin console can count and filter by it. NULL = never recorded.
+    offer_type: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
     pinned: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
         default=False,
-        server_default="0",
+        server_default=false(),
     )
 
     # Optional grouping: NULL = ungrouped. Membership is preserved on archive
@@ -48,7 +54,7 @@ class Workspace(Base):
         Boolean,
         nullable=False,
         default=False,
-        server_default="0",
+        server_default=false(),
     )
     archived_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
@@ -58,11 +64,13 @@ class Workspace(Base):
     # Dates
     date_created: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(UTC)
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
     )
     last_activity: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(UTC)
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
     )
 
     # Relationships
@@ -79,10 +87,6 @@ class Workspace(Base):
     # table: product_profiles.insights is one JSON blob replaced wholesale and so
     # structurally cannot accumulate.
     competitors: Mapped[list["Competitor"]] = relationship(
-        back_populates="workspace",
-        cascade="all, delete-orphan",
-    )
-    competitor_runs: Mapped[list["CompetitorRun"]] = relationship(
         back_populates="workspace",
         cascade="all, delete-orphan",
     )
@@ -110,12 +114,11 @@ class Project(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        index=True,
         default=uuid.uuid4,
     )
+    # Supabase Auth user id (no local users table — Supabase owns identity).
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -131,7 +134,7 @@ class Project(Base):
         Boolean,
         nullable=False,
         default=False,
-        server_default="0",
+        server_default=false(),
     )
     position: Mapped[int] = mapped_column(
         Integer,
@@ -144,7 +147,7 @@ class Project(Base):
         Boolean,
         nullable=False,
         default=False,
-        server_default="0",
+        server_default=false(),
     )
     archived_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
@@ -154,11 +157,13 @@ class Project(Base):
     # Dates
     date_created: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(UTC)
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
     )
     last_activity: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(UTC)
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
     )
 
     # Relationships
@@ -207,6 +212,7 @@ class ProductProfile(Base):
         Boolean,
         nullable=False,
         default=False,
+        server_default=false(),
     )
 
     # Final agent-run insights (domain/market/competition/ICP/team + offer
@@ -248,78 +254,6 @@ class ProductFeature(Base):
     )
 
 
-class CompetitorRun(Base):
-    """One invocation of the standalone competitor agent for a workspace.
-
-    A run is a separate entity from its results because the agent is re-runnable
-    and each invocation is worth auditing on its own: what it found, when, and
-    -- the part that matters most -- how many candidates it DROPPED and why. A
-    run that reports 3 competitors from 40 candidates is not a thinner answer,
-    it is the agent doing its job, and the UI needs to be able to say so rather
-    than showing an empty list and implying failure.
-    """
-
-    __tablename__ = "competitor_runs"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        primary_key=True,
-        default=uuid.uuid4,
-    )
-    workspace_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("workspaces.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-
-    # pending -> running -> completed | failed. The agent is triggered by POST
-    # and polled, so this is the whole progress surface the client has.
-    status: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        default="pending",
-    )
-    # Human-readable failure text. Nullable: a completed run has none.
-    error: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-    # Counts, written as the run progresses. candidates_seen is how many firms
-    # the agent identified before the website check; found is how many survived
-    # it; dropped is found's complement. Kept as columns rather than derived so
-    # a failed run can still report what it had seen so far.
-    candidates_seen: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    found: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    dropped: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-
-    # Why candidates were dropped, as {reason: count}. The dominant reason is
-    # expected to be "no public website" -- that is the brief's own filter, not a
-    # defect -- so surfacing it prevents a healthy run reading as a lossy one.
-    dropped_reasons: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-
-    # Which archetypes from the ideal profile this run hunted with, and the
-    # profile's own confidence. Stored so a run stays interpretable after the
-    # profile is regenerated by a later discovery run.
-    profile_confidence: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    archetypes_targeted: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-
-    started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-    finished_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
-
-    # Relationships
-    workspace: Mapped["Workspace"] = relationship(back_populates="competitor_runs")
-    competitors: Mapped[list["Competitor"]] = relationship(back_populates="run")
-
-
 class Competitor(Base):
     """One verified real company competing with the workspace's offer.
 
@@ -359,7 +293,7 @@ class Competitor(Base):
     # Which run first found this competitor. Null for a manually added one, which
     # is exactly how the UI tells agent-found and user-added apart.
     run_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("competitor_runs.id", ondelete="SET NULL"),
+        ForeignKey("runs.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -436,6 +370,7 @@ class Competitor(Base):
     first_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
+        server_default=func.now(),
         nullable=False,
     )
     # Refreshed on every run that re-finds this firm, so the UI can show what is
@@ -444,16 +379,24 @@ class Competitor(Base):
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
+        server_default=func.now(),
         nullable=False,
     )
     deep_researched_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )
+    # Monitoring: the last snapshot of what the rival says about itself (site +
+    # recent news), compared on the next check to find GTM-relevant changes.
+    monitor_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # {platform: normalized profile} from Bright Data, refreshed on a slower
+    # cadence than the site check because each scrape is paid and slow.
+    social_profiles: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    socials_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     workspace: Mapped["Workspace"] = relationship(back_populates="competitors")
-    run: Mapped["CompetitorRun | None"] = relationship(back_populates="competitors")
 
     __table_args__ = (
         # The dedup guarantee. Two runs finding acme.com and https://www.acme.com
@@ -461,48 +404,6 @@ class Competitor(Base):
         # fail -- the agent treats a conflict as "already known", not as an error.
         UniqueConstraint("workspace_id", "domain_key", name="uq_competitors_workspace_domain"),
     )
-
-class AccountRun(Base):
-    """One invocation of the account-discovery agent for a workspace.
-
-    Mirrors CompetitorRun: each run is a separate row so the user can audit why a
-    run failed (or why one filled the list and another didn't), and the UI can
-    show progress for the in-flight run."""
-
-    __tablename__ = "account_runs"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        primary_key=True,
-        default=uuid.uuid4,
-    )
-    workspace_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("workspaces.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="pending",
-    )
-    error: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-    candidates_seen: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    found: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-
-    started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
-    )
-    finished_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False,
-    )
-
-    workspace: Mapped["Workspace"] = relationship()
-    accounts: Mapped[list["Account"]] = relationship(back_populates="run")
-
 
 class Account(Base):
     """A target account discovered by the account-discovery agent for outreach.
@@ -521,7 +422,7 @@ class Account(Base):
         nullable=False, index=True,
     )
     run_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("account_runs.id", ondelete="SET NULL"),
+        ForeignKey("runs.id", ondelete="SET NULL"),
         nullable=True, index=True,
     )
 
@@ -533,6 +434,8 @@ class Account(Base):
     venue: Mapped[str | None] = mapped_column(String(255), nullable=True)
     event_date: Mapped[str | None] = mapped_column(String(255), nullable=True)
     member_size: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # What the target does, in a sentence or two: the account card's lead line.
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     industry: Mapped[str | None] = mapped_column(String(255), nullable=True)
     size: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -541,6 +444,9 @@ class Account(Base):
     tech_stack: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     recent_news: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     key_contacts: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    # The account's own social pages ({platform: url}), found and checked by
+    # account discovery: the contact route when no person is published.
+    socials: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
     pain_signals: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     hiring_signals: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     sources: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
@@ -551,19 +457,411 @@ class Account(Base):
     why_selected: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     why_reach_out: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     trigger_event: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Why the offer suits this account now (agents.schemas.accounts.AccountFit):
+    # the need, the capability that answers it, its payoff and the angle.
+    # Null until assessed.
+    fit: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # target | suggested | dismissed (backend.app.schemas.accounts.ReviewStatus).
+    # Discovery adds targets; a competitor's client is only suggested until the
+    # user accepts it, so the target list stays theirs.
+    review_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="target", server_default="target", index=True,
+    )
+    # The competitor that names this account as its client, when that is how
+    # it was found: the switching pitch is built on it.
+    via_competitor_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("competitors.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
 
     selected: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default="0",
+        Boolean, nullable=False, default=False, server_default=false(),
+    )
+    # Someone at the account asked not to be contacted: no drafts, no sends.
+    do_not_contact: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false(),
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False,
+        DateTime(timezone=True), default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
     )
 
     workspace: Mapped["Workspace"] = relationship()
-    run: Mapped["AccountRun | None"] = relationship(back_populates="accounts")
+    via_competitor: Mapped["Competitor | None"] = relationship(lazy="selectin")
+
+    @property
+    def via_competitor_name(self) -> str | None:
+        return self.via_competitor.name if self.via_competitor else None
 
     __table_args__ = (
         # Same dedup posture as competitors: re-running the agent refreshes a
         # known account instead of doubling it.
         UniqueConstraint("workspace_id", "name", name="uq_accounts_workspace_name"),
     )
+
+
+class AdminAuditLog(Base):
+    """Append-only record of every admin write: who did what to which target,
+    with the before/after values. `actor_id` is null for system actions (the
+    startup admin bootstrap)."""
+
+    __tablename__ = "admin_audit_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    actor_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    # e.g. "admin.grant", "admin.revoke", "user.suspend", "run.cancel"
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    target_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    before: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    after: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
+        index=True,
+    )
+
+
+class UserQuota(Base):
+    """An admin's per-user override of one run kind's daily cap. No row means
+    the default from settings applies."""
+
+    __tablename__ = "user_quotas"
+    __table_args__ = (UniqueConstraint("user_id", "kind", name="uq_user_quotas_user_id_kind"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    daily_cap: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(),
+        onupdate=lambda: datetime.now(UTC), nullable=False,
+    )
+
+
+class Run(Base):
+    """One agent run, owned by the server rather than by any connection.
+
+    Discovery runs pause in `awaiting_input` with NO task alive: the LangGraph
+    checkpoint holds their state, and an answer resumes them -- even after a
+    server restart. Every frame a client should see is appended to run_events,
+    so a client that reconnects replays what it missed from its last event id.
+    """
+
+    __tablename__ = "runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    # Discovery creates its workspace mid-run, so this starts null for it.
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    # backend.app.runs.kinds.RunKind
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    # pending | running | awaiting_input | completed | failed | cancelled
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
+    # The request that started the run, kept for resume and for the admin view.
+    input: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Kind-specific progress that must survive between segments (e.g. which
+    # discovery phases are done) and the final result summary.
+    progress: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Shown to the user. Never a raw traceback; that goes to the logs.
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(), nullable=False,
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(),
+        onupdate=lambda: datetime.now(UTC), nullable=False,
+    )
+
+
+class RunEvent(Base):
+    """An append-only frame emitted by a run. `id` is a global, monotonically
+    increasing cursor: a client resumes with "everything after id N"."""
+
+    __tablename__ = "run_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    type: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(), nullable=False,
+    )
+
+
+class LlmCall(Base):
+    """One LLM call attempt: what it cost and what it was for. Failed attempts
+    are recorded too -- they spend tokens. `run_id` is null for calls made
+    outside a run. The admin dashboard aggregates this for cost per day/run."""
+
+    __tablename__ = "llm_calls"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    log_label: Mapped[str] = mapped_column(String(120), nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    seconds: Mapped[float] = mapped_column(nullable=False, default=0.0)
+    ok: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(),
+        nullable=False, index=True,
+    )
+
+
+class ApiCall(Base):
+    """One paid external API call (Exa search/contents, a Bright Data scrape).
+    Priced per call from settings.api_call_prices in the admin metrics."""
+
+    __tablename__ = "api_calls"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    operation: Mapped[str] = mapped_column(String(64), nullable=False)
+    seconds: Mapped[float] = mapped_column(nullable=False, default=0.0)
+    ok: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(),
+        nullable=False, index=True,
+    )
+
+
+class Signal(Base):
+    """One item in a user's feed: something an agent found or did that the user
+    should know about (a new competitor, a target account, a finished or failed
+    run). Emitted server-side by runs; the user only reads, pins or dismisses."""
+
+    __tablename__ = "signals"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    # competitor | opportunity | product | market | agent | inbound | outbound
+    category: Mapped[str] = mapped_column(String(20), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    entity: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Why the user is seeing this.
+    reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # What the item means for the user and the move to make
+    # ({"means", "next_move"}), when the agent that raised it could say.
+    insight: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    source_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    hot: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+    read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+    pinned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+    dismissed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(),
+        nullable=False, index=True,
+    )
+
+    workspace: Mapped["Workspace"] = relationship()
+
+
+class ChatMessage(Base):
+    """One turn of a workspace's conversation with its agent team. An
+    assistant message is written by the `chat` run that produced it."""
+
+    __tablename__ = "chat_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    # user | assistant
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    # The specialist who answered (product, market, competition, gtm);
+    # null for the user's own messages and answers from before routing.
+    specialist_domain: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Follow-up questions offered under an assistant answer; null otherwise.
+    suggestions: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(),
+        nullable=False, index=True,
+    )
+
+
+class OutreachMessage(Base):
+    """One outreach message to a target account: drafted by the agent, edited
+    by the user, and sent only on the user's explicit action -- or a reply to
+    one, synced from the user's mailbox."""
+
+    __tablename__ = "outreach_messages"
+    __table_args__ = (
+        CheckConstraint("direction IN ('outbound', 'inbound')", name="ck_outreach_messages_direction"),
+        UniqueConstraint("user_id", "provider_message_id", name="uq_outreach_messages_user_provider_message"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    account_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    # email | linkedin
+    channel: Mapped[str] = mapped_column(String(16), nullable=False)
+    # outbound: drafted/sent by the user. inbound: a reply (or bounce) synced
+    # from the user's mailbox into the same thread.
+    direction: Mapped[str] = mapped_column(String(8), nullable=False, default="outbound", server_default="outbound")
+    # The provider's thread (Gmail threadId): ties replies to what was sent,
+    # and makes a draft with one a reply in that thread.
+    thread_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # The provider's message id, so a synced message is stored once.
+    provider_message_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # When the user opened an inbound message; null = unread.
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # inbound: how the GTM specialist read the reply (interested, question,
+    # objection, meeting_request, not_now, unsubscribe, out_of_office, ...).
+    intent: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    # A reply draft's meeting, when the contact agreed a time: {start, end,
+    # timezone, title, attendee, event_url once the user adds it to Calendar}.
+    meeting: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    recipient_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    recipient_company: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    # The email address for email; null for LinkedIn (sent by the user by hand).
+    recipient_address: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    # outbound: draft | sending | sent | failed | bounced. inbound: received | bounced
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="draft", index=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Composio log id of the send, for support/debugging.
+    provider_log_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(), nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(),
+        onupdate=lambda: datetime.now(UTC), nullable=False,
+    )
+
+
+class AppSession(Base):
+    """A stretch of active use of the customer app, built from client
+    heartbeats. A gap longer than settings.activity_session_gap_s starts a
+    new session. Durations only: nothing about what the user looked at."""
+
+    __tablename__ = "app_sessions"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    active_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # The workspace of the previous heartbeat, so a switch counts as a visit.
+    last_workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+
+
+class WorkspaceActivity(Base):
+    """Active time and visits per workspace per UTC day."""
+
+    __tablename__ = "workspace_activity"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "day", name="uq_workspace_activity_workspace_day"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    day: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    active_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    visits: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ConnectionIdentity(Base):
+    """Who a connected channel account is (an email, a name, an @handle), read
+    once from the provider through Composio. Composio holds the tokens and the
+    connection itself; this is only the label shown for it."""
+
+    __tablename__ = "connection_identities"
+
+    # Composio's connected-account id.
+    connection_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    platform: Mapped[str] = mapped_column(String(32), nullable=False)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), server_default=func.now(),
+    )
+
+
+class WaitlistSignup(Base):
+    """A person who joined the waitlist on the public landing page. Not a
+    Supabase user: they have no account until invited to the pilot."""
+
+    __tablename__ = "waitlist_signups"
+    __table_args__ = (
+        CheckConstraint("stage IS NULL OR stage IN ('idea', 'pre_revenue', 'revenue', 'scaling')",
+                        name="ck_waitlist_signups_stage"),
+        CheckConstraint("sells_to IS NULL OR sells_to IN ('b2b', 'b2c', 'both')", name="ck_waitlist_signups_sells_to"),
+        CheckConstraint("status IN ('new', 'contacted', 'invited', 'onboarded')", name="ck_waitlist_signups_status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Lowercased; the natural key, so signing up twice updates the same row.
+    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True)
+    name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    company: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    role: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    stage: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    sells_to: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    countries: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
+    wants_pilot: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false(), index=True)
+    expectations: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Where they came from: utm_source/medium/campaign and the referrer.
+    source: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="new", server_default="new", index=True)
+    # sha256 of a random token returned at signup; lets that browser add the
+    # optional details without an account.
+    update_token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    # Salted hash of the signup IP, only for the per-IP rate limit.
+    ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    consent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    confirmation_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(), nullable=False, index=True,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC),
+        server_default=func.now(), nullable=False,
+    )
+

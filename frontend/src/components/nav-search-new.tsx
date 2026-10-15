@@ -5,8 +5,11 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { SquarePen, Search, Home, FolderClosed } from "lucide-react"
+import { useCallback, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 
+import { SearchDialog } from "@/features/search/search-dialog"
+import { useSearchShortcut } from "@/features/search/use-search-shortcut"
 import { isNavItemActive } from "@/lib/nav-active"
 
 export function NavSearchNew({
@@ -20,11 +23,13 @@ export function NavSearchNew({
 }) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
+  const [searchOpen, setSearchOpen] = useState(false)
+  const toggleSearch = useCallback(() => setSearchOpen((open) => !open), [])
+  useSearchShortcut(toggleSearch)
 
-  // Search Anything is deliberately left inactive: it is a placeholder that
-  // routes to /feed, so matching it would light up alongside Home Feed.
   return (
     <SidebarGroup>
+      <SearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton
@@ -49,18 +54,19 @@ export function NavSearchNew({
           </SidebarMenuButton>
         </SidebarMenuItem>
         <SidebarMenuItem>
-          <SidebarMenuButton 
-            tooltip="Search" 
+          <SidebarMenuButton
+            tooltip="Search (Ctrl+K)"
             className="cursor-pointer"
-            onClick={() => navigate("/feed")}
+            onClick={() => setSearchOpen(true)}
           >
             <Search />
             <span>Search Anything</span>
+            <kbd className="ml-auto text-xs text-muted-foreground">Ctrl K</kbd>
           </SidebarMenuButton>
         </SidebarMenuItem>
         <SidebarMenuItem>
-          <SidebarMenuButton 
-            tooltip="Search" 
+          <SidebarMenuButton
+            tooltip="Projects"
             isActive={isNavItemActive(pathname, "/projects")}
             className="cursor-pointer"
             onClick={() => navigate("/projects")}

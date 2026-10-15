@@ -1,100 +1,102 @@
-import uuid
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import inspect as sa_inspect, select, text
+from sqlalchemy import text
 
-from backend.app.config.settings import settings
+from config import settings
 from backend.app.api.v1.routes import api_router
-from backend.app.database import models  # noqa: F401
-from backend.app.database.connect import Base, engine, AsyncSessionLocal
-from backend.app import agents_runtime
+from backend.app.database.connect import engine, AsyncSessionLocal
+from backend.app.database.schema_check import ensure_schema_at_head
+from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError, RateLimitedError, ServiceError
+from backend.app import agents_runtime, observability, usage
+from backend.app.runs import manager as run_manager
+from backend.app.runs import scheduler as run_scheduler
+from backend.app.services import admin as admin_service
+from utils.log import logger
 
 
-def _ensure_workspace_columns(sync_conn):
-    """Dev has no alembic and create_all never adds columns to existing tables
-    — add newer columns to pre-existing databases."""
-    inspector = sa_inspect(sync_conn)
-    columns = {col["name"] for col in inspector.get_columns("workspaces")}
-    if "name" not in columns:
-        sync_conn.execute(text("ALTER TABLE workspaces ADD COLUMN name VARCHAR(100)"))
-    if "pinned" not in columns:
-        sync_conn.execute(
-            text("ALTER TABLE workspaces ADD COLUMN pinned BOOLEAN NOT NULL DEFAULT 0")
-        )
-    if "project_id" not in columns:
-        sync_conn.execute(
-            text("ALTER TABLE workspaces ADD COLUMN project_id VARCHAR(36)")
-        )
-    if "archived" not in columns:
-        sync_conn.execute(
-            text("ALTER TABLE workspaces ADD COLUMN archived BOOLEAN NOT NULL DEFAULT 0")
-        )
-    if "archived_at" not in columns:
-        sync_conn.execute(text("ALTER TABLE workspaces ADD COLUMN archived_at DATETIME"))
-    profile_columns = {
-        col["name"] for col in inspector.get_columns("product_profiles")
-    }
-    if "insights" not in profile_columns:
-        sync_conn.execute(
-            text("ALTER TABLE product_profiles ADD COLUMN insights JSON")
-        )
-
-
-def _ensure_competitor_columns(sync_conn):
-    """Same gap as above, for the competitors tables.
-
-    Split out rather than folded into `_ensure_workspace_columns` because it is a
-    different concern with a different failure mode: these tables are new, so
-    create_all builds them whole and this only ever runs against a database that
-    already has them from an earlier build of the same feature.
-
-    `notes` is the only column that has been added after the tables first
-    shipped. It is nullable with no default, so the ALTER is additive and
-    existing rows read back as NULL -- which is correct, since a note is
-    something the user writes and a pre-existing row has none.
-    """
-    inspector = sa_inspect(sync_conn)
-    tables = set(inspector.get_table_names())
-    if "competitors" not in tables:
-        return  # brand new database; create_all already made the full table
-    columns = {col["name"] for col in inspector.get_columns("competitors")}
-    if "notes" not in columns:
-        sync_conn.execute(text("ALTER TABLE competitors ADD COLUMN notes TEXT"))
+async def _bootstrap_admins() -> None:
+    """Grant ADMIN_BOOTSTRAP_EMAILS the admin role. A Supabase outage must not
+    stop the API from serving, so failure is logged loudly instead of raised."""
+    if not settings.admin_bootstrap_emails:
+        return
+    try:
+        async with AsyncSessionLocal() as db:
+            granted = await admin_service.bootstrap_admins(db, settings.admin_bootstrap_emails)
+        if granted:
+            logger.info("Admin bootstrap granted admin to: %s", ", ".join(granted))
+    except Exception:
+        logger.exception("Admin bootstrap failed; existing admins are unaffected")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-        await connection.run_sync(_ensure_workspace_columns)
-        await connection.run_sync(_ensure_competitor_columns)
-    await agents_runtime.start_agent_runtime(settings.DATABASE_URL)
+    # LangGraph runs sync graph nodes, and our asyncio.to_thread work, on the
+    # loop's default executor -- by default only min(32, CPUs + 4) threads.
+    # Each concurrent discovery run holds up to two of them for minutes, so
+    # the default runs out at ~10 runs and starves the checkpointer.
+    asyncio.get_running_loop().set_default_executor(
+        ThreadPoolExecutor(max_workers=settings.default_executor_workers, thread_name_prefix="loop-default")
+    )
+    await ensure_schema_at_head(engine)
+    await _bootstrap_admins()
+    await agents_runtime.start_agent_runtime(settings.database_url)
+    usage.start()
+    await run_manager.recover_after_restart()
+    run_scheduler.start()
     try:
         yield
     finally:
+        await run_scheduler.stop()
+        await run_manager.shutdown()
+        usage.stop()
         await agents_runtime.stop_agent_runtime()
+
+_SERVICE_ERROR_STATUS = {
+    NotFoundError: 404,
+    ConflictError: 409,
+    InvalidInputError: 422,
+    RateLimitedError: 429,
+}
+
+
+def add_service_error_handlers(application: FastAPI) -> None:
+    """Map service-layer domain errors to HTTP responses ({"detail": ...},
+    the same shape as HTTPException), so services never import FastAPI."""
+    async def handle(_request, exc: ServiceError):
+        headers = None
+        if isinstance(exc, RateLimitedError) and exc.retry_after_s:
+            headers = {"Retry-After": str(exc.retry_after_s)}
+        return JSONResponse(status_code=_SERVICE_ERROR_STATUS[type(exc)], content={"detail": str(exc)}, headers=headers)
+
+    for error_type in _SERVICE_ERROR_STATUS:
+        application.add_exception_handler(error_type, handle)
+
 
 def create_application() -> FastAPI:
     # FastAPI instance
+    observability.init()  # before the app exists, so Sentry hooks FastAPI
     application = FastAPI(
-        title= settings.PROJECT_NAME,
+        title= settings.project_name,
         lifespan=lifespan
     )
     # CORS — only relevant when the API and frontend live on different origins.
     # Same-origin deployments (dev proxy / reverse proxy) do not require it.
-    if settings.ALLOWED_ORIGINS:
+    if settings.allowed_origins:
         application.add_middleware(
             CORSMiddleware,
-            allow_origins=settings.ALLOWED_ORIGINS,
+            allow_origins=settings.allowed_origins,
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"]
         )
     # Include routers
-    application.include_router(api_router, prefix=settings.API_V1_STR)
+    application.include_router(api_router, prefix=settings.api_v1_str)
+    add_service_error_handlers(application)
 
     @application.get("/health", tags=["ops"])
     async def health():

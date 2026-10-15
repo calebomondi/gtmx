@@ -2,9 +2,9 @@
 
 from typing import Optional
 
-from config import Config
+from config import Settings
 from data_sources.socials.brightdata import scrape_resource
 
 
-def get_profile(url: str, config: Optional[Config] = None) -> dict | None:
+def get_profile(url: str, config: Optional[Settings] = None) -> dict | None:
     return scrape_resource("instagram", "profiles", url, config)

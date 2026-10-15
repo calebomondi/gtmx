@@ -29,16 +29,18 @@ class _ChatQwen(ChatQwen):
             # Base impl force-disables thinking on non-"thinking"-named models.
             self.enable_thinking = saved
 from langchain_openai import ChatOpenAI
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
-from utils.log import logger
-from config import Config
+from langchain_core.callbacks import UsageMetadataCallbackHandler
 
-cfg = Config()
+from utils.log import current_run_id, logger  # noqa: F401 -- current_run_id is re-exported for callers of agents.llm
+from config import get_settings
 
-QWEN_MODELS = [
-    "qwen3.8-max",  
-]
+cfg = get_settings()
+
+# Model ladders come from settings (LLM_MODELS / LLM_CHEAP_MODELS), so a model
+# swap -- e.g. when one runs out of quota -- is an env change, not a code change.
+QWEN_MODELS: list[str] = [m for m in cfg.llm_models if m.strip()]
 
 # Cheap text-only tier, for bulk mechanical work that doesn't need a flagship
 # reasoning model: distilling scraped documents, condensing the offer's own
@@ -46,14 +48,67 @@ QWEN_MODELS = [
 # flagship matters for more than cost — the flagship is a large omni model, and
 # a run that routes its high-volume extraction work there is what pushes the
 # account into tokens-per-minute throttling in the first place.
-CHEAP_QWEN_MODELS = [
-    "qwen3.8-max",
-]
+CHEAP_QWEN_MODELS: list[str] = [m for m in cfg.llm_cheap_models if m.strip()]
+
+
+FALLBACK_MODELS: list[str] = [m for m in cfg.llm_fallback_models if m.strip()]
+
+# Output ceiling for every call. Above the largest real structured output
+# (~8k tokens), so it only stops a runaway: one page summary on a model that
+# forces thinking once wrote 16k tokens over 169s.
+MAX_OUTPUT_TOKENS = 12_000
+# Reasoning allowed when a call asked for none but the model only runs with
+# thinking on. Enough to plan an answer, not to write an essay first.
+FORCED_THINKING_BUDGET = 1_024
+
+
+def _with_fallback(primary: list[tuple[str, list[str]]]) -> list[tuple[str, list[str]]]:
+    """Append the second provider when it is configured, so an outage or an
+    exhausted quota on Qwen degrades to another model instead of failing runs."""
+    return primary + ([("openrouter", FALLBACK_MODELS)] if cfg.openai_api_key and FALLBACK_MODELS else [])
+
+
+def default_providers() -> list[tuple[str, list[str]]]:
+    return _with_fallback([("qwen", QWEN_MODELS)])
 
 
 def cheap_providers() -> list[tuple[str, list[str]]]:
     """Provider ladder for bulk extraction work. Ordered cheapest-first."""
-    return [("qwen", CHEAP_QWEN_MODELS)]
+    return _with_fallback([("qwen", CHEAP_QWEN_MODELS)])
+
+
+# -- Usage accounting ---------------------------------------------------------
+# Calls are billed to utils.log.current_run_id, which the backend sets for the
+# span of a run segment; ContextThreadPoolExecutor carries it into workers.
+
+# Receives one record per LLM call attempt (failed attempts cost tokens too).
+# agents/ stays free of the database: the backend registers the sink.
+_usage_sink: Callable[[dict], None] | None = None
+
+
+def set_usage_sink(sink: Callable[[dict], None] | None) -> None:
+    global _usage_sink
+    _usage_sink = sink
+
+
+def _report_usage(log_label: str, provider: str, model: str, handler: UsageMetadataCallbackHandler,
+                  seconds: float, ok: bool) -> None:
+    if _usage_sink is None:
+        return
+    usage = next(iter(handler.usage_metadata.values()), {}) if handler.usage_metadata else {}
+    try:
+        _usage_sink({
+            "run_id": current_run_id.get(),
+            "log_label": log_label[:120],
+            "provider": provider,
+            "model": model,
+            "input_tokens": int(usage.get("input_tokens") or 0),
+            "output_tokens": int(usage.get("output_tokens") or 0),
+            "seconds": round(seconds, 3),
+            "ok": ok,
+        })
+    except Exception:  # noqa: BLE001 -- accounting must never break an LLM call
+        logger.exception("LLM usage sink failed")
 
 # (provider, model) pairs discovered to be dead (quota exhausted / auth /
 # model unavailable) for the lifetime of this process. Once a model trips one
@@ -148,6 +203,10 @@ _RETIRED_MODEL_MARKERS = (
     "access denied",
     "error code: 401",
     "error code: 403",
+    # The model id is wrong or retired: no wait or retry will make it exist.
+    "model_not_found",
+    "model not exist",
+    "model does not exist",
 )
 
 # Throttling. Alibaba phrases its tokens-per-minute throttle as "Allocated quota
@@ -172,6 +231,8 @@ _BILLING_WALL_MARKERS = (
     "exceeded your current quota",
     "quota exhausted",
     "free quota exhausted",
+    # DashScope's free tier: "The free quota has been exhausted."
+    "quota has been exhausted",
     "out of credit",
     "add funds",
     "arrearage",
@@ -195,6 +256,20 @@ _CONTEXT_OVERFLOW_MARKERS = (
 )
 
 _MAX_RETRY_DELAY_S = 60.0
+
+# At most settings.llm_max_concurrency calls in flight per provider, process-
+# wide. Every run fans out (research workers, hunt tasks, profiles), and many
+# runs at once exceed the provider's concurrency/request-rate limits; past the
+# cap calls queue here instead of bouncing off 429s and backing off.
+_PROVIDER_SLOTS: dict[str, threading.BoundedSemaphore] = {}
+_SLOTS_LOCK = threading.Lock()
+
+
+def _provider_slot(provider: str) -> threading.BoundedSemaphore:
+    with _SLOTS_LOCK:
+        if provider not in _PROVIDER_SLOTS:
+            _PROVIDER_SLOTS[provider] = threading.BoundedSemaphore(cfg.llm_max_concurrency)
+        return _PROVIDER_SLOTS[provider]
 
 # --- Throttle circuit breaker -------------------------------------------
 # A single transient 429 is worth waiting out, but a sustained one is not: with
@@ -331,7 +406,7 @@ def _json_from_text(text: str):
     return None
 
 
-def _try_repair_structured(llm, messages: Sequence[Any], schema: Any):
+def _try_repair_structured(llm, messages: Sequence[Any], schema: Any, config: dict | None = None):
     """When with_structured_output's re-built schema rejects a response (weaker
     models double-serialize nested list/dict fields as JSON strings), re-ask the
     plain model for a single JSON object and validate against the REAL schema —
@@ -345,7 +420,7 @@ def _try_repair_structured(llm, messages: Sequence[Any], schema: Any):
             "object field a real JSON object. No prose, no markdown fences, no trailing text.\n\n"
             f"SCHEMA:\n{schema_text}"
         ))]
-        raw = llm.invoke(repair_messages)
+        raw = llm.invoke(repair_messages, config=config)
         content = raw if isinstance(raw, str) else getattr(raw, "content", str(raw))
         obj = _json_from_text(content)
         if obj is None:
@@ -367,9 +442,11 @@ def _llm(
             # Learned to reject enable_thinking — run it non-thinking.
             thinking = False
             thinking_budget = None
-        if (provider, m) in _FORCE_THINKING_MODELS:
-            # Learned to require thinking — always send it enabled.
+        if (provider, m) in _FORCE_THINKING_MODELS and not thinking:
+            # Learned to require thinking, on a call that wanted none: allow
+            # only a short budget so a quick job stays quick.
             thinking = True
+            thinking_budget = thinking_budget or FORCED_THINKING_BUDGET
         logger.info("Using Qwen (%s, thinking=%s, budget=%s)", m, thinking, thinking_budget)
         kwargs = {"enable_thinking": thinking}
         if thinking_budget is not None:
@@ -383,9 +460,25 @@ def _llm(
             model=m,
             api_key=cfg.dashscope_api_key,
             base_url=cfg.dashscope_base_url,
-            timeout=600,
+            timeout=cfg.llm_call_timeout_s,
+            # Retries are this module's ladder's job (it knows a throttle from a
+            # dead model); SDK-level retries would just multiply the wait.
+            max_retries=0,
+            max_tokens=MAX_OUTPUT_TOKENS,
             **kwargs,
         )
+    if provider == "openrouter":
+        m = model or FALLBACK_MODELS[0]
+        logger.info("Using OpenRouter fallback (%s)", m)
+        return ChatOpenAI(
+            model=m,
+            api_key=cfg.openai_api_key,
+            base_url=cfg.openrouter_base_url,
+            timeout=cfg.llm_call_timeout_s,
+            max_retries=0,
+            max_tokens=MAX_OUTPUT_TOKENS,
+        )
+    raise ValueError(f"Unknown LLM provider {provider!r}")
 
 
 def invoke_structured_with_fallback(
@@ -426,9 +519,7 @@ def invoke_structured_with_fallback(
     in the ladder permanently down.
     """
     if providers is None:
-        providers = [
-            ("qwen", QWEN_MODELS)
-        ]
+        providers = default_providers()
 
     # Sustained upstream throttling: fail fast instead of spending the full
     # backoff budget on every remaining call in the run.
@@ -453,13 +544,21 @@ def invoke_structured_with_fallback(
             while attempt < budget:
                 attempt += 1
                 llm = None
+                usage = UsageMetadataCallbackHandler()
+                started = time.perf_counter()
                 try:
                     llm = _llm(provider, model=model, thinking=thinking, thinking_budget=thinking_budget)
-                    started = time.perf_counter()
-                    if schema is not None:
-                        result = llm.with_structured_output(schema).invoke(messages)
-                    else:
-                        result = llm.invoke(messages)
+                    config = {"callbacks": [usage]}
+                    queued = time.perf_counter()
+                    with _provider_slot(provider):
+                        waited = time.perf_counter() - queued
+                        if waited > 1:
+                            logger.info("%s waited %.1fs for a %s slot", log_label, waited, provider)
+                        started = time.perf_counter()  # time the call, not the queue
+                        if schema is not None:
+                            result = llm.with_structured_output(schema).invoke(messages, config=config)
+                        else:
+                            result = llm.invoke(messages, config=config)
                     _record_call_timing(
                         log_label, time.perf_counter() - started, model
                     )
@@ -467,6 +566,7 @@ def invoke_structured_with_fallback(
                         raise ValueError(
                             f"{log_label} returned None with {provider}/{model} (unexpected structured output)"
                         )
+                    _report_usage(log_label, provider, model, usage, time.perf_counter() - started, ok=True)
                     logger.info("%s succeeded with %s/%s", log_label, provider, model)
                     _DOWN_MODELS.discard((provider, model))
                     _note_throttle_outcome(True)
@@ -474,6 +574,7 @@ def invoke_structured_with_fallback(
                         return result.content
                     return result
                 except Exception as e:
+                    _report_usage(log_label, provider, model, usage, time.perf_counter() - started, ok=False)
                     last_err = e
                     err_str = str(e).lower()
                     kind = classify_llm_error(e)
@@ -552,7 +653,11 @@ def invoke_structured_with_fallback(
                     # Not a plumbing failure: the model answered, it just didn't
                     # match the schema. Try one JSON re-parse repair.
                     if schema is not None and llm is not None and attempt < max_retries:
-                        repaired = _try_repair_structured(llm, messages, schema)
+                        repair_usage = UsageMetadataCallbackHandler()
+                        repair_started = time.perf_counter()
+                        repaired = _try_repair_structured(llm, messages, schema, config={"callbacks": [repair_usage]})
+                        _report_usage(f"{log_label}:repair", provider, model, repair_usage,
+                                      time.perf_counter() - repair_started, ok=repaired is not None)
                         if repaired is not None:
                             logger.info(
                                 "%s repaired via JSON re-parse with %s/%s (attempt %d)",

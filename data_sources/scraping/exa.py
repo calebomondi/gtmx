@@ -1,14 +1,32 @@
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from functools import lru_cache
 
 from exa_py import Exa
 
-from config import Config
+from config import Settings
 from data_sources.scraping.quality import (
     MIN_SEARCH_CHARS,
     is_usable_body,
     rejection_reason,
 )
+from utils import usage
 from utils.log import logger
+
+
+# The Exa SDK calls requests.post() with no timeout, so a stalled connection
+# blocks its thread forever: in a 10-run load test one stall froze every run.
+# Calls go through this pool so the caller gives up after exa_timeout_s; the
+# stuck thread is abandoned (Python cannot kill it) and the caller moves on.
+_POOL = ThreadPoolExecutor(max_workers=32, thread_name_prefix="exa")
+
+
+def _bounded(fn, config: Settings, label: str):
+    future = _POOL.submit(fn)
+    try:
+        return future.result(timeout=config.exa_timeout_s)
+    except FutureTimeout:
+        raise TimeoutError(f"Exa {label} timed out after {config.exa_timeout_s:.0f}s") from None
 
 
 @lru_cache(maxsize=4)
@@ -22,7 +40,7 @@ def _client(api_key: str) -> Exa:
     return Exa(api_key=api_key)
 
 
-def scrape_url(url: str, config: Config) -> str:
+def scrape_url(url: str, config: Settings) -> str:
     """Extract clean text content from a URL via Exa.
 
     `livecrawl="always"` is load-bearing. Exa serves `get_contents` from a cache, and
@@ -36,7 +54,8 @@ def scrape_url(url: str, config: Config) -> str:
     (e.g. a page describing multiple products), all are included.
     """
     exa = _client(config.exa_api_key)
-    result = exa.get_contents([url], text=True, livecrawl="always")
+    with usage.track("exa", "contents"):
+        result = _bounded(lambda: exa.get_contents([url], text=True, livecrawl="always"), config, "contents")
     if not result.results:
         raise ValueError(f"No content returned for URL: {url}")
     # Return all results concatenated, so multi-product pages are captured
@@ -53,7 +72,7 @@ def scrape_url(url: str, config: Config) -> str:
 
 def search_and_scrape(
     query: str,
-    config: Config,
+    config: Settings,
     num_results: int = 5,
     start_published_date: str | None = None,
 ) -> list[dict]:
@@ -63,12 +82,13 @@ def search_and_scrape(
     to sources published after that date — used to keep market research current.
     """
     exa = _client(config.exa_api_key)
-    results = exa.search(
-        query,
-        contents={"text": True},
-        num_results=num_results,
-        start_published_date=start_published_date,
-    )
+    with usage.track("exa", "search"):
+        results = _bounded(lambda: exa.search(
+            query,
+            contents={"text": True},
+            num_results=num_results,
+            start_published_date=start_published_date,
+        ), config, "search")
 
     # NOTE: deliberately NOT forcing `livecrawl` here, unlike scrape_url. Forcing
     # freshness changes result *composition*, not just freshness: with

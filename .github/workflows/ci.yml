@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  pull_request:          # every PR, including ones stacked on other branches
+  push:
+    branches: [dev, main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (migrations + tests)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: gtmx
+          POSTGRES_PASSWORD: gtmx
+          POSTGRES_DB: gtmx
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U gtmx -d gtmx"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      DATABASE_URL: postgresql://gtmx:gtmx@localhost:5432/gtmx
+      TEST_DATABASE_URL: postgresql://gtmx:gtmx@localhost:5432/gtmx_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      - name: Migrations round-trip on an empty database
+        run: |
+          uv run alembic upgrade head
+          uv run alembic downgrade base
+          uv run alembic upgrade head
+
+      - name: Models match migrations (no drift)
+        run: uv run alembic check
+
+      - name: Tests (offline)
+        run: uv run pytest
+
+  frontend:
+    name: Frontend (lint + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bun run build
+
+  waitlist:
+    name: Waitlist page (lint + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: waitlist
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bun run build

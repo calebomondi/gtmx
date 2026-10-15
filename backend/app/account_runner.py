@@ -13,17 +13,19 @@ import asyncio
 import uuid
 from datetime import UTC, datetime
 from typing import Optional
+from urllib.parse import urlsplit
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from agents.states import ICP, IdealCompetitorProfile
-from agents.sub_agents.account_disc.account_discovery import (
-    build_account_discovery_graph,
+from agents.schemas.competition import IdealCompetitorProfile
+from agents.schemas.icp import ICP
+from agents.pipelines.accounts.account_discovery import (
+    run_account_discovery_by_country,
 )
 
 from backend.app.database.connect import AsyncSessionLocal
-from backend.app.database.models import Account, AccountRun, ProductProfile
+from backend.app.database.models import Account, Competitor, ProductProfile
 
 _PRESERVED_ON_REFRESH = ("id", "source", "selected", "run_id")
 
@@ -49,7 +51,9 @@ def _hydrate(profile: Optional[ProductProfile]) -> dict:
         "target_market": snapshot.get("target_geo") or [],
         "icp_data": icp,
         "ideal_competitor_profile": profile_obj,
-        "offer_findings": insights.get("domain_understanding"),
+        "offer_findings": (insights.get("research") or {}).get("offer") or insights.get("domain_understanding"),
+        "market_findings": (insights.get("research") or {}).get("market"),
+        "competition_findings": (insights.get("research") or {}).get("competition"),
         "offer_domain_fit_understanding": insights.get("domain_understanding"),
         "product_market_fit_understanding": insights.get("market_fit_understanding"),
         "market_data": insights.get("market_data"),
@@ -68,12 +72,14 @@ def _account_values(account) -> dict:
         "venue": account.venue,
         "event_date": account.event_date,
         "member_size": account.member_size,
+        "summary": account.summary,
         "industry": account.industry,
         "size": account.size,
         "geo": account.geo,
         "tech_stack": list(account.tech_stack or []),
         "recent_news": list(account.recent_news or []),
         "key_contacts": [c.model_dump(mode="json") for c in (account.key_contacts or [])],
+        "socials": dict(account.socials or {}),
         "pain_signals": list(account.pain_signals or []),
         "hiring_signals": list(account.hiring_signals or []),
         "sources": [s.model_dump(mode="json") for s in (account.sources or [])],
@@ -142,15 +148,20 @@ async def run_account_discovery_for_workspace(
         raise RuntimeError("No product profile for this workspace — run discovery first.")
 
     state = _hydrate(profile)
+    async with AsyncSessionLocal() as db:
+        rivals = (await db.execute(
+            select(Competitor.domain_key).where(Competitor.workspace_id == workspace_id)
+        )).scalars().all()
+    own = urlsplit(profile.product_url or "").netloc.lower().removeprefix("www.")
+    state["exclude_domains"] = [d for d in [own, *rivals] if d]
     if not state.get("icp_data"):
         raise RuntimeError(
             "No ICP found for this workspace — finish the Offer run first."
         )
 
-    graph = build_account_discovery_graph(checkpointer=False)
-    # Node fns are sync and I/O-heavy; run the whole graph off the event loop
-    # so a long search run doesn't block unrelated requests.
-    final = await asyncio.to_thread(graph.invoke, state)
+    # One search per target country. Node fns are sync and I/O-heavy, so the
+    # whole run goes off the event loop.
+    final = await asyncio.to_thread(run_account_discovery_by_country, state)
     accounts = (final.get("accounts") or {}).get("accounts") if isinstance(final.get("accounts"), dict) else (getattr(final.get("accounts"), "accounts", None) or [])
 
     rows = []

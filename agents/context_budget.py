@@ -26,9 +26,10 @@ enough headroom that the estimate does not have to be exact.
 from __future__ import annotations
 
 import hashlib
+import re
 import json
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from agents.concurrency import ContextThreadPoolExecutor
 from pathlib import Path
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -379,7 +380,7 @@ def distill_documents(
         return distill_document(docs[0], focus=focus, log_label=log_label)
 
     workers = min(len(docs), _DISTILL_MAX_WORKERS)
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+    with ContextThreadPoolExecutor(max_workers=workers) as pool:
         notes = list(
             pool.map(
                 lambda doc: distill_document(
@@ -391,19 +392,47 @@ def distill_documents(
     return "\n\n---\n\n".join(notes)
 
 
-_OFFER_BRIEF_SYSTEM = """You condense a scraped company/product page into a dense factual brief.
+_OFFER_BRIEF_SYSTEM = """You condense a scraped company/product page into a dense factual brief about
+ONE named product or service.
 
 Write the brief using these rules:
+- The page may describe several products or services from the same company.
+  Brief ONLY the named one. Never attribute another offer's features, claims,
+  numbers or capabilities to it -- even where the company is the same.
+- When the page has a section per offer, take the named offer's capabilities
+  from ITS section only. Capabilities listed under another offer's section
+  belong to that offer. Company-wide facts (location, founding, how they
+  work, clients) may be kept; a company-wide capability list may not be
+  presented as this offer's features.
 - Lead with what the product IS, how it works mechanically, who it is for, and what it claims.
 - Keep concrete claims, numbers, named technologies and differentiators exactly as written.
 - Keep the substance a domain expert would need to judge the product seriously.
 - Drop navigation, boilerplate, cookie notices, marketing filler and repeated CTAs.
 - Never invent. If a claim is not on the page, leave it out.
 - Aim for roughly {target} tokens. Plain prose or tight bullets. No preamble, no heading.
+- If the page lists other offers, end with one line: "Other offers on this page (out of
+  scope): <names>" -- names only, no descriptions.
 
 Return only the brief."""
 
 
+_OFFER_BRIEF_VERSION = 4
+_BRIEF_MIN_TOKENS = 120
+_OUT_OF_SCOPE = re.compile(r"^\W*other offers on this page \(out of scope\):\s*(.+)$", re.I | re.M)
+
+
+def strip_out_of_scope(brief: str) -> str:
+    """Drop every line that mentions an offer the brief itself lists as out of
+    scope -- the condenser is told not to describe them, and this makes sure."""
+    match = _OUT_OF_SCOPE.search(brief)
+    if not match:
+        return brief
+    names = [n.strip(" .;").lower() for n in re.split(r"[;,]", match.group(1)) if len(n.strip(" .;")) > 2]
+    if not names:
+        return brief
+    kept = [line for line in brief.splitlines()
+            if _OUT_OF_SCOPE.match(line) or not any(n in line.lower() for n in names)]
+    return "\n".join(kept)
 _OFFER_BRIEF_CACHE: dict[str, str] = _load_cache_file("offer_brief")
 
 
@@ -423,12 +452,16 @@ def offer_brief(
     if not body:
         return ""
 
-    digest = hashlib.sha256(f"{name}\x00{body}".encode()).hexdigest()
+    # Versioned: briefs from an earlier prompt are cached on disk and must not be reused.
+    digest = hashlib.sha256(f"{_OFFER_BRIEF_VERSION}\x00{name}\x00{body}".encode()).hexdigest()
     cached = _OFFER_BRIEF_CACHE.get(digest)
     if cached is not None:
         return cached
 
-    if count_tokens(body) <= target_tokens:
+    # Always condensed, short pages included: the condenser is what scopes a
+    # multi-offer company page to the named offer. A short page kept raw went
+    # to every stage with its sibling products in it.
+    if count_tokens(body) <= _BRIEF_MIN_TOKENS:
         brief = body
     else:
         try:
@@ -445,6 +478,7 @@ def offer_brief(
             logger.warning("offer_brief failed for %s (%s); keeping head instead", name, exc)
             brief = _truncate_to_tokens(body, DISTILL_HARD_CAP)
         brief = (brief or "").strip() or _truncate_to_tokens(body, DISTILL_HARD_CAP)
+        brief = strip_out_of_scope(brief)
 
     _cache_set("offer_brief", _OFFER_BRIEF_CACHE, digest, brief)
     logger.info(

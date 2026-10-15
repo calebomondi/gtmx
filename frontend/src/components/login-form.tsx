@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 
 import { cn } from "cn"
 
@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { supabase } from "@/lib/supabase"
-import { isValidEmail } from "@/lib/validation"
+import { isValidEmail, rememberOAuthNext, safeNextPath } from "@/lib/validation"
 import { useState } from "react"
 
 export function LoginForm({
@@ -27,6 +27,7 @@ export function LoginForm({
   ...props
 }: React.ComponentProps<"div">) {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
@@ -59,11 +60,12 @@ export function LoginForm({
       setError(error.message)
       return
     }
-    navigate("/feed", { replace: true })
+    navigate(safeNextPath(searchParams.get("next")) ?? "/feed", { replace: true })
   }
 
   const handleGoogle = async () => {
     setError(null)
+    rememberOAuthNext(searchParams.get("next"))
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: `${window.location.origin}/auth/callback` },
