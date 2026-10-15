@@ -105,4 +105,4 @@ async def export_csv(db: AsyncSession, pilot: bool | None = None, status: str | 
 
 
 def export_filename() -> str:
-    return f"gtmx-waitlist-{date.today().isoformat()}.csv"
+    return f"thalace-waitlist-{date.today().isoformat()}.csv"
