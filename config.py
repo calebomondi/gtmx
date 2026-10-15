@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     )
 
     # -- App --
-    project_name: str = "GTMX (Go-To-Market Expert)"
+    project_name: str = "Thalace"
     api_v1_str: str = "/api/v1"
     environment: str = "development"
     log_level: str = Field("INFO", validation_alias="GTMX_LOG_LEVEL")
@@ -124,10 +124,10 @@ class Settings(BaseSettings):
     # Only threads sent within this window are watched for replies.
     inbox_sync_window_days: int = 30
 
-    # -- Waitlist (public landing page at gtmx.co) --
+    # -- Waitlist (public landing page at thalace.com) --
     # Resend sends the signup confirmation. It only delivers to any address
     # once the sending domain is verified in Resend; until `waitlist_from_email`
-    # is set (e.g. "GTMX <hello@gtmx.co>"), signups are saved and no email goes.
+    # is set (e.g. "Thalace <hello@thalace.com>"), signups are saved and no email goes.
     resend_api_key: str = ""
     resend_timeout_s: float = 15.0
     waitlist_from_email: str = ""

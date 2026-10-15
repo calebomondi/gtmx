@@ -52,7 +52,7 @@ def test_anyone_can_join_and_joining_twice_is_harmless(anonymous, outbox):
     again = _join(anonymous)
     assert again.status_code == 201 and again.json()["token"] != first.json()["token"]
     assert _rows() == [("founder@startup.example", False, None, None, {"utm_source": "linkedin"}, True)]
-    assert outbox == [("founder@startup.example", "You're on the GTMX waitlist")]  # once, not per signup
+    assert outbox == [("founder@startup.example", "You're on the Thalace waitlist")]  # once, not per signup
 
 
 def test_details_and_pilot_opt_in_with_the_token(anonymous, outbox):
@@ -64,7 +64,7 @@ def test_details_and_pilot_opt_in_with_the_token(anonymous, outbox):
     assert saved.status_code == 200 and saved.json() == {"wants_pilot": True, "pilot_spots_left": 49}
     assert anonymous.get(f"{API}/pilot").json() == {"total": 50, "taken": 1, "left": 49}
     assert _rows()[0][1:4] == (True, "revenue", "Find SACCOs that need a CRM")
-    assert outbox[-1] == ("founder@startup.example", "You're in line for the GTMX pilot")
+    assert outbox[-1] == ("founder@startup.example", "You're in line for the Thalace pilot")
     anonymous.patch(f"{API}/{token}", json={"wants_pilot": True})
     assert sum(subject.startswith("You're in line") for _, subject in outbox) == 1  # only on first opt-in
 

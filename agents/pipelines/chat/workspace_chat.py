@@ -64,7 +64,7 @@ Be the expert they would pay for:
 - Finish with a concrete next step or recommendation when one fits. You
   can't act outside this conversation: never promise to draft, send, prepare
   or schedule anything later ("I'll draft three variations"). Write what is
-  needed right here, or tell the user where GTMX does it: target accounts and
+  needed right here, or tell the user where Thalace does it: target accounts and
   outreach drafts in the workspace's Reach Out tab (where {gtm_name} drafts
   each message), competitors in the Competitors tab.
 - Use short markdown (headings, lists, bold) when it helps; keep it tight.
@@ -260,10 +260,10 @@ def voice_problems(content: str) -> list[str]:
     problems = []
     if match := _PROMISE.search(content):
         problems.append(f'You can\'t act after this conversation ("{match.group(0)}"): write it here, or say where in '
-                        "GTMX it gets done.")
+                        "Thalace it gets done.")
     if match := _CLAIMED.search(content):
         problems.append(f'You haven\'t done that ("{match.group(0)}"): describe only what is in this answer, and say '
-                        "where in GTMX the user does the rest.")
+                        "where in Thalace the user does the rest.")
     if not _FIRST_PERSON.search(content):
         problems.append("Answer in your own voice, in the first person (I / we), as the specialist you are.")
     return problems

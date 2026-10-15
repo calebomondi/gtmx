@@ -1,5 +1,5 @@
 """Replies and bounces for sent outreach are synced from the user's Gmail into
-the sent email's thread, once each, and reach the feed. Replying from GTMX
+the sent email's thread, once each, and reach the feed. Replying from Thalace
 goes into the same thread."""
 
 import asyncio

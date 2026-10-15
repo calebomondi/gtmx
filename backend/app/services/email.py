@@ -1,4 +1,4 @@
-"""Transactional email (GTMX's own messages, never a user's outreach) via
+"""Transactional email (Thalace's own messages, never a user's outreach) via
 Resend's HTTP API. Users' outreach goes through their own Gmail instead."""
 
 import httpx

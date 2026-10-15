@@ -25,7 +25,7 @@ class WaitlistSource(BaseModel):
 
 class WaitlistJoin(BaseModel):
     email: EmailStr = Field(max_length=320)
-    consent: Literal[True] = Field(description="Agreed to be contacted about GTMX and to the privacy note")
+    consent: Literal[True] = Field(description="Agreed to be contacted about Thalace and to the privacy note")
     source: WaitlistSource = Field(default_factory=WaitlistSource)
     # A field people never see. Bots fill every input; a filled one is a bot.
     nickname: str | None = Field(default=None, max_length=200)
