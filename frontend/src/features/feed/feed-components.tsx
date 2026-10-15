@@ -259,7 +259,6 @@ const OPEN_IN: Partial<Record<Signal['category'], { tab: WorkspaceTab; label: st
 function SignalDetail({
   signal,
   workspaceId,
-  onTogglePin,
   onDismiss,
   onAction,
   onOpenTab,
