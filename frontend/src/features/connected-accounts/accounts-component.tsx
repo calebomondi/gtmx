@@ -481,14 +481,14 @@ export function AccountsComponent() {
     connections?.filter((c) => c.status === "needs_attention").length ?? 0
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full overflow-y-auto bg-muted">
       <div className="mx-auto max-w-5xl px-6 py-8">
         {/* header */}
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="text-xs font-medium tracking-widest text-muted-foreground uppercase">
+            {/* <p className="text-xs font-medium tracking-widest text-muted-foreground uppercase">
               Accounts
-            </p>
+            </p> */}
             <h1 className="mt-1 text-2xl font-semibold">Connected accounts</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               Channels the agent can use to reach out.
