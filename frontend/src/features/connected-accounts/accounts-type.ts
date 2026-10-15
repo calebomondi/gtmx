@@ -35,7 +35,7 @@ export const PLATFORM_LABEL: Record<Platform, string> = {
 /** Empty string means "no icon asset" — the tile renders a glyph instead. */
 export const PLATFORM_ICON: Record<Platform, string> = {
   gmail: '/gmail.svg',
-  googlecalendar: '',
+  googlecalendar: '/google-calendar.svg',
   linkedin: '/linkedin.svg',
   instagram: '/instagram.svg',
   facebook: '/facebook.svg',

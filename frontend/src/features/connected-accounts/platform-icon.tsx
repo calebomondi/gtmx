@@ -1,5 +1,3 @@
-import { CalendarDays } from "lucide-react"
-
 import { cn } from "@/lib/utils"
 import { PLATFORM_ICON, type Platform } from "./accounts-type"
 
@@ -22,7 +20,7 @@ export function PlatformIcon({
         className,
       )}
     >
-      {platform === "googlecalendar" ? <CalendarDays className="size-1/2 text-blue-500" /> : "X"}
+      X
     </span>
   )
 }
