@@ -63,8 +63,8 @@ class Settings(BaseSettings):
     # reasoning calls; `llm_cheap_models` the bulk extraction/condensing calls.
     # qwen3.7-plus: the account's free quota on the 3.8 family (max, flash,
     # omni-flash) is exhausted (2026-10-10). Override via env.
-    llm_models: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["qwen3.7-plus"])
-    llm_cheap_models: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["qwen3.7-plus"])
+    llm_models: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["qwen-plus-2025-04-28", "qwen-plus-2025-07-14", "qwen-plus-latest", "qwen-max", ""])
+    llm_cheap_models: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["qwen-plus-2025-04-28", "qwen-plus-2025-07-14", "qwen-plus-latest", "qwen-max", ""])
     # Second provider (OpenRouter, keyed by OPENAI_API_KEY), tried in order when
     # every Qwen model fails -- outage, quota, or a model retired mid-run.
     llm_fallback_models: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["openai/gpt-4o-mini"])
