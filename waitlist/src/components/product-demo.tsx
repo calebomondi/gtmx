@@ -72,7 +72,7 @@ export function ProductDemo({ video }: { video: DemoVideo }) {
           loop
           playsInline
           preload="none"
-          aria-label={`Recording of GTMX researching ${video.subject}, sped up`}
+          aria-label={`Recording of Thalace researching ${video.subject}, sped up`}
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
           onTimeUpdate={onTime}

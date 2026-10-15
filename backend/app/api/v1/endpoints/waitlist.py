@@ -1,4 +1,4 @@
-"""The public waitlist behind gtmx.co. No sign-in: anyone can join, rate
+"""The public waitlist behind thalace.com. No sign-in: anyone can join, rate
 limited per IP. The optional details step is authorised by the private token
 the join call returned to that browser."""
 

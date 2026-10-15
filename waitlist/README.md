@@ -1,7 +1,7 @@
-# GTMX waitlist page (gtmx.co)
+# Thalace waitlist page (thalace.com)
 
-The public landing page: what GTMX does, and a two-step signup (email, then
-optional details and a pilot opt-in). It talks only to the GTMX API under
+The public landing page: what Thalace does, and a two-step signup (email, then
+optional details and a pilot opt-in). It talks only to the Thalace API under
 `/api/v1/waitlist`; signups appear in the admin dashboard's Waitlist page.
 
 ```bash
@@ -15,7 +15,7 @@ bun run lint     # oxlint
 - `src/features/signup/`: the signup flow.
 - `src/lib/api.ts`: the typed API client; types mirror `backend/app/schemas/waitlist.py`.
 
-In production nginx serves `dist/` at gtmx.co and proxies `/api` to the same
+In production nginx serves `dist/` at thalace.com and proxies `/api` to the same
 backend as the app (see `deploy/`).
 
 ## The hero's product recording

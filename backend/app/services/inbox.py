@@ -1,7 +1,7 @@
 """Replies and bounces for sent outreach, synced from the user's Gmail.
 
 One mailbox search per user per sync (recent mail not from the user), matched
-to the threads of emails sent from GTMX. A reply becomes an inbound message
+to the threads of emails sent from Thalace. A reply becomes an inbound message
 in that thread; a delivery-failure notice marks the sent email bounced. Read
 only: syncing never sends, labels or deletes anything in the mailbox.
 """
@@ -166,7 +166,7 @@ async def sync_user(db: AsyncSession, user_id: uuid.UUID) -> SyncResult:
 
 
 async def users_to_sync(db: AsyncSession) -> list[uuid.UUID]:
-    """Users with an email sent from GTMX inside the sync window."""
+    """Users with an email sent from Thalace inside the sync window."""
     since = datetime.now(UTC) - timedelta(days=settings.inbox_sync_window_days)
     return list((await db.execute(
         select(models.OutreachMessage.user_id).where(

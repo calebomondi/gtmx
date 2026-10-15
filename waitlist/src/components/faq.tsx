@@ -4,7 +4,7 @@ import { Section } from './section'
 const QUESTIONS = [
   {
     q: 'Will it email people on its own?',
-    a: 'No. GTMX drafts messages; you read, edit and send them from your own email. Nothing goes out without your click, and anyone who asks not to be contacted is never drafted to again.',
+    a: 'No. Thalace drafts messages; you read, edit and send them from your own email. Nothing goes out without your click, and anyone who asks not to be contacted is never drafted to again.',
   },
   {
     q: 'What if I don’t have a website?',
