@@ -88,7 +88,7 @@ export function SignalDetailBody({ signal, workspaceId }: { signal: Signal; work
     <div className="flex flex-col gap-3">
       {signal.summary && !isDiscovery && subject.kind !== 'account' && <p className="text-sm leading-relaxed text-foreground">{signal.summary}</p>}
       {isDiscovery && <DiscoverySummary workspaceId={workspaceId} />}
-      {subject.kind === 'competitor' && (
+      {/* {subject.kind === 'competitor' && (
         <>
           {subject.competitor.positioning && <Section label="Positioning">{subject.competitor.positioning}</Section>}
           {subject.competitor.pricing && <Section label="Pricing">{subject.competitor.pricing}</Section>}
@@ -100,7 +100,7 @@ export function SignalDetailBody({ signal, workspaceId }: { signal: Signal; work
             </Section>
           )}
         </>
-      )}
+      )} */}
       {subject.kind === 'account' && (
         <AccountOpportunity workspaceId={workspaceId} account={subject.account} messages={subject.messages} />
       )}
