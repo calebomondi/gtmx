@@ -288,7 +288,7 @@ function SignalDetail({
               {category.label} · {formatTimeAgo(signal.timestamp)}
             </DialogDescription>
           </div>
-          <Button
+          {/* <Button
             type="button"
             size="icon-sm"
             variant="ghost"
@@ -297,11 +297,11 @@ function SignalDetail({
             onClick={onTogglePin}
           >
             {signal.pinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}
-          </Button>
+          </Button> */}
         </div>
       </DialogHeader>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
         {signal.sender && (
           <div className="flex items-center gap-3">
             <Avatar size="lg">
