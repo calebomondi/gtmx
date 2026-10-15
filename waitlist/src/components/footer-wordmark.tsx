@@ -7,7 +7,7 @@ export function FooterWordmark() {
     <div
       aria-hidden="true"
       className="group mx-auto max-w-7xl overflow-hidden px-5 select-none sm:px-8"
-      style={{ fontSize: 'clamp(6rem, 25vw, 21rem)' }}
+      style={{ fontSize: 'clamp(4rem, 17vw, 15rem)' }}
     >
       {/* 0.8 line-height, cropped to ~85% of it: the bottom bleeds off. */}
       <div
@@ -15,7 +15,7 @@ export function FooterWordmark() {
         style={{ maskImage: 'linear-gradient(to bottom, #000 45%, transparent)' }}
       >
         <span className="mt-[0.25em] size-[0.52em] shrink-0 rounded-[0.05em] bg-brand/25 transition-colors duration-700 group-hover:bg-brand/70" />
-        <span className="text-paper/[0.07] transition-colors duration-700 group-hover:text-paper/[0.12]">gtmx</span>
+        <span className="text-paper/[0.07] transition-colors duration-700 group-hover:text-paper/[0.12]">Thalace</span>
       </div>
     </div>
   )

@@ -18,7 +18,7 @@ export function Hero({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; on
             Know who to sell to, and <span className="marker whitespace-nowrap">why now.</span>
           </h1>
           <p className="max-w-xl text-lg leading-relaxed text-muted short:text-base">
-            GTMX is a go-to-market team you don’t have to hire. It studies your offer, maps your market and
+            Thalace is a go-to-market team you don’t have to hire. It studies your offer, maps your market and
             rivals, finds the companies and communities with a reason to buy this month, and drafts the first
             message. You approve every send.
           </p>

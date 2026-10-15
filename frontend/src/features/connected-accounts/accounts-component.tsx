@@ -315,7 +315,7 @@ function ConnectionDialog({
                   {!ready && (
                     <p className="text-xs text-amber-600 dark:text-amber-400">
                       {PLATFORM_LABEL[platform]} needs a one-time app setup by
-                      the GTMX team before it can be connected.
+                      the Thalace team before it can be connected.
                     </p>
                   )}
                 </div>

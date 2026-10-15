@@ -8,7 +8,7 @@ export function MobileTopBar() {
       <SidebarTrigger aria-label="Open menu" />
       <span className="flex items-center gap-1.5">
         <span aria-hidden className="size-4 rounded-xs bg-[#FEA853]" />
-        <span className="text-xl leading-none">gtmx</span>
+        <span className="text-xl leading-none">Thalace</span>
       </span>
     </header>
   )
