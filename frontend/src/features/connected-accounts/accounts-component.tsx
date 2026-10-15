@@ -113,36 +113,7 @@ function AccountTile({
           )}
         />
       )}
-
-      {/* <div className="flex items-start justify-end bg-red-100">
-        {connection && (
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="size-7 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 data-[state=open]:opacity-100"
-                  aria-label="Connection actions"
-                />
-              }
-            >
-              <MoreHorizontal />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" sideOffset={6}>
-              <DropdownMenuItem onClick={() => onOpen(item)}>
-                <Link2 /> Manage connection
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                variant="destructive"
-                onClick={() => onDisconnect(connection)}
-              >
-                <Plug /> Disconnect
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div> */}
+      
       <div className="flex justify-center flex-col items-center">
         <PlatformIcon platform={platform} className="mt-2" />
         <div className="min-w-0 pb-2">
