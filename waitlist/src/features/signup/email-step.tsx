@@ -66,7 +66,7 @@ export function EmailStep({
           className="mt-0.5 size-4 shrink-0 cursor-pointer accent-ink"
         />
         <span>
-          GTMX may email me about the waitlist and the pilot. I can ask to be removed at any time, and my
+          Thalace may email me about the waitlist and the pilot. I can ask to be removed at any time, and my
           details are handled under Kenya's Data Protection Act, Nigeria's NDPR and South Africa's POPIA.
         </span>
       </label>

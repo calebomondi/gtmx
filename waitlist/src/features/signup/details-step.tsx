@@ -115,7 +115,7 @@ export function DetailsStep({
       </fieldset>
 
       <label className="flex flex-col gap-1.5 text-sm font-medium">
-        What should GTMX do for you?
+        What should Thalace do for you?
         <textarea
           value={expectations}
           onChange={(e) => setExpectations(e.target.value.slice(0, EXPECTATIONS_MAX_CHARS))}

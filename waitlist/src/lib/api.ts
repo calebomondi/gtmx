@@ -1,4 +1,4 @@
-/** The GTMX waitlist API. Types mirror backend/app/schemas/waitlist.py. */
+/** The Thalace waitlist API. Types mirror backend/app/schemas/waitlist.py. */
 
 export type Stage = 'idea' | 'pre_revenue' | 'revenue' | 'scaling'
 export type SellsTo = 'b2b' | 'b2c' | 'both'
@@ -56,7 +56,7 @@ function messageFor(status: number, detail: unknown): string {
   if (status === 429) return 'Too many signups from this network right now. Please try again in an hour.'
   if (status === 422) return 'Please check your email address and tick the consent box.'
   if (typeof detail === 'string' && status < 500) return detail
-  return "We couldn't reach GTMX just now. Please try again in a moment."
+  return "We couldn't reach Thalace just now. Please try again in a moment."
 }
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {

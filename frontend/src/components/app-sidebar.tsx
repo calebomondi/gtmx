@@ -143,7 +143,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           {expanded ? (
             <div className="ml-2.5 flex items-center justify-start space-x-1">
               <div className="h-4.5 w-4.5 rounded-xs bg-[#FEA853]" />
-              <p className="text-2xl">gtmx</p>
+              <p className="text-2xl">Thalace</p>
             </div>
           ) : (
             // Collapsed, the mark itself opens the sidebar again.

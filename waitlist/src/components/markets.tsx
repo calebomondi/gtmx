@@ -9,7 +9,7 @@ interface Market {
   code: string
   hook: string
   body: string
-  /** Buying signals GTMX watches for in this market. */
+  /** Buying signals Thalace watches for in this market. */
   signals: string[]
   motif: ReactNode
 }
@@ -19,7 +19,7 @@ const MARKETS: Market[] = [
     country: 'Kenya',
     code: 'KE',
     hook: 'Sell into Nairobi’s fastest movers.',
-    body: 'GTMX tracks Kenyan startups and SMEs as they raise, hire and open new branches. You reach them in the week they’re ready to buy, not the quarter after.',
+    body: 'Thalace tracks Kenyan startups and SMEs as they raise, hire and open new branches. You reach them in the week they’re ready to buy, not the quarter after.',
     signals: ['funding rounds', 'new branches', 'key hires'],
     motif: <KenyaMotif />,
   },
@@ -27,7 +27,7 @@ const MARKETS: Market[] = [
     country: 'Nigeria',
     code: 'NG',
     hook: 'Cut through Lagos’ crowded market.',
-    body: 'Distributors, manufacturers and fintechs in Nigeria buy fast when something changes. GTMX spots the expansion, the launch or the new leader, and drafts the message that lands.',
+    body: 'Distributors, manufacturers and fintechs in Nigeria buy fast when something changes. Thalace spots the expansion, the launch or the new leader, and drafts the message that lands.',
     signals: ['expansions', 'product launches', 'leadership moves'],
     motif: <NigeriaMotif />,
   },
@@ -35,7 +35,7 @@ const MARKETS: Market[] = [
     country: 'South Africa',
     code: 'ZA',
     hook: 'Get in front of Joburg and Cape Town buyers early.',
-    body: 'South African scale-ups and mid-sized firms move on clear signals. GTMX finds the companies hiring, growing and switching tools, and the person who decides.',
+    body: 'South African scale-ups and mid-sized firms move on clear signals. Thalace finds the companies hiring, growing and switching tools, and the person who decides.',
     signals: ['hiring sprees', 'new offices', 'tool switches'],
     motif: <SouthAfricaMotif />,
   },
@@ -45,7 +45,7 @@ export function Markets() {
   return (
     <Section
       label="Built for where you sell"
-      title="Global sales tools know Silicon Valley. GTMX starts with Nairobi, Lagos and Joburg."
+      title="Global sales tools know Silicon Valley. Thalace starts with Nairobi, Lagos and Joburg."
       intro="It researches local rivals, local buyers and local news: the key hire, the new branch, the funding round that makes this the month to reach out."
     >
       <div className="grid gap-5 sm:grid-cols-3">
@@ -72,7 +72,7 @@ export function Markets() {
               <h3 className="text-xl font-semibold tracking-tight">{market.country}</h3>
               <p className="mt-2 font-semibold leading-snug text-balance">{market.hook}</p>
               <p className="mt-2 leading-relaxed text-muted">{market.body}</p>
-              <ul className="mt-auto flex flex-wrap gap-2 pt-5" aria-label={`Signals GTMX watches in ${market.country}`}>
+              <ul className="mt-auto flex flex-wrap gap-2 pt-5" aria-label={`Signals Thalace watches in ${market.country}`}>
                 {market.signals.map((signal) => (
                   <li
                     key={signal}

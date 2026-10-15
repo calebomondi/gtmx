@@ -2,7 +2,7 @@ import type { PilotSpots } from '../lib/api'
 import { stagger } from '../lib/stagger'
 import { Section } from './section'
 
-const GET = ['GTMX free for the whole pilot', 'A direct line to the team building it', 'A say in what we build next']
+const GET = ['Thalace free for the whole pilot', 'A direct line to the team building it', 'A say in what we build next']
 const ASK = ['A 20-minute feedback call every two weeks', 'Honest answers about what works and what doesn’t']
 
 function SpotDots({ pilot }: { pilot: PilotSpots }) {

@@ -18,7 +18,7 @@ export default function AuthPage() {
       <div className="flex w-full max-w-sm flex-col gap-6">
         <div className="flex items-center space-x-1 self-center">
           <div className="h-4.5 w-4.5 bg-[#FEA853] rounded-xs" />
-          <p className="text-2xl">gtmx</p>
+          <p className="text-2xl">Thalace</p>
         </div>
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
