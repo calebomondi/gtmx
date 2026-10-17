@@ -170,6 +170,12 @@ class Settings(BaseSettings):
         "brightdata": 0.0015,  # per scraped record
     })
 
+    # -- Lace agent --
+    # Per founder turn: tool calls before the Lace must answer with what it
+    # has, and the conversation tokens re-sent to the model each step.
+    lace_max_tool_calls_per_turn: int = 20
+    lace_history_token_budget: int = 24_000
+
     # -- Competitor monitoring --
     # How often the scheduler looks for stale workspaces, and how old a check
     # may get before it is redone.
