@@ -14,9 +14,14 @@ class MemoryStore:
         self.superseded: set[str] = set()
         self.sources: dict[str, SourcePage] = {}
         self._ids = itertools.count(len(self._facts) + 1)
+        self.startup_name: str | None = "Acme"
+        self.website = "https://acme.test"
 
     async def profile(self) -> LaceProfile:
-        return LaceProfile(name="Ada", website="https://acme.test", startup_name="Acme")
+        return LaceProfile(name="Ada", website=self.website, startup_name=self.startup_name)
+
+    async def set_startup_name(self, name: str) -> None:
+        self.startup_name = name
 
     async def facts(self, topic=None, limit=50) -> list[Fact]:
         live = [f for f in reversed(self._facts) if f.id not in self.superseded]

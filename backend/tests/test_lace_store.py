@@ -100,3 +100,8 @@ async def test_lace_records_a_fact_through_the_database(store):
     assert out["messages"][-1].content == "Noted."
     [fact] = await store.facts()
     assert (fact.claim, fact.origin, fact.source_url) == ("Plans start at $20.", "user", None)
+
+
+async def test_startup_name_is_stored(store):
+    await store.set_startup_name("Acme Health")
+    assert (await store.profile()).startup_name == "Acme Health"

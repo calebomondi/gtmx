@@ -24,3 +24,21 @@ async def test_researches_and_records_facts():
     facts = await store.facts()
     assert len(facts) >= 2 and all(f.source_url for f in facts)
     assert out["messages"][-1].content.strip()
+
+
+async def test_onboarding_learns_a_real_site():
+    from agents.lace.onboarding import onboard
+    from config import get_settings
+
+    store = MemoryStore()
+    store.startup_name = None
+    store.website = "https://linear.app"
+    result = await onboard(store, get_settings())
+    assert result.pages_read and result.facts_recorded >= 5
+    assert result.startup_name and "linear" in result.startup_name.lower()
+    facts = await store.facts()
+    print("\nPAGES", result.pages_read, "\nQUESTIONS", result.open_questions)
+    for f in facts:
+        print(f"FACT [{f.topic}/{f.confidence}] {f.claim}  <- {f.source_url}")
+    assert {f.topic for f in facts} >= {"offer"}
+    assert all(f.source_url in result.pages_read for f in facts)
