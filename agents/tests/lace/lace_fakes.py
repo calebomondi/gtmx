@@ -52,9 +52,13 @@ class ScriptedModel:
         self.replies = list(replies)
         self.calls: list[tuple[list, list]] = []
 
-    def __call__(self, messages, tools):
+    def __call__(self, messages, tools, sink=None):
         self.calls.append((list(messages), list(tools)))
-        return self.replies.pop(0)
+        reply = self.replies.pop(0)
+        if sink is not None and reply.content:
+            for word in str(reply.content).split(" "):
+                sink.token(word + " ")
+        return reply
 
 
 def call(name: str, args: dict, id: str = "c1") -> AIMessage:

@@ -138,3 +138,11 @@ def test_prompt_separates_sourced_claims_from_judgment():
     from agents.schemas.lace import LaceProfile
     prompt = system_prompt(LaceProfile(name="Ada", website="https://acme.test"), [])
     assert '"My read"' in prompt and '"Sources" list' in prompt and "never recorded with record_fact" in prompt
+
+
+async def test_reply_text_streams_on_the_custom_stream(store, settings):
+    model = ScriptedModel(AIMessage(content="Hello there founder"))
+    graph = build_lace_graph(store, settings=settings, model_step=model)
+    tokens = [chunk["token"] async for mode, chunk in graph.astream(_ask("hi"), stream_mode=["custom"])
+              if mode == "custom" and "token" in chunk]
+    assert "".join(tokens).strip() == "Hello there founder"

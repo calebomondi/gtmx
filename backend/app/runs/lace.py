@@ -5,7 +5,9 @@ The Lace's conversation lives on one LangGraph thread per Lace, in the shared
 Postgres checkpointer; the graph is compiled per run around that Lace's store.
 
 Frames: "step" (what the Lace is doing, for the progress line), "tool_result"
-(each tool's summary), "message" (the Lace's reply), then "complete".
+(each tool's summary), "message" (the Lace's reply), then "complete". While
+the model writes, live-only "token" frames carry the reply as it forms, and
+"token_reset" says to discard the text so far.
 """
 
 import asyncio
@@ -26,6 +28,9 @@ from backend.app.runs import events
 from backend.app.services.lace_store import DbLaceStore
 from backend.app.services.runs import set_run_fields
 from config import settings
+
+# Characters per streamed "token" frame.
+TOKEN_FRAME_CHARS = 24
 
 # What the progress line says while a tool runs.
 _STEP_TEXT = {
@@ -85,18 +90,50 @@ async def onboarding_segment(run_id: uuid.UUID, lace_id: uuid.UUID) -> None:
     await _finish(run_id, reply)
 
 
+class _TokenRelay:
+    """Batches streamed tokens into "token" frames a few words at a time:
+    one frame per model token would be hundreds per reply."""
+
+    def __init__(self, run_id: uuid.UUID):
+        self._run_id, self._buffer = run_id, ""
+
+    def add(self, text: str) -> None:
+        self._buffer += text
+        if len(self._buffer) >= TOKEN_FRAME_CHARS:
+            self.flush()
+
+    def flush(self) -> None:
+        if self._buffer:
+            events.broadcast(self._run_id, "token", {"text": self._buffer})
+            self._buffer = ""
+
+    def reset(self) -> None:
+        self._buffer = ""
+        events.broadcast(self._run_id, "token_reset")
+
+
 async def turn_segment(run_id: uuid.UUID, lace_id: uuid.UUID, text: str) -> None:
     graph, _ = _graph(lace_id)
+    relay = _TokenRelay(run_id)
     reply = ""
-    async for update in graph.astream({"messages": [HumanMessage(content=text)]}, thread_config(lace_id),
-                                      stream_mode="updates"):
-        for node, output in update.items():
+    async for mode, chunk in graph.astream({"messages": [HumanMessage(content=text)]}, thread_config(lace_id),
+                                           stream_mode=["updates", "custom"]):
+        if mode == "custom":
+            if "token" in chunk:
+                relay.add(chunk["token"])
+            elif chunk.get("reset"):
+                relay.reset()
+            continue
+        relay.flush()
+        for node, output in chunk.items():
             for message in (output or {}).get("messages", []):
-                if node == "agent":
-                    for tool_call in message.tool_calls or []:
+                if node == "agent" and message.tool_calls:
+                    # Text before a tool call ("let me look that up") is not the reply.
+                    relay.reset()
+                    for tool_call in message.tool_calls:
                         await events.publish(run_id, "step", {"text": step_text(tool_call)})
-                    if not message.tool_calls:
-                        reply = str(message.content)
+                elif node == "agent":
+                    reply = str(message.content)
                 elif isinstance(message, ToolMessage):
                     await events.publish(run_id, "tool_result", _tool_summary(message))
     await _finish(run_id, reply)

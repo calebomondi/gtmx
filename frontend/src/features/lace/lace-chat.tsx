@@ -44,7 +44,7 @@ function LaceChat({ laceId }: { laceId: string }) {
 
   useEffect(() => {
     end.current?.scrollIntoView({ behavior: "smooth", block: "end" })
-  }, [chat.messages.length, chat.step])
+  }, [chat.messages.length, chat.step, chat.draft])
 
   const title = chat.lace?.name ?? "Lace"
   const subtitle = chat.lace?.startup_name ?? chat.lace?.website
@@ -76,7 +76,8 @@ function LaceChat({ laceId }: { laceId: string }) {
             <p className="text-sm text-muted-foreground">No messages yet. Say hello to {title}.</p>
           )}
           {chat.messages.map((message, i) => <Message key={i} message={message} />)}
-          {chat.working && (
+          {chat.draft && <Message message={{ role: "lace", content: chat.draft }} />}
+          {chat.working && !chat.draft && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">
               <Loader2 className="size-4 animate-spin" />
               {chat.step ?? (chat.lace?.status === "onboarding" ? "Getting to know your startup" : "Thinking")}

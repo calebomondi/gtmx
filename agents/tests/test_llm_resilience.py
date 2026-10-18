@@ -127,3 +127,44 @@ def test_a_quick_call_on_a_thinking_only_model_gets_a_short_budget(monkeypatch):
     assert quick.max_tokens == llm.MAX_OUTPUT_TOKENS
     deep = llm._llm("qwen", "thinker", thinking=True, thinking_budget=8000)
     assert deep.thinking_budget == 8000
+
+
+class StreamingModel:
+    """Qwen streams half an answer then dies; the fallback streams a full one."""
+
+    def __init__(self, provider):
+        self.provider = provider
+
+    def bind_tools(self, tools):
+        return self
+
+    def stream(self, messages, config=None):
+        from langchain_core.messages import AIMessageChunk
+        yield AIMessageChunk(content="Half ")
+        if self.provider == "qwen":
+            raise QuotaExhausted("Error code: 403 - insufficient_quota: Free quota exhausted")
+        yield AIMessageChunk(content="answer.")
+
+
+class RecordingSink:
+    def __init__(self):
+        self.events = []
+
+    def token(self, text):
+        self.events.append(text)
+
+    def reset(self):
+        self.events.append("<reset>")
+
+
+def test_streamed_answer_restarts_cleanly_on_fallback(ladder, monkeypatch):
+    monkeypatch.setattr(llm, "_llm", lambda provider, **kw: StreamingModel(provider))
+    sink = RecordingSink()
+    message = llm.invoke_with_tools(
+        [HumanMessage(content="hi")], [object()], providers=[("qwen", ["q"]), ("openrouter", ["o"])],
+        log_label="t", sink=sink,
+    )
+    assert message.content == "Half answer."
+    # Whatever streamed before the reset is discarded by the reader.
+    after_reset = sink.events[len(sink.events) - 1 - sink.events[::-1].index("<reset>") + 1:]
+    assert "".join(after_reset) == "Half answer."
