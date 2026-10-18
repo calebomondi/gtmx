@@ -106,6 +106,8 @@ class Settings(BaseSettings):
     # A Lace reading its site for the first time, and one founder turn.
     lace_onboarding_timeout_s: float = 600.0
     lace_turn_timeout_s: float = 300.0
+    # How often each Lace looks for new opportunities on its own.
+    lace_opportunity_scan_days: int = 7
 
     # -- Usage limits (per user) --
     max_active_discovery_runs: int = 1

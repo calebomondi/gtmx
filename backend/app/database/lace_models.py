@@ -1,19 +1,19 @@
 """Tables for the Lace agent: the Lace itself, what it knows, and what it read.
 
 Lace v2 starts its own schema instead of reshaping the v1 workspace tables;
-see docs/lace-plan.md. Tables for opportunities arrive with the phase whose
-tools first write them.
+see docs/lace-plan.md.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, String, Text, UUID, UniqueConstraint, false, func, text
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Index, String, Text, UUID, UniqueConstraint, false, func, text
 from sqlalchemy.dialects.postgresql import JSONB as JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
+from agents.schemas.opportunities import OPPORTUNITY_KINDS, OPPORTUNITY_STATUSES
 from agents.schemas.lace import ACCOUNT_STATUSES, CONTACT_STATUSES, INBOX_PLATFORMS, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, FACT_ORIGINS, FACT_TOPICS
 from backend.app.database.connect import Base
 
@@ -280,3 +280,40 @@ class LaceChannel(Base):
     synced_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
                                                  default=_now, server_default=func.now())
+
+
+class LaceOpportunity(Base):
+    """A place to showcase, a buyer to sell to, or a partner, found for the
+    Lace's startup. One row per source page per Lace; a later search refreshes
+    it and keeps the founder's dismissal. Deadlines and dates are real dates,
+    so closed ones are filtered and the soonest sorted first."""
+
+    __tablename__ = "lace_opportunities"
+    __table_args__ = (
+        UniqueConstraint("lace_id", "url_key", name="uq_lace_opportunities_lace_id_url_key"),
+        CheckConstraint(_one_of("kind", OPPORTUNITY_KINDS), name="kind"),
+        CheckConstraint(_one_of("status", OPPORTUNITY_STATUSES), name="status"),
+        Index("ix_lace_opportunities_lace_id_status_deadline", "lace_id", "status", "deadline"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Indexed by the unique constraint and the status index, which lead with it.
+    lace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("laces.id", ondelete="CASCADE"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    organiser: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    # The url without scheme, www or trailing slash: the page's identity for dedup.
+    url_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    deadline: Mapped[date | None] = mapped_column(Date, nullable=True)
+    event_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    why_it_fits: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    how_to_act: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    status: Mapped[str] = mapped_column(String(12), nullable=False, default="open", server_default="open")
+    found_by_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
+                                                    default=_now, server_default=func.now())
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
+                                                   server_default=func.now(), index=True)

@@ -43,6 +43,9 @@ class MemoryStore:
     async def save_source(self, page: SourcePage) -> None:
         self.sources[page.url] = page
 
+    async def opportunities(self, limit=50):
+        return []
+
     async def accounts(self, limit=50):
         return self.targets[:limit]
 

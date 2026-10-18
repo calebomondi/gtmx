@@ -198,3 +198,31 @@ export function linkLaceChannel(laceId: string, platform: InboxPlatform, account
 export function unlinkLaceChannel(laceId: string, channelId: string): Promise<void> {
   return apiFetch(`/api/v1/laces/${laceId}/channels/${channelId}`, { method: "DELETE" })
 }
+
+export type OpportunityKind = "showcase" | "sell" | "partner"
+
+export interface LaceOpportunityDto {
+  id: string
+  kind: OpportunityKind
+  title: string
+  organiser: string | null
+  url: string
+  deadline: string | null
+  event_date: string | null
+  location: string | null
+  why_it_fits: string
+  how_to_act: string
+  status: "open" | "dismissed"
+  first_seen_at: string
+}
+
+/** Open opportunities (none past their deadline or date), soonest first. */
+export function listLaceOpportunities(laceId: string): Promise<LaceOpportunityDto[]> {
+  return apiFetch<LaceOpportunityDto[]>(`/api/v1/laces/${laceId}/opportunities`)
+}
+
+export function dismissLaceOpportunity(laceId: string, opportunityId: string): Promise<LaceOpportunityDto> {
+  return apiFetch(`/api/v1/laces/${laceId}/opportunities/${opportunityId}`, {
+    method: "PATCH", body: JSON.stringify({ status: "dismissed" }),
+  })
+}

@@ -1,11 +1,12 @@
 """Request/response models for the Lace endpoints."""
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from agents.schemas.opportunities import OpportunityKind, OpportunityStatus
 from agents.schemas.lace import AccountStatus, CompetitorOrigin, ContactStatus, InboxPlatform, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
 
 
@@ -162,3 +163,24 @@ class ChannelAccount(BaseModel):
 class ChannelLinkRequest(BaseModel):
     platform: InboxPlatform
     account_id: str = Field(min_length=1, max_length=64)
+
+
+class OpportunityResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    kind: OpportunityKind
+    title: str
+    organiser: str | None
+    url: str
+    deadline: date | None
+    event_date: date | None
+    location: str | None
+    why_it_fits: str
+    how_to_act: str
+    status: OpportunityStatus
+    first_seen_at: datetime
+
+
+class OpportunityUpdateRequest(BaseModel):
+    status: OpportunityStatus

@@ -48,6 +48,8 @@ _STEP_TEXT = {
     "list_accounts": lambda a: "Checking the target accounts",
     "find_contacts": lambda a: "Starting a search for contacts",
     "draft_outreach": lambda a: "Starting to draft messages",
+    "find_opportunities": lambda a: "Starting a search for opportunities",
+    "list_opportunities": lambda a: "Checking the opportunities on file",
     "find_accounts": lambda a: "Starting a search for customers" + (f" in {a['country']}" if a.get("country") else ""),
 }
 

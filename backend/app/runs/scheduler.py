@@ -13,7 +13,7 @@ from backend.app.database.connect import AsyncSessionLocal
 from backend.app.runs import background, manager
 from agents.lace.store import JobRefused
 from backend.app.services import inbox as inbox_service
-from backend.app.services import lace_competitors, social_inbox
+from backend.app.services import lace_competitors, lace_opportunities, social_inbox
 from backend.app.services.errors import RateLimitedError
 from backend.app.services.runs import TERMINAL_STATUSES
 from config import settings
@@ -58,10 +58,24 @@ async def sweep_laces() -> int:
     return started
 
 
+async def sweep_lace_opportunities() -> int:
+    """Start the weekly opportunity search for each Lace that is due."""
+    async with AsyncSessionLocal() as db:
+        due = await lace_opportunities.laces_due_for_scan(db, timedelta(days=settings.lace_opportunity_scan_days))
+    started = 0
+    for lace_id, user_id in due:
+        try:
+            await manager.start_lace_job("lace_opportunities", user_id, lace_id, {"scheduled": True})
+            started += 1
+        except JobRefused:
+            continue  # this user hit the daily cap; try next sweep
+    return started
+
+
 async def sweep() -> int:
     """Start a monitor run for each stale workspace and each stale Lace.
     Returns how many started."""
-    started = await sweep_laces()
+    started = await sweep_laces() + await sweep_lace_opportunities()
     for workspace_id, user_id in await _stale_workspaces():
         try:
             await manager.start_background("monitor", user_id, workspace_id)
