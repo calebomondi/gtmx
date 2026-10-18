@@ -22,6 +22,7 @@ from agents.lace.accounts import find_accounts
 from agents.lace.contacts import complete_contacts, contact_status
 from agents.lace.competitors import change_fact, find_competitors, material, offer_for_monitor
 from agents.lace.onboarding import onboard, opening_message
+from agents.lace.outreach import draft_first_touch, recipient_for
 from agents.lace.store import JobBlocked, LaceJobs
 from agents.pipelines.monitor import check_competitor
 from agents.schemas.accounts import AccountRecord
@@ -29,15 +30,23 @@ from agents.lace.prompts import system_prompt
 from backend.app.agents_runtime import get_checkpointer
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
-from backend.app.database.lace_models import Lace
+from backend.app.database.lace_models import Lace, LaceOutreach
 from backend.app.runs import events
 from backend.app.runs.errors import user_facing_error
-from backend.app.services import lace_accounts, lace_competitors, lace_events
+from backend.app.services import lace_accounts, lace_competitors, lace_events, lace_outreach
+from backend.app.services import outreach as outreach_service
 from backend.app.services.competitors import domain_key
 from backend.app.services.lace_store import DbLaceStore
 from backend.app.services.runs import set_run_fields
 from config import settings
+from utils.log import logger
 from utils.progress import report
+
+# Accounts one drafting run writes to, how many at once, and the competitors
+# the drafts may compare against.
+DRAFTS_BATCH = 5
+DRAFTS_CONCURRENCY = 3
+COMPETITORS_FOR_DRAFTS = 8
 
 # Accounts one contact search covers, and how many at once.
 CONTACTS_BATCH = 20
@@ -64,6 +73,7 @@ _STEP_TEXT = {
     "check_competitors": lambda a: "Checking competitors for changes",
     "list_accounts": lambda a: "Checking the target accounts",
     "find_contacts": lambda a: "Starting a search for contacts",
+    "draft_outreach": lambda a: "Starting to draft messages",
     "find_accounts": lambda a: "Starting a search for customers" + (f" in {a['country']}" if a.get("country") else ""),
 }
 
@@ -309,6 +319,61 @@ def _is_uuid(value: str) -> bool:
     except ValueError:
         return False
     return True
+
+
+async def drafts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
+    """Draft a first message to each account through v1's GTM pipeline, save
+    the drafts for the founder to review, and queue an update. Nothing is
+    sent: sending is the founder's own action."""
+    store = DbLaceStore(AsyncSessionLocal, lace_id)
+    profile, facts, rivals = await asyncio.gather(
+        store.profile(), store.facts(None, BRIEF_FACTS), store.competitors(COMPETITORS_FOR_DRAFTS))
+    ids = [uuid.UUID(i) for i in params.get("account_ids") or [] if _is_uuid(i)]
+    async with AsyncSessionLocal() as db:
+        run = await db.get(models.Run, run_id)
+        user_id = run.user_id
+        accounts = [(a.id, a.name, AccountRecord.model_validate(a.record))
+                    for a in await lace_outreach.accounts_to_draft(db, lace_id, ids or None, DRAFTS_BATCH)]
+    sender = await outreach_service.sender_for_user(user_id)
+    targets = [(account_id, name, record, recipient_for(record)) for account_id, name, record in accounts]
+    unreachable = [name for _, name, _, recipient in targets if recipient is None]
+    failed: list[str] = []
+    slots = asyncio.Semaphore(DRAFTS_CONCURRENCY)
+
+    async def draft(account_id, name, record, recipient) -> LaceOutreach | None:
+        async with slots:
+            try:
+                written = await asyncio.to_thread(draft_first_touch, profile, facts, rivals, record, recipient, sender)
+            except Exception:  # noqa: BLE001 -- one account failing must not lose the other drafts
+                logger.exception("Drafting to %s failed", name)
+                failed.append(name)
+                return None
+        return LaceOutreach(lace_id=lace_id, user_id=user_id, account_id=account_id, run_id=run_id,
+                            channel=recipient.channel, recipient_name=recipient.name, recipient_company=name[:255],
+                            recipient_address=recipient.address, subject=written.subject or None, body=written.body)
+
+    with events.reporting_steps(run_id):
+        report(f"Drafting messages to {len(targets) - len(unreachable)} accounts")
+        drafts = [d for d in await asyncio.gather(*(draft(*t) for t in targets if t[3] is not None)) if d]
+    async with AsyncSessionLocal() as db, db.begin():
+        db.add_all(drafts)
+        await lace_events.add(db, lace_id, drafts_update(drafts, unreachable, failed))
+    await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
+                         progress={"drafted": len(drafts), "unreachable": len(unreachable)})
+    await events.publish(run_id, "complete", {"drafted": len(drafts)})
+
+
+def drafts_update(drafts: list[LaceOutreach], unreachable: list[str], failed: list[str]) -> str:
+    if not drafts and not unreachable and not failed:
+        return "There was no account to draft for: every target with someone to reach already has a message."
+    lines = [f"{d.recipient_company}: to {d.recipient_name or d.recipient_address} by {d.channel}"
+             + (f', subject "{d.subject}"' if d.subject else "") for d in drafts]
+    if unreachable:
+        lines.append("Not drafted, nobody to reach yet (use find_contacts): " + ", ".join(unreachable))
+    if failed:
+        lines.append("Drafting failed for (try again later): " + ", ".join(failed))
+    return ("Drafted first messages; they wait in Outreach for the founder to review, edit and send:\n"
+            + "\n".join(lines))
 
 
 def contacts_update(results: list[AccountRecord]) -> str:

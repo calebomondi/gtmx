@@ -4,19 +4,24 @@ import {
   ApiError,
   followRunEvents,
   getLace,
+  deleteLaceOutreach,
   listActiveRuns,
   listLaceAccounts,
   listLaceCompetitors,
   listLaceFacts,
   listLaceMessages,
+  listLaceOutreach,
   sendLaceMessage,
   setLaceAccountStatus,
   setLaceCompetitorStatus,
+  updateLaceOutreach,
   type FactDto,
   type LaceAccountDto,
   type LaceCompetitorDto,
   type LaceDto,
   type LaceMessageDto,
+  type LaceOutreachDto,
+  type LaceOutreachChanges,
   type RunFrame,
 } from "@/lib/api"
 
@@ -35,6 +40,9 @@ export interface LaceChat {
   accounts: LaceAccountDto[]
   /** A background search for target accounts, or for their contacts, is running. */
   findingAccounts: boolean
+  outreach: LaceOutreachDto[]
+  /** The Lace is drafting messages in the background. */
+  drafting: boolean
   loading: boolean
   /** A load or send failure, or a run that failed. */
   error: string | null
@@ -47,6 +55,8 @@ export interface LaceChat {
   send: (text: string) => Promise<void>
   dismissCompetitor: (competitorId: string) => Promise<void>
   dismissAccount: (accountId: string) => Promise<void>
+  saveDraft: (messageId: string, changes: LaceOutreachChanges) => Promise<void>
+  discardDraft: (messageId: string) => Promise<void>
 }
 
 function message(err: unknown): string {
@@ -65,6 +75,8 @@ export function useLaceChat(laceId: string): LaceChat {
   const [searching, setSearching] = useState(false)
   const [accounts, setAccounts] = useState<LaceAccountDto[]>([])
   const [findingAccounts, setFindingAccounts] = useState(false)
+  const [outreach, setOutreach] = useState<LaceOutreachDto[]>([])
+  const [drafting, setDrafting] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [working, setWorking] = useState(false)
@@ -75,15 +87,16 @@ export function useLaceChat(laceId: string): LaceChat {
   const busy = useRef(false)
 
   const refresh = useCallback(async () => {
-    const [nextLace, nextMessages, nextFacts, nextCompetitors, nextAccounts] = await Promise.all([
+    const [nextLace, nextMessages, nextFacts, nextCompetitors, nextAccounts, nextOutreach] = await Promise.all([
       getLace(laceId), listLaceMessages(laceId), listLaceFacts(laceId), listLaceCompetitors(laceId),
-      listLaceAccounts(laceId),
+      listLaceAccounts(laceId), listLaceOutreach(laceId),
     ])
     setLace(nextLace)
     setMessages(nextMessages)
     setFacts(nextFacts)
     setCompetitors(nextCompetitors)
     setAccounts(nextAccounts)
+    setOutreach(nextOutreach)
   }, [laceId])
 
   const follow = useCallback(async (runId: string) => {
@@ -126,6 +139,7 @@ export function useLaceChat(laceId: string): LaceChat {
     const mine = (await listActiveRuns()).filter((run) => run.lace_id === laceId)
     setSearching(mine.some((run) => run.kind === "lace_competitors"))
     setFindingAccounts(mine.some((run) => run.kind === "lace_accounts" || run.kind === "lace_contacts"))
+    setDrafting(mine.some((run) => run.kind === "lace_drafts"))
     const turn = mine.find((run) => run.kind === "lace_turn" || run.kind === "lace_onboarding")
     if (turn && !busy.current) void follow(turn.id)
   }, [laceId, follow])
@@ -170,6 +184,24 @@ export function useLaceChat(laceId: string): LaceChat {
     }
   }, [laceId])
 
+  const saveDraft = useCallback(async (messageId: string, changes: LaceOutreachChanges) => {
+    try {
+      const saved = await updateLaceOutreach(laceId, messageId, changes)
+      setOutreach((prev) => prev.map((m) => (m.id === messageId ? saved : m)))
+    } catch (err) {
+      setError(message(err))
+    }
+  }, [laceId])
+
+  const discardDraft = useCallback(async (messageId: string) => {
+    try {
+      await deleteLaceOutreach(laceId, messageId)
+      setOutreach((prev) => prev.filter((m) => m.id !== messageId))
+    } catch (err) {
+      setError(message(err))
+    }
+  }, [laceId])
+
   const send = useCallback(async (text: string) => {
     setError(null)
     setMessages((prev) => [...prev, { role: "founder", content: text }])
@@ -183,7 +215,7 @@ export function useLaceChat(laceId: string): LaceChat {
   }, [laceId, follow, refresh])
 
   return {
-    lace, messages, facts, competitors, searching, accounts, findingAccounts, loading, error, working, step, draft,
-    send, dismissCompetitor, dismissAccount,
+    lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, drafting, loading, error,
+    working, step, draft, send, dismissCompetitor, dismissAccount, saveDraft, discardDraft,
   }
 }

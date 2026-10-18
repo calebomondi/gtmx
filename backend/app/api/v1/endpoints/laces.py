@@ -21,8 +21,10 @@ from backend.app.schemas.laces import (
     LaceMessageRequest,
     LaceResponse,
     LaceTurnResponse,
+    OutreachResponse,
+    OutreachUpdateRequest,
 )
-from backend.app.services import lace_accounts, lace_competitors
+from backend.app.services import lace_accounts, lace_competitors, lace_outreach
 from backend.app.services import laces as lace_service
 from agents.schemas.lace import AccountStatus, CompetitorStatus, FactTopic
 
@@ -33,6 +35,7 @@ MAX_FACTS_PER_PAGE = 200
 MAX_MESSAGES_PER_PAGE = 200
 MAX_COMPETITORS_PER_PAGE = 100
 MAX_ACCOUNTS_PER_PAGE = 100
+MAX_OUTREACH_PER_PAGE = 100
 
 
 @router.post("", response_model=LaceCreateResponse, status_code=status.HTTP_201_CREATED)
@@ -91,3 +94,19 @@ async def list_accounts(lace: OwnedLace, db: DbSession, shown: AccountStatus = Q
 @router.patch("/{lace_id}/accounts/{account_id}", response_model=AccountResponse)
 async def update_account(lace: OwnedLace, account_id: uuid.UUID, payload: AccountUpdateRequest, db: DbSession):
     return lace_accounts.response(await lace_accounts.set_status(db, lace.id, account_id, payload.status))
+
+
+@router.get("/{lace_id}/outreach", response_model=list[OutreachResponse])
+async def list_outreach(lace: OwnedLace, db: DbSession, limit: int = Query(default=50, ge=1, le=MAX_OUTREACH_PER_PAGE)):
+    return await lace_outreach.list_for_lace(db, lace.id, limit)
+
+
+@router.patch("/{lace_id}/outreach/{message_id}", response_model=OutreachResponse)
+async def update_outreach(lace: OwnedLace, message_id: uuid.UUID, payload: OutreachUpdateRequest, db: DbSession):
+    message = await lace_outreach.get_in_lace(db, lace.id, message_id)
+    return await lace_outreach.update(db, message, payload.model_dump(exclude_unset=True))
+
+
+@router.delete("/{lace_id}/outreach/{message_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_outreach(lace: OwnedLace, message_id: uuid.UUID, db: DbSession):
+    await lace_outreach.delete(db, await lace_outreach.get_in_lace(db, lace.id, message_id))

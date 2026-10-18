@@ -214,3 +214,44 @@ def test_lace_finds_contacts_at_real_accounts(client, runtime, user):
                               TURN_TIMEOUT_S)
     assert turn.status == "completed", turn.error
     print("--- THE LACE SAYS\n" + client.get(f"{API}/laces/{lace_id}/messages").json()[-1]["content"])
+
+
+DRAFTS_TIMEOUT_S = 900
+
+
+def test_lace_drafts_outreach_to_real_people(client, runtime, user):
+    import json
+
+    import psycopg
+
+    from agents.schemas.accounts import AccountRecord, ContactRecord, TriggerEvent
+    from backend.app.runs import manager
+
+    created = client.post(f"{API}/laces", json={"name": "Ada", "website": "shangalabs.com"}).json()
+    lace_id = uuid.UUID(created["lace"]["id"])
+    run = client.portal.call(_wait_for_status, uuid.UUID(created["run_id"]), {"completed", "failed"}, ONBOARDING_TIMEOUT_S)
+    assert run.status == "completed", run.error
+    seeds = [
+        ("SunCulture", "https://sunculture.com", "Raised a USD 27.5M Series B to scale IoT solar irrigation",
+         ContactRecord(name="Samir Ibrahim", title="CEO & Co-Founder", linkedin="https://linkedin.com/in/samiribrahim")),
+        ("Enzi E-Mobility", "https://enzimotors.com", "Grew headcount 58.8% to scale e-motorcycle production in Nairobi",
+         ContactRecord(name="George Muchai", title="Lead Engineer", linkedin="https://linkedin.com/in/george-muchai-3a27b5232")),
+    ]
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        for name, site, event, contact in seeds:
+            record = AccountRecord(name=name, website=site, geo="Kenya", key_contacts=[contact],
+                                   trigger_event=TriggerEvent(event=event, signal_type="funding_round", source=site))
+            conn.execute("INSERT INTO lace_accounts (id, lace_id, key, name, account_type, website, record, contact_status,"
+                         " fit_strength) VALUES (%s, %s, %s, %s, 'company', %s, %s, 'person', 'strong')",
+                         (uuid.uuid4(), lace_id, name.lower(), name, site, json.dumps(record.model_dump(mode="json"))))
+
+    job = client.portal.call(manager.start_lace_job, "lace_drafts", user.id, lace_id, {})
+    job = client.portal.call(_wait_for_status, job.id, {"completed", "failed"}, DRAFTS_TIMEOUT_S)
+    assert job.status == "completed", job.error
+    drafts = client.get(f"{API}/laces/{lace_id}/outreach").json()
+    for d in drafts:
+        print(f"\n--- to {d['recipient_name']} at {d['recipient_company']} ({d['channel']})\n{d['body']}")
+    assert len(drafts) == 2 and all(d["status"] == "draft" for d in drafts)
+    turn = client.portal.call(_wait_for_status, client.portal.call(_first_turn, lace_id, 60.0), {"completed", "failed"},
+                              TURN_TIMEOUT_S)
+    assert turn.status == "completed", turn.error

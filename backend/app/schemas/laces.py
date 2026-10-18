@@ -113,3 +113,28 @@ class AccountResponse(BaseModel):
 
 class AccountUpdateRequest(BaseModel):
     status: AccountStatus = Field(description="target, or dismissed to drop it (a later search won't bring it back)")
+
+
+class OutreachResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    account_id: uuid.UUID | None
+    channel: Literal["email", "linkedin"]
+    direction: Literal["outbound", "inbound"]
+    status: str = Field(description="draft | sending | sent | failed | bounced | received")
+    recipient_name: str | None
+    recipient_company: str
+    recipient_address: str | None = Field(description="An email address, or a LinkedIn profile URL")
+    subject: str | None
+    body: str
+    error: str | None
+    sent_at: datetime | None
+    created_at: datetime
+
+
+class OutreachUpdateRequest(BaseModel):
+    subject: str | None = Field(default=None, max_length=255)
+    body: str | None = Field(default=None, min_length=1, max_length=20_000)
+    recipient_address: str | None = Field(default=None, max_length=2048)
+    recipient_name: str | None = Field(default=None, max_length=255)
