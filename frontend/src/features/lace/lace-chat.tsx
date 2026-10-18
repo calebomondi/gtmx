@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { useParams } from "react-router-dom"
-import { AlertTriangle, BookOpen, Inbox, Loader2, Mail, Swords, Target } from "lucide-react"
+import { AlertTriangle, BookOpen, Inbox, Loader2, Mail, Sparkles, Swords, Target } from "lucide-react"
 
 import { PromptInputWithActions } from "@/components/chat-input"
 import { Button } from "@/components/ui/button"
@@ -13,13 +13,18 @@ import { LaceAvatar } from "./lace-avatar"
 import { LaceAccounts } from "./lace-accounts"
 import { LaceChannels } from "./lace-channels"
 import { LaceCompetitors } from "./lace-competitors"
+import { LaceOpportunities } from "./lace-opportunities"
 import { LaceOutreach } from "./lace-outreach"
 import { LaceFacts } from "./lace-facts"
 import { useLaceChat } from "./use-lace-chat"
 
-type Panel = "facts" | "competitors" | "accounts" | "outreach" | "channels"
+type Panel = "facts" | "competitors" | "accounts" | "outreach" | "channels" | "opportunities"
 
 const PANEL_TEXT: Record<Panel, { title: (name: string) => string; description: string }> = {
+  opportunities: {
+    title: () => "Opportunities",
+    description: "Events to showcase at, tenders and buyers to sell to, and partners: sourced, and still open.",
+  },
   channels: {
     title: () => "Inboxes",
     description: "Business accounts whose messages your Lace reads and answers.",
@@ -93,6 +98,10 @@ function LaceChat({ laceId }: { laceId: string }) {
                   aria-label="Inboxes" title="Inboxes">
             <Inbox />
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setPanel("opportunities")} disabled={chat.loading}>
+            {chat.findingOpportunities ? <Loader2 className="animate-spin" /> : <Sparkles />}
+            <span className="hidden sm:inline">Opportunities</span>
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setPanel("outreach")} disabled={chat.loading}>
             {chat.drafting ? <Loader2 className="animate-spin" /> : <Mail />}
             <span className="hidden sm:inline">Outreach</span> ({chat.outreach.filter((m) => m.status === "draft").length})
@@ -158,6 +167,9 @@ function LaceChat({ laceId }: { laceId: string }) {
           )}
           <div className="px-4 pb-6">
             {panel === "channels" && <LaceChannels laceId={laceId} />}
+            {panel === "opportunities" && (
+              <LaceOpportunities laceId={laceId} searching={chat.findingOpportunities} />
+            )}
             {panel === "outreach" && (
               <LaceOutreach outreach={chat.outreach} drafting={chat.drafting}
                             onSave={(id, changes) => void chat.saveDraft(id, changes)}

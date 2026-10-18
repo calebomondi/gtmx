@@ -316,3 +316,29 @@ def test_lace_reads_a_reply_and_drafts_the_answer(client, runtime, user, monkeyp
                               TURN_TIMEOUT_S)
     assert turn.status == "completed", turn.error
     print("--- THE LACE SAYS\n" + client.get(f"{API}/laces/{lace_id}/messages").json()[-1]["content"])
+
+
+OPPORTUNITIES_TIMEOUT_S = 900
+
+
+def test_lace_finds_open_opportunities(client, runtime, user):
+    from backend.app.runs import manager
+
+    created = client.post(f"{API}/laces", json={"name": "Ada", "website": "shangalabs.com"}).json()
+    lace_id = uuid.UUID(created["lace"]["id"])
+    run = client.portal.call(_wait_for_status, uuid.UUID(created["run_id"]), {"completed", "failed"}, ONBOARDING_TIMEOUT_S)
+    assert run.status == "completed", run.error
+    sent = client.post(f"{API}/laces/{lace_id}/messages", json={
+        "text": "Work out our ideal customer profile. We sell to companies in Kenya and East Africa."}).json()
+    turn = client.portal.call(_wait_for_status, uuid.UUID(sent["run_id"]), {"completed", "failed"}, TURN_TIMEOUT_S)
+    assert turn.status == "completed", turn.error
+
+    job = client.portal.call(manager.start_lace_job, "lace_opportunities", user.id, lace_id, {})
+    job = client.portal.call(_wait_for_status, job.id, {"completed", "failed"}, OPPORTUNITIES_TIMEOUT_S)
+    assert job.status == "completed", job.error
+    found = client.get(f"{API}/laces/{lace_id}/opportunities").json()
+    print(f"\n--- {len(found)} open opportunities, {job.progress}")
+    for o in found:
+        print(f"  [{o['kind']}] {o['title']} | deadline {o['deadline']} | date {o['event_date']} | {o['organiser']}"
+              f" | {o['url']}\n      fits: {o['why_it_fits']}\n      next: {o['how_to_act']}")
+    assert found

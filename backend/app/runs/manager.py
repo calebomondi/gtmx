@@ -179,10 +179,11 @@ async def wake_lace(user_id: uuid.UUID, lace_id: uuid.UUID) -> None:
 # The run kind behind each job a Lace's tools can start.
 _TOOL_JOB_RUN_KINDS = {"find_competitors": "lace_competitors", "check_competitors": "lace_monitor",
                        "find_accounts": "lace_accounts", "find_contacts": "lace_contacts",
-                       "draft_outreach": "lace_drafts"}
+                       "draft_outreach": "lace_drafts", "find_opportunities": "lace_opportunities"}
 _JOB_SEGMENTS = {"lace_competitors": lace_jobs.competitors_job, "lace_monitor": lace_jobs.monitor_job,
                  "lace_accounts": lace_jobs.accounts_job, "lace_contacts": lace_jobs.contacts_job,
-                 "lace_drafts": lace_jobs.drafts_job, "lace_reply": lace_jobs.reply_job}
+                 "lace_drafts": lace_jobs.drafts_job, "lace_reply": lace_jobs.reply_job,
+                 "lace_opportunities": lace_jobs.opportunities_job}
 _JOB_BUSY = {
     "lace_competitors": "A competitor search is already running; I'll report when it's done.",
     "lace_monitor": "I'm already checking the competitors; I'll report anything that matters.",
@@ -191,6 +192,7 @@ _JOB_BUSY = {
     "lace_drafts": "I'm already drafting messages; I'll report when they're ready.",
     # A running reply job reads every unread reply before it ends, new ones too.
     "lace_reply": "Replies are already being read.",
+    "lace_opportunities": "I'm already looking for opportunities; I'll report when it's done.",
 }
 
 

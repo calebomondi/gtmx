@@ -15,19 +15,21 @@ from agents.lace.graph import BRIEF_FACTS
 from agents.lace.competitors import change_fact, find_competitors, material, offer_for_monitor
 from agents.lace.contacts import complete_contacts, contact_status
 from agents.lace.accounts import record_brief
+from agents.lace.opportunities import find_opportunities
 from agents.lace.outreach import draft_first_touch, recipient_for, research_by_domain
 from agents.lace.prompts import render_brief
 from agents.pipelines.outreach import gtm_replies
 from agents.lace.store import JobBlocked
 from agents.pipelines.monitor import check_competitor
 from agents.schemas.accounts import AccountRecord
+from agents.schemas.opportunities import OPPORTUNITY_KINDS
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.database.lace_models import LaceAccount, LaceOutreach
 from backend.app.runs import events
 from backend.app.runs.errors import user_facing_error
 
-from backend.app.services import lace_accounts, lace_competitors, lace_events, lace_outreach
+from backend.app.services import lace_accounts, lace_competitors, lace_events, lace_opportunities, lace_outreach
 from backend.app.services import calendar as calendar_service
 from backend.app.services import outreach as outreach_service
 from backend.app.services.competitors import domain_key
@@ -358,3 +360,37 @@ def reply_update_line(reply: LaceOutreach, analysis, drafted: bool) -> str:
     if drafted:
         return line + " An answer is drafted in Outreach for the founder to review and send."
     return line + " No answer is needed."
+
+
+async def opportunities_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
+    """Search for opportunities, save the sourced, open ones, and queue an
+    update. A scheduled search that found nothing new says nothing."""
+    store = DbLaceStore(AsyncSessionLocal, lace_id)
+    profile, facts, icp = await asyncio.gather(store.profile(), store.facts(None, BRIEF_FACTS), store.icp())
+    kinds = [k for k in params.get("kinds") or OPPORTUNITY_KINDS if k in OPPORTUNITY_KINDS]
+    try:
+        with events.reporting_steps(run_id):
+            report("Looking for " + ", ".join(kinds) + " opportunities")
+            found = await asyncio.to_thread(find_opportunities, profile, facts, icp, settings, kinds)
+    except Exception as exc:
+        async with AsyncSessionLocal() as db, db.begin():
+            await lace_events.add(db, lace_id, f"The opportunity search failed: {_failure(exc)}")
+        raise
+    async with AsyncSessionLocal() as db, db.begin():
+        new, refreshed = await lace_opportunities.upsert_found(db, lace_id, run_id, found)
+        if new or not params.get("scheduled"):
+            await lace_events.add(db, lace_id, opportunities_update(found, new))
+    await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
+                         progress={"found": len(found), "new": new, "refreshed": refreshed})
+    await events.publish(run_id, "complete", {"found": len(found)})
+
+
+def opportunities_update(found: list, new: int) -> str:
+    if not found:
+        return "The opportunity search finished without finding anything current that fits."
+    lines = []
+    for o in sorted(found, key=lambda o: o.deadline or o.date or "9999"):
+        when = f" (deadline {o.deadline})" if o.deadline else f" ({o.date})" if o.date else ""
+        lines.append(f"[{o.kind}] {o.title}{when}: {o.why_it_fits} Next step: {o.how_to_act} ({o.url})")
+    return (f"The opportunity search found {len(found)} open opportunities ({new} new):\n" + "\n".join(lines)
+            + "\nThey are saved; use list_opportunities for all of them.")

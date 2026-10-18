@@ -15,9 +15,10 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agents.schemas.icp import ICP
+from agents.schemas.opportunities import OpportunitySummary
 from agents.schemas.lace import AccountSummary, CompetitorSummary, Fact, FactTopic, LaceProfile, NewFact, SourcePage
 from backend.app.database.lace_models import Lace, LaceFact, LaceSource
-from backend.app.services import lace_accounts, lace_competitors
+from backend.app.services import lace_accounts, lace_competitors, lace_opportunities
 from backend.app.services.errors import NotFoundError
 from backend.app.services.laces import current_facts_query
 
@@ -104,6 +105,11 @@ class DbLaceStore:
         async with self._sessions() as session:
             rows = await lace_accounts.list_for_lace(session, self._lace_id, "target", limit)
         return [lace_accounts.summary(r) for r in rows]
+
+    async def opportunities(self, limit: int = 50) -> list[OpportunitySummary]:
+        async with self._sessions() as session:
+            rows = await lace_opportunities.list_for_lace(session, self._lace_id, "open", limit)
+        return [lace_opportunities.summary(r) for r in rows]
 
     async def competitors(self, limit: int = 50) -> list[CompetitorSummary]:
         async with self._sessions() as session:

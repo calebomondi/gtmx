@@ -45,6 +45,8 @@ export interface LaceChat {
   outreach: LaceOutreachDto[]
   /** The Lace is drafting messages in the background. */
   drafting: boolean
+  /** The Lace is looking for opportunities in the background. */
+  findingOpportunities: boolean
   loading: boolean
   /** A load or send failure, or a run that failed. */
   error: string | null
@@ -82,6 +84,7 @@ export function useLaceChat(laceId: string): LaceChat {
   const [findingAccounts, setFindingAccounts] = useState(false)
   const [outreach, setOutreach] = useState<LaceOutreachDto[]>([])
   const [drafting, setDrafting] = useState(false)
+  const [findingOpportunities, setFindingOpportunities] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [working, setWorking] = useState(false)
@@ -145,6 +148,7 @@ export function useLaceChat(laceId: string): LaceChat {
     setSearching(mine.some((run) => run.kind === "lace_competitors"))
     setFindingAccounts(mine.some((run) => run.kind === "lace_accounts" || run.kind === "lace_contacts"))
     setDrafting(mine.some((run) => run.kind === "lace_drafts"))
+    setFindingOpportunities(mine.some((run) => run.kind === "lace_opportunities"))
     const turn = mine.find((run) => run.kind === "lace_turn" || run.kind === "lace_onboarding")
     if (turn && !busy.current) void follow(turn.id)
   }, [laceId, follow])
@@ -231,7 +235,8 @@ export function useLaceChat(laceId: string): LaceChat {
   }, [laceId, follow, refresh])
 
   return {
-    lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, drafting, loading, error,
+    lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, drafting, findingOpportunities,
+    loading, error,
     working, step, draft, send, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, markSent,
   }
 }

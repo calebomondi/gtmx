@@ -24,12 +24,15 @@ from backend.app.schemas.laces import (
     LaceMessageRequest,
     LaceResponse,
     LaceTurnResponse,
+    OpportunityResponse,
+    OpportunityUpdateRequest,
     OutreachResponse,
     OutreachUpdateRequest,
 )
-from backend.app.services import lace_accounts, lace_channels, lace_competitors, lace_outreach
+from backend.app.services import lace_accounts, lace_channels, lace_competitors, lace_opportunities, lace_outreach
 from backend.app.services import laces as lace_service
 from agents.schemas.lace import AccountStatus, CompetitorStatus, FactTopic, InboxPlatform
+from agents.schemas.opportunities import OpportunityStatus
 
 router = APIRouter()
 
@@ -39,6 +42,7 @@ MAX_MESSAGES_PER_PAGE = 200
 MAX_COMPETITORS_PER_PAGE = 100
 MAX_ACCOUNTS_PER_PAGE = 100
 MAX_OUTREACH_PER_PAGE = 100
+MAX_OPPORTUNITIES_PER_PAGE = 100
 
 
 @router.post("", response_model=LaceCreateResponse, status_code=status.HTTP_201_CREATED)
@@ -148,3 +152,17 @@ async def link_channel(lace: OwnedLace, payload: ChannelLinkRequest, user: Curre
 @router.delete("/{lace_id}/channels/{channel_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def unlink_channel(lace: OwnedLace, channel_id: uuid.UUID, db: DbSession):
     await lace_channels.unlink(db, lace.id, channel_id)
+
+
+@router.get("/{lace_id}/opportunities", response_model=list[OpportunityResponse])
+async def list_opportunities(lace: OwnedLace, db: DbSession,
+                             shown: OpportunityStatus = Query(default="open", alias="status"),
+                             limit: int = Query(default=50, ge=1, le=MAX_OPPORTUNITIES_PER_PAGE)):
+    """Open ones exclude anything whose deadline or date has passed."""
+    return await lace_opportunities.list_for_lace(db, lace.id, shown, limit)
+
+
+@router.patch("/{lace_id}/opportunities/{opportunity_id}", response_model=OpportunityResponse)
+async def update_opportunity(lace: OwnedLace, opportunity_id: uuid.UUID, payload: OpportunityUpdateRequest,
+                             db: DbSession):
+    return await lace_opportunities.set_status(db, lace.id, opportunity_id, payload.status)

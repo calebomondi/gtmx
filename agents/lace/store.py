@@ -9,6 +9,7 @@ reaching another startup's data whatever it asks for.
 from typing import Literal, Protocol
 
 from agents.schemas.icp import ICP
+from agents.schemas.opportunities import OpportunitySummary
 from agents.schemas.lace import AccountSummary, CompetitorSummary, Fact, FactTopic, LaceProfile, NewFact, SourcePage
 
 
@@ -40,12 +41,16 @@ class LaceStore(Protocol):
         """Target accounts, strongest fit first; dismissed ones are left out."""
         ...
 
+    async def opportunities(self, limit: int = 50) -> list[OpportunitySummary]:
+        """Open opportunities, the soonest deadline first."""
+        ...
+
     async def competitors(self, limit: int = 50) -> list[CompetitorSummary]:
         """Tracked competitors, newest first; dismissed ones are left out."""
         ...
 
 
-JobKind = Literal["find_competitors", "check_competitors", "find_accounts", "find_contacts", "draft_outreach"]
+JobKind = Literal["find_competitors", "check_competitors", "find_accounts", "find_contacts", "draft_outreach", "find_opportunities"]
 
 
 class JobRefused(Exception):

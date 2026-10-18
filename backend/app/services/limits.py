@@ -54,6 +54,7 @@ def default_daily_cap(kind: str) -> int:
         "lace_drafts": settings.max_account_runs_per_day,
         # One per sync that brought replies: bounded by what the user sends.
         "lace_reply": settings.max_outreach_sends_per_day,
+        "lace_opportunities": settings.max_account_runs_per_day,
     }[kind]
 
 

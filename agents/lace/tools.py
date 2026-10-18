@@ -16,6 +16,7 @@ from langchain_core.tools import BaseTool, tool
 from agents.context_budget import _truncate_to_tokens, count_tokens
 from agents.lace import icp as lace_icp
 from agents.lace.store import JobRefused, LaceJobs, LaceStore
+from agents.schemas.opportunities import OPPORTUNITY_KINDS, OpportunityKind
 from agents.schemas.lace import Confidence, FactTopic, NewFact, SourcePage, ToolResult
 from config import Settings
 from data_sources.scraping import exa, firecrawl
@@ -33,6 +34,7 @@ HIGHLIGHTS_PER_RESULT = 3
 FACTS_PER_READ = 50
 COMPETITORS_PER_READ = 50
 ACCOUNTS_PER_READ = 50
+OPPORTUNITIES_PER_READ = 50
 # Facts the ICP is drawn from.
 ICP_FACTS = 150
 
@@ -223,8 +225,15 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
         rows = await store.accounts(ACCOUNTS_PER_READ)
         return ToolResult.success(f"{len(rows)} target accounts.", [r.model_dump(exclude_none=True) for r in rows])
 
+    @tool(parse_docstring=True)
+    @_guarded
+    async def list_opportunities() -> ToolResult:
+        """The open opportunities found so far (events to showcase at, tenders and buyers to sell to, partners), soonest deadline first."""
+        rows = await store.opportunities(OPPORTUNITIES_PER_READ)
+        return ToolResult.success(f"{len(rows)} open opportunities.", [r.model_dump(exclude_none=True) for r in rows])
+
     tools = [search_web, map_site, read_page, read_pages, get_facts, record_fact, list_competitors, define_icp,
-             list_accounts]
+             list_accounts, list_opportunities]
     if jobs is None:
         return tools
 
@@ -299,4 +308,19 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
             return ToolResult.failure(str(exc))
         return ToolResult.success("Started drafting. You will get an update here when the drafts are ready.")
 
-    return [*tools, find_competitors, check_competitors, find_accounts, find_contacts, draft_outreach]
+    @tool(parse_docstring=True)
+    @_guarded
+    async def find_opportunities(kinds: list[OpportunityKind] | None = None) -> ToolResult:
+        """Search for current opportunities: showcase (events, conferences, awards, press), sell (open tenders, RFPs, buyers looking) and partner (complementary companies, integrations, resellers). Keeps only sourced ones that are still open. Runs in the background; you get an update when it is done. It also runs weekly on its own.
+
+        Args:
+            kinds: Which kinds to look for; all three when omitted.
+        """
+        try:
+            await jobs.start("find_opportunities", {"kinds": list(kinds or OPPORTUNITY_KINDS)})
+        except JobRefused as exc:
+            return ToolResult.failure(str(exc))
+        return ToolResult.success("Started looking for opportunities. You will get an update here when it finishes.")
+
+    return [*tools, find_competitors, check_competitors, find_accounts, find_contacts, draft_outreach,
+            find_opportunities]
