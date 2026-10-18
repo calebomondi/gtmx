@@ -8,11 +8,13 @@ be shared across concurrent calls.
 
 import hashlib
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from agents.schemas.icp import ICP
 from agents.schemas.lace import CompetitorSummary, Fact, FactTopic, LaceProfile, NewFact, SourcePage
 from backend.app.database.lace_models import Lace, LaceFact, LaceSource
 from backend.app.services import lace_competitors
@@ -87,6 +89,16 @@ class DbLaceStore:
         async with self._sessions() as session, session.begin():
             await session.execute(stmt)
 
+
+    async def icp(self) -> ICP | None:
+        async with self._sessions() as session:
+            lace = await session.get(Lace, self._lace_id)
+        return ICP.model_validate(lace.icp) if lace is not None and lace.icp else None
+
+    async def save_icp(self, icp: ICP) -> None:
+        async with self._sessions() as session, session.begin():
+            await session.execute(update(Lace).where(Lace.id == self._lace_id).values(
+                icp=icp.model_dump(mode="json"), icp_updated_at=datetime.now(UTC)))
 
     async def competitors(self, limit: int = 50) -> list[CompetitorSummary]:
         async with self._sessions() as session:

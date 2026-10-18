@@ -14,6 +14,7 @@ from typing import Literal
 from langchain_core.tools import BaseTool, tool
 
 from agents.context_budget import _truncate_to_tokens, count_tokens
+from agents.lace import icp as lace_icp
 from agents.lace.store import JobRefused, LaceJobs, LaceStore
 from agents.schemas.lace import Confidence, FactTopic, NewFact, SourcePage, ToolResult
 from config import Settings
@@ -31,6 +32,8 @@ SEARCH_RESULTS = 8
 HIGHLIGHTS_PER_RESULT = 3
 FACTS_PER_READ = 50
 COMPETITORS_PER_READ = 50
+# Facts the ICP is drawn from.
+ICP_FACTS = 150
 
 
 def _guarded(fn: Callable[..., Awaitable[ToolResult]]) -> Callable[..., Awaitable[str]]:
@@ -198,7 +201,21 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
         data = [r.model_dump() for r in rows]
         return ToolResult.success(f"{len(data)} competitors tracked.", data)
 
-    tools = [search_web, map_site, read_page, read_pages, get_facts, record_fact, list_competitors]
+    @tool(parse_docstring=True)
+    @_guarded
+    async def define_icp(guidance: str | None = None) -> ToolResult:
+        """Work out (or rework) who the startup should sell to: its ideal customer profile, from everything you know. Do this before looking for customers, and again when the founder corrects who their buyers are (record their correction with record_fact first).
+
+        Args:
+            guidance: Optional direction from the founder, e.g. "focus on clinics in Nairobi".
+        """
+        profile, facts, rivals = await asyncio.gather(
+            store.profile(), store.facts(None, ICP_FACTS), store.competitors(COMPETITORS_PER_READ))
+        icp = await asyncio.to_thread(lace_icp.define_icp, profile, facts, rivals, guidance)
+        await store.save_icp(icp)
+        return ToolResult.success("Saved the ideal customer profile.", icp.model_dump(exclude_defaults=True))
+
+    tools = [search_web, map_site, read_page, read_pages, get_facts, record_fact, list_competitors, define_icp]
     if jobs is None:
         return tools
 

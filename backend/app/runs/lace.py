@@ -50,6 +50,7 @@ _STEP_TEXT = {
     "read_pages": lambda a: f"Reading {len(a.get('urls') or [])} pages",
     "get_facts": lambda a: "Checking what I know",
     "record_fact": lambda a: "Noting that down",
+    "define_icp": lambda a: "Working out who your ideal customers are",
     "list_competitors": lambda a: "Checking the competitors I track",
     "find_competitors": lambda a: "Starting a competitor search",
     "check_competitors": lambda a: "Checking competitors for changes",

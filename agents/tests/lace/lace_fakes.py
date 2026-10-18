@@ -15,6 +15,7 @@ class MemoryStore:
         self.superseded: set[str] = set()
         self.sources: dict[str, SourcePage] = {}
         self.tracked: list[CompetitorSummary] = []
+        self.saved_icp = None
         self._ids = itertools.count(len(self._facts) + 1)
         self.startup_name: str | None = "Acme"
         self.website = "https://acme.test"
@@ -40,6 +41,12 @@ class MemoryStore:
 
     async def save_source(self, page: SourcePage) -> None:
         self.sources[page.url] = page
+
+    async def icp(self):
+        return self.saved_icp
+
+    async def save_icp(self, icp) -> None:
+        self.saved_icp = icp
 
     async def competitors(self, limit=50) -> list[CompetitorSummary]:
         return self.tracked[:limit]

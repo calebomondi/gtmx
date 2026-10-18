@@ -43,6 +43,10 @@ class Lace(Base):
     startup_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="onboarding",
                                         server_default="onboarding", index=True)
+    # The ideal customer profile (agents.schemas.icp.ICP): the Lace's own
+    # judgment, so a blob rather than facts. NULL until first defined.
+    icp: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    icp_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
                                                  default=_now, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
