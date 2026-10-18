@@ -1,9 +1,10 @@
 """Replies and bounces for sent outreach, synced from the user's Gmail.
 
 One mailbox search per user per sync (recent mail not from the user), matched
-to the threads of emails sent from Thalace. A reply becomes an inbound message
-in that thread; a delivery-failure notice marks the sent email bounced. Read
-only: syncing never sends, labels or deletes anything in the mailbox.
+to the threads of emails sent from Thalace, from a workspace or a Lace. A reply
+becomes an inbound message in that thread, in the same table as the email it
+answers; a delivery-failure notice marks the sent email bounced. Read only:
+syncing never sends, labels or deletes anything in the mailbox.
 """
 
 import asyncio
@@ -30,10 +31,15 @@ _BOUNCE_SUBJECTS = re.compile(r"delivery status notification|undeliverable|deliv
 _ADDRESS_RE = re.compile(r"<?([^<>\s]+@[^<>\s]+)>?\s*$")
 
 
+# Sent outreach lives in two tables with the same fields: a workspace's and a Lace's.
+_OUTREACH = (models.OutreachMessage, models.LaceOutreach)
+Outreach = models.OutreachMessage | models.LaceOutreach
+
+
 @dataclass
 class SyncResult:
-    replies: list[models.OutreachMessage] = field(default_factory=list)
-    bounced: list[models.OutreachMessage] = field(default_factory=list)
+    replies: list[Outreach] = field(default_factory=list)
+    bounced: list[Outreach] = field(default_factory=list)
 
 
 def _address(sender: str) -> str:
@@ -77,18 +83,18 @@ def _fetch_recent(user_id: uuid.UUID, connection_id: str, days: int) -> list[dic
     return messages
 
 
-async def _sent_threads(db: AsyncSession, user_id: uuid.UUID, since: datetime) -> dict[str, models.OutreachMessage]:
+async def _sent_threads(db: AsyncSession, user_id: uuid.UUID, since: datetime) -> dict[str, Outreach]:
     """thread_id -> the latest email the user sent in it, within the window."""
-    rows = (await db.execute(
-        select(models.OutreachMessage).where(
-            models.OutreachMessage.user_id == user_id,
-            models.OutreachMessage.channel == "email",
-            models.OutreachMessage.direction == "outbound",
-            models.OutreachMessage.thread_id.is_not(None),
-            models.OutreachMessage.sent_at >= since,
-        ).order_by(models.OutreachMessage.sent_at)
-    )).scalars().all()
-    return {row.thread_id: row for row in rows}
+    threads: dict[str, Outreach] = {}
+    for model in _OUTREACH:
+        rows = (await db.execute(
+            select(model).where(
+                model.user_id == user_id, model.channel == "email", model.direction == "outbound",
+                model.thread_id.is_not(None), model.sent_at >= since,
+            ).order_by(model.sent_at)
+        )).scalars().all()
+        threads.update((row.thread_id, row) for row in rows)
+    return threads
 
 
 def _text(message: dict) -> str:
@@ -101,10 +107,15 @@ def _text(message: dict) -> str:
     return ""
 
 
-def _inbound(sent: models.OutreachMessage, message: dict, status: str) -> models.OutreachMessage:
+def _owner(sent: Outreach) -> dict:
+    return {"lace_id": sent.lace_id} if isinstance(sent, models.LaceOutreach) else {"workspace_id": sent.workspace_id}
+
+
+def _inbound(sent: Outreach, message: dict, status: str) -> Outreach:
+    """The received message, in the same table as the email it answers."""
     sender = message.get("sender") or ""
-    return models.OutreachMessage(
-        workspace_id=sent.workspace_id, user_id=sent.user_id, account_id=sent.account_id,
+    return type(sent)(
+        **_owner(sent), user_id=sent.user_id, account_id=sent.account_id,
         channel="email", direction="inbound", status=status, thread_id=sent.thread_id,
         provider_message_id=message.get("messageId"),
         recipient_name=_display_name(sender) or sent.recipient_name,
@@ -115,7 +126,7 @@ def _inbound(sent: models.OutreachMessage, message: dict, status: str) -> models
     )
 
 
-def _bounced_send(message: dict, threads: dict[str, models.OutreachMessage]) -> models.OutreachMessage | None:
+def _bounced_send(message: dict, threads: dict[str, Outreach]) -> Outreach | None:
     """The sent email a bounce notice is about: same thread, or the bounce
     text names its recipient."""
     if message.get("threadId") in threads:
@@ -137,11 +148,11 @@ async def sync_user(db: AsyncSession, user_id: uuid.UUID) -> SyncResult:
         return result
 
     fetched = await asyncio.to_thread(_fetch_recent, user_id, gmail.id, settings.inbox_sync_window_days)
-    known = set((await db.execute(
-        select(models.OutreachMessage.provider_message_id).where(
-            models.OutreachMessage.user_id == user_id, models.OutreachMessage.provider_message_id.is_not(None),
-        )
-    )).scalars())
+    known: set[str] = set()
+    for model in _OUTREACH:
+        known |= set((await db.execute(select(model.provider_message_id).where(
+            model.user_id == user_id, model.provider_message_id.is_not(None),
+        ))).scalars())
     for message in fetched:
         if not message.get("messageId") or message["messageId"] in known:
             continue
@@ -166,12 +177,12 @@ async def sync_user(db: AsyncSession, user_id: uuid.UUID) -> SyncResult:
 
 
 async def users_to_sync(db: AsyncSession) -> list[uuid.UUID]:
-    """Users with an email sent from Thalace inside the sync window."""
+    """Users with an email sent from Thalace (a workspace or a Lace) inside the
+    sync window."""
     since = datetime.now(UTC) - timedelta(days=settings.inbox_sync_window_days)
-    return list((await db.execute(
-        select(models.OutreachMessage.user_id).where(
-            models.OutreachMessage.direction == "outbound",
-            models.OutreachMessage.thread_id.is_not(None),
-            models.OutreachMessage.sent_at >= since,
-        ).distinct()
-    )).scalars())
+    users: set[uuid.UUID] = set()
+    for model in _OUTREACH:
+        users |= set((await db.execute(select(model.user_id).where(
+            model.direction == "outbound", model.thread_id.is_not(None), model.sent_at >= since,
+        ).distinct())).scalars())
+    return sorted(users)

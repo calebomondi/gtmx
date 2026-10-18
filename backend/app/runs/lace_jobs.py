@@ -14,17 +14,21 @@ from agents.lace.accounts import find_accounts
 from agents.lace.graph import BRIEF_FACTS
 from agents.lace.competitors import change_fact, find_competitors, material, offer_for_monitor
 from agents.lace.contacts import complete_contacts, contact_status
-from agents.lace.outreach import draft_first_touch, recipient_for
+from agents.lace.accounts import record_brief
+from agents.lace.outreach import draft_first_touch, recipient_for, research_by_domain
+from agents.lace.prompts import render_brief
+from agents.pipelines.outreach import gtm_replies
 from agents.lace.store import JobBlocked
 from agents.pipelines.monitor import check_competitor
 from agents.schemas.accounts import AccountRecord
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
-from backend.app.database.lace_models import LaceOutreach
+from backend.app.database.lace_models import LaceAccount, LaceOutreach
 from backend.app.runs import events
 from backend.app.runs.errors import user_facing_error
 
 from backend.app.services import lace_accounts, lace_competitors, lace_events, lace_outreach
+from backend.app.services import calendar as calendar_service
 from backend.app.services import outreach as outreach_service
 from backend.app.services.competitors import domain_key
 from backend.app.services.lace_store import DbLaceStore
@@ -32,6 +36,11 @@ from backend.app.services.runs import set_run_fields
 from config import settings
 from utils.log import logger
 from utils.progress import report
+
+# Replies read per round, and rounds per run (a run picks up replies that
+# arrive while it works).
+REPLIES_BATCH = 10
+MAX_REPLY_ROUNDS = 3
 
 # Accounts one drafting run writes to, how many at once, and the competitors
 # the drafts may compare against.
@@ -287,3 +296,62 @@ def competitors_update(found: list, new: int, refreshed: int) -> str:
     names = ", ".join(f"{p.name} ({p.website})" for p in found)
     return (f"The competitor search finished: {len(found)} competitors ({new} new, {refreshed} already tracked): "
             f"{names}. Their profiles are saved; use list_competitors for details.")
+
+
+async def reply_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
+    """Read each reply that came in and draft the answer through v1's reply
+    pipeline (classify, consult, write, check), offering free calendar slots.
+    The answer waits as a draft in the same thread; nothing is sent. Loops
+    until no reply is left unread, so ones arriving mid-run are not missed."""
+    store = DbLaceStore(AsyncSessionLocal, lace_id)
+    profile, facts, rivals = await asyncio.gather(
+        store.profile(), store.facts(None, BRIEF_FACTS), store.competitors(COMPETITORS_FOR_DRAFTS))
+    offer = render_brief([f for f in facts if f.topic in ("offer", "pricing", "customers", "positioning")])
+    research = research_by_domain(facts, rivals)
+    handled: list[str] = []
+    for _ in range(MAX_REPLY_ROUNDS):
+        # Short sessions around the reads and each write; none is held open
+        # across a model call.
+        async with AsyncSessionLocal() as db:
+            pending = await lace_outreach.unhandled_replies(db, lace_id, REPLIES_BATCH)
+            if not pending:
+                break
+            user_id = pending[0].user_id
+            slots, timezone = await calendar_service.free_slots(db, user_id)
+            work = []
+            for reply in pending:
+                conversation = await lace_outreach.thread(db, reply)
+                account = await db.get(LaceAccount, reply.account_id) if reply.account_id else None
+                work.append((reply.id, reply.recipient_name, conversation, account.record if account else None,
+                             reply.recipient_company))
+        sender = await outreach_service.sender_for_user(user_id)
+        for reply_id, contact, conversation, record, company in work:
+            brief = gtm_replies.ReplyBrief(
+                sender_name=sender, contact_name=contact, offer=offer,
+                account=record_brief(AccountRecord.model_validate(record)) if record else company,
+                thread=[("them" if m.direction == "inbound" else "us", m.body) for m in conversation
+                        if m.status not in ("draft", "failed")],
+                research=research, free_slots=slots, timezone=timezone,
+            )
+            result = await asyncio.to_thread(gtm_replies.draft_reply, brief)
+            async with AsyncSessionLocal() as db, db.begin():
+                reply = await db.get(LaceOutreach, reply_id)
+                draft = await lace_outreach.record_reading(
+                    db, reply, result.analysis.intent, result.draft.body if result.draft else None, run_id)
+                handled.append(reply_update_line(reply, result.analysis, draft is not None))
+    if handled:
+        async with AsyncSessionLocal() as db, db.begin():
+            await lace_events.add(db, lace_id, "Replies to the founder's outreach came in:\n" + "\n".join(handled))
+    await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
+                         progress={"replies": len(handled)})
+    await events.publish(run_id, "complete", {"replies": len(handled)})
+
+
+def reply_update_line(reply: LaceOutreach, analysis, drafted: bool) -> str:
+    who = f"{reply.recipient_name or reply.recipient_address} at {reply.recipient_company}"
+    line = f"{who} replied ({analysis.intent}): {analysis.summary}"
+    if analysis.intent == "unsubscribe":
+        return line + " They asked not to be contacted; nothing more will be drafted or sent to them."
+    if drafted:
+        return line + " An answer is drafted in Outreach for the founder to review and send."
+    return line + " No answer is needed."

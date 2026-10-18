@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import exists, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database.lace_models import LaceAccount, LaceOutreach
@@ -52,7 +52,41 @@ async def delete(db: AsyncSession, message: LaceOutreach) -> None:
 async def send(db: AsyncSession, message: LaceOutreach) -> LaceOutreach:
     """Send an email draft through the founder's Gmail: only ever on the
     founder's own click, which is their approval."""
+    if message.account_id and (account := await db.get(LaceAccount, message.account_id)) and account.do_not_contact:
+        raise ConflictError(f"{account.name} asked not to be contacted.")
     return await outreach_service.send_email(db, message)
+
+
+async def unhandled_replies(db: AsyncSession, lace_id: uuid.UUID, limit: int) -> list[LaceOutreach]:
+    """Replies that came in and were not read yet, oldest first."""
+    return list((await db.scalars(select(LaceOutreach).where(
+        LaceOutreach.lace_id == lace_id, LaceOutreach.direction == "inbound", LaceOutreach.status == "received",
+        LaceOutreach.intent.is_(None),
+    ).order_by(LaceOutreach.sent_at).limit(limit))).all())
+
+
+async def thread(db: AsyncSession, message: LaceOutreach) -> list[LaceOutreach]:
+    """The message's conversation, oldest first."""
+    return list((await db.scalars(select(LaceOutreach).where(
+        LaceOutreach.lace_id == message.lace_id, LaceOutreach.thread_id == message.thread_id,
+    ).order_by(func.coalesce(LaceOutreach.sent_at, LaceOutreach.created_at)))).all())
+
+
+async def record_reading(db: AsyncSession, reply: LaceOutreach, intent: str, draft_body: str | None,
+                         run_id: uuid.UUID) -> LaceOutreach | None:
+    """Store how a reply was read, stop all contact when they asked, and add
+    the answer as a draft in its thread, to whoever wrote. Returns the draft."""
+    reply.intent = intent
+    if intent == "unsubscribe" and reply.account_id and (account := await db.get(LaceAccount, reply.account_id)):
+        account.do_not_contact = True
+    draft = None
+    if draft_body:
+        draft = LaceOutreach(lace_id=reply.lace_id, user_id=reply.user_id, account_id=reply.account_id, run_id=run_id,
+                             channel="email", recipient_name=reply.recipient_name,
+                             recipient_company=reply.recipient_company, recipient_address=reply.recipient_address,
+                             thread_id=reply.thread_id, body=draft_body)
+        db.add(draft)
+    return draft
 
 
 async def mark_sent(db: AsyncSession, message: LaceOutreach) -> LaceOutreach:
@@ -76,4 +110,5 @@ async def accounts_to_draft(db: AsyncSession, lace_id: uuid.UUID, ids: list[uuid
     else:
         written = exists().where(LaceOutreach.account_id == LaceAccount.id, LaceOutreach.direction == "outbound")
         query = query.where(~written, LaceAccount.contact_status.in_(("person", "organisation")))
+    query = query.where(LaceAccount.do_not_contact.is_(False))
     return list((await db.scalars(query.order_by(BY_FIT, LaceAccount.score.desc().nulls_last()).limit(limit))).all())

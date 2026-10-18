@@ -128,6 +128,8 @@ class OutreachResponse(BaseModel):
     recipient_address: str | None = Field(description="An email address, or a LinkedIn profile URL")
     subject: str | None
     body: str
+    thread_id: str | None = Field(description="Set on sent emails, replies and answers in their thread")
+    intent: str | None = Field(description="inbound only: how the reply was read, e.g. interested, question")
     error: str | None
     sent_at: datetime | None
     created_at: datetime

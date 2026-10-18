@@ -128,6 +128,10 @@ export interface LaceOutreachDto {
   recipient_address: string | null
   subject: string | null
   body: string
+  /** Set on sent emails, replies, and answers drafted in their thread. */
+  thread_id: string | null
+  /** Inbound only: how the reply was read, e.g. "interested", "question". */
+  intent: string | null
   error: string | null
   sent_at: string | null
   created_at: string

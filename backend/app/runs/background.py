@@ -17,6 +17,7 @@ from agents.pipelines.chat import workspace_chat
 from agents.pipelines.monitor import check_competitor
 from agents.pipelines.monitor import socials as competitor_socials
 from agents.pipelines.outreach import gtm_replies, gtm_specialist
+from agents.lace.store import JobRefused
 from agents.schemas.monitor import CompetitorChange
 from backend.app.account_runner import run_account_discovery_for_workspace
 from backend.app.competitor_runner import research_competitor_site, run_competitor_discovery
@@ -30,6 +31,7 @@ from backend.app.services import competitors as competitor_service
 from backend.app.services import outreach as outreach_service
 from backend.app.services import specialists as specialist_service
 from backend.app.services.errors import RateLimitedError
+from backend.app.services.inbox import SyncResult
 from config import settings
 from utils.log import logger
 
@@ -348,11 +350,22 @@ def _meeting(agreed_time: str, timezone: str, reply: models.OutreachMessage, off
 
 
 async def after_inbox_sync(result) -> None:
-    """Feed signals for what arrived, and a reply draft for each new reply."""
-    await signals.inbox_synced(result)
+    """Workspace replies and bounces: feed signals, and a reply draft for each
+    new reply. A Lace's replies: one reading run per Lace, whose update tells
+    the founder."""
     from backend.app.runs import manager  # manager imports this module
 
-    for reply in result.replies:
+    lace_replies = [m for m in result.replies if isinstance(m, models.LaceOutreach)]
+    workspace = SyncResult(replies=[m for m in result.replies if isinstance(m, models.OutreachMessage)],
+                           bounced=[m for m in result.bounced if isinstance(m, models.OutreachMessage)])
+    await signals.inbox_synced(workspace)
+    for lace_id, user_id in {(m.lace_id, m.user_id) for m in lace_replies}:
+        try:
+            await manager.start_lace_job("lace_reply", user_id, lace_id, {})
+        except JobRefused as exc:
+            logger.info("Reading replies for Lace %s waits: %s", lace_id, exc)
+
+    for reply in workspace.replies:
         try:
             await manager.start_background(
                 "outreach_reply", reply.user_id, reply.workspace_id,
