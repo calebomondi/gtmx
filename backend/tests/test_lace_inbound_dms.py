@@ -120,3 +120,63 @@ def test_a_disconnected_account_is_skipped(client, lace, lace_runtime, meta):  #
     meta["calls"].clear()
     assert client.portal.call(scheduler.sync_lace_channels) == 0
     assert meta["calls"] == []
+
+
+def _answer(lace_id, channel="instagram", thread="c1", recipient="u9"):
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        user_id = conn.execute("SELECT user_id FROM laces WHERE id = %s", (lace_id,)).fetchone()[0]
+        return conn.execute(
+            "INSERT INTO lace_outreach (id, lace_id, user_id, channel, recipient_address, body, thread_id)"
+            " VALUES (gen_random_uuid(), %s, %s, %s, %s, 'Hi Joe, yes we do.', %s) RETURNING id",
+            (lace_id, user_id, channel, recipient, thread)).fetchone()[0]
+
+
+def _send_result(monkeypatch, meta, error=None):
+    sent = []
+    original = connection_service.execute_tool
+
+    def execute(user_id, tool, arguments, connection_id):
+        if tool in ("INSTAGRAM_SEND_TEXT_MESSAGE", "FACEBOOK_SEND_MESSAGE"):
+            sent.append((tool, arguments))
+            return {"data": None if error else {"recipient_id": "u9", "message_id": "mid_1"}, "error": error,
+                    "log_id": "l9"}
+        return original(user_id, tool, arguments, connection_id)
+    monkeypatch.setattr(connection_service, "execute_tool", execute)
+    return sent
+
+
+@pytest.mark.parametrize("platform, account, tool, arguments", [
+    ("instagram", "ig_1", "INSTAGRAM_SEND_TEXT_MESSAGE",
+     {"ig_user_id": "ig_1", "recipient_id": "u9", "text": "Hi Joe, yes we do."}),
+    ("facebook", "pg_1", "FACEBOOK_SEND_MESSAGE",
+     {"page_id": "pg_1", "recipient_id": "u9", "message_text": "Hi Joe, yes we do.", "messaging_type": "RESPONSE"}),
+])
+def test_an_answer_goes_out_in_its_conversation(client, lace, lace_runtime, meta, monkeypatch,  # noqa: F811
+                                                 platform, account, tool, arguments):
+    client.post(f"{API}/laces/{lace}/channels", json={"platform": platform, "account_id": account})
+    sent = _send_result(monkeypatch, meta)
+    message = _answer(lace, channel=platform)
+    out = client.post(f"{API}/laces/{lace}/outreach/{message}/send").json()
+    assert out["status"] == "sent" and out["sent_at"]
+    assert sent == [(tool, arguments)]
+    with psycopg.connect(settings.database_url) as conn:
+        assert conn.execute("SELECT provider_message_id, provider_log_id FROM lace_outreach WHERE id = %s",
+                            (message,)).fetchone() == ("mid_1", "l9")
+    assert client.post(f"{API}/laces/{lace}/outreach/{message}/send").status_code == 409  # sent once
+
+
+def test_outside_the_window_says_so(client, lace, lace_runtime, meta, monkeypatch):  # noqa: F811
+    client.post(f"{API}/laces/{lace}/channels", json={"platform": "instagram", "account_id": "ig_1"})
+    _send_result(monkeypatch, meta, error='{"error": {"code": 10, "error_subcode": 2534022}}')
+    out = client.post(f"{API}/laces/{lace}/outreach/{_answer(lace)}/send").json()
+    assert out["status"] == "failed" and "outside Instagram's reply window" in out["error"]
+    assert client.post(f"{API}/laces/{lace}/outreach/{_answer(lace)}/mark-sent").json()["status"] == "sent"
+
+
+def test_without_a_linked_account_or_a_conversation_it_is_a_handoff(client, lace, lace_runtime, meta, monkeypatch):  # noqa: F811
+    sent = _send_result(monkeypatch, meta)
+    unlinked = client.post(f"{API}/laces/{lace}/outreach/{_answer(lace)}/send")
+    assert unlinked.status_code == 409 and "Instagram doesn't let apps start" in unlinked.json()["detail"]
+    client.post(f"{API}/laces/{lace}/channels", json={"platform": "instagram", "account_id": "ig_1"})
+    first_touch = client.post(f"{API}/laces/{lace}/outreach/{_answer(lace, thread=None)}/send")
+    assert first_touch.status_code == 409 and sent == []

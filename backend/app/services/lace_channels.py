@@ -18,7 +18,7 @@ _ACCOUNT_TOOLS = {
     "instagram": ("INSTAGRAM_GET_USER_INFO", {"ig_user_id": "me"}),
     "facebook": ("FACEBOOK_LIST_MANAGED_PAGES", {}),
 }
-_LABELS = {"instagram": "Instagram", "facebook": "Facebook"}
+LABELS = {"instagram": "Instagram", "facebook": "Facebook"}
 
 
 def items(data) -> list[dict]:
@@ -35,7 +35,7 @@ async def live_connection(db: AsyncSession, user_id: uuid.UUID, platform: str):
     connection = next((c for c in await connection_service.list_for_user(db, user_id)
                        if c.platform == platform and c.status == "live"), None)
     if connection is None:
-        raise ConflictError(f"Connect your {_LABELS[platform]} account on the Accounts page first.")
+        raise ConflictError(f"Connect your {LABELS[platform]} account on the Accounts page first.")
     return connection
 
 
@@ -46,7 +46,7 @@ async def available(db: AsyncSession, user_id: uuid.UUID, platform: str) -> list
     tool, arguments = _ACCOUNT_TOOLS[platform]
     result = await asyncio.to_thread(connection_service.execute_tool, user_id, tool, arguments, connection.id)
     if result.get("error"):
-        raise ConflictError(f"{_LABELS[platform]} didn't list your accounts. Reconnect it on the Accounts page.")
+        raise ConflictError(f"{LABELS[platform]} didn't list your accounts. Reconnect it on the Accounts page.")
     return [{"id": str(r["id"]), "name": r.get("username") or r.get("name") or str(r["id"])}
             for r in items(result.get("data"))]
 
@@ -59,7 +59,7 @@ async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID) -> list[LaceChanne
 async def link(db: AsyncSession, lace_id: uuid.UUID, user_id: uuid.UUID, platform: str, account_id: str) -> LaceChannel:
     account = next((a for a in await available(db, user_id, platform) if a["id"] == account_id), None)
     if account is None:
-        raise InvalidInputError(f"That {_LABELS[platform]} account isn't one your connection manages.")
+        raise InvalidInputError(f"That {LABELS[platform]} account isn't one your connection manages.")
     channel = LaceChannel(lace_id=lace_id, user_id=user_id, platform=platform, account_id=account_id,
                           account_name=account["name"][:255])
     db.add(channel)
