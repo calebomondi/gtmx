@@ -36,6 +36,10 @@ class Lace(Base):
         CheckConstraint(_one_of("status", LACE_STATUSES), name="status"),
         CheckConstraint(_one_of("brief_frequency", BRIEF_FREQUENCIES), name="brief_frequency"),
         CheckConstraint("brief_hour BETWEEN 0 AND 23", name="brief_hour"),
+        # Quiet hours are a window, so both ends or neither, and not empty.
+        CheckConstraint("(quiet_start IS NULL) = (quiet_end IS NULL)", name="quiet_hours_paired"),
+        CheckConstraint("quiet_start BETWEEN 0 AND 23 AND quiet_end BETWEEN 0 AND 23 AND quiet_start <> quiet_end",
+                        name="quiet_hours_range"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -55,6 +59,10 @@ class Lace(Base):
     brief_frequency: Mapped[str] = mapped_column(String(8), nullable=False, default="daily", server_default="daily")
     brief_hour: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=8, server_default="8")
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="UTC", server_default="UTC")
+    brief_email: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+    # Local hours [start, end) in which nothing is emailed; may wrap midnight.
+    quiet_start: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    quiet_end: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     # When the last brief was due, whether or not there was news for it.
     last_brief_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
@@ -344,3 +352,4 @@ class LaceBrief(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
                                                  default=_now, server_default=func.now())
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    emailed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)

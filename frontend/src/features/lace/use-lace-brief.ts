@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 
-import { getLaceBrief, updateLaceBrief, type BriefSettingsDto } from "@/lib/api"
+import { getLaceBrief, updateLaceBrief, type BriefSettingsChanges, type BriefSettingsDto } from "@/lib/api"
 
 function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
@@ -21,7 +21,7 @@ export function useLaceBrief(laceId: string) {
     return () => { cancelled = true }
   }, [laceId])
 
-  const update = useCallback(async (changes: Parameters<typeof updateLaceBrief>[1]) => {
+  const update = useCallback(async (changes: BriefSettingsChanges) => {
     setError(null)
     try {
       setSettings(await updateLaceBrief(laceId, changes))

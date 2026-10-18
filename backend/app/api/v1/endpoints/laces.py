@@ -13,6 +13,7 @@ from backend.app.schemas.laces import (
     AccountResponse,
     BriefSettings,
     BriefSettingsUpdate,
+    QuietHours,
     ChannelAccount,
     ChannelLinkRequest,
     ChannelResponse,
@@ -31,7 +32,7 @@ from backend.app.schemas.laces import (
     OutreachResponse,
     OutreachUpdateRequest,
 )
-from backend.app.services import lace_accounts, lace_channels, lace_competitors, lace_opportunities, lace_outreach
+from backend.app.services import email, lace_accounts, lace_channels, lace_competitors, lace_opportunities, lace_outreach
 from backend.app.services import laces as lace_service
 from agents.schemas.lace import AccountStatus, CompetitorStatus, FactTopic, InboxPlatform
 from agents.schemas.opportunities import OpportunityStatus
@@ -170,12 +171,19 @@ async def update_opportunity(lace: OwnedLace, opportunity_id: uuid.UUID, payload
     return await lace_opportunities.set_status(db, lace.id, opportunity_id, payload.status)
 
 
+def _brief_settings(lace) -> BriefSettings:
+    quiet = None if lace.quiet_start is None else QuietHours(start=lace.quiet_start, end=lace.quiet_end)
+    return BriefSettings.model_validate(lace).model_copy(update={"quiet_hours": quiet,
+                                                                  "email_available": email.configured()})
+
+
 @router.get("/{lace_id}/brief", response_model=BriefSettings)
 async def get_brief_settings(lace: OwnedLace):
-    """When the Lace posts its brief: how often, at what local hour."""
-    return lace
+    """When the Lace posts its brief (how often, at what local hour), whether
+    it is emailed too, and the quiet hours in which nothing is emailed."""
+    return _brief_settings(lace)
 
 
 @router.patch("/{lace_id}/brief", response_model=BriefSettings)
 async def update_brief_settings(lace: OwnedLace, payload: BriefSettingsUpdate, db: DbSession):
-    return await lace_service.update_brief_settings(db, lace, payload.model_dump(exclude_unset=True, exclude_none=True))
+    return _brief_settings(await lace_service.update_brief_settings(db, lace, payload.model_dump(exclude_unset=True)))

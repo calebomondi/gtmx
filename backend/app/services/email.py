@@ -1,12 +1,31 @@
 """Transactional email (Thalace's own messages, never a user's outreach) via
 Resend's HTTP API. Users' outreach goes through their own Gmail instead."""
 
+from html import escape
+
 import httpx
 
 from config import settings
 from utils.log import logger
 
 _RESEND_URL = "https://api.resend.com/emails"
+_SITE = "https://thalace.com"
+_MARK = (
+    '<div style="display:flex;align-items:center;gap:6px;margin-bottom:24px">'
+    '<span style="display:inline-block;width:14px;height:14px;background:#FEA853;border-radius:2px"></span>'
+    '<span style="font-size:20px;letter-spacing:-.01em;color:#1c1917">Thalace</span></div>'
+)
+
+
+def branded_html(body: str, footer: str) -> str:
+    """`body` (already-escaped HTML) under the brand mark, with a small footer
+    line (plain text) after the site link."""
+    return (
+        '<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:15px;'
+        f'color:#292524;max-width:520px;margin:0 auto;padding:24px">{_MARK}{body}'
+        f'<p style="margin:24px 0 0;font-size:12px;color:#78716c">Thalace · <a href="{_SITE}" style="color:#b45309">thalace.com</a>'
+        f" · {escape(footer)}</p></div>"
+    )
 
 
 def configured() -> bool:

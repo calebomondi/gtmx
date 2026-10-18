@@ -234,18 +234,32 @@ export function dismissLaceOpportunity(laceId: string, opportunityId: string): P
 
 export type BriefFrequency = "off" | "daily" | "weekly"
 
+/** Local hours [start, end) in which nothing is emailed; end may be before start (overnight). */
+export interface QuietHoursDto {
+  start: number
+  end: number
+}
+
 export interface BriefSettingsDto {
   brief_frequency: BriefFrequency
   /** Local hour, 0–23, in `timezone`. */
   brief_hour: number
   timezone: string
+  /** Also email each brief to the founder. */
+  brief_email: boolean
+  quiet_hours: QuietHoursDto | null
+  /** Whether this server can send email at all. */
+  email_available: boolean
   last_brief_at: string | null
 }
+
+export type BriefSettingsChanges = Partial<Pick<BriefSettingsDto,
+  "brief_frequency" | "brief_hour" | "timezone" | "brief_email" | "quiet_hours">>
 
 export function getLaceBrief(laceId: string): Promise<BriefSettingsDto> {
   return apiFetch<BriefSettingsDto>(`/api/v1/laces/${laceId}/brief`)
 }
 
-export function updateLaceBrief(laceId: string, changes: Partial<Omit<BriefSettingsDto, "last_brief_at">>): Promise<BriefSettingsDto> {
+export function updateLaceBrief(laceId: string, changes: BriefSettingsChanges): Promise<BriefSettingsDto> {
   return apiFetch(`/api/v1/laces/${laceId}/brief`, { method: "PATCH", body: JSON.stringify(changes) })
 }

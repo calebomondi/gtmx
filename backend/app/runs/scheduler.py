@@ -15,7 +15,7 @@ from backend.app.database.connect import AsyncSessionLocal
 from backend.app.database.lace_models import Lace, LaceBrief
 from backend.app.runs import background, manager
 from backend.app.services import inbox as inbox_service
-from backend.app.services import lace_briefs, lace_competitors, lace_opportunities, social_inbox
+from backend.app.services import lace_brief_email, lace_briefs, lace_competitors, lace_opportunities, social_inbox
 from backend.app.services.errors import RateLimitedError
 from backend.app.services.runs import TERMINAL_STATUSES
 from config import settings
@@ -116,6 +116,7 @@ async def sweep() -> int:
     """Start a monitor run for each stale workspace and each stale Lace.
     Returns how many started."""
     started = await sweep_laces() + await sweep_lace_opportunities() + await sweep_briefs()
+    await lace_brief_email.email_waiting(datetime.now(UTC))
     for workspace_id, user_id in await _stale_workspaces():
         try:
             await manager.start_background("monitor", user_id, workspace_id)

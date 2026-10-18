@@ -62,8 +62,13 @@ async def list_facts(db: AsyncSession, lace_id: uuid.UUID, topic: str | None, li
 
 
 async def update_brief_settings(db: AsyncSession, lace: Lace, changes: dict) -> Lace:
-    for field in ("brief_frequency", "brief_hour", "timezone"):
-        if field in changes:
+    """Apply the fields present in `changes`. A None setting is ignored, except
+    `quiet_hours`, where None removes them."""
+    for field in ("brief_frequency", "brief_hour", "timezone", "brief_email"):
+        if changes.get(field) is not None:
             setattr(lace, field, changes[field])
+    if "quiet_hours" in changes:
+        quiet = changes["quiet_hours"] or {}
+        lace.quiet_start, lace.quiet_end = quiet.get("start"), quiet.get("end")
     await db.commit()
     return lace
