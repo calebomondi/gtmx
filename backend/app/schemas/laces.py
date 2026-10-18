@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from agents.schemas.lace import AccountStatus, CompetitorOrigin, CompetitorStatus, Confidence, FactOrigin, FactTopic
+from agents.schemas.lace import AccountStatus, CompetitorOrigin, ContactStatus, CompetitorStatus, Confidence, FactOrigin, FactTopic
 
 
 class LaceCreateRequest(BaseModel):
@@ -85,6 +85,13 @@ class AccountCase(BaseModel):
     strength: str
 
 
+class AccountContact(BaseModel):
+    name: str | None = None
+    title: str | None = None
+    email: str | None = None
+    linkedin: str | None = None
+
+
 class AccountResponse(BaseModel):
     id: uuid.UUID
     name: str
@@ -95,6 +102,11 @@ class AccountResponse(BaseModel):
     trigger: AccountTrigger | None
     case: AccountCase | None = Field(description="Why this startup suits this account now; none if it could not be made")
     status: AccountStatus
+    contact_status: ContactStatus | None = Field(
+        description="person: someone named is reachable; organisation: only its own channels; none: nothing found")
+    contacts: list[AccountContact]
+    channels: dict[str, str] = Field(description="The organisation's own pages by platform")
+    contacts_checked_at: datetime | None
     first_seen_at: datetime
     last_seen_at: datetime
 

@@ -151,3 +151,9 @@ class AccountSummary(BaseModel):
     need: str | None = None
     angle: str | None = None
     fit_strength: str | None = None
+    contact_status: str | None = Field(default=None, description="person | organisation | none; unset until contacts were looked for")
+    contacts: list[dict] = Field(default_factory=list, description="People to reach: name, title, email, linkedin")
+    channels: dict[str, str] = Field(default_factory=dict, description="The organisation's own pages by platform")
+
+ContactStatus = Literal["person", "organisation", "none"]
+CONTACT_STATUSES: tuple[str, ...] = ContactStatus.__args__

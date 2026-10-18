@@ -19,10 +19,12 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMes
 
 from agents.lace.graph import BRIEF_FACTS, build_lace_graph
 from agents.lace.accounts import find_accounts
+from agents.lace.contacts import complete_contacts, contact_status
 from agents.lace.competitors import change_fact, find_competitors, material, offer_for_monitor
 from agents.lace.onboarding import onboard, opening_message
 from agents.lace.store import JobBlocked, LaceJobs
 from agents.pipelines.monitor import check_competitor
+from agents.schemas.accounts import AccountRecord
 from agents.lace.prompts import system_prompt
 from backend.app.agents_runtime import get_checkpointer
 from backend.app.database import models
@@ -36,6 +38,10 @@ from backend.app.services.lace_store import DbLaceStore
 from backend.app.services.runs import set_run_fields
 from config import settings
 from utils.progress import report
+
+# Accounts one contact search covers, and how many at once.
+CONTACTS_BATCH = 20
+CONTACTS_CONCURRENCY = 4
 
 # Competitors one monitoring run checks, and how many at once.
 MONITOR_BATCH = 15
@@ -57,6 +63,7 @@ _STEP_TEXT = {
     "find_competitors": lambda a: "Starting a competitor search",
     "check_competitors": lambda a: "Checking competitors for changes",
     "list_accounts": lambda a: "Checking the target accounts",
+    "find_contacts": lambda a: "Starting a search for contacts",
     "find_accounts": lambda a: "Starting a search for customers" + (f" in {a['country']}" if a.get("country") else ""),
 }
 
@@ -267,6 +274,61 @@ async def accounts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> N
     await events.publish(run_id, "complete", {"found": len(found)})
 
 
+async def contacts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
+    """Find who to contact at target accounts, saving each account as it is
+    done, and queue one update saying who can be reached and who cannot."""
+    icp = await DbLaceStore(AsyncSessionLocal, lace_id).icp()
+    titles = list(icp.buyer_titles) if icp else []
+    ids = [uuid.UUID(i) for i in params.get("account_ids") or [] if _is_uuid(i)]
+    async with AsyncSessionLocal() as db:
+        due = [(a.id, AccountRecord.model_validate(a.record))
+               for a in await lace_accounts.due_for_contacts(db, lace_id, ids or None, CONTACTS_BATCH)]
+    slots = asyncio.Semaphore(CONTACTS_CONCURRENCY)
+
+    async def search(account_id, record):
+        async with slots:
+            done = await asyncio.to_thread(complete_contacts, record, titles, settings)
+        async with AsyncSessionLocal() as db, db.begin():
+            await lace_accounts.save_contacts(db, account_id, done)
+        return done
+
+    with events.reporting_steps(run_id):
+        report(f"Looking for contacts at {len(due)} accounts")
+        results = await asyncio.gather(*(search(*row) for row in due))
+    async with AsyncSessionLocal() as db, db.begin():
+        await lace_events.add(db, lace_id, contacts_update(results))
+    counts = {s: sum(contact_status(r) == s for r in results) for s in ("person", "organisation", "none")}
+    await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
+                         progress={"searched": len(results), **counts})
+    await events.publish(run_id, "complete", {"searched": len(results)})
+
+
+def _is_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        return False
+    return True
+
+
+def contacts_update(results: list[AccountRecord]) -> str:
+    if not results:
+        return "The contact search had no accounts to look at: every target account was already searched."
+    lines = []
+    for r in results:
+        status = contact_status(r)
+        people = [c for c in r.key_contacts if c.name and (c.email or c.linkedin)]
+        if status == "person":
+            who = "; ".join(f"{c.name}{f' ({c.title})' if c.title else ''}: {c.email or c.linkedin}" for c in people[:2])
+            lines.append(f"{r.name}: {who}")
+        elif status == "organisation":
+            reach = ", ".join([*(c.email for c in r.key_contacts if c.email), *sorted(r.socials)]) or "its own pages"
+            lines.append(f"{r.name}: no named person found; reachable through {reach}")
+        else:
+            lines.append(f"{r.name}: could not find anyone to contact, nor any page of its own")
+    return "The contact search finished:\n" + "\n".join(lines)
+
+
 def accounts_update(found: list, new: int, refreshed: int, country: str | None) -> str:
     where = f" in {country}" if country else ""
     if not found:
@@ -282,7 +344,7 @@ def accounts_update(found: list, new: int, refreshed: int, country: str | None) 
         lines.append(line)
     return (f"The search for target accounts{where} finished: {len(found)} accounts ({new} new, {refreshed} "
             "already on file), each with a current trigger:\n" + "\n".join(lines)
-            + "\nThey are saved; use list_accounts for the full cases.")
+            + "\nThey are saved; use list_accounts for the full cases, and find_contacts to find who to reach.")
 
 
 def monitor_update(moves: list) -> str:

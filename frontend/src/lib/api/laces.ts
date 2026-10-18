@@ -98,6 +98,12 @@ export interface LaceAccountDto {
   /** Why the startup suits this account now; null if it could not be made. */
   case: { need: string; capability: string; payoff: string; angle: string | null; strength: "strong" | "moderate" | "weak" } | null
   status: AccountStatus
+  /** person: someone named is reachable; organisation: only its own channels; none: nothing found. */
+  contact_status: "person" | "organisation" | "none" | null
+  contacts: { name: string | null; title: string | null; email: string | null; linkedin: string | null }[]
+  /** The organisation's own pages, by platform. */
+  channels: Record<string, string>
+  contacts_checked_at: string | null
   first_seen_at: string
   last_seen_at: string
 }

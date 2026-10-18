@@ -5,6 +5,40 @@ import { Button } from "@/components/ui/button"
 import type { LaceAccountDto } from "@/lib/api"
 
 const STRENGTH_VARIANT = { strong: "default", moderate: "secondary", weak: "outline" } as const
+const CHANNEL_LABELS: Record<string, string> = {
+  linkedin: "LinkedIn", instagram: "Instagram", tiktok: "TikTok", facebook: "Facebook", x: "X",
+}
+
+/** Who to reach at the account: named people first, else its own channels. */
+function Reach({ account }: { account: LaceAccountDto }) {
+  const people = account.contacts.filter((c) => c.name && (c.email || c.linkedin))
+  const emails = account.contacts.filter((c) => !c.name && c.email)
+  const channels = Object.entries(account.channels)
+  if (account.contact_status === "none") {
+    return <p className="text-xs text-muted-foreground">No one found to contact yet.</p>
+  }
+  return (
+    <div className="flex flex-col gap-0.5 text-xs">
+      {people.slice(0, 2).map((c) => (
+        <p key={c.email ?? c.linkedin}>
+          <span className="font-medium">{c.name}</span>{c.title && `, ${c.title}`}
+          {c.email && <a href={`mailto:${c.email}`} className="ml-2 text-muted-foreground hover:underline">{c.email}</a>}
+          {c.linkedin && <a href={c.linkedin} target="_blank" rel="noreferrer" className="ml-2 text-muted-foreground hover:underline">LinkedIn</a>}
+        </p>
+      ))}
+      {(emails.length > 0 || channels.length > 0) && (
+        <p className="flex flex-wrap gap-x-2 text-muted-foreground">
+          {emails.slice(0, 1).map((c) => <a key={c.email} href={`mailto:${c.email}`} className="hover:underline">{c.email}</a>)}
+          {channels.map(([platform, url]) => (
+            <a key={platform} href={url} target="_blank" rel="noreferrer" className="hover:underline">
+              {CHANNEL_LABELS[platform] ?? platform}
+            </a>
+          ))}
+        </p>
+      )}
+    </div>
+  )
+}
 
 /** Target accounts: who they are, the trigger that makes them worth
  * contacting now, and the case for them. Dismissing one drops it for good. */
@@ -17,7 +51,7 @@ export function LaceAccounts({ accounts, finding, onDismiss }: {
     <div className="flex flex-col gap-4">
       {finding && (
         <p className="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">
-          <Loader2 className="size-4 animate-spin" /> Looking for target accounts. This takes several minutes.
+          <Loader2 className="size-4 animate-spin" /> Looking for accounts or their contacts. This takes several minutes.
         </p>
       )}
       {accounts.length === 0 && !finding && (
@@ -53,6 +87,7 @@ export function LaceAccounts({ accounts, finding, onDismiss }: {
                   {a.case.need}. {a.case.payoff}.
                 </p>
               )}
+              <Reach account={a} />
             </div>
             <Button variant="ghost" size="icon" aria-label={`Drop ${a.name}`} title="Not a fit" onClick={() => onDismiss(a.id)}>
               <X />
