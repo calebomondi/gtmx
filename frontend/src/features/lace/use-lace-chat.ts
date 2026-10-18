@@ -5,21 +5,30 @@ import {
   followRunEvents,
   getLace,
   listActiveRuns,
+  listLaceCompetitors,
   listLaceFacts,
   listLaceMessages,
   sendLaceMessage,
+  setLaceCompetitorStatus,
   type FactDto,
+  type LaceCompetitorDto,
   type LaceDto,
   type LaceMessageDto,
   type RunFrame,
 } from "@/lib/api"
 
 const TERMINAL = new Set(["complete", "error", "cancelled"])
+// How often an idle page looks for work the Lace started on its own, such as
+// a turn reporting a finished competitor search.
+const IDLE_POLL_MS = 15_000
 
 export interface LaceChat {
   lace: LaceDto | null
   messages: LaceMessageDto[]
   facts: FactDto[]
+  competitors: LaceCompetitorDto[]
+  /** A background competitor search is running. */
+  searching: boolean
   loading: boolean
   /** A load or send failure, or a run that failed. */
   error: string | null
@@ -30,40 +39,47 @@ export interface LaceChat {
   /** The reply as it is being written; empty when nothing is streaming. */
   draft: string
   send: (text: string) => Promise<void>
+  dismissCompetitor: (competitorId: string) => Promise<void>
 }
 
 function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
-/** One Lace's conversation, its facts, and the run it is working on. The
- * server is the source of truth: when a run ends, the conversation and facts
- * are refetched rather than pieced together from frames. State is per Lace:
- * render the user under a `key` of the Lace id. */
+/** One Lace's conversation, what it knows, and the run it is working on. The
+ * server is the source of truth: when a run ends, everything is refetched
+ * rather than pieced together from frames. State is per Lace: render the user
+ * under a `key` of the Lace id. */
 export function useLaceChat(laceId: string): LaceChat {
   const [lace, setLace] = useState<LaceDto | null>(null)
   const [messages, setMessages] = useState<LaceMessageDto[]>([])
   const [facts, setFacts] = useState<FactDto[]>([])
+  const [competitors, setCompetitors] = useState<LaceCompetitorDto[]>([])
+  const [searching, setSearching] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [working, setWorking] = useState(false)
   const [step, setStep] = useState<string | null>(null)
   const [draft, setDraft] = useState("")
   const abort = useRef<AbortController | null>(null)
+  // Mirrors `working` for callbacks; written only from them, never in render.
+  const busy = useRef(false)
 
   const refresh = useCallback(async () => {
-    const [nextLace, nextMessages, nextFacts] = await Promise.all([
-      getLace(laceId), listLaceMessages(laceId), listLaceFacts(laceId),
+    const [nextLace, nextMessages, nextFacts, nextCompetitors] = await Promise.all([
+      getLace(laceId), listLaceMessages(laceId), listLaceFacts(laceId), listLaceCompetitors(laceId),
     ])
     setLace(nextLace)
     setMessages(nextMessages)
     setFacts(nextFacts)
+    setCompetitors(nextCompetitors)
   }, [laceId])
 
   const follow = useCallback(async (runId: string) => {
     abort.current?.abort()
     const controller = new AbortController()
     abort.current = controller
+    busy.current = true
     setWorking(true)
     setStep(null)
     const onFrame = (frame: RunFrame) => {
@@ -84,31 +100,54 @@ export function useLaceChat(laceId: string): LaceChat {
       if (!controller.signal.aborted) setError(message(err))
     }
     if (abort.current !== controller) return  // a newer run took over
-    setWorking(false)
-    setStep(null)
     try {
       await refresh()
-      setDraft("")
     } catch (err) {
       setError(message(err))
     }
+    busy.current = false
+    setDraft("")
+    setStep(null)
+    setWorking(false)
   }, [refresh])
+
+  const checkRuns = useCallback(async () => {
+    const mine = (await listActiveRuns()).filter((run) => run.lace_id === laceId)
+    setSearching(mine.some((run) => run.kind === "lace_competitors"))
+    const turn = mine.find((run) => run.kind === "lace_turn" || run.kind === "lace_onboarding")
+    if (turn && !busy.current) void follow(turn.id)
+  }, [laceId, follow])
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([refresh(), listActiveRuns()])
-      .then(([, runs]) => {
-        if (cancelled) return
-        const active = runs.find((run) => run.lace_id === laceId)
-        if (active) void follow(active.id)
-      })
+    refresh()
       .catch((err) => !cancelled && setError(message(err)))
       .finally(() => !cancelled && setLoading(false))
     return () => {
       cancelled = true
       abort.current?.abort()
     }
-  }, [laceId, refresh, follow])
+  }, [refresh])
+
+  // Whenever the Lace is idle: look now (a run may have just ended and the
+  // Lace gone straight on to pass along an update), then every so often.
+  useEffect(() => {
+    if (working) return
+    // A missed check is retried on the next tick.
+    const check = () => void checkRuns().catch(() => undefined)
+    check()
+    const timer = setInterval(check, IDLE_POLL_MS)
+    return () => clearInterval(timer)
+  }, [working, checkRuns])
+
+  const dismissCompetitor = useCallback(async (competitorId: string) => {
+    try {
+      await setLaceCompetitorStatus(laceId, competitorId, "dismissed")
+      setCompetitors((prev) => prev.filter((c) => c.id !== competitorId))
+    } catch (err) {
+      setError(message(err))
+    }
+  }, [laceId])
 
   const send = useCallback(async (text: string) => {
     setError(null)
@@ -118,9 +157,9 @@ export function useLaceChat(laceId: string): LaceChat {
       await follow(run_id)
     } catch (err) {
       setError(err instanceof ApiError && err.status === 409 ? "Your Lace is still working on the last message." : message(err))
-      await refresh().catch(() => undefined)
+      await refresh().catch(() => undefined)  // the send error is already shown
     }
   }, [laceId, follow, refresh])
 
-  return { lace, messages, facts, loading, error, working, step, draft, send }
+  return { lace, messages, facts, competitors, searching, loading, error, working, step, draft, send, dismissCompetitor }
 }
