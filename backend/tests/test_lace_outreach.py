@@ -83,6 +83,7 @@ def test_accounts_already_written_to_are_not_redrafted(client, lace, lace_runtim
     run = client.portal.call(manager.start_lace_job, "lace_drafts", user.id, uuid.UUID(lace), {"account_ids": [str(alpha)]})
     client.portal.call(_wait_for_status, run.id, {"completed"})
     assert [w[0] for w in written] == ["Alpha"]
+    client.portal.call(_wait_for_turns, lace, 2)  # both jobs' reports
 
 
 def test_founder_edits_and_discards_drafts_but_not_sent_messages(client, lace, lace_runtime, user):  # noqa: F811

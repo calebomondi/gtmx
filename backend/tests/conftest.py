@@ -100,6 +100,25 @@ def client(user: AuthUser):
     with TestClient(app, base_url="http://test") as test_client:
         test_client.sign_in = lambda who: signed_in.update(user=who)
         yield test_client
+        # Runs the test started (a Lace waking to report, say) live on this
+        # client's event loop. Let them finish before it closes: one frozen
+        # mid-transaction keeps its row locks, and every later test's cleanup
+        # then blocks on them.
+        test_client.portal.call(_finish_runs)
+
+
+# How long teardown waits for a test's background runs before cancelling them.
+_RUN_DRAIN_S = 15.0
+
+
+async def _finish_runs() -> None:
+    tasks = [t for t in run_manager._tasks.values() if not t.done()]
+    if not tasks:
+        return
+    _done, pending = await asyncio.wait(tasks, timeout=_RUN_DRAIN_S)
+    for task in pending:
+        task.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
 
 
 @pytest.fixture
