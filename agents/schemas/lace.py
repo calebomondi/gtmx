@@ -164,3 +164,6 @@ OUTREACH_CHANNELS: tuple[str, ...] = OutreachChannel.__args__
 # Business accounts whose inbound DMs a Lace reads (docs/lace-plan.md, Channels).
 InboxPlatform = Literal["instagram", "facebook"]
 INBOX_PLATFORMS: tuple[str, ...] = InboxPlatform.__args__
+
+BriefFrequency = Literal["off", "daily", "weekly"]
+BRIEF_FREQUENCIES: tuple[str, ...] = BriefFrequency.__args__

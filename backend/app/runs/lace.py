@@ -1,4 +1,4 @@
-"""Lace run segments: onboarding and one founder turn.
+"""Lace run segments: onboarding, one founder turn, and the brief.
 
 Both run under the run manager (timeout, failure recording, restart recovery).
 The Lace's conversation lives on one LangGraph thread per Lace, in the shared
@@ -26,6 +26,7 @@ from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.database.lace_models import Lace
 from backend.app.runs import events
+from backend.app.services import lace_briefs
 from backend.app.services.lace_store import DbLaceStore
 from backend.app.services.runs import set_run_fields
 from config import settings
@@ -141,8 +142,29 @@ def event_message(updates: list[str]) -> HumanMessage:
     )
 
 
+def _brief_message(request: str) -> HumanMessage:
+    """The brief request, flagged like an update: the founder sees the
+    Lace's brief, not what it was asked."""
+    return HumanMessage(content=request, additional_kwargs={EVENT_FLAG: True})
+
+
 async def turn_segment(run_id: uuid.UUID, lace_id: uuid.UUID, message: HumanMessage,
                        jobs: LaceJobs | None = None) -> None:
+    await _finish(run_id, await _converse(run_id, lace_id, message, jobs))
+
+
+async def brief_segment(run_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UUID, request: str,
+                        jobs: LaceJobs | None = None) -> None:
+    """The turn in which the Lace writes its brief. The brief is saved before
+    the run completes, so a completed brief run always has its body."""
+    reply = await _converse(run_id, lace_id, _brief_message(request), jobs)
+    async with AsyncSessionLocal() as db, db.begin():
+        await lace_briefs.mark_posted(db, brief_id, reply)
+    await _finish(run_id, reply)
+
+
+async def _converse(run_id: uuid.UUID, lace_id: uuid.UUID, message: HumanMessage, jobs: LaceJobs | None) -> str:
+    """Run one turn, streaming its frames; returns the Lace's reply."""
     graph, _ = _graph(lace_id, jobs)
     relay = _TokenRelay(run_id)
     reply = ""
@@ -166,7 +188,7 @@ async def turn_segment(run_id: uuid.UUID, lace_id: uuid.UUID, message: HumanMess
                     reply = str(message.content)
                 elif isinstance(message, ToolMessage):
                     await events.publish(run_id, "tool_result", _tool_summary(message))
-    await _finish(run_id, reply)
+    return reply
 
 
 def visible_messages(messages: list[AnyMessage]) -> list[dict]:

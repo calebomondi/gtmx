@@ -176,6 +176,24 @@ async def wake_lace(user_id: uuid.UUID, lace_id: uuid.UUID) -> None:
     _spawn_turn(run.id, user_id, lace_id, lace_runs.event_message(updates))
 
 
+async def post_brief(user_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UUID, request: str) -> bool:
+    """Start the turn in which the Lace writes its brief. False when the Lace
+    is in a conversation run: the brief stays pending for the next sweep."""
+    try:
+        async with AsyncSessionLocal() as db, db.begin():
+            run = models.Run(user_id=user_id, lace_id=lace_id, kind="lace_turn", status="running",
+                             input={"brief_id": str(brief_id)}, started_at=datetime.now(UTC))
+            db.add(run)
+            await db.flush()
+    except IntegrityError as exc:
+        if "uq_runs_one_active_per_lace" not in str(exc):
+            raise
+        return False
+    brief = lace_runs.brief_segment(run.id, lace_id, brief_id, request, jobs=_LaceJobs(user_id, lace_id))
+    _spawn(run.id, user_id, _then_wake(brief, user_id, lace_id), settings.lace_turn_timeout_s)
+    return True
+
+
 # The run kind behind each job a Lace's tools can start.
 _TOOL_JOB_RUN_KINDS = {"find_competitors": "lace_competitors", "check_competitors": "lace_monitor",
                        "find_accounts": "lace_accounts", "find_contacts": "lace_contacts",

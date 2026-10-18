@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { useParams } from "react-router-dom"
-import { AlertTriangle, BookOpen, Inbox, Loader2, Mail, Sparkles, Swords, Target } from "lucide-react"
+import { AlertTriangle, BookOpen, Inbox, Newspaper, Loader2, Mail, Sparkles, Swords, Target } from "lucide-react"
 
 import { PromptInputWithActions } from "@/components/chat-input"
 import { Button } from "@/components/ui/button"
@@ -11,6 +11,7 @@ import type { LaceMessageDto } from "@/lib/api"
 
 import { LaceAvatar } from "./lace-avatar"
 import { LaceAccounts } from "./lace-accounts"
+import { LaceBrief } from "./lace-brief"
 import { LaceChannels } from "./lace-channels"
 import { LaceCompetitors } from "./lace-competitors"
 import { LaceOpportunities } from "./lace-opportunities"
@@ -18,9 +19,13 @@ import { LaceOutreach } from "./lace-outreach"
 import { LaceFacts } from "./lace-facts"
 import { useLaceChat } from "./use-lace-chat"
 
-type Panel = "facts" | "competitors" | "accounts" | "outreach" | "channels" | "opportunities"
+type Panel = "facts" | "competitors" | "accounts" | "outreach" | "channels" | "opportunities" | "brief"
 
 const PANEL_TEXT: Record<Panel, { title: (name: string) => string; description: string }> = {
+  brief: {
+    title: () => "Brief",
+    description: "A regular summary from your Lace, posted in this chat.",
+  },
   opportunities: {
     title: () => "Opportunities",
     description: "Events to showcase at, tenders and buyers to sell to, and partners: sourced, and still open.",
@@ -94,6 +99,10 @@ function LaceChat({ laceId }: { laceId: string }) {
           </div>
         </div>
         <div className="flex shrink-0 gap-2">
+          <Button variant="outline" size="icon-sm" onClick={() => setPanel("brief")} disabled={chat.loading}
+                  aria-label="Brief" title="Brief">
+            <Newspaper />
+          </Button>
           <Button variant="outline" size="icon-sm" onClick={() => setPanel("channels")} disabled={chat.loading}
                   aria-label="Inboxes" title="Inboxes">
             <Inbox />
@@ -166,6 +175,7 @@ function LaceChat({ laceId }: { laceId: string }) {
             </SheetHeader>
           )}
           <div className="px-4 pb-6">
+            {panel === "brief" && <LaceBrief laceId={laceId} />}
             {panel === "channels" && <LaceChannels laceId={laceId} />}
             {panel === "opportunities" && (
               <LaceOpportunities laceId={laceId} searching={chat.findingOpportunities} />

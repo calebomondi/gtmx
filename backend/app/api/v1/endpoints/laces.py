@@ -11,6 +11,8 @@ from backend.app.runs import lace as lace_runs
 from backend.app.runs import manager
 from backend.app.schemas.laces import (
     AccountResponse,
+    BriefSettings,
+    BriefSettingsUpdate,
     ChannelAccount,
     ChannelLinkRequest,
     ChannelResponse,
@@ -47,7 +49,7 @@ MAX_OPPORTUNITIES_PER_PAGE = 100
 
 @router.post("", response_model=LaceCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_lace(payload: LaceCreateRequest, user: CurrentUser, db: DbSession):
-    lace = await lace_service.create(db, user.id, payload.name, payload.website)
+    lace = await lace_service.create(db, user.id, payload.name, payload.website, payload.timezone)
     run = await manager.start_lace_onboarding(user.id, lace.id)
     return LaceCreateResponse(lace=LaceResponse.model_validate(lace), run_id=run.id)
 
@@ -166,3 +168,14 @@ async def list_opportunities(lace: OwnedLace, db: DbSession,
 async def update_opportunity(lace: OwnedLace, opportunity_id: uuid.UUID, payload: OpportunityUpdateRequest,
                              db: DbSession):
     return await lace_opportunities.set_status(db, lace.id, opportunity_id, payload.status)
+
+
+@router.get("/{lace_id}/brief", response_model=BriefSettings)
+async def get_brief_settings(lace: OwnedLace):
+    """When the Lace posts its brief: how often, at what local hour."""
+    return lace
+
+
+@router.patch("/{lace_id}/brief", response_model=BriefSettings)
+async def update_brief_settings(lace: OwnedLace, payload: BriefSettingsUpdate, db: DbSession):
+    return await lace_service.update_brief_settings(db, lace, payload.model_dump(exclude_unset=True, exclude_none=True))
