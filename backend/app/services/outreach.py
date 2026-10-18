@@ -118,21 +118,32 @@ async def delete(db: AsyncSession, message: models.OutreachMessage) -> None:
 
 
 async def _sends_today(db: AsyncSession, user_id: uuid.UUID) -> int:
-    return int(await db.scalar(select(func.count()).select_from(models.OutreachMessage).where(
-        models.OutreachMessage.user_id == user_id,
-        models.OutreachMessage.status == "sent",
-        models.OutreachMessage.sent_at >= datetime.now(UTC) - timedelta(days=1),
-    )) or 0)
+    """Emails the user sent in the last day, from a workspace or a Lace: the
+    daily cap is the user's, wherever they send from."""
+    since = datetime.now(UTC) - timedelta(days=1)
+    total = 0
+    for model in (models.OutreachMessage, models.LaceOutreach):
+        total += int(await db.scalar(select(func.count()).select_from(model).where(
+            model.user_id == user_id, model.status == "sent", model.channel == "email", model.sent_at >= since,
+        )) or 0)
+    return total
 
 
 async def send(db: AsyncSession, message: models.OutreachMessage) -> models.OutreachMessage:
-    """Send one approved email through the user's connected Gmail."""
+    """Send one approved workspace email through the user's connected Gmail."""
+    if message.account_id and (account := await db.get(models.Account, message.account_id)) and account.do_not_contact:
+        raise ConflictError(f"{account.name} asked not to be contacted.")
+    return await send_email(db, message)
+
+
+async def send_email(db: AsyncSession, message):
+    """Send one approved outbound email (a workspace OutreachMessage or a
+    LaceOutreach: they share these fields) through the user's own connected
+    Gmail. Only ever called on the user's explicit action."""
     if message.channel != "email":
         raise ConflictError("LinkedIn messages are sent by you: copy the draft into LinkedIn.")
     if message.direction != "outbound":
         raise ConflictError("Replies you received can't be sent.")
-    if message.account_id and (account := await db.get(models.Account, message.account_id)) and account.do_not_contact:
-        raise ConflictError(f"{account.name} asked not to be contacted.")
     if message.status not in _EDITABLE:
         raise ConflictError("This message was already sent.")
     if not _EMAIL_RE.match(message.recipient_address or ""):

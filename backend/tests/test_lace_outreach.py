@@ -100,3 +100,88 @@ def test_founder_edits_and_discards_drafts_but_not_sent_messages(client, lace, l
     client.sign_in(make_user("Intruder"))
     assert client.get(f"{API}/laces/{lace}/outreach").status_code == 404
     assert client.patch(f"{API}/laces/{lace}/outreach/{sent}", json={"body": "x"}).status_code == 404
+
+
+def _message(lace_id, user_id, channel="email", status="draft", address="jane@alpha.test", subject="Hi"):
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        return conn.execute(
+            "INSERT INTO lace_outreach (id, lace_id, user_id, channel, recipient_address, subject, body, status)"
+            " VALUES (%s, %s, %s, %s, %s, %s, 'Hello Jane', %s) RETURNING id",
+            (uuid.uuid4(), lace_id, user_id, channel, address, subject, status)).fetchone()[0]
+
+
+def _gmail(monkeypatch, connected=True, error=None):
+    from backend.app.services import connections as connection_service
+    from backend.app.services.connections import ConnectionInfo
+    calls = []
+
+    async def connections(db, user_id):
+        return [ConnectionInfo("ca_1", "gmail", "live", "me@acme.example", None, None)] if connected else []
+
+    def execute(user_id, tool, arguments, connection_id):
+        calls.append((tool, arguments))
+        return {"data": None if error else {"id": "m_1", "threadId": "t_1"}, "error": error, "log_id": "log_1"}
+
+    monkeypatch.setattr(connection_service, "list_for_user", connections)
+    monkeypatch.setattr(connection_service, "execute_tool", execute)
+    return calls
+
+
+def test_the_founders_click_sends_through_their_gmail(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    calls = _gmail(monkeypatch)
+    message = _message(lace, user.id)
+    sent = client.post(f"{API}/laces/{lace}/outreach/{message}/send")
+    assert sent.status_code == 200
+    body = sent.json()
+    assert body["status"] == "sent" and body["sent_at"]
+    assert calls == [("GMAIL_SEND_EMAIL", {"recipient_email": "jane@alpha.test", "subject": "Hi", "body": "Hello Jane"})]
+    with psycopg.connect(settings.database_url) as conn:
+        assert conn.execute("SELECT thread_id, provider_log_id FROM lace_outreach WHERE id = %s",
+                            (message,)).fetchone() == ("t_1", "log_1")
+    # Sent once: a second click can't send it again.
+    assert client.post(f"{API}/laces/{lace}/outreach/{message}/send").status_code == 409
+    assert len(calls) == 1
+
+
+def test_sending_needs_gmail_an_address_and_an_email(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    _gmail(monkeypatch, connected=False)
+    assert "Connect your Gmail" in client.post(f"{API}/laces/{lace}/outreach/{_message(lace, user.id)}/send").json()["detail"]
+    _gmail(monkeypatch)
+    no_address = _message(lace, user.id, address=None)
+    assert client.post(f"{API}/laces/{lace}/outreach/{no_address}/send").status_code == 422
+    linkedin = _message(lace, user.id, channel="linkedin", address="https://linkedin.com/in/jane")
+    assert client.post(f"{API}/laces/{lace}/outreach/{linkedin}/send").status_code == 409
+
+
+def test_a_rejected_send_is_recorded_and_can_be_retried(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    _gmail(monkeypatch, error="invalid to")
+    message = _message(lace, user.id)
+    failed = client.post(f"{API}/laces/{lace}/outreach/{message}/send").json()
+    assert failed["status"] == "failed" and "Gmail rejected" in failed["error"]
+    _gmail(monkeypatch)
+    assert client.post(f"{API}/laces/{lace}/outreach/{message}/send").json()["status"] == "sent"
+
+
+def test_linkedin_messages_are_marked_sent_by_hand(client, lace, lace_runtime, user):  # noqa: F811
+    linkedin = _message(lace, user.id, channel="linkedin", address="https://linkedin.com/in/jane")
+    marked = client.post(f"{API}/laces/{lace}/outreach/{linkedin}/mark-sent").json()
+    assert marked["status"] == "sent" and marked["sent_at"]
+    assert client.post(f"{API}/laces/{lace}/outreach/{linkedin}/mark-sent").status_code == 409
+    assert client.post(f"{API}/laces/{lace}/outreach/{_message(lace, user.id)}/mark-sent").status_code == 409
+
+
+def test_the_daily_cap_counts_lace_and_workspace_sends(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    _gmail(monkeypatch)
+    monkeypatch.setattr(settings, "max_outreach_sends_per_day", 1)
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        conn.execute("UPDATE lace_outreach SET status = 'sent', sent_at = now() WHERE id = %s",
+                     (_message(lace, user.id),))
+    assert client.post(f"{API}/laces/{lace}/outreach/{_message(lace, user.id)}/send").status_code == 429
+
+
+def test_another_users_message_cannot_be_sent(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    calls = _gmail(monkeypatch)
+    message = _message(lace, user.id)
+    client.sign_in(make_user("Intruder"))
+    assert client.post(f"{API}/laces/{lace}/outreach/{message}/send").status_code == 404
+    assert calls == []

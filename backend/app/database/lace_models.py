@@ -238,6 +238,8 @@ class LaceOutreach(Base):
     # The provider's thread (Gmail threadId): ties replies to what was sent.
     thread_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     provider_message_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Composio log id of the send, for support/debugging.
+    provider_log_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     recipient_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     recipient_company: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
     # An email address, or the LinkedIn profile URL for a LinkedIn message.
