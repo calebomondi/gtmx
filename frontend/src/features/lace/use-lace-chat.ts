@@ -33,7 +33,7 @@ export interface LaceChat {
   /** A background competitor search is running. */
   searching: boolean
   accounts: LaceAccountDto[]
-  /** A background search for target accounts is running. */
+  /** A background search for target accounts, or for their contacts, is running. */
   findingAccounts: boolean
   loading: boolean
   /** A load or send failure, or a run that failed. */
@@ -125,7 +125,7 @@ export function useLaceChat(laceId: string): LaceChat {
   const checkRuns = useCallback(async () => {
     const mine = (await listActiveRuns()).filter((run) => run.lace_id === laceId)
     setSearching(mine.some((run) => run.kind === "lace_competitors"))
-    setFindingAccounts(mine.some((run) => run.kind === "lace_accounts"))
+    setFindingAccounts(mine.some((run) => run.kind === "lace_accounts" || run.kind === "lace_contacts"))
     const turn = mine.find((run) => run.kind === "lace_turn" || run.kind === "lace_onboarding")
     if (turn && !busy.current) void follow(turn.id)
   }, [laceId, follow])

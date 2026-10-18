@@ -271,4 +271,18 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
         return ToolResult.success("Started looking for target accounts. It takes several minutes; "
                                   "you will get an update here when it finishes.")
 
-    return [*tools, find_competitors, check_competitors, find_accounts]
+    @tool(parse_docstring=True)
+    @_guarded
+    async def find_contacts(account_ids: list[str] | None = None) -> ToolResult:
+        """Find the people to contact at target accounts (named decision makers with an email or LinkedIn) and the organisation's own pages on LinkedIn, Instagram, TikTok, Facebook and X. Runs in the background; you get an update when it is done.
+
+        Args:
+            account_ids: Ids from list_accounts to search for. Otherwise every target account not yet searched.
+        """
+        try:
+            await jobs.start("find_contacts", {"account_ids": account_ids or []})
+        except JobRefused as exc:
+            return ToolResult.failure(str(exc))
+        return ToolResult.success("Started looking for contacts. You will get an update here when it finishes.")
+
+    return [*tools, find_competitors, check_competitors, find_accounts, find_contacts]

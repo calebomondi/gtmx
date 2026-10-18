@@ -165,8 +165,15 @@ def people_on_linkedin(acc: AccountRecord, titles: list[str], cfg: Settings) -> 
         return []
     wanted = " OR ".join(f'"{t}"' for t in titles[:_PEOPLE_TITLES]) or "founder OR CEO OR head"
     query = f'site:linkedin.com/in "{acc.name}" {wanted}'
-    hits = call_with_timeout(lambda: search_and_scrape(query, cfg, num_results=_PEOPLE_RESULTS),
-                             _SEARCH_TIMEOUT_S, default=[], label=f"people[{acc.name}]") or []
+    # The account's country first: a same-named firm elsewhere ("Reflex
+    # Technologies" in Kenya, "Reflex Technology Group" in Australia) otherwise
+    # fills the results with its staff. Without the country only if that finds no one.
+    hits: list[dict] = []
+    for q in ([f'{query} "{acc.geo}"', query] if acc.geo else [query]):
+        hits = call_with_timeout(lambda q=q: search_and_scrape(q, cfg, num_results=_PEOPLE_RESULTS),
+                                 _SEARCH_TIMEOUT_S, default=[], label=f"people[{acc.name}]") or []
+        if hits:
+            break
     people = []
     for hit in hits:
         url = (_PERSON_LINKEDIN_RE.search(hit.get("url") or "") or [None])[0]

@@ -14,7 +14,7 @@ from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Index, Stri
 from sqlalchemy.dialects.postgresql import JSONB as JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
-from agents.schemas.lace import ACCOUNT_STATUSES, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, FACT_ORIGINS, FACT_TOPICS
+from agents.schemas.lace import ACCOUNT_STATUSES, CONTACT_STATUSES, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, FACT_ORIGINS, FACT_TOPICS
 from backend.app.database.connect import Base
 
 LACE_STATUSES = ("onboarding", "active", "archived")
@@ -174,6 +174,8 @@ class LaceAccount(Base):
         UniqueConstraint("lace_id", "key", name="uq_lace_accounts_lace_id_key"),
         CheckConstraint(_one_of("status", ACCOUNT_STATUSES), name="status"),
         CheckConstraint(f"fit_strength IS NULL OR {_one_of('fit_strength', FIT_STRENGTHS)}", name="fit_strength"),
+        CheckConstraint(f"contact_status IS NULL OR {_one_of('contact_status', CONTACT_STATUSES)}",
+                        name="contact_status"),
         Index("ix_lace_accounts_lace_id_status", "lace_id", "status"),
     )
 
@@ -188,6 +190,11 @@ class LaceAccount(Base):
     score: Mapped[float | None] = mapped_column(Float, nullable=True)
     fit_strength: Mapped[str | None] = mapped_column(String(12), nullable=True)
     status: Mapped[str] = mapped_column(String(12), nullable=False, default="target", server_default="target")
+    # person | organisation | none: whether someone named can be reached. Set
+    # from discovery's own contacts, then by a contact search, which also sets
+    # contacts_checked_at (NULL: the search never ran for it).
+    contact_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    contacts_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # agents.schemas.accounts.AccountRecord and AccountFit.
     record: Mapped[dict] = mapped_column(JSON, nullable=False)
     fit: Mapped[dict | None] = mapped_column(JSON, nullable=True)

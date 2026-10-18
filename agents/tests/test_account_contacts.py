@@ -199,3 +199,17 @@ def test_merge_keeps_the_address_but_not_a_persona_name():
     """KenGen's draft greeted "Hi Sovereign AI Integrator team": an ICP persona stored as a name."""
     [kept] = contacts.merge([ContactRecord(name="Sovereign AI Integrator", email="fochieng@acme.example")], [], limit=3)
     assert (kept.name, kept.email) == (None, "fochieng@acme.example")
+
+
+def test_people_search_tries_the_accounts_country_first(monkeypatch):
+    queries = []
+
+    def search(query, cfg, num_results):
+        queries.append(query)
+        return [] if "Kenya" in query else [{"url": "https://linkedin.com/in/x", "title": "X - CEO - Acme", "text": ""}]
+
+    monkeypatch.setattr(contacts, "search_and_scrape", search)
+    acc = _account()
+    acc.name, acc.geo = "Acme", "Kenya"
+    contacts.people_on_linkedin(acc, ["CEO"], None)
+    assert len(queries) == 2 and queries[0].endswith('"Kenya"') and "Kenya" not in queries[1]

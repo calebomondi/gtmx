@@ -171,3 +171,46 @@ def test_lace_finds_customers_in_kenya(client, runtime, user):
         print(f"  {a['name']} [{a['geo']}] ({a['website']}) {case.get('strength')}: WHY NOW {(a['trigger'] or {}).get('event')}"
               f" | NEED {case.get('need')}")
     assert accounts and all(a["trigger"] for a in accounts)
+
+
+CONTACTS_TIMEOUT_S = 1200
+KENYAN_ACCOUNTS = [("Enzi E-Mobility", "https://enzimotors.com"), ("SunCulture", "https://sunculture.com"),
+                   ("Reflex Technologies", "https://reflextechnologies.co.ke"), ("Synnefa", "https://synnefa.io")]
+
+
+def test_lace_finds_contacts_at_real_accounts(client, runtime, user):
+    import json
+
+    import psycopg
+
+    from agents.schemas.accounts import AccountRecord, TriggerEvent
+    from backend.app.runs import manager
+
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        lace_id = conn.execute(
+            "INSERT INTO laces (id, user_id, name, website, startup_name, status, icp) VALUES"
+            " (%s, %s, 'Ada', 'https://shangalabs.com', 'Shanga Labs', 'active', %s) RETURNING id",
+            (uuid.uuid4(), user.id, json.dumps({"buyer_type": "b2b", "geo": ["Kenya"],
+                                                "buyer_titles": ["CEO", "CTO", "Head of Engineering"]})),
+        ).fetchone()[0]
+        for name, site in KENYAN_ACCOUNTS:
+            record = AccountRecord(name=name, website=site, domain=site.split("//")[1], geo="Kenya",
+                                   trigger_event=TriggerEvent(event="Growing", signal_type="hiring_post", source=site))
+            conn.execute("INSERT INTO lace_accounts (id, lace_id, key, name, account_type, website, record)"
+                         " VALUES (%s, %s, %s, %s, 'company', %s, %s)",
+                         (uuid.uuid4(), lace_id, site.split("//")[1], name, site, json.dumps(record.model_dump(mode="json"))))
+
+    job = client.portal.call(manager.start_lace_job, "lace_contacts", user.id, lace_id, {})
+    job = client.portal.call(_wait_for_status, job.id, {"completed", "failed"}, CONTACTS_TIMEOUT_S)
+    assert job.status == "completed", job.error
+    print(f"\n--- contacts: {job.progress}")
+    for a in client.get(f"{API}/laces/{lace_id}/accounts").json():
+        people = [f"{c['name']} ({c['title']}) {c['email'] or c['linkedin']}" for c in a["contacts"] if c["name"]]
+        emails = [c["email"] for c in a["contacts"] if not c["name"] and c["email"]]
+        print(f"  {a['name']}: {a['contact_status']} | people {people} | emails {emails} | channels {a['channels']}")
+    assert job.progress["searched"] == len(KENYAN_ACCOUNTS)
+    # Wait for the Lace to report, so teardown never stops the loop mid-turn.
+    turn = client.portal.call(_wait_for_status, client.portal.call(_first_turn, lace_id), {"completed", "failed"},
+                              TURN_TIMEOUT_S)
+    assert turn.status == "completed", turn.error
+    print("--- THE LACE SAYS\n" + client.get(f"{API}/laces/{lace_id}/messages").json()[-1]["content"])
