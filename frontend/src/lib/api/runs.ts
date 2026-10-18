@@ -1,4 +1,4 @@
-import { apiFetch } from "./http"
+import { apiFetch, apiStream } from "./http"
 
 export type RunStatus =
   | "pending"
@@ -13,6 +13,7 @@ export interface RunDto {
   kind: string
   status: RunStatus
   workspace_id: string | null
+  lace_id: string | null
   progress: Record<string, unknown> | null
   error: string | null
   created_at: string
@@ -50,4 +51,28 @@ export interface RunStepDto {
 
 export function listRunSteps(runId: string, after = 0): Promise<RunStepDto[]> {
   return apiFetch<RunStepDto[]>(`/api/v1/runs/${runId}/steps?after=${after}`)
+}
+
+/** One frame a run emitted. `type` decides which other fields are present. */
+export interface RunFrame {
+  type: string
+  event_id: number
+  run_id: string
+  text?: string
+  message?: string
+  content?: string
+  role?: string
+  tool?: string
+  ok?: boolean
+  summary?: string
+}
+
+/** Every frame of a run after `after`: the backlog, then live, ending after
+ * the run's terminal frame ("complete", "error" or "cancelled"). */
+export function followRunEvents(
+  runId: string,
+  onFrame: (frame: RunFrame) => void,
+  { after = 0, signal }: { after?: number; signal?: AbortSignal } = {},
+): Promise<void> {
+  return apiStream<RunFrame>(`/api/v1/runs/${runId}/events?after=${after}`, onFrame, signal)
 }

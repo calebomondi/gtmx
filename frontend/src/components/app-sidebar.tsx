@@ -15,7 +15,7 @@ import {
   useSidebar,
   SidebarTrigger
 } from "@/components/ui/sidebar"
-import { Pin, Layers, LayoutGrid, Archive, LogInIcon } from "lucide-react"
+import { Pin, Layers, LayoutGrid, Archive, LogInIcon, Sparkles } from "lucide-react"
 import { Link } from "react-router-dom"
 import { getCurrentUser, workspaceDisplayName } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
@@ -33,6 +33,14 @@ import {
 // Static sidebar section (Extras nav links).
 const data = {
   projects: [
+    {
+      name: "Laces",
+      url: "/lace",
+      icon: (
+        <Sparkles
+        />
+      ),
+    },
     {
       name: "Accounts",
       url: "/accounts",
