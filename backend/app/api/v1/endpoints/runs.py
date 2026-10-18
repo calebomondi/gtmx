@@ -1,12 +1,15 @@
 """The signed-in user's agent runs: find the ones still going (to reattach after
-a reload), inspect one, answer its question, or cancel it."""
+a reload), inspect one, follow its events, answer its question, or cancel it."""
 
+import json
 import uuid
+from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Query
+from fastapi.responses import StreamingResponse
 
 from backend.app.api.deps import CurrentUser, DbSession
-from backend.app.runs import manager
+from backend.app.runs import events, manager
 from backend.app.schemas.runs import RunAnswer, RunResponse, RunStepResponse
 from backend.app.services import runs as run_service
 
@@ -34,6 +37,24 @@ async def list_run_steps(
 ):
     steps = await run_service.list_steps(db, user.id, run_id, after, limit)
     return [RunStepResponse(id=s.id, text=str(s.payload.get("text") or ""), created_at=s.created_at) for s in steps]
+
+
+async def _ndjson(run_id: uuid.UUID, after: int) -> AsyncIterator[str]:
+    async for frame in events.subscribe(run_id, after):
+        yield json.dumps(frame, default=str) + "\n"
+        if frame["type"] in events.TERMINAL_FRAME_TYPES:
+            return
+
+
+@router.get("/{run_id}/events", response_class=StreamingResponse,
+            responses={200: {"content": {"application/x-ndjson": {}}}})
+async def stream_run_events(run_id: uuid.UUID, user: CurrentUser, db: DbSession,
+                            after: int = Query(default=0, ge=0)):
+    """Every frame after the `after` cursor, one JSON object per line: the
+    stored backlog, then live frames, ending after a terminal frame. Read it
+    with a streaming fetch, which (unlike EventSource) sends the auth header."""
+    await run_service.get_owned(db, user.id, run_id)
+    return StreamingResponse(_ndjson(run_id, after), media_type="application/x-ndjson")
 
 
 @router.post("/{run_id}/answer", status_code=202)

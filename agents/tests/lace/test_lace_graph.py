@@ -105,3 +105,29 @@ def test_brief_puts_confident_facts_first_and_respects_its_cap():
     many = [make_fact(str(i), f"Fact number {i} about the offer.") for i in range(400)]
     assert render_brief(many, cap=100).endswith("(more facts on file: use get_facts)")
     assert render_brief([]).startswith("Nothing yet")
+
+
+def test_dangling_tool_calls_get_an_interrupted_result():
+    from agents.lace.graph import close_dangling_tool_calls
+    msgs = [HumanMessage(content="go"),
+            AIMessage(content="", tool_calls=[{"name": "x", "args": {}, "id": "a"}, {"name": "y", "args": {}, "id": "b"}]),
+            ToolMessage(content="done", tool_call_id="a"),
+            HumanMessage(content="next")]
+    closed = close_dangling_tool_calls(msgs)
+    answers = {m.tool_call_id: m.content for m in closed if isinstance(m, ToolMessage)}
+    assert answers["a"] == "done" and "interrupted" in answers["b"]
+    assert len(closed) == len(msgs) + 1
+    assert close_dangling_tool_calls(msgs[:1]) == msgs[:1]
+
+
+async def test_a_turn_after_an_interrupted_one_still_works(store, settings):
+    model = ScriptedModel(AIMessage(content="Picking up where we left off."))
+    graph = build_lace_graph(store, settings=settings, model_step=model, checkpointer=MemorySaver())
+    thread = {"configurable": {"thread_id": "t"}}
+    # A turn cut off between the tool call and its result.
+    await graph.aupdate_state(thread, {"messages": [
+        HumanMessage(content="dig"), AIMessage(content="", tool_calls=[{"name": "get_facts", "args": {}, "id": "z"}])]},
+        as_node="tools")
+    await graph.ainvoke(_ask("hello?"), thread)
+    sent = model.calls[0][0]
+    assert any(isinstance(m, ToolMessage) and m.tool_call_id == "z" for m in sent)

@@ -118,3 +118,18 @@ async def test_unreadable_site_records_nothing_and_says_so(monkeypatch, settings
     result = await onboard(store, settings, extract=extract, pick=_never)
     assert result.site_unreadable and result.facts_recorded == 0
     assert await store.facts() == []
+
+
+def test_opening_message_asks_the_open_questions_or_for_a_description():
+    from agents.lace.onboarding import opening_message
+    from agents.schemas.lace import OnboardingResult
+    seen = []
+    write = lambda messages: (seen.append(messages[1].content), " Hi! ")[1]
+    read = OnboardingResult(startup_name="Acme", pages_read=["https://acme.test"], pages_failed=[],
+                            facts_recorded=3, open_questions=["Who buys?"])
+    assert opening_message("sys", read, write) == "Hi!"
+    assert "- Who buys?" in seen[0]
+    dead = OnboardingResult(startup_name=None, pages_read=[], pages_failed=["https://acme.test"],
+                            facts_recorded=0, open_questions=[])
+    opening_message("sys", dead, write)
+    assert "could not" in seen[1] and "https://acme.test" in seen[1]
