@@ -9,7 +9,7 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from agents.schemas.monitor import CompetitorChange
-from backend.app.runs import lace as lace_runs
+from backend.app.runs import lace_jobs
 from backend.app.runs import manager, scheduler
 from backend.tests.test_lace_jobs import _runs, _wait_for_turns, lace  # noqa: F401 -- fixture
 from backend.tests.test_laces_api import API, lace_runtime  # noqa: F401 -- fixture
@@ -41,7 +41,7 @@ def checks(monkeypatch):
         seen[name] = previous
         return {"site_hash": f"h-{name}"}, results.get(name, [])
 
-    monkeypatch.setattr(lace_runs.check_competitor, "check", check)
+    monkeypatch.setattr(lace_jobs.check_competitor, "check", check)
     return seen, results
 
 

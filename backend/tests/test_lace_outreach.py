@@ -9,7 +9,7 @@ from langchain_core.messages import AIMessage
 
 from agents.schemas.accounts import AccountRecord, ContactRecord, TriggerEvent
 from agents.schemas.outreach import OutreachDraft
-from backend.app.runs import lace as lace_runs
+from backend.app.runs import lace_jobs
 from backend.app.runs import manager
 from backend.tests.helpers import make_user
 from backend.tests.test_lace_jobs import _wait_for_turns, lace  # noqa: F401 -- fixture
@@ -41,8 +41,8 @@ def _stub_writer(monkeypatch, fail_for=()):
     async def sender(user_id):
         return "Caleb"
 
-    monkeypatch.setattr(lace_runs, "draft_first_touch", draft)
-    monkeypatch.setattr(lace_runs.outreach_service, "sender_for_user", sender)
+    monkeypatch.setattr(lace_jobs, "draft_first_touch", draft)
+    monkeypatch.setattr(lace_jobs.outreach_service, "sender_for_user", sender)
     return written
 
 

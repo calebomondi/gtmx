@@ -18,43 +18,17 @@ from datetime import UTC, datetime
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 
 from agents.lace.graph import BRIEF_FACTS, build_lace_graph
-from agents.lace.accounts import find_accounts
-from agents.lace.contacts import complete_contacts, contact_status
-from agents.lace.competitors import change_fact, find_competitors, material, offer_for_monitor
 from agents.lace.onboarding import onboard, opening_message
-from agents.lace.outreach import draft_first_touch, recipient_for
-from agents.lace.store import JobBlocked, LaceJobs
-from agents.pipelines.monitor import check_competitor
-from agents.schemas.accounts import AccountRecord
+from agents.lace.store import LaceJobs
 from agents.lace.prompts import system_prompt
 from backend.app.agents_runtime import get_checkpointer
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
-from backend.app.database.lace_models import Lace, LaceOutreach
+from backend.app.database.lace_models import Lace
 from backend.app.runs import events
-from backend.app.runs.errors import user_facing_error
-from backend.app.services import lace_accounts, lace_competitors, lace_events, lace_outreach
-from backend.app.services import outreach as outreach_service
-from backend.app.services.competitors import domain_key
 from backend.app.services.lace_store import DbLaceStore
 from backend.app.services.runs import set_run_fields
 from config import settings
-from utils.log import logger
-from utils.progress import report
-
-# Accounts one drafting run writes to, how many at once, and the competitors
-# the drafts may compare against.
-DRAFTS_BATCH = 5
-DRAFTS_CONCURRENCY = 3
-COMPETITORS_FOR_DRAFTS = 8
-
-# Accounts one contact search covers, and how many at once.
-CONTACTS_BATCH = 20
-CONTACTS_CONCURRENCY = 4
-
-# Competitors one monitoring run checks, and how many at once.
-MONITOR_BATCH = 15
-MONITOR_CONCURRENCY = 4
 
 # Characters per streamed "token" frame.
 TOKEN_FRAME_CHARS = 24
@@ -150,12 +124,6 @@ class _TokenRelay:
         events.broadcast(self._run_id, "token_reset")
 
 
-def _failure(exc: Exception) -> str:
-    """Why a job failed, as the Lace will tell it: a reason the founder can fix
-    as is, anything else in general terms."""
-    return str(exc) if isinstance(exc, JobBlocked) else user_facing_error(exc)
-
-
 def founder_message(text: str) -> HumanMessage:
     return HumanMessage(content=text)
 
@@ -197,242 +165,6 @@ async def turn_segment(run_id: uuid.UUID, lace_id: uuid.UUID, message: HumanMess
                 elif isinstance(message, ToolMessage):
                     await events.publish(run_id, "tool_result", _tool_summary(message))
     await _finish(run_id, reply)
-
-
-async def competitors_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
-    """Hunt for the Lace's competitors, save them, and queue an update telling
-    the Lace what came of it, in the same transaction as the results. A failed
-    hunt queues an update too, so the founder hears either way."""
-    store = DbLaceStore(AsyncSessionLocal, lace_id)
-    profile, facts = await asyncio.gather(store.profile(), store.facts(None, BRIEF_FACTS))
-    try:
-        with events.reporting_steps(run_id):
-            found = await asyncio.to_thread(find_competitors, profile, facts, params.get("focus"))
-    except Exception as exc:
-        async with AsyncSessionLocal() as db, db.begin():
-            await lace_events.add(db, lace_id, f"The competitor search failed: {_failure(exc)}")
-        raise
-    async with AsyncSessionLocal() as db, db.begin():
-        new, refreshed = await lace_competitors.upsert_found(db, lace_id, run_id, found)
-        await lace_events.add(db, lace_id, competitors_update(found, new, refreshed))
-    await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
-                         progress={"found": len(found), "new": new, "refreshed": refreshed})
-    await events.publish(run_id, "complete", {"found": len(found)})
-
-
-async def monitor_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
-    """Check the tracked competitors for moves since their last check. Each
-    firm's baseline is saved as it is checked. Material changes become sourced
-    facts and one queued update; when nothing material changed, the founder
-    is not told anything."""
-    store = DbLaceStore(AsyncSessionLocal, lace_id)
-    profile, facts = await asyncio.gather(store.profile(), store.facts(None, BRIEF_FACTS))
-    our_offer, offer_detail = offer_for_monitor(profile, facts)
-    async with AsyncSessionLocal() as db:
-        due = [(c.id, c.name, c.website, c.monitor_state)
-               for c in await lace_competitors.due_for_check(db, lace_id, MONITOR_BATCH)]
-    slots = asyncio.Semaphore(MONITOR_CONCURRENCY)
-
-    async def check_one(competitor_id, name, website, previous) -> tuple[str, list]:
-        async with slots:
-            state, changes = await asyncio.to_thread(check_competitor.check, name, website, previous, our_offer,
-                                                     None, offer_detail)
-        async with AsyncSessionLocal() as db, db.begin():
-            await lace_competitors.save_check(db, competitor_id, state)
-        return name, material(changes)
-
-    with events.reporting_steps(run_id):
-        report(f"Checking {len(due)} competitors for changes")
-        results = await asyncio.gather(*(check_one(*row) for row in due))
-
-    moves = [(name, change) for name, changes in results for change in changes]
-    for name, change in moves:
-        fact = change_fact(name, change)
-        if fact is not None:
-            await store.record_fact(fact)
-    if moves:
-        async with AsyncSessionLocal() as db, db.begin():
-            await lace_events.add(db, lace_id, monitor_update(moves))
-    await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
-                         progress={"checked": len(due), "changes": len(moves)})
-    await events.publish(run_id, "complete", {"checked": len(due), "changes": len(moves)})
-
-
-async def accounts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
-    """Search for target accounts on the Lace's ICP, save them with their fit
-    cases, and queue an update, in one transaction. The startup's own site and
-    every competitor on file (tracked or dismissed) are never targets. A failed
-    search queues an update too."""
-    store = DbLaceStore(AsyncSessionLocal, lace_id)
-    profile, facts, icp = await asyncio.gather(store.profile(), store.facts(None, BRIEF_FACTS), store.icp())
-    try:
-        if icp is None:
-            raise JobBlocked("There is no ideal customer profile to search on yet.")
-        async with AsyncSessionLocal() as db:
-            exclude = [domain_key(profile.website), *await lace_competitors.all_domains(db, lace_id)]
-        with events.reporting_steps(run_id):
-            found = await asyncio.to_thread(find_accounts, profile, facts, icp, exclude, params.get("country"))
-    except Exception as exc:
-        async with AsyncSessionLocal() as db, db.begin():
-            await lace_events.add(db, lace_id, f"The search for target accounts failed: {_failure(exc)}")
-        raise
-    async with AsyncSessionLocal() as db, db.begin():
-        new, refreshed = await lace_accounts.upsert_found(db, lace_id, run_id, found)
-        await lace_events.add(db, lace_id, accounts_update(found, new, refreshed, params.get("country")))
-    await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
-                         progress={"found": len(found), "new": new, "refreshed": refreshed})
-    await events.publish(run_id, "complete", {"found": len(found)})
-
-
-async def contacts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
-    """Find who to contact at target accounts, saving each account as it is
-    done, and queue one update saying who can be reached and who cannot."""
-    icp = await DbLaceStore(AsyncSessionLocal, lace_id).icp()
-    titles = list(icp.buyer_titles) if icp else []
-    ids = [uuid.UUID(i) for i in params.get("account_ids") or [] if _is_uuid(i)]
-    async with AsyncSessionLocal() as db:
-        due = [(a.id, AccountRecord.model_validate(a.record))
-               for a in await lace_accounts.due_for_contacts(db, lace_id, ids or None, CONTACTS_BATCH)]
-    slots = asyncio.Semaphore(CONTACTS_CONCURRENCY)
-
-    async def search(account_id, record):
-        async with slots:
-            done = await asyncio.to_thread(complete_contacts, record, titles, settings)
-        async with AsyncSessionLocal() as db, db.begin():
-            await lace_accounts.save_contacts(db, account_id, done)
-        return done
-
-    with events.reporting_steps(run_id):
-        report(f"Looking for contacts at {len(due)} accounts")
-        results = await asyncio.gather(*(search(*row) for row in due))
-    async with AsyncSessionLocal() as db, db.begin():
-        await lace_events.add(db, lace_id, contacts_update(results))
-    counts = {s: sum(contact_status(r) == s for r in results) for s in ("person", "organisation", "none")}
-    await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
-                         progress={"searched": len(results), **counts})
-    await events.publish(run_id, "complete", {"searched": len(results)})
-
-
-def _is_uuid(value: str) -> bool:
-    try:
-        uuid.UUID(value)
-    except ValueError:
-        return False
-    return True
-
-
-async def drafts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
-    """Draft a first message to each account through v1's GTM pipeline, save
-    the drafts for the founder to review, and queue an update. Nothing is
-    sent: sending is the founder's own action."""
-    store = DbLaceStore(AsyncSessionLocal, lace_id)
-    profile, facts, rivals = await asyncio.gather(
-        store.profile(), store.facts(None, BRIEF_FACTS), store.competitors(COMPETITORS_FOR_DRAFTS))
-    ids = [uuid.UUID(i) for i in params.get("account_ids") or [] if _is_uuid(i)]
-    async with AsyncSessionLocal() as db:
-        run = await db.get(models.Run, run_id)
-        user_id = run.user_id
-        accounts = [(a.id, a.name, AccountRecord.model_validate(a.record))
-                    for a in await lace_outreach.accounts_to_draft(db, lace_id, ids or None, DRAFTS_BATCH)]
-    sender = await outreach_service.sender_for_user(user_id)
-    targets = [(account_id, name, record, recipient_for(record)) for account_id, name, record in accounts]
-    unreachable = [name for _, name, _, recipient in targets if recipient is None]
-    failed: list[str] = []
-    slots = asyncio.Semaphore(DRAFTS_CONCURRENCY)
-
-    async def draft(account_id, name, record, recipient) -> LaceOutreach | None:
-        async with slots:
-            try:
-                written = await asyncio.to_thread(draft_first_touch, profile, facts, rivals, record, recipient, sender)
-            except Exception:  # noqa: BLE001 -- one account failing must not lose the other drafts
-                logger.exception("Drafting to %s failed", name)
-                failed.append(name)
-                return None
-        return LaceOutreach(lace_id=lace_id, user_id=user_id, account_id=account_id, run_id=run_id,
-                            channel=recipient.channel, recipient_name=recipient.name, recipient_company=name[:255],
-                            recipient_address=recipient.address, subject=written.subject or None, body=written.body)
-
-    with events.reporting_steps(run_id):
-        report(f"Drafting messages to {len(targets) - len(unreachable)} accounts")
-        drafts = [d for d in await asyncio.gather(*(draft(*t) for t in targets if t[3] is not None)) if d]
-    async with AsyncSessionLocal() as db, db.begin():
-        db.add_all(drafts)
-        await lace_events.add(db, lace_id, drafts_update(drafts, unreachable, failed))
-    await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
-                         progress={"drafted": len(drafts), "unreachable": len(unreachable)})
-    await events.publish(run_id, "complete", {"drafted": len(drafts)})
-
-
-def drafts_update(drafts: list[LaceOutreach], unreachable: list[str], failed: list[str]) -> str:
-    if not drafts and not unreachable and not failed:
-        return "There was no account to draft for: every target with someone to reach already has a message."
-    lines = [f"{d.recipient_company}: to {d.recipient_name or d.recipient_address} by {d.channel}"
-             + (f', subject "{d.subject}"' if d.subject else "") for d in drafts]
-    if unreachable:
-        lines.append("Not drafted, nobody to reach yet (use find_contacts): " + ", ".join(unreachable))
-    if failed:
-        lines.append("Drafting failed for (try again later): " + ", ".join(failed))
-    return ("Drafted first messages; they wait in Outreach for the founder to review, edit and send:\n"
-            + "\n".join(lines))
-
-
-def contacts_update(results: list[AccountRecord]) -> str:
-    if not results:
-        return "The contact search had no accounts to look at: every target account was already searched."
-    lines = []
-    for r in results:
-        status = contact_status(r)
-        people = [c for c in r.key_contacts if c.name and (c.email or c.linkedin)]
-        if status == "person":
-            who = "; ".join(f"{c.name}{f' ({c.title})' if c.title else ''}: {c.email or c.linkedin}" for c in people[:2])
-            lines.append(f"{r.name}: {who}")
-        elif status == "organisation":
-            reach = ", ".join([*(c.email for c in r.key_contacts if c.email), *sorted(r.socials)]) or "its own pages"
-            lines.append(f"{r.name}: no named person found; reachable through {reach}")
-        else:
-            lines.append(f"{r.name}: could not find anyone to contact, nor any page of its own")
-    return "The contact search finished:\n" + "\n".join(lines)
-
-
-def accounts_update(found: list, new: int, refreshed: int, country: str | None) -> str:
-    where = f" in {country}" if country else ""
-    if not found:
-        return (f"The search for target accounts{where} finished without finding an account with a current, "
-                "verifiable reason to buy.")
-    lines = []
-    for record, fit in found:
-        line = f"{record.name} ({record.website or record.account_type})"
-        if record.trigger_event:
-            line += f": {record.trigger_event.event}"
-        if fit:
-            line += f". Need: {fit.need} [{fit.strength} fit]"
-        lines.append(line)
-    return (f"The search for target accounts{where} finished: {len(found)} accounts ({new} new, {refreshed} "
-            "already on file), each with a current trigger:\n" + "\n".join(lines)
-            + "\nThey are saved; use list_accounts for the full cases, and find_contacts to find who to reach.")
-
-
-def monitor_update(moves: list) -> str:
-    lines = []
-    for name, c in moves:
-        line = f"{name} [{c.kind}, {c.importance}]: {c.title}. {c.summary}"
-        if c.implication:
-            line += f" What it means for us: {c.implication}"
-        if c.counter_move:
-            line += f" Suggested move: {c.counter_move}"
-        if c.source_url:
-            line += f" (source: {c.source_url})"
-        lines.append(line)
-    return "Competitor monitoring found changes that matter:\n" + "\n".join(lines)
-
-
-def competitors_update(found: list, new: int, refreshed: int) -> str:
-    if not found:
-        return ("The competitor search finished without finding a company that passed the checks "
-                "(a real website, competing for the same buyers).")
-    names = ", ".join(f"{p.name} ({p.website})" for p in found)
-    return (f"The competitor search finished: {len(found)} competitors ({new} new, {refreshed} already tracked): "
-            f"{names}. Their profiles are saved; use list_competitors for details.")
 
 
 def visible_messages(messages: list[AnyMessage]) -> list[dict]:
