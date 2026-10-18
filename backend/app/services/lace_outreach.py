@@ -10,8 +10,9 @@ from typing import Any
 from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.database.lace_models import LaceAccount, LaceOutreach
+from backend.app.database.lace_models import LaceAccount, LaceChannel, LaceOutreach
 from backend.app.services import connections as connection_service
+from backend.app.services import lace_channels
 from backend.app.services import outreach as outreach_service
 from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError
 from utils.log import logger
@@ -20,6 +21,19 @@ from backend.app.services.lace_accounts import BY_FIT
 _X_LOOKUP = "TWITTER_USER_LOOKUP_BY_USERNAME"  # verified against the live Composio catalog
 _X_SEND = "TWITTER_SEND_A_NEW_MESSAGE_TO_A_USER"
 _X_PROFILE = re.compile(r"^https?://(www\.)?(x|twitter)\.com/(?P<handle>[A-Za-z0-9_]{1,15})/?$", re.I)
+# Answering in an existing conversation on a linked account, inside Meta's
+# reply window (docs/lace-plan.md, Channels): (account id, recipient, text) -> (tool, arguments).
+_DM_SEND = {
+    "instagram": lambda account, recipient, text: (
+        "INSTAGRAM_SEND_TEXT_MESSAGE", {"ig_user_id": account, "recipient_id": recipient, "text": text}),
+    "facebook": lambda account, recipient, text: (
+        "FACEBOOK_SEND_MESSAGE", {"page_id": account, "recipient_id": recipient, "message_text": text,
+                                  "messaging_type": "RESPONSE"}),
+}
+# How Meta reports a message outside its window: Instagram's error subcode
+# 2534022 (per the action's docs), Facebook's 2018278, or the words themselves.
+_WINDOW_MARKERS = ("2534022", "2018278", "outside of allowed window", "messaging window", "24 hour")
+
 # What to do on channels whose APIs cannot start a conversation (docs/lace-plan.md, Channels).
 _HANDOFF = {
     "linkedin": "LinkedIn messages are sent by you: copy the message, send it on LinkedIn, then mark it sent.",
@@ -77,7 +91,52 @@ async def send(db: AsyncSession, message: LaceOutreach) -> LaceOutreach:
         return await outreach_service.send_email(db, message)
     if message.channel == "x":
         return await _send_x(db, message)
+    if message.channel in _DM_SEND and message.thread_id:
+        channel = await db.scalar(select(LaceChannel).where(
+            LaceChannel.lace_id == message.lace_id, LaceChannel.platform == message.channel))
+        if channel is not None:
+            return await _answer_dm(db, message, channel)
     raise ConflictError(_HANDOFF[message.channel])
+
+
+async def _answer_dm(db: AsyncSession, message: LaceOutreach, channel: LaceChannel) -> LaceOutreach:
+    """Answer someone who messaged the founder's linked account, in that
+    conversation. Meta allows it only inside its reply window."""
+    if message.direction != "outbound" or message.status not in _EDITABLE_STATUSES:
+        raise ConflictError("This message was already sent.")
+    if not message.recipient_address or not (message.body or "").strip():
+        raise InvalidInputError("Write a message before sending.")
+    connection = await lace_channels.live_connection(db, message.user_id, channel.platform)
+
+    # Claim the message before the network call, so a double click can't send twice.
+    message.status, message.error = "sending", None
+    await db.commit()
+    tool, arguments = _DM_SEND[message.channel](channel.account_id, message.recipient_address, message.body)
+    label = lace_channels.LABELS[message.channel]
+    try:
+        result = await asyncio.to_thread(connection_service.execute_tool, message.user_id, tool, arguments,
+                                         connection.id)
+        error = str(result.get("error") or "")
+        message.provider_log_id = result.get("log_id")
+        if error:
+            message.status = "failed"
+            message.error = (f"This conversation is outside {label}'s reply window: answer on {label} directly, "
+                             f"then mark it sent." if _outside_window(error)
+                             else f"{label} refused the message. Try again, or answer on {label} directly.")
+        else:
+            message.provider_message_id = _response_field(result.get("data"), "message_id")
+            message.status, message.sent_at = "sent", datetime.now(UTC)
+    except Exception:  # noqa: BLE001 -- an expected outcome: recorded on the message
+        logger.exception("%s answer failed for message %s", label, message.id)
+        message.status, message.error = "failed", f"Couldn't reach {label}. Please try again."
+    finally:
+        await db.commit()
+        await db.refresh(message)
+    return message
+
+
+def _outside_window(error: str) -> bool:
+    return any(marker in error.lower() for marker in _WINDOW_MARKERS)
 
 
 async def _send_x(db: AsyncSession, message: LaceOutreach) -> LaceOutreach:
@@ -101,7 +160,7 @@ async def _send_x(db: AsyncSession, message: LaceOutreach) -> LaceOutreach:
     try:
         found = await asyncio.to_thread(connection_service.execute_tool, message.user_id, _X_LOOKUP,
                                         {"username": handle.group("handle")}, x.id)
-        user = _x_field(found.get("data"), "id")
+        user = _response_field(found.get("data"), "id")
         if found.get("error") or not user:
             message.status, message.error = "failed", f"Couldn't find @{handle.group('handle')} on X."
         else:
@@ -109,7 +168,7 @@ async def _send_x(db: AsyncSession, message: LaceOutreach) -> LaceOutreach:
                                              {"participant_id": user, "text": message.body}, x.id)
             failed = bool(result.get("error"))
             message.provider_log_id = result.get("log_id")
-            message.provider_message_id = _x_field(result.get("data"), "dm_event_id")
+            message.provider_message_id = _response_field(result.get("data"), "dm_event_id")
             message.status = "failed" if failed else "sent"
             message.error = "X refused the message: they may not accept DMs from you." if failed else None
             message.sent_at = None if failed else datetime.now(UTC)
@@ -122,8 +181,8 @@ async def _send_x(db: AsyncSession, message: LaceOutreach) -> LaceOutreach:
     return message
 
 
-def _x_field(data, field: str) -> str | None:
-    """A field of an X API response, which Composio may or may not wrap in `data`."""
+def _response_field(data, field: str) -> str | None:
+    """A field of a platform API response, which Composio may or may not wrap in `data`."""
     if not isinstance(data, dict):
         return None
     inner = data.get("data") if isinstance(data.get("data"), dict) else data

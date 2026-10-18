@@ -14,6 +14,7 @@ const CHANNEL_LABELS: Record<OutreachChannel, string> = {
 // Sent from here through the founder's own account. X needs it connected;
 // without that it is handed over like the rest.
 const SENT_FROM_HERE = new Set<OutreachChannel>(["email", "x"])
+const ANSWERABLE_IN_THREAD = new Set<OutreachChannel>(["instagram", "facebook"])
 
 function DraftCard({ message, onSave, onDiscard, onSend, onMarkSent }: {
   message: LaceOutreachDto
@@ -30,7 +31,10 @@ function DraftCard({ message, onSave, onDiscard, onSend, onMarkSent }: {
   const changed = subject !== (message.subject ?? "") || body !== message.body
     || address !== (message.recipient_address ?? "")
   const isEmail = message.channel === "email"
+  // Instagram and Facebook can answer inside a conversation someone started
+  // with the founder's linked account (the server checks the link).
   const sendable = SENT_FROM_HERE.has(message.channel)
+    || (ANSWERABLE_IN_THREAD.has(message.channel) && Boolean(message.thread_id))
   // Copy, open the profile, mark sent: every channel but email.
   const handoff = !isEmail
   // An answer goes into the existing thread, under its subject.
