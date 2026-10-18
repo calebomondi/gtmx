@@ -15,7 +15,10 @@ from config import settings
 
 config = context.config
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # Keep loggers that already exist: by default fileConfig disables them,
+    # which silences the app's own logger whenever migrations run in-process
+    # (the test session does, at start).
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 
