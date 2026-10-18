@@ -11,6 +11,9 @@ from backend.app.runs import lace as lace_runs
 from backend.app.runs import manager
 from backend.app.schemas.laces import (
     AccountResponse,
+    ChannelAccount,
+    ChannelLinkRequest,
+    ChannelResponse,
     AccountUpdateRequest,
     CompetitorResponse,
     CompetitorUpdateRequest,
@@ -24,9 +27,9 @@ from backend.app.schemas.laces import (
     OutreachResponse,
     OutreachUpdateRequest,
 )
-from backend.app.services import lace_accounts, lace_competitors, lace_outreach
+from backend.app.services import lace_accounts, lace_channels, lace_competitors, lace_outreach
 from backend.app.services import laces as lace_service
-from agents.schemas.lace import AccountStatus, CompetitorStatus, FactTopic
+from agents.schemas.lace import AccountStatus, CompetitorStatus, FactTopic, InboxPlatform
 
 router = APIRouter()
 
@@ -123,3 +126,25 @@ async def send_outreach(lace: OwnedLace, message_id: uuid.UUID, db: DbSession):
 async def mark_outreach_sent(lace: OwnedLace, message_id: uuid.UUID, db: DbSession):
     """Record a LinkedIn message you sent by hand."""
     return await lace_outreach.mark_sent(db, await lace_outreach.get_in_lace(db, lace.id, message_id))
+
+
+@router.get("/{lace_id}/channels", response_model=list[ChannelResponse])
+async def list_channels(lace: OwnedLace, db: DbSession):
+    """The Instagram and Facebook accounts whose DMs this Lace reads."""
+    return await lace_channels.list_for_lace(db, lace.id)
+
+
+@router.get("/{lace_id}/channels/available", response_model=list[ChannelAccount])
+async def available_channels(lace: OwnedLace, platform: InboxPlatform, user: CurrentUser, db: DbSession):
+    """The accounts your connected Instagram or Facebook manages, to link one."""
+    return await lace_channels.available(db, user.id, platform)
+
+
+@router.post("/{lace_id}/channels", response_model=ChannelResponse, status_code=status.HTTP_201_CREATED)
+async def link_channel(lace: OwnedLace, payload: ChannelLinkRequest, user: CurrentUser, db: DbSession):
+    return await lace_channels.link(db, lace.id, user.id, payload.platform, payload.account_id)
+
+
+@router.delete("/{lace_id}/channels/{channel_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def unlink_channel(lace: OwnedLace, channel_id: uuid.UUID, db: DbSession):
+    await lace_channels.unlink(db, lace.id, channel_id)

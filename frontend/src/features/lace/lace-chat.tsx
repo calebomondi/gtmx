@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { useParams } from "react-router-dom"
-import { AlertTriangle, BookOpen, Loader2, Mail, Swords, Target } from "lucide-react"
+import { AlertTriangle, BookOpen, Inbox, Loader2, Mail, Swords, Target } from "lucide-react"
 
 import { PromptInputWithActions } from "@/components/chat-input"
 import { Button } from "@/components/ui/button"
@@ -11,14 +11,19 @@ import type { LaceMessageDto } from "@/lib/api"
 
 import { LaceAvatar } from "./lace-avatar"
 import { LaceAccounts } from "./lace-accounts"
+import { LaceChannels } from "./lace-channels"
 import { LaceCompetitors } from "./lace-competitors"
 import { LaceOutreach } from "./lace-outreach"
 import { LaceFacts } from "./lace-facts"
 import { useLaceChat } from "./use-lace-chat"
 
-type Panel = "facts" | "competitors" | "accounts" | "outreach"
+type Panel = "facts" | "competitors" | "accounts" | "outreach" | "channels"
 
 const PANEL_TEXT: Record<Panel, { title: (name: string) => string; description: string }> = {
+  channels: {
+    title: () => "Inboxes",
+    description: "Business accounts whose messages your Lace reads and answers.",
+  },
   outreach: {
     title: () => "Outreach",
     description: "Messages drafted for you. Nothing is sent until you send it.",
@@ -84,6 +89,10 @@ function LaceChat({ laceId }: { laceId: string }) {
           </div>
         </div>
         <div className="flex shrink-0 gap-2">
+          <Button variant="outline" size="icon-sm" onClick={() => setPanel("channels")} disabled={chat.loading}
+                  aria-label="Inboxes" title="Inboxes">
+            <Inbox />
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setPanel("outreach")} disabled={chat.loading}>
             {chat.drafting ? <Loader2 className="animate-spin" /> : <Mail />}
             <span className="hidden sm:inline">Outreach</span> ({chat.outreach.filter((m) => m.status === "draft").length})
@@ -148,6 +157,7 @@ function LaceChat({ laceId }: { laceId: string }) {
             </SheetHeader>
           )}
           <div className="px-4 pb-6">
+            {panel === "channels" && <LaceChannels laceId={laceId} />}
             {panel === "outreach" && (
               <LaceOutreach outreach={chat.outreach} drafting={chat.drafting}
                             onSave={(id, changes) => void chat.saveDraft(id, changes)}

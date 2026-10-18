@@ -13,7 +13,7 @@ from backend.app.database.connect import AsyncSessionLocal
 from backend.app.runs import background, manager
 from agents.lace.store import JobRefused
 from backend.app.services import inbox as inbox_service
-from backend.app.services import lace_competitors
+from backend.app.services import lace_competitors, social_inbox
 from backend.app.services.errors import RateLimitedError
 from backend.app.services.runs import TERMINAL_STATUSES
 from config import settings
@@ -71,8 +71,22 @@ async def sweep() -> int:
     return started
 
 
+async def sync_lace_channels() -> int:
+    """Read new DMs to the founders' linked Instagram and Facebook accounts;
+    each Lace that received some reads and answers them. Returns how many arrived."""
+    async with AsyncSessionLocal() as db:
+        received = await social_inbox.sync_all(db)
+    for lace_id, (user_id, _count) in received.items():
+        try:
+            await manager.start_lace_job("lace_reply", user_id, lace_id, {})
+        except JobRefused as exc:
+            logger.info("Reading DMs for Lace %s waits: %s", lace_id, exc)
+    return sum(count for _user, count in received.values())
+
+
 async def sync_inboxes() -> int:
-    """Sync every user with recent sends. Returns how many replies arrived."""
+    """Sync every user with recent sends, and every linked DM inbox. Returns
+    how many replies and DMs arrived."""
     async with AsyncSessionLocal() as db:
         users = await inbox_service.users_to_sync(db)
     arrived = 0
@@ -84,7 +98,7 @@ async def sync_inboxes() -> int:
             arrived += len(result.replies)
         except Exception:  # noqa: BLE001 -- one user's mailbox must not stop the rest
             logger.exception("Inbox sync failed for user %s", user_id)
-    return arrived
+    return arrived + await sync_lace_channels()
 
 
 async def _loop(job, name: str, interval_s: float) -> None:

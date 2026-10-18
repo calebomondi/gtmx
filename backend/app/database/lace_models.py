@@ -1,8 +1,8 @@
 """Tables for the Lace agent: the Lace itself, what it knows, and what it read.
 
 Lace v2 starts its own schema instead of reshaping the v1 workspace tables;
-see docs/lace-plan.md. Tables for opportunities and channel connections
-arrive with the phase whose tools first write them.
+see docs/lace-plan.md. Tables for opportunities arrive with the phase whose
+tools first write them.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, In
 from sqlalchemy.dialects.postgresql import JSONB as JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
-from agents.schemas.lace import ACCOUNT_STATUSES, CONTACT_STATUSES, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, FACT_ORIGINS, FACT_TOPICS
+from agents.schemas.lace import ACCOUNT_STATUSES, CONTACT_STATUSES, INBOX_PLATFORMS, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, FACT_ORIGINS, FACT_TOPICS
 from backend.app.database.connect import Base
 
 LACE_STATUSES = ("onboarding", "active", "archived")
@@ -256,3 +256,27 @@ class LaceOutreach(Base):
                                                  default=_now, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
                                                  server_default=func.now(), onupdate=_now)
+
+
+class LaceChannel(Base):
+    """A founder's Instagram business account or Facebook Page, linked to the
+    Lace that reads its inbound DMs. One Lace per account, so every DM has an
+    owner; the founder chooses which."""
+
+    __tablename__ = "lace_channels"
+    __table_args__ = (
+        UniqueConstraint("platform", "account_id", name="uq_lace_channels_platform_account_id"),
+        CheckConstraint(_one_of("platform", INBOX_PLATFORMS), name="platform"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("laces.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    platform: Mapped[str] = mapped_column(String(16), nullable=False)
+    # The Instagram business account id, or the Facebook Page id.
+    account_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    account_name: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    # Newest message time seen, so a sync only reads conversations updated since.
+    synced_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
+                                                 default=_now, server_default=func.now())

@@ -86,7 +86,7 @@ function DraftCard({ message, onSave, onDiscard, onSend, onMarkSent }: {
               <Button size="sm" onClick={onMarkSent} disabled={changed}>
                 <Check /> I've sent it
               </Button>
-              {message.recipient_address && (
+              {message.recipient_address?.startsWith("http") && (
                 <a href={message.recipient_address} target="_blank" rel="noreferrer"
                    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:underline">
                   Open on {CHANNEL_LABELS[message.channel]} <ExternalLink className="size-3" />
@@ -114,7 +114,9 @@ function ReplyCard({ message }: { message: LaceOutreachDto }) {
     <li className="flex flex-col gap-1 rounded-lg border bg-muted/40 p-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{message.recipient_name ?? message.recipient_address}</span>
-        <span className="text-muted-foreground">at {message.recipient_company}</span>
+        <span className="text-muted-foreground">
+          {message.recipient_company ? `at ${message.recipient_company}` : `on ${CHANNEL_LABELS[message.channel]}`}
+        </span>
         <Badge variant={message.intent === "unsubscribe" ? "destructive" : "default"}>
           {message.intent ? INTENT_LABELS[message.intent] ?? message.intent : "Reading…"}
         </Badge>

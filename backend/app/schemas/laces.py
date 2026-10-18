@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from agents.schemas.lace import AccountStatus, CompetitorOrigin, ContactStatus, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
+from agents.schemas.lace import AccountStatus, CompetitorOrigin, ContactStatus, InboxPlatform, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
 
 
 class LaceCreateRequest(BaseModel):
@@ -140,3 +140,25 @@ class OutreachUpdateRequest(BaseModel):
     body: str | None = Field(default=None, min_length=1, max_length=20_000)
     recipient_address: str | None = Field(default=None, max_length=2048)
     recipient_name: str | None = Field(default=None, max_length=255)
+
+
+class ChannelResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    platform: InboxPlatform
+    account_id: str
+    account_name: str
+    synced_until: datetime | None
+    created_at: datetime
+
+
+class ChannelAccount(BaseModel):
+    """A business account (Instagram) or Page (Facebook) the founder's connection manages."""
+    id: str
+    name: str
+
+
+class ChannelLinkRequest(BaseModel):
+    platform: InboxPlatform
+    account_id: str = Field(min_length=1, max_length=64)

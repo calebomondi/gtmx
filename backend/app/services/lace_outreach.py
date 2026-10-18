@@ -148,14 +148,15 @@ async def thread(db: AsyncSession, message: LaceOutreach) -> list[LaceOutreach]:
 async def record_reading(db: AsyncSession, reply: LaceOutreach, intent: str, draft_body: str | None,
                          run_id: uuid.UUID) -> LaceOutreach | None:
     """Store how a reply was read, stop all contact when they asked, and add
-    the answer as a draft in its thread, to whoever wrote. Returns the draft."""
+    the answer as a draft in its thread, on its channel, to whoever wrote.
+    Returns the draft."""
     reply.intent = intent
     if intent == "unsubscribe" and reply.account_id and (account := await db.get(LaceAccount, reply.account_id)):
         account.do_not_contact = True
     draft = None
     if draft_body:
         draft = LaceOutreach(lace_id=reply.lace_id, user_id=reply.user_id, account_id=reply.account_id, run_id=run_id,
-                             channel="email", recipient_name=reply.recipient_name,
+                             channel=reply.channel, recipient_name=reply.recipient_name,
                              recipient_company=reply.recipient_company, recipient_address=reply.recipient_address,
                              thread_id=reply.thread_id, body=draft_body)
         db.add(draft)

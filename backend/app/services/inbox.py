@@ -52,11 +52,13 @@ def _display_name(sender: str) -> str | None:
     return name or None
 
 
-def _timestamp(raw) -> datetime:
+def timestamp(raw) -> datetime:
+    """A provider's timestamp as an aware UTC datetime; now when unreadable."""
     try:
-        return datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
     except ValueError:
         return datetime.now(UTC)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
 def is_bounce(message: dict) -> bool:
@@ -122,7 +124,7 @@ def _inbound(sent: Outreach, message: dict, status: str) -> Outreach:
         recipient_company=sent.recipient_company, recipient_address=_address(sender) or None,
         subject=(message.get("subject") or "")[:255] or None,
         body=_text(message)[:_BODY_CHARS],
-        sent_at=_timestamp(message.get("messageTimestamp")),
+        sent_at=timestamp(message.get("messageTimestamp")),
     )
 
 

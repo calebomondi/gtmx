@@ -322,8 +322,10 @@ async def reply_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None
             for reply in pending:
                 conversation = await lace_outreach.thread(db, reply)
                 account = await db.get(LaceAccount, reply.account_id) if reply.account_id else None
-                work.append((reply.id, reply.recipient_name, conversation, account.record if account else None,
-                             reply.recipient_company))
+                # A DM to the founder's own account may come from someone who is
+                # no target account yet.
+                who = reply.recipient_company or f"{reply.recipient_name or 'Someone'} on {reply.channel}"
+                work.append((reply.id, reply.recipient_name, conversation, account.record if account else None, who))
         sender = await outreach_service.sender_for_user(user_id)
         for reply_id, contact, conversation, record, company in work:
             brief = gtm_replies.ReplyBrief(
@@ -341,14 +343,15 @@ async def reply_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None
                 handled.append(reply_update_line(reply, result.analysis, draft is not None))
     if handled:
         async with AsyncSessionLocal() as db, db.begin():
-            await lace_events.add(db, lace_id, "Replies to the founder's outreach came in:\n" + "\n".join(handled))
+            await lace_events.add(db, lace_id, "Messages to the founder came in:\n" + "\n".join(handled))
     await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
                          progress={"replies": len(handled)})
     await events.publish(run_id, "complete", {"replies": len(handled)})
 
 
 def reply_update_line(reply: LaceOutreach, analysis, drafted: bool) -> str:
-    who = f"{reply.recipient_name or reply.recipient_address} at {reply.recipient_company}"
+    where = f"at {reply.recipient_company}" if reply.recipient_company else f"by {reply.channel} DM"
+    who = f"{reply.recipient_name or reply.recipient_address} {where}"
     line = f"{who} replied ({analysis.intent}): {analysis.summary}"
     if analysis.intent == "unsubscribe":
         return line + " They asked not to be contacted; nothing more will be drafted or sent to them."

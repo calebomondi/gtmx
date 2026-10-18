@@ -160,3 +160,7 @@ CONTACT_STATUSES: tuple[str, ...] = ContactStatus.__args__
 
 OutreachChannel = Literal["email", "linkedin", "x", "instagram", "facebook", "tiktok"]
 OUTREACH_CHANNELS: tuple[str, ...] = OutreachChannel.__args__
+
+# Business accounts whose inbound DMs a Lace reads (docs/lace-plan.md, Channels).
+InboxPlatform = Literal["instagram", "facebook"]
+INBOX_PLATFORMS: tuple[str, ...] = InboxPlatform.__args__
