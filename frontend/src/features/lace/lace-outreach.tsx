@@ -24,6 +24,8 @@ function DraftCard({ message, onSave, onDiscard, onSend, onMarkSent }: {
   const changed = subject !== (message.subject ?? "") || body !== message.body
     || address !== (message.recipient_address ?? "")
   const isLinkedIn = message.channel === "linkedin"
+  // An answer goes into the existing thread, under its subject.
+  const isReply = Boolean(message.thread_id) && message.status === "draft"
 
   const copy = async () => {
     await navigator.clipboard.writeText(body)
@@ -36,14 +38,17 @@ function DraftCard({ message, onSave, onDiscard, onSend, onMarkSent }: {
         <span className="font-medium">{message.recipient_name ?? message.recipient_address}</span>
         <span className="text-muted-foreground">at {message.recipient_company}</span>
         <Badge variant="outline">{isLinkedIn ? "LinkedIn" : "Email"}</Badge>
+        {isReply && <Badge variant="secondary">reply</Badge>}
         {message.status !== "draft" && <Badge variant="secondary">{message.status}</Badge>}
       </div>
       {!isLinkedIn && (
         <>
           <Input value={address} onChange={(e) => setAddress(e.target.value)} disabled={!editable}
                  aria-label="Recipient email" placeholder="name@company.com" inputMode="email" />
-          <Input value={subject} onChange={(e) => setSubject(e.target.value)} disabled={!editable}
-                 aria-label="Subject" placeholder="Subject" />
+          {!isReply && (
+            <Input value={subject} onChange={(e) => setSubject(e.target.value)} disabled={!editable}
+                   aria-label="Subject" placeholder="Subject" />
+          )}
         </>
       )}
       <Textarea value={body} onChange={(e) => setBody(e.target.value)} disabled={!editable}
@@ -89,6 +94,27 @@ function DraftCard({ message, onSave, onDiscard, onSend, onMarkSent }: {
   )
 }
 
+const INTENT_LABELS: Record<string, string> = {
+  interested: "Interested", question: "Asked a question", objection: "Raised an objection",
+  meeting_request: "Wants to meet", not_now: "Not now", unsubscribe: "Asked to stop",
+  out_of_office: "Out of office", referral: "Referred you on",
+}
+
+function ReplyCard({ message }: { message: LaceOutreachDto }) {
+  return (
+    <li className="flex flex-col gap-1 rounded-lg border bg-muted/40 p-3 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-medium">{message.recipient_name ?? message.recipient_address}</span>
+        <span className="text-muted-foreground">at {message.recipient_company}</span>
+        <Badge variant={message.intent === "unsubscribe" ? "destructive" : "default"}>
+          {message.intent ? INTENT_LABELS[message.intent] ?? message.intent : "Reading…"}
+        </Badge>
+      </div>
+      <p className="line-clamp-6 whitespace-pre-wrap text-muted-foreground">{message.body}</p>
+    </li>
+  )
+}
+
 /** Messages the Lace drafted. Nothing is sent without the founder: Send is
  * their approval, and LinkedIn messages they send by hand. */
 export function LaceOutreach({ outreach, drafting, onSave, onDiscard, onSend, onMarkSent }: {
@@ -100,12 +126,19 @@ export function LaceOutreach({ outreach, drafting, onSave, onDiscard, onSend, on
   onMarkSent: (id: string) => void
 }) {
   const outbound = outreach.filter((m) => m.direction === "outbound")
+  const replies = outreach.filter((m) => m.direction === "inbound" && m.status === "received")
   return (
     <div className="flex flex-col gap-4">
       {drafting && (
         <p className="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">
           <Loader2 className="size-4 animate-spin" /> Drafting messages. This takes a few minutes.
         </p>
+      )}
+      {replies.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Replies</h3>
+          <ul className="flex flex-col gap-2">{replies.map((m) => <ReplyCard key={m.id} message={m} />)}</ul>
+        </section>
       )}
       {outbound.length === 0 && !drafting && (
         <p className="text-sm text-muted-foreground">No drafts yet. Ask your Lace to draft outreach to your accounts.</p>

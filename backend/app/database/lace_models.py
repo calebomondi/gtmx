@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Index, String, Text, UUID, UniqueConstraint, func, text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, String, Text, UUID, UniqueConstraint, false, func, text
 from sqlalchemy.dialects.postgresql import JSONB as JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -190,6 +190,8 @@ class LaceAccount(Base):
     score: Mapped[float | None] = mapped_column(Float, nullable=True)
     fit_strength: Mapped[str | None] = mapped_column(String(12), nullable=True)
     status: Mapped[str] = mapped_column(String(12), nullable=False, default="target", server_default="target")
+    # Someone there asked to stop: no more drafts or sends to it.
+    do_not_contact: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
     # person | organisation | none: whether someone named can be reached. Set
     # from discovery's own contacts, then by a contact search, which also sets
     # contacts_checked_at (NULL: the search never ran for it).
@@ -247,6 +249,8 @@ class LaceOutreach(Base):
     subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="draft", server_default="draft")
+    # inbound: how the reply was read (agents.schemas.outreach.ReplyIntent).
+    intent: Mapped[str | None] = mapped_column(String(24), nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,

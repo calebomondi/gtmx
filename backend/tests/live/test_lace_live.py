@@ -255,3 +255,52 @@ def test_lace_drafts_outreach_to_real_people(client, runtime, user):
     turn = client.portal.call(_wait_for_status, client.portal.call(_first_turn, lace_id, 60.0), {"completed", "failed"},
                               TURN_TIMEOUT_S)
     assert turn.status == "completed", turn.error
+
+
+def test_lace_reads_a_reply_and_drafts_the_answer(client, runtime, user, monkeypatch):
+    import json
+
+    import psycopg
+
+    from agents.schemas.accounts import AccountRecord, TriggerEvent
+    from backend.app.runs import lace_jobs, manager
+
+    async def slots(db, user_id):
+        return ["Thu 22 Oct, 10:00-10:30 (Africa/Nairobi)", "Thu 22 Oct, 14:00-14:30 (Africa/Nairobi)"], "Africa/Nairobi"
+    monkeypatch.setattr(lace_jobs.calendar_service, "free_slots", slots)
+
+    created = client.post(f"{API}/laces", json={"name": "Ada", "website": "shangalabs.com"}).json()
+    lace_id = uuid.UUID(created["lace"]["id"])
+    run = client.portal.call(_wait_for_status, uuid.UUID(created["run_id"]), {"completed", "failed"}, ONBOARDING_TIMEOUT_S)
+    assert run.status == "completed", run.error
+    record = AccountRecord(name="SunCulture", website="https://sunculture.com", geo="Kenya",
+                           trigger_event=TriggerEvent(event="Raised a Series B", signal_type="funding_round",
+                                                      source="https://sunculture.com"))
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        account = conn.execute("INSERT INTO lace_accounts (id, lace_id, key, name, account_type, record) VALUES"
+                               " (%s, %s, 'sunculture.com', 'SunCulture', 'company', %s) RETURNING id",
+                               (uuid.uuid4(), lace_id, json.dumps(record.model_dump(mode="json")))).fetchone()[0]
+        for direction, status, body in (
+            ("outbound", "sent", "Hi Samir, with SunCulture's Series B pushing fleet scale, keeping thousands of "
+                                 "connected pumps online off-grid becomes the bottleneck. Shanga Labs connects device "
+                                 "fleets with monitoring dashboards. Worth a 15-minute call?"),
+            ("inbound", "received", "Hi, this is timely. What would it cost for around 500 pumps, and could we talk "
+                                    "on Thursday?"),
+        ):
+            conn.execute("INSERT INTO lace_outreach (id, lace_id, user_id, account_id, channel, direction, status,"
+                         " recipient_name, recipient_company, recipient_address, body, thread_id, sent_at) VALUES"
+                         " (%s, %s, %s, %s, 'email', %s, %s, 'Samir Ibrahim', 'SunCulture', 'samir@sunculture.com',"
+                         " %s, 't_live', now())", (uuid.uuid4(), lace_id, user.id, account, direction, status, body))
+
+    job = client.portal.call(manager.start_lace_job, "lace_reply", user.id, lace_id, {})
+    job = client.portal.call(_wait_for_status, job.id, {"completed", "failed"}, TURN_TIMEOUT_S)
+    assert job.status == "completed", job.error
+    messages = client.get(f"{API}/laces/{lace_id}/outreach").json()
+    reply = next(m for m in messages if m["direction"] == "inbound")
+    answer = next(m for m in messages if m["status"] == "draft")
+    print(f"\n--- read as: {reply['intent']}\n--- ANSWER (thread {answer['thread_id']}):\n{answer['body']}")
+    assert reply["intent"] and answer["thread_id"] == "t_live"
+    turn = client.portal.call(_wait_for_status, client.portal.call(_first_turn, lace_id, 60.0), {"completed", "failed"},
+                              TURN_TIMEOUT_S)
+    assert turn.status == "completed", turn.error
+    print("--- THE LACE SAYS\n" + client.get(f"{API}/laces/{lace_id}/messages").json()[-1]["content"])
