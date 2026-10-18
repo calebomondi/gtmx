@@ -15,9 +15,9 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agents.schemas.icp import ICP
-from agents.schemas.lace import CompetitorSummary, Fact, FactTopic, LaceProfile, NewFact, SourcePage
+from agents.schemas.lace import AccountSummary, CompetitorSummary, Fact, FactTopic, LaceProfile, NewFact, SourcePage
 from backend.app.database.lace_models import Lace, LaceFact, LaceSource
-from backend.app.services import lace_competitors
+from backend.app.services import lace_accounts, lace_competitors
 from backend.app.services.errors import NotFoundError
 from backend.app.services.laces import current_facts_query
 
@@ -99,6 +99,11 @@ class DbLaceStore:
         async with self._sessions() as session, session.begin():
             await session.execute(update(Lace).where(Lace.id == self._lace_id).values(
                 icp=icp.model_dump(mode="json"), icp_updated_at=datetime.now(UTC)))
+
+    async def accounts(self, limit: int = 50) -> list[AccountSummary]:
+        async with self._sessions() as session:
+            rows = await lace_accounts.list_for_lace(session, self._lace_id, "target", limit)
+        return [lace_accounts.summary(r) for r in rows]
 
     async def competitors(self, limit: int = 50) -> list[CompetitorSummary]:
         async with self._sessions() as session:

@@ -16,6 +16,7 @@ class MemoryStore:
         self.sources: dict[str, SourcePage] = {}
         self.tracked: list[CompetitorSummary] = []
         self.saved_icp = None
+        self.targets: list = []
         self._ids = itertools.count(len(self._facts) + 1)
         self.startup_name: str | None = "Acme"
         self.website = "https://acme.test"
@@ -41,6 +42,9 @@ class MemoryStore:
 
     async def save_source(self, page: SourcePage) -> None:
         self.sources[page.url] = page
+
+    async def accounts(self, limit=50):
+        return self.targets[:limit]
 
     async def icp(self):
         return self.saved_icp

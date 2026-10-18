@@ -32,6 +32,7 @@ SEARCH_RESULTS = 8
 HIGHLIGHTS_PER_RESULT = 3
 FACTS_PER_READ = 50
 COMPETITORS_PER_READ = 50
+ACCOUNTS_PER_READ = 50
 # Facts the ICP is drawn from.
 ICP_FACTS = 150
 
@@ -215,7 +216,15 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
         await store.save_icp(icp)
         return ToolResult.success("Saved the ideal customer profile.", icp.model_dump(exclude_defaults=True))
 
-    tools = [search_web, map_site, read_page, read_pages, get_facts, record_fact, list_competitors, define_icp]
+    @tool(parse_docstring=True)
+    @_guarded
+    async def list_accounts() -> ToolResult:
+        """The target accounts found so far: who they are, the trigger that makes them worth contacting now, and the case for them."""
+        rows = await store.accounts(ACCOUNTS_PER_READ)
+        return ToolResult.success(f"{len(rows)} target accounts.", [r.model_dump(exclude_none=True) for r in rows])
+
+    tools = [search_web, map_site, read_page, read_pages, get_facts, record_fact, list_competitors, define_icp,
+             list_accounts]
     if jobs is None:
         return tools
 
@@ -245,4 +254,21 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
         return ToolResult.success("Started checking the competitors. You will get an update here if anything "
                                   "material changed.")
 
-    return [*tools, find_competitors, check_competitors]
+    @tool(parse_docstring=True)
+    @_guarded
+    async def find_accounts(country: str | None = None) -> ToolResult:
+        """Start a search for target accounts that match the ideal customer profile and have a current reason to buy (a hire, a funding round, a launch...), each verified and with the case for it. Needs an ideal customer profile first (define_icp). Takes several minutes in the background; you get an update when it is done.
+
+        Args:
+            country: Search one country only, e.g. "Kenya". Otherwise the profile's countries are searched one by one.
+        """
+        if await store.icp() is None:
+            return ToolResult.failure("There is no ideal customer profile yet. Use define_icp first.")
+        try:
+            await jobs.start("find_accounts", {"country": country})
+        except JobRefused as exc:
+            return ToolResult.failure(str(exc))
+        return ToolResult.success("Started looking for target accounts. It takes several minutes; "
+                                  "you will get an update here when it finishes.")
+
+    return [*tools, find_competitors, check_competitors, find_accounts]

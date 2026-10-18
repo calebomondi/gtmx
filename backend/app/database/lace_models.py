@@ -1,8 +1,8 @@
 """Tables for the Lace agent: the Lace itself, what it knows, and what it read.
 
 Lace v2 starts its own schema instead of reshaping the v1 workspace tables;
-see docs/lace-plan.md. Tables for accounts, contacts, opportunities and
-messages arrive with the phase whose tools first write them.
+see docs/lace-plan.md. Tables for contacts, opportunities and messages
+arrive with the phase whose tools first write them.
 """
 
 from __future__ import annotations
@@ -10,11 +10,11 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, UUID, UniqueConstraint, func, text
+from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Index, String, Text, UUID, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB as JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
-from agents.schemas.lace import COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, FACT_ORIGINS, FACT_TOPICS
+from agents.schemas.lace import ACCOUNT_STATUSES, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, FACT_ORIGINS, FACT_TOPICS
 from backend.app.database.connect import Base
 
 LACE_STATUSES = ("onboarding", "active", "archived")
@@ -157,3 +157,43 @@ class LaceEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
                                                  default=_now, server_default=func.now())
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+FIT_STRENGTHS = ("strong", "moderate", "weak")
+
+
+class LaceAccount(Base):
+    """A target account for the Lace's startup: a company (or a community,
+    event or creator for consumer offers) with a current trigger. One row per
+    `key` (its domain, or its name when it has no site) per Lace, so a later
+    search refreshes rather than duplicates. Discovery's record and the fit
+    case are agent blobs; what is sorted or filtered on is a column."""
+
+    __tablename__ = "lace_accounts"
+    __table_args__ = (
+        UniqueConstraint("lace_id", "key", name="uq_lace_accounts_lace_id_key"),
+        CheckConstraint(_one_of("status", ACCOUNT_STATUSES), name="status"),
+        CheckConstraint(f"fit_strength IS NULL OR {_one_of('fit_strength', FIT_STRENGTHS)}", name="fit_strength"),
+        Index("ix_lace_accounts_lace_id_status", "lace_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Indexed by the unique constraint and the status index, which lead with it.
+    lace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("laces.id", ondelete="CASCADE"), nullable=False)
+    key: Mapped[str] = mapped_column(String(255), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    account_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    website: Mapped[str | None] = mapped_column(Text, nullable=True)
+    geo: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fit_strength: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    status: Mapped[str] = mapped_column(String(12), nullable=False, default="target", server_default="target")
+    # agents.schemas.accounts.AccountRecord and AccountFit.
+    record: Mapped[dict] = mapped_column(JSON, nullable=False)
+    fit: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    found_by_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
+                                                    default=_now, server_default=func.now())
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
+                                                   server_default=func.now(), index=True)

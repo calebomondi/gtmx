@@ -137,3 +137,37 @@ def test_lace_monitors_competitors(client, runtime, user):
                                   TURN_TIMEOUT_S)
         assert turn.status == "completed", turn.error
         print("--- THE LACE SAYS\n" + client.get(f"{API}/laces/{lace_id}/messages").json()[-1]["content"])
+
+
+ACCOUNTS_TIMEOUT_S = 1800
+
+
+def test_lace_finds_customers_in_kenya(client, runtime, user):
+    import psycopg
+
+    from backend.app.runs import manager
+
+    created = client.post(f"{API}/laces", json={"name": "Ada", "website": "shangalabs.com"}).json()
+    lace_id = uuid.UUID(created["lace"]["id"])
+    run = client.portal.call(_wait_for_status, uuid.UUID(created["run_id"]), {"completed", "failed"}, ONBOARDING_TIMEOUT_S)
+    assert run.status == "completed", run.error
+
+    sent = client.post(f"{API}/laces/{lace_id}/messages", json={
+        "text": "Work out our ideal customer profile. We sell to companies in Kenya."}).json()
+    turn = client.portal.call(_wait_for_status, uuid.UUID(sent["run_id"]), {"completed", "failed"}, TURN_TIMEOUT_S)
+    assert turn.status == "completed", turn.error
+    with psycopg.connect(settings.database_url) as conn:
+        icp = conn.execute("SELECT icp FROM laces WHERE id = %s", (lace_id,)).fetchone()[0]
+    print(f"\n--- ICP industries {icp and icp.get('industries')}, geo {icp and icp.get('geo')}, beachhead {icp and icp.get('beachhead')}")
+    assert icp
+
+    job = client.portal.call(manager.start_lace_job, "lace_accounts", user.id, lace_id, {"country": "Kenya"})
+    job = client.portal.call(_wait_for_status, job.id, {"completed", "failed"}, ACCOUNTS_TIMEOUT_S)
+    assert job.status == "completed", job.error
+    accounts = client.get(f"{API}/laces/{lace_id}/accounts").json()
+    print(f"--- {len(accounts)} accounts, {job.progress}")
+    for a in accounts:
+        case = a["case"] or {}
+        print(f"  {a['name']} [{a['geo']}] ({a['website']}) {case.get('strength')}: WHY NOW {(a['trigger'] or {}).get('event')}"
+              f" | NEED {case.get('need')}")
+    assert accounts and all(a["trigger"] for a in accounts)

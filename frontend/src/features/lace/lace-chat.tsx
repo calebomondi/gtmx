@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { useParams } from "react-router-dom"
-import { AlertTriangle, BookOpen, Loader2, Swords } from "lucide-react"
+import { AlertTriangle, BookOpen, Loader2, Swords, Target } from "lucide-react"
 
 import { PromptInputWithActions } from "@/components/chat-input"
 import { Button } from "@/components/ui/button"
@@ -10,9 +10,27 @@ import { Skeleton } from "@/components/ui/skeleton"
 import type { LaceMessageDto } from "@/lib/api"
 
 import { LaceAvatar } from "./lace-avatar"
+import { LaceAccounts } from "./lace-accounts"
 import { LaceCompetitors } from "./lace-competitors"
 import { LaceFacts } from "./lace-facts"
 import { useLaceChat } from "./use-lace-chat"
+
+type Panel = "facts" | "competitors" | "accounts"
+
+const PANEL_TEXT: Record<Panel, { title: (name: string) => string; description: string }> = {
+  accounts: {
+    title: () => "Target accounts",
+    description: "Who matches your ideal customer and has a reason to buy now, with the case for each.",
+  },
+  competitors: {
+    title: () => "Competitors",
+    description: "Companies your buyers could pay instead of you, each checked and profiled from sources.",
+  },
+  facts: {
+    title: (name) => `What ${name} knows`,
+    description: "Learned from your site, its research and you. Each fact keeps its source.",
+  },
+}
 
 function Message({ message }: { message: LaceMessageDto }) {
   if (message.role === "founder") {
@@ -40,7 +58,7 @@ export default function LaceChatPage() {
 
 function LaceChat({ laceId }: { laceId: string }) {
   const chat = useLaceChat(laceId)
-  const [panel, setPanel] = useState<"facts" | "competitors" | null>(null)
+  const [panel, setPanel] = useState<Panel | null>(null)
   const end = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -61,6 +79,10 @@ function LaceChat({ laceId }: { laceId: string }) {
           </div>
         </div>
         <div className="flex shrink-0 gap-2">
+          <Button variant="outline" size="sm" onClick={() => setPanel("accounts")} disabled={chat.loading}>
+            {chat.findingAccounts ? <Loader2 className="animate-spin" /> : <Target />}
+            <span className="hidden sm:inline">Accounts</span> ({chat.accounts.length})
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setPanel("competitors")} disabled={chat.loading}>
             {chat.searching ? <Loader2 className="animate-spin" /> : <Swords />}
             <span className="hidden sm:inline">Competitors</span> ({chat.competitors.length})
@@ -110,24 +132,22 @@ function LaceChat({ laceId }: { laceId: string }) {
 
       <Sheet open={panel !== null} onOpenChange={(open) => !open && setPanel(null)}>
         <SheetContent className="overflow-y-auto">
-          {panel === "competitors" ? (
+          {panel && (
             <SheetHeader>
-              <SheetTitle>Competitors</SheetTitle>
-              <SheetDescription>Companies your buyers could pay instead of you, each checked and profiled from sources.</SheetDescription>
-            </SheetHeader>
-          ) : (
-            <SheetHeader>
-              <SheetTitle>What {title} knows</SheetTitle>
-              <SheetDescription>Learned from your site, its research and you. Each fact keeps its source.</SheetDescription>
+              <SheetTitle>{PANEL_TEXT[panel].title(title)}</SheetTitle>
+              <SheetDescription>{PANEL_TEXT[panel].description}</SheetDescription>
             </SheetHeader>
           )}
           <div className="px-4 pb-6">
-            {panel === "competitors" ? (
+            {panel === "accounts" && (
+              <LaceAccounts accounts={chat.accounts} finding={chat.findingAccounts}
+                            onDismiss={(id) => void chat.dismissAccount(id)} />
+            )}
+            {panel === "competitors" && (
               <LaceCompetitors competitors={chat.competitors} searching={chat.searching}
                                onDismiss={(id) => void chat.dismissCompetitor(id)} />
-            ) : (
-              <LaceFacts facts={chat.facts} />
             )}
+            {panel === "facts" && <LaceFacts facts={chat.facts} />}
           </div>
         </SheetContent>
       </Sheet>

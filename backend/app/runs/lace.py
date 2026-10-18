@@ -18,9 +18,10 @@ from datetime import UTC, datetime
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 
 from agents.lace.graph import BRIEF_FACTS, build_lace_graph
+from agents.lace.accounts import find_accounts
 from agents.lace.competitors import change_fact, find_competitors, material, offer_for_monitor
 from agents.lace.onboarding import onboard, opening_message
-from agents.lace.store import LaceJobs
+from agents.lace.store import JobBlocked, LaceJobs
 from agents.pipelines.monitor import check_competitor
 from agents.lace.prompts import system_prompt
 from backend.app.agents_runtime import get_checkpointer
@@ -29,7 +30,8 @@ from backend.app.database.connect import AsyncSessionLocal
 from backend.app.database.lace_models import Lace
 from backend.app.runs import events
 from backend.app.runs.errors import user_facing_error
-from backend.app.services import lace_competitors, lace_events
+from backend.app.services import lace_accounts, lace_competitors, lace_events
+from backend.app.services.competitors import domain_key
 from backend.app.services.lace_store import DbLaceStore
 from backend.app.services.runs import set_run_fields
 from config import settings
@@ -54,6 +56,8 @@ _STEP_TEXT = {
     "list_competitors": lambda a: "Checking the competitors I track",
     "find_competitors": lambda a: "Starting a competitor search",
     "check_competitors": lambda a: "Checking competitors for changes",
+    "list_accounts": lambda a: "Checking the target accounts",
+    "find_accounts": lambda a: "Starting a search for customers" + (f" in {a['country']}" if a.get("country") else ""),
 }
 
 # Marks a message on the thread as an update for the Lace, not the founder's words.
@@ -129,6 +133,12 @@ class _TokenRelay:
         events.broadcast(self._run_id, "token_reset")
 
 
+def _failure(exc: Exception) -> str:
+    """Why a job failed, as the Lace will tell it: a reason the founder can fix
+    as is, anything else in general terms."""
+    return str(exc) if isinstance(exc, JobBlocked) else user_facing_error(exc)
+
+
 def founder_message(text: str) -> HumanMessage:
     return HumanMessage(content=text)
 
@@ -183,7 +193,7 @@ async def competitors_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -
             found = await asyncio.to_thread(find_competitors, profile, facts, params.get("focus"))
     except Exception as exc:
         async with AsyncSessionLocal() as db, db.begin():
-            await lace_events.add(db, lace_id, f"The competitor search failed: {user_facing_error(exc)}")
+            await lace_events.add(db, lace_id, f"The competitor search failed: {_failure(exc)}")
         raise
     async with AsyncSessionLocal() as db, db.begin():
         new, refreshed = await lace_competitors.upsert_found(db, lace_id, run_id, found)
@@ -229,6 +239,50 @@ async def monitor_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> No
     await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
                          progress={"checked": len(due), "changes": len(moves)})
     await events.publish(run_id, "complete", {"checked": len(due), "changes": len(moves)})
+
+
+async def accounts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
+    """Search for target accounts on the Lace's ICP, save them with their fit
+    cases, and queue an update, in one transaction. The startup's own site and
+    every competitor on file (tracked or dismissed) are never targets. A failed
+    search queues an update too."""
+    store = DbLaceStore(AsyncSessionLocal, lace_id)
+    profile, facts, icp = await asyncio.gather(store.profile(), store.facts(None, BRIEF_FACTS), store.icp())
+    try:
+        if icp is None:
+            raise JobBlocked("There is no ideal customer profile to search on yet.")
+        async with AsyncSessionLocal() as db:
+            exclude = [domain_key(profile.website), *await lace_competitors.all_domains(db, lace_id)]
+        with events.reporting_steps(run_id):
+            found = await asyncio.to_thread(find_accounts, profile, facts, icp, exclude, params.get("country"))
+    except Exception as exc:
+        async with AsyncSessionLocal() as db, db.begin():
+            await lace_events.add(db, lace_id, f"The search for target accounts failed: {_failure(exc)}")
+        raise
+    async with AsyncSessionLocal() as db, db.begin():
+        new, refreshed = await lace_accounts.upsert_found(db, lace_id, run_id, found)
+        await lace_events.add(db, lace_id, accounts_update(found, new, refreshed, params.get("country")))
+    await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
+                         progress={"found": len(found), "new": new, "refreshed": refreshed})
+    await events.publish(run_id, "complete", {"found": len(found)})
+
+
+def accounts_update(found: list, new: int, refreshed: int, country: str | None) -> str:
+    where = f" in {country}" if country else ""
+    if not found:
+        return (f"The search for target accounts{where} finished without finding an account with a current, "
+                "verifiable reason to buy.")
+    lines = []
+    for record, fit in found:
+        line = f"{record.name} ({record.website or record.account_type})"
+        if record.trigger_event:
+            line += f": {record.trigger_event.event}"
+        if fit:
+            line += f". Need: {fit.need} [{fit.strength} fit]"
+        lines.append(line)
+    return (f"The search for target accounts{where} finished: {len(found)} accounts ({new} new, {refreshed} "
+            "already on file), each with a current trigger:\n" + "\n".join(lines)
+            + "\nThey are saved; use list_accounts for the full cases.")
 
 
 def monitor_update(moves: list) -> str:

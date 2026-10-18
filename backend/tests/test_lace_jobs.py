@@ -10,6 +10,7 @@ import pytest
 from langchain_core.messages import AIMessage
 from sqlalchemy import func, select
 
+from agents.lace.store import JobBlocked
 from agents.schemas.competition import CompetitorProfile
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
@@ -70,7 +71,7 @@ def test_hunt_saves_competitors_and_the_lace_reports_back(client, lace, lace_run
 
 def test_a_failed_hunt_is_reported_too(client, lace, lace_runtime, monkeypatch):  # noqa: F811
     def boom(profile, facts, focus):
-        raise ValueError("Not enough is known about what the startup sells to say what competes with it.")
+        raise JobBlocked("Not enough is known about what the startup sells to say what competes with it.")
     monkeypatch.setattr(lace_runs, "find_competitors", boom)
     lace_runtime.extend([_call("find_competitors"), AIMessage(content="On it."),
                          AIMessage(content="I couldn't search yet: tell me more about what you sell.")])
@@ -79,7 +80,7 @@ def test_a_failed_hunt_is_reported_too(client, lace, lace_runtime, monkeypatch):
     turns = client.portal.call(_wait_for_turns, lace, 2)
     [job] = client.portal.call(_runs, lace, "lace_competitors")
     assert job.status == "failed"
-    assert "competitor search failed" in turns[-1].input["updates"][0]
+    assert "competitor search failed: Not enough is known" in turns[-1].input["updates"][0]
 
 
 def test_only_one_hunt_at_a_time(client, lace, lace_runtime, user):  # noqa: F811
