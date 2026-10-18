@@ -15,7 +15,7 @@ from backend.app.services.competitors import domain_key
 from backend.app.services.errors import NotFoundError
 
 # Strongest case first, then discovery's own score.
-_BY_FIT = case({"strong": 0, "moderate": 1, "weak": 2}, value=LaceAccount.fit_strength, else_=3)
+BY_FIT = case({"strong": 0, "moderate": 1, "weak": 2}, value=LaceAccount.fit_strength, else_=3)
 
 
 def account_key(record: AccountRecord) -> str:
@@ -51,7 +51,7 @@ def response(row: LaceAccount) -> dict:
 async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, status: str, limit: int) -> list[LaceAccount]:
     rows = await db.scalars(
         select(LaceAccount).where(LaceAccount.lace_id == lace_id, LaceAccount.status == status)
-        .order_by(_BY_FIT, LaceAccount.score.desc().nulls_last(), LaceAccount.last_seen_at.desc()).limit(limit)
+        .order_by(BY_FIT, LaceAccount.score.desc().nulls_last(), LaceAccount.last_seen_at.desc()).limit(limit)
     )
     return list(rows.all())
 
@@ -113,7 +113,7 @@ async def due_for_contacts(db: AsyncSession, lace_id: uuid.UUID, ids: list[uuid.
         query = query.where(LaceAccount.id.in_(ids))
     else:
         query = query.where(LaceAccount.contacts_checked_at.is_(None))
-    return list((await db.scalars(query.order_by(_BY_FIT, LaceAccount.score.desc().nulls_last()).limit(limit))).all())
+    return list((await db.scalars(query.order_by(BY_FIT, LaceAccount.score.desc().nulls_last()).limit(limit))).all())
 
 
 async def save_contacts(db: AsyncSession, account_id: uuid.UUID, record: AccountRecord) -> None:

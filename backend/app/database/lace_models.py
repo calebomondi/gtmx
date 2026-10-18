@@ -1,7 +1,7 @@
 """Tables for the Lace agent: the Lace itself, what it knows, and what it read.
 
 Lace v2 starts its own schema instead of reshaping the v1 workspace tables;
-see docs/lace-plan.md. Tables for contacts, opportunities and messages
+see docs/lace-plan.md. Tables for opportunities and channel connections
 arrive with the phase whose tools first write them.
 """
 
@@ -204,3 +204,50 @@ class LaceAccount(Base):
                                                     default=_now, server_default=func.now())
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
                                                    server_default=func.now(), index=True)
+
+
+OUTREACH_CHANNELS = ("email", "linkedin")
+OUTREACH_DIRECTIONS = ("outbound", "inbound")
+# outbound: draft | sending | sent | failed | bounced. inbound: received | bounced.
+OUTREACH_STATUSES = ("draft", "sending", "sent", "failed", "bounced", "received")
+
+
+class LaceOutreach(Base):
+    """One message in a Lace's outreach: a draft the Lace wrote, what the
+    founder sent, or a reply that came back. Sending is always the founder's
+    own action; the Lace only drafts."""
+
+    __tablename__ = "lace_outreach"
+    __table_args__ = (
+        CheckConstraint(_one_of("channel", OUTREACH_CHANNELS), name="channel"),
+        CheckConstraint(_one_of("direction", OUTREACH_DIRECTIONS), name="direction"),
+        CheckConstraint(_one_of("status", OUTREACH_STATUSES), name="status"),
+        Index("ix_lace_outreach_lace_id_status", "lace_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Indexed by the status index, which leads with it.
+    lace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("laces.id", ondelete="CASCADE"), nullable=False)
+    # Supabase owns users: indexed, no FK. Daily send caps count by it.
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    account_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("lace_accounts.id", ondelete="SET NULL"), nullable=True, index=True)
+    run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True)
+    channel: Mapped[str] = mapped_column(String(16), nullable=False)
+    direction: Mapped[str] = mapped_column(String(8), nullable=False, default="outbound", server_default="outbound")
+    # The provider's thread (Gmail threadId): ties replies to what was sent.
+    thread_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    provider_message_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    recipient_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    recipient_company: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    # An email address, or the LinkedIn profile URL for a LinkedIn message.
+    recipient_address: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="draft", server_default="draft")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
+                                                 default=_now, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
+                                                 server_default=func.now(), onupdate=_now)

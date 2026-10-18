@@ -115,3 +115,34 @@ export function listLaceAccounts(laceId: string, status: AccountStatus = "target
 export function setLaceAccountStatus(laceId: string, accountId: string, status: AccountStatus): Promise<LaceAccountDto> {
   return apiFetch(`/api/v1/laces/${laceId}/accounts/${accountId}`, { method: "PATCH", body: JSON.stringify({ status }) })
 }
+
+export interface LaceOutreachDto {
+  id: string
+  account_id: string | null
+  channel: "email" | "linkedin"
+  direction: "outbound" | "inbound"
+  status: "draft" | "sending" | "sent" | "failed" | "bounced" | "received"
+  recipient_name: string | null
+  recipient_company: string
+  /** An email address, or a LinkedIn profile URL. */
+  recipient_address: string | null
+  subject: string | null
+  body: string
+  error: string | null
+  sent_at: string | null
+  created_at: string
+}
+
+export type LaceOutreachChanges = Partial<Pick<LaceOutreachDto, "subject" | "body" | "recipient_address" | "recipient_name">>
+
+export function listLaceOutreach(laceId: string): Promise<LaceOutreachDto[]> {
+  return apiFetch<LaceOutreachDto[]>(`/api/v1/laces/${laceId}/outreach`)
+}
+
+export function updateLaceOutreach(laceId: string, messageId: string, changes: LaceOutreachChanges): Promise<LaceOutreachDto> {
+  return apiFetch(`/api/v1/laces/${laceId}/outreach/${messageId}`, { method: "PATCH", body: JSON.stringify(changes) })
+}
+
+export function deleteLaceOutreach(laceId: string, messageId: string): Promise<void> {
+  return apiFetch(`/api/v1/laces/${laceId}/outreach/${messageId}`, { method: "DELETE" })
+}

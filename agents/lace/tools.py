@@ -285,4 +285,18 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
             return ToolResult.failure(str(exc))
         return ToolResult.success("Started looking for contacts. You will get an update here when it finishes.")
 
-    return [*tools, find_competitors, check_competitors, find_accounts, find_contacts]
+    @tool(parse_docstring=True)
+    @_guarded
+    async def draft_outreach(account_ids: list[str] | None = None) -> ToolResult:
+        """Draft a first message to target accounts, each to the best person you found there, grounded in their trigger and your facts. The drafts wait for the founder to review, edit and send: you never send anything. Runs in the background; you get an update when they are ready.
+
+        Args:
+            account_ids: Ids from list_accounts to write to. Otherwise the strongest-fit targets with someone to reach and no message yet.
+        """
+        try:
+            await jobs.start("draft_outreach", {"account_ids": account_ids or []})
+        except JobRefused as exc:
+            return ToolResult.failure(str(exc))
+        return ToolResult.success("Started drafting. You will get an update here when the drafts are ready.")
+
+    return [*tools, find_competitors, check_competitors, find_accounts, find_contacts, draft_outreach]
