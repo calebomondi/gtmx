@@ -165,7 +165,7 @@ def build_tools(store: LaceStore, settings: Settings) -> list[BaseTool]:
         from_founder: bool = False,
         replaces_id: str | None = None,
     ) -> ToolResult:
-        """Save something true about the startup so you remember it in every later conversation.
+        """Save something a source or the founder states about the startup, so you remember it in every later conversation. Not for your own opinions.
 
         Args:
             topic: What the fact is about.

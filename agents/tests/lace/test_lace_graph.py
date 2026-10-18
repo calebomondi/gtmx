@@ -131,3 +131,10 @@ async def test_a_turn_after_an_interrupted_one_still_works(store, settings):
     await graph.ainvoke(_ask("hello?"), thread)
     sent = model.calls[0][0]
     assert any(isinstance(m, ToolMessage) and m.tool_call_id == "z" for m in sent)
+
+
+def test_prompt_separates_sourced_claims_from_judgment():
+    from agents.lace.prompts import system_prompt
+    from agents.schemas.lace import LaceProfile
+    prompt = system_prompt(LaceProfile(name="Ada", website="https://acme.test"), [])
+    assert '"My read"' in prompt and '"Sources" list' in prompt and "never recorded with record_fact" in prompt
