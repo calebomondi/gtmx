@@ -176,45 +176,55 @@ async def wake_lace(user_id: uuid.UUID, lace_id: uuid.UUID) -> None:
 
 
 # The run kind behind each job a Lace's tools can start.
-_LACE_JOB_RUN_KINDS = {"find_competitors": "lace_competitors"}
-_LACE_JOB_BUSY = {"find_competitors": "A competitor search is already running; I'll report when it's done."}
+_TOOL_JOB_RUN_KINDS = {"find_competitors": "lace_competitors", "check_competitors": "lace_monitor"}
+_JOB_SEGMENTS = {"lace_competitors": lace_runs.competitors_job, "lace_monitor": lace_runs.monitor_job}
+_JOB_BUSY = {
+    "lace_competitors": "A competitor search is already running; I'll report when it's done.",
+    "lace_monitor": "I'm already checking the competitors; I'll report anything that matters.",
+}
+
+
+async def start_lace_job(run_kind: str, user_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> models.Run:
+    """Start a Lace's background job. It runs alongside the conversation and,
+    when it ends (either way), wakes the Lace with whatever it queued. Raises
+    JobRefused while one of the same kind is running or past the daily cap."""
+    async with AsyncSessionLocal() as db:
+        busy = await db.scalar(select(func.count()).select_from(models.Run).where(
+            models.Run.lace_id == lace_id, models.Run.kind == run_kind,
+            models.Run.status.not_in(TERMINAL_STATUSES)))
+        if busy:
+            raise JobRefused(_JOB_BUSY[run_kind])
+        try:
+            await limits.ensure_can_start(db, user_id, run_kind)
+        except RateLimitedError as exc:
+            raise JobRefused(str(exc)) from None
+        run = models.Run(user_id=user_id, lace_id=lace_id, kind=run_kind, status="running",
+                         input=params, started_at=datetime.now(UTC))
+        db.add(run)
+        await db.commit()
+    _spawn(run.id, user_id, _job_then_wake(_JOB_SEGMENTS[run_kind](run.id, lace_id, params), user_id, lace_id),
+           settings.background_run_timeout_s)
+    return run
+
+
+async def _job_then_wake(job: Coroutine, user_id: uuid.UUID, lace_id: uuid.UUID) -> None:
+    # Jobs queue an update even when they fail, so wake either way. A job run
+    # is not a conversation run, so its own row never blocks the wake.
+    try:
+        await job
+    finally:
+        await wake_lace(user_id, lace_id)
 
 
 class _LaceJobs:
-    """Starts a Lace's background jobs under the run manager. A job runs
-    alongside the conversation and, when it ends (either way), wakes the Lace
-    with what it queued."""
+    """The jobs a Lace's tools start, for one Lace."""
 
     def __init__(self, user_id: uuid.UUID, lace_id: uuid.UUID):
         self._user_id, self._lace_id = user_id, lace_id
 
     async def start(self, kind: str, params: dict) -> str:
-        run_kind = _LACE_JOB_RUN_KINDS[kind]
-        async with AsyncSessionLocal() as db:
-            busy = await db.scalar(select(func.count()).select_from(models.Run).where(
-                models.Run.lace_id == self._lace_id, models.Run.kind == run_kind,
-                models.Run.status.not_in(TERMINAL_STATUSES)))
-            if busy:
-                raise JobRefused(_LACE_JOB_BUSY[kind])
-            try:
-                await limits.ensure_can_start(db, self._user_id, run_kind)
-            except RateLimitedError as exc:
-                raise JobRefused(str(exc)) from None
-            run = models.Run(user_id=self._user_id, lace_id=self._lace_id, kind=run_kind, status="running",
-                             input=params, started_at=datetime.now(UTC))
-            db.add(run)
-            await db.commit()
-        _spawn(run.id, self._user_id, self._run_then_wake(lace_runs.competitors_job(run.id, self._lace_id, params)),
-               settings.background_run_timeout_s)
+        run = await start_lace_job(_TOOL_JOB_RUN_KINDS[kind], self._user_id, self._lace_id, params)
         return str(run.id)
-
-    async def _run_then_wake(self, job: Coroutine) -> None:
-        # Jobs queue an update even when they fail, so wake either way. A job
-        # run is not a conversation run, so its own row never blocks the wake.
-        try:
-            await job
-        finally:
-            await wake_lace(self._user_id, self._lace_id)
 
 
 async def answer(user_id: uuid.UUID, run_id: uuid.UUID, text: str) -> None:

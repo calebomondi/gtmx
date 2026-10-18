@@ -1,16 +1,18 @@
 """A Lace's competitors: the firms its hunts found, kept one per host."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import literal_column, select
+from sqlalchemy import literal_column, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.schemas.competition import CompetitorProfile
-from backend.app.database.lace_models import LaceCompetitor
+from backend.app.database import models
+from backend.app.database.lace_models import Lace, LaceCompetitor
 from backend.app.services.competitors import domain_key, normalize_website
 from backend.app.services.errors import NotFoundError
+from backend.app.services.runs import TERMINAL_STATUSES
 
 
 async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, status: str, limit: int) -> list[LaceCompetitor]:
@@ -63,3 +65,36 @@ async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
         else:
             refreshed += 1
     return new, refreshed
+
+
+async def due_for_check(db: AsyncSession, lace_id: uuid.UUID, limit: int) -> list[LaceCompetitor]:
+    """Tracked competitors, never-checked first, then the longest unchecked."""
+    rows = await db.scalars(
+        select(LaceCompetitor)
+        .where(LaceCompetitor.lace_id == lace_id, LaceCompetitor.status == "tracked")
+        .order_by(LaceCompetitor.last_checked_at.asc().nulls_first()).limit(limit)
+    )
+    return list(rows.all())
+
+
+async def save_check(db: AsyncSession, competitor_id: uuid.UUID, state: dict) -> None:
+    row = await db.get(LaceCompetitor, competitor_id)
+    if row is not None:  # dismissed and deleted mid-check is fine; the check is just dropped
+        row.monitor_state = state
+        row.last_checked_at = datetime.now(UTC)
+
+
+async def laces_due_for_monitoring(db: AsyncSession, max_age: timedelta) -> list[tuple[uuid.UUID, uuid.UUID]]:
+    """(lace_id, user_id) of active Laces with a tracked competitor that was
+    never checked or is older than `max_age`, and no check already running."""
+    in_flight = select(models.Run.lace_id).where(
+        models.Run.kind == "lace_monitor", models.Run.status.not_in(TERMINAL_STATUSES), models.Run.lace_id.is_not(None))
+    cutoff = datetime.now(UTC) - max_age
+    rows = await db.execute(
+        select(Lace.id, Lace.user_id).distinct()
+        .join(LaceCompetitor, LaceCompetitor.lace_id == Lace.id)
+        .where(Lace.status == "active", LaceCompetitor.status == "tracked",
+               or_(LaceCompetitor.last_checked_at.is_(None), LaceCompetitor.last_checked_at < cutoff),
+               Lace.id.not_in(in_flight))
+    )
+    return [(lace_id, user_id) for lace_id, user_id in rows.all()]

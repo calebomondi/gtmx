@@ -217,4 +217,15 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
         return ToolResult.success("Started the competitor search. It takes a few minutes; "
                                   "you will get an update here when it finishes.")
 
-    return [*tools, find_competitors]
+    @tool(parse_docstring=True)
+    @_guarded
+    async def check_competitors() -> ToolResult:
+        """Check the tracked competitors now for moves that matter (pricing, product, positioning, funding, events, news) since the last check. Runs in the background; you get an update if anything material changed. They are also checked daily on their own."""
+        try:
+            await jobs.start("check_competitors", {})
+        except JobRefused as exc:
+            return ToolResult.failure(str(exc))
+        return ToolResult.success("Started checking the competitors. You will get an update here if anything "
+                                  "material changed.")
+
+    return [*tools, find_competitors, check_competitors]

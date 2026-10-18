@@ -73,7 +73,7 @@ def test_lace_hunts_competitors_and_reports_back(client, runtime, user):
     run = client.portal.call(_wait_for_status, uuid.UUID(created["run_id"]), {"completed", "failed"}, ONBOARDING_TIMEOUT_S)
     assert run.status == "completed", run.error
 
-    job_id = client.portal.call(manager._LaceJobs(user.id, lace_id).start, "find_competitors", {"focus": None})
+    job_id = client.portal.call(manager.start_lace_job, "lace_competitors", user.id, lace_id, {"focus": None}).id
     job = client.portal.call(_wait_for_status, uuid.UUID(job_id), {"completed", "failed"}, HUNT_TIMEOUT_S)
     assert job.status == "completed", job.error
     # The wake turn starts just after the job marks itself completed.
@@ -104,3 +104,36 @@ async def _first_turn(lace_id: uuid.UUID, timeout: float = 30.0) -> uuid.UUID:
             if run_id:
                 return run_id
             await asyncio.sleep(0.2)
+
+
+MONITOR_TIMEOUT_S = 900
+
+
+def test_lace_monitors_competitors(client, runtime, user):
+    import psycopg
+
+    from backend.app.runs import manager
+
+    created = client.post(f"{API}/laces", json={"name": "Ada", "website": WEBSITE}).json()
+    lace_id = uuid.UUID(created["lace"]["id"])
+    run = client.portal.call(_wait_for_status, uuid.UUID(created["run_id"]), {"completed", "failed"}, ONBOARDING_TIMEOUT_S)
+    assert run.status == "completed", run.error
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        for name, site in (("Jira", "https://www.atlassian.com/software/jira"), ("ClickUp", "https://clickup.com")):
+            conn.execute("INSERT INTO lace_competitors (id, lace_id, name, website, domain_key) VALUES (%s, %s, %s, %s, %s)",
+                         (uuid.uuid4(), lace_id, name, site, name.lower()))
+
+    job = client.portal.call(manager.start_lace_job, "lace_monitor", user.id, lace_id, {})
+    job = client.portal.call(_wait_for_status, job.id, {"completed", "failed"}, MONITOR_TIMEOUT_S)
+    assert job.status == "completed", job.error
+    print(f"\n--- monitor: {job.progress}")
+    with psycopg.connect(settings.database_url) as conn:
+        for claim, url in conn.execute("SELECT claim, source_url FROM lace_facts WHERE origin = 'monitor'"):
+            print(f"  FACT {claim}  <- {url}")
+        checked = conn.execute("SELECT count(*) FROM lace_competitors WHERE monitor_state IS NOT NULL").fetchone()[0]
+    assert checked == 2
+    if job.progress["changes"]:
+        turn = client.portal.call(_wait_for_status, client.portal.call(_first_turn, lace_id), {"completed", "failed"},
+                                  TURN_TIMEOUT_S)
+        assert turn.status == "completed", turn.error
+        print("--- THE LACE SAYS\n" + client.get(f"{API}/laces/{lace_id}/messages").json()[-1]["content"])
