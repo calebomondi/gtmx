@@ -8,6 +8,7 @@ reaching another startup's data whatever it asks for.
 
 from typing import Literal, Protocol
 
+from agents.schemas.icp import ICP
 from agents.schemas.lace import CompetitorSummary, Fact, FactTopic, LaceProfile, NewFact, SourcePage
 
 
@@ -27,6 +28,12 @@ class LaceStore(Protocol):
 
     async def save_source(self, page: SourcePage) -> None:
         """Keep a page the Lace read; re-reading a URL replaces its copy."""
+        ...
+
+    async def icp(self) -> ICP | None: ...
+
+    async def save_icp(self, icp: ICP) -> None:
+        """Replace the Lace's ideal customer profile."""
         ...
 
     async def competitors(self, limit: int = 50) -> list[CompetitorSummary]:

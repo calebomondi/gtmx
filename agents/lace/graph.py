@@ -128,9 +128,9 @@ def build_lace_graph(
     tools = build_tools(store, settings, jobs)
 
     async def agent(state: LaceState) -> dict:
-        profile, facts = await asyncio.gather(store.profile(), store.facts(None, BRIEF_FACTS))
+        profile, facts, icp = await asyncio.gather(store.profile(), store.facts(None, BRIEF_FACTS), store.icp())
         messages = state["messages"]
-        prompt: list[AnyMessage] = [SystemMessage(content=system_prompt(profile, facts))]
+        prompt: list[AnyMessage] = [SystemMessage(content=system_prompt(profile, facts, icp))]
         prompt += close_dangling_tool_calls(history_window(messages, settings.lace_history_token_budget))
         allowed = tools
         if tool_calls_this_turn(messages) >= settings.lace_max_tool_calls_per_turn:

@@ -4,11 +4,14 @@ from collections import defaultdict
 from datetime import date
 
 from agents.context_budget import count_tokens
+from agents.schemas.icp import ICP
 from agents.schemas.lace import FACT_TOPICS, Fact, LaceProfile
 
 # The brief rides on every model call, so it stays small. Facts past the cap
 # are still one get_facts call away.
 BRIEF_TOKEN_CAP = 1_500
+# Personas and pain signals shown from the ICP.
+ICP_LIST_ITEMS = 3
 
 _SYSTEM = """You are {name}, the go-to-market assistant for {startup} ({website}).
 You work for its founder. Your job: find the startup's ideal customers and how to
@@ -38,23 +41,28 @@ How you answer when you used sources:
   the sourced claims or presented as found.
 
 What you know about {startup}:
-{brief}"""
+{brief}
+
+Who {startup} sells to (its ideal customer profile):
+{icp}"""
 
 
 def render_brief(facts: list[Fact], cap: int = BRIEF_TOKEN_CAP) -> str:
-    """Facts grouped by topic, highest confidence first, cut to `cap` tokens."""
+    """Facts grouped by topic, the founder's own word first and marked, then by
+    confidence, cut to `cap` tokens."""
     if not facts:
         return "Nothing yet. Start by reading the website."
     rank = {"high": 0, "medium": 1, "low": 2}
     by_topic: dict[str, list[Fact]] = defaultdict(list)
-    for fact in sorted(facts, key=lambda f: rank[f.confidence]):
+    for fact in sorted(facts, key=lambda f: (f.origin != "user", rank[f.confidence])):
         by_topic[fact.topic].append(fact)
 
     lines: list[str] = []
     used = 0
     for topic in FACT_TOPICS:
         for fact in by_topic.get(topic, []):
-            line = f"- [{topic}] {fact.claim}"
+            mark = " (the founder said)" if fact.origin == "user" else ""
+            line = f"- [{topic}]{mark} {fact.claim}"
             cost = count_tokens(line)
             if used + cost > cap:
                 lines.append("- (more facts on file: use get_facts)")
@@ -64,11 +72,31 @@ def render_brief(facts: list[Fact], cap: int = BRIEF_TOKEN_CAP) -> str:
     return "\n".join(lines)
 
 
-def system_prompt(profile: LaceProfile, facts: list[Fact], today: date | None = None) -> str:
+def render_icp(icp: ICP | None) -> str:
+    """The ICP's gist for the system prompt; the whole profile stays on file."""
+    if icp is None:
+        return "Not defined yet. Use define_icp before looking for customers."
+    parts = [
+        ("Buyer type", icp.buyer_type),
+        ("Industries", ", ".join(icp.industries)),
+        ("Company sizes", ", ".join(icp.company_sizes)),
+        ("Where", ", ".join(icp.geo)),
+        ("Buyers", ", ".join(icp.buyer_titles)),
+        ("Personas", "; ".join(f"{p.name}: {p.who}" for p in icp.buyer_personas[:ICP_LIST_ITEMS])),
+        ("Pain signals", "; ".join(icp.pain_signals[:ICP_LIST_ITEMS])),
+        ("Start with", icp.beachhead),
+        ("Not", ", ".join(icp.exclusions)),
+    ]
+    return "\n".join(f"- {label}: {value}" for label, value in parts if value)
+
+
+def system_prompt(profile: LaceProfile, facts: list[Fact], icp: ICP | None = None,
+                  today: date | None = None) -> str:
     return _SYSTEM.format(
         name=profile.name,
         startup=profile.startup_name or profile.website,
         website=profile.website,
         today=(today or date.today()).isoformat(),
         brief=render_brief(facts),
+        icp=render_icp(icp),
     )

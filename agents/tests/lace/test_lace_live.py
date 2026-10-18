@@ -67,3 +67,18 @@ async def test_reply_streams_from_the_real_model():
     assert any(isinstance(m, ToolMessage) for m in messages), "it answered without searching"
     assert len(tokens) > 5, "the reply arrived in one piece"
     assert final.content.strip() in "".join(tokens)
+
+
+async def test_defines_an_icp_from_what_it_learned():
+    from agents.lace.graph import build_lace_graph
+    from agents.lace.onboarding import onboard
+    from config import get_settings
+
+    store = MemoryStore()
+    store.startup_name, store.website = None, "https://linear.app"
+    await onboard(store, get_settings())
+    graph = build_lace_graph(store)
+    out = await graph.ainvoke({"messages": [HumanMessage(content="Who should we be selling to? Work out our ideal customer profile.")]})
+    icp = store.saved_icp
+    print("\nICP", icp.model_dump(exclude_defaults=True) if icp else None, "\nREPLY", out["messages"][-1].content)
+    assert icp is not None and icp.buyer_type and (icp.industries or icp.buyer_personas) and icp.beachhead
