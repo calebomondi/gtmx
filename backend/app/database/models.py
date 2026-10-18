@@ -554,10 +554,12 @@ class Run(Base):
     __tablename__ = "runs"
     __table_args__ = (
         # A Lace's conversation is one checkpoint thread, which takes one writer
-        # at a time: at most one unfinished run per Lace, enforced here so two
-        # simultaneous messages cannot both start a turn.
+        # at a time: at most one unfinished conversation run per Lace, enforced
+        # here so two simultaneous messages cannot both start a turn. Background
+        # jobs (a competitor hunt) run alongside and are not counted.
         Index("uq_runs_one_active_per_lace", "lace_id", unique=True,
-              postgresql_where=text("lace_id IS NOT NULL AND status IN ('pending', 'running', 'awaiting_input')")),
+              postgresql_where=text("lace_id IS NOT NULL AND kind IN ('lace_onboarding', 'lace_turn')"
+                                    " AND status IN ('pending', 'running', 'awaiting_input')")),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -880,4 +882,4 @@ class WaitlistSignup(Base):
 
 
 # Registered with the rest so Base.metadata (migrations, test cleanup) sees them.
-from backend.app.database.lace_models import Lace, LaceFact, LaceSource  # noqa: E402,F401
+from backend.app.database.lace_models import Lace, LaceCompetitor, LaceEvent, LaceFact, LaceSource  # noqa: E402,F401

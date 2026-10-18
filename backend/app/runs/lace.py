@@ -18,13 +18,17 @@ from datetime import UTC, datetime
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 
 from agents.lace.graph import BRIEF_FACTS, build_lace_graph
+from agents.lace.competitors import find_competitors
 from agents.lace.onboarding import onboard, opening_message
+from agents.lace.store import LaceJobs
 from agents.lace.prompts import system_prompt
 from backend.app.agents_runtime import get_checkpointer
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.database.lace_models import Lace
 from backend.app.runs import events
+from backend.app.runs.errors import user_facing_error
+from backend.app.services import lace_competitors, lace_events
 from backend.app.services.lace_store import DbLaceStore
 from backend.app.services.runs import set_run_fields
 from config import settings
@@ -40,16 +44,21 @@ _STEP_TEXT = {
     "read_pages": lambda a: f"Reading {len(a.get('urls') or [])} pages",
     "get_facts": lambda a: "Checking what I know",
     "record_fact": lambda a: "Noting that down",
+    "list_competitors": lambda a: "Checking the competitors I track",
+    "find_competitors": lambda a: "Starting a competitor search",
 }
+
+# Marks a message on the thread as an update for the Lace, not the founder's words.
+EVENT_FLAG = "lace_event"
 
 
 def thread_config(lace_id: uuid.UUID) -> dict:
     return {"configurable": {"thread_id": f"lace:{lace_id}"}}
 
 
-def _graph(lace_id: uuid.UUID):
+def _graph(lace_id: uuid.UUID, jobs: LaceJobs | None = None):
     store = DbLaceStore(AsyncSessionLocal, lace_id)
-    return build_lace_graph(store, checkpointer=get_checkpointer()), store
+    return build_lace_graph(store, checkpointer=get_checkpointer(), jobs=jobs), store
 
 
 def step_text(tool_call: dict) -> str:
@@ -112,11 +121,27 @@ class _TokenRelay:
         events.broadcast(self._run_id, "token_reset")
 
 
-async def turn_segment(run_id: uuid.UUID, lace_id: uuid.UUID, text: str) -> None:
-    graph, _ = _graph(lace_id)
+def founder_message(text: str) -> HumanMessage:
+    return HumanMessage(content=text)
+
+
+def event_message(updates: list[str]) -> HumanMessage:
+    """Updates delivered to the Lace as one message, flagged so the founder's
+    view of the conversation leaves it out."""
+    body = "\n".join(f"- {u}" for u in updates)
+    return HumanMessage(
+        content=("Updates for you to pass on (these are not from the founder):\n" + body
+                 + "\n\nTell the founder what this means for them, briefly."),
+        additional_kwargs={EVENT_FLAG: True},
+    )
+
+
+async def turn_segment(run_id: uuid.UUID, lace_id: uuid.UUID, message: HumanMessage,
+                       jobs: LaceJobs | None = None) -> None:
+    graph, _ = _graph(lace_id, jobs)
     relay = _TokenRelay(run_id)
     reply = ""
-    async for mode, chunk in graph.astream({"messages": [HumanMessage(content=text)]}, thread_config(lace_id),
+    async for mode, chunk in graph.astream({"messages": [message]}, thread_config(lace_id),
                                            stream_mode=["updates", "custom"]):
         if mode == "custom":
             if "token" in chunk:
@@ -139,12 +164,42 @@ async def turn_segment(run_id: uuid.UUID, lace_id: uuid.UUID, text: str) -> None
     await _finish(run_id, reply)
 
 
+async def competitors_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
+    """Hunt for the Lace's competitors, save them, and queue an update telling
+    the Lace what came of it, in the same transaction as the results. A failed
+    hunt queues an update too, so the founder hears either way."""
+    store = DbLaceStore(AsyncSessionLocal, lace_id)
+    profile, facts = await asyncio.gather(store.profile(), store.facts(None, BRIEF_FACTS))
+    try:
+        with events.reporting_steps(run_id):
+            found = await asyncio.to_thread(find_competitors, profile, facts, params.get("focus"))
+    except Exception as exc:
+        async with AsyncSessionLocal() as db, db.begin():
+            await lace_events.add(db, lace_id, f"The competitor search failed: {user_facing_error(exc)}")
+        raise
+    async with AsyncSessionLocal() as db, db.begin():
+        new, refreshed = await lace_competitors.upsert_found(db, lace_id, run_id, found)
+        await lace_events.add(db, lace_id, competitors_update(found, new, refreshed))
+    await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
+                         progress={"found": len(found), "new": new, "refreshed": refreshed})
+    await events.publish(run_id, "complete", {"found": len(found)})
+
+
+def competitors_update(found: list, new: int, refreshed: int) -> str:
+    if not found:
+        return ("The competitor search finished without finding a company that passed the checks "
+                "(a real website, competing for the same buyers).")
+    names = ", ".join(f"{p.name} ({p.website})" for p in found)
+    return (f"The competitor search finished: {len(found)} competitors ({new} new, {refreshed} already tracked): "
+            f"{names}. Their profiles are saved; use list_competitors for details.")
+
+
 def visible_messages(messages: list[AnyMessage]) -> list[dict]:
     """The conversation as the founder sees it: their messages and the Lace's
-    replies, without tool calls and results."""
+    replies, without tool calls, results or updates."""
     out = []
     for m in messages:
-        if isinstance(m, HumanMessage):
+        if isinstance(m, HumanMessage) and not m.additional_kwargs.get(EVENT_FLAG):
             out.append({"role": "founder", "content": str(m.content)})
         elif isinstance(m, AIMessage) and not m.tool_calls and str(m.content).strip():
             out.append({"role": "lace", "content": str(m.content)})

@@ -29,7 +29,7 @@ from langgraph.prebuilt import ToolNode
 
 from agents.context_budget import count_tokens
 from agents.lace.prompts import system_prompt
-from agents.lace.store import LaceStore
+from agents.lace.store import LaceJobs, LaceStore
 from agents.lace.tools import build_tools
 from agents.llm.main import TokenSink, invoke_with_tools
 from config import Settings, get_settings
@@ -120,11 +120,12 @@ def build_lace_graph(
     checkpointer: BaseCheckpointSaver | None = None,
     settings: Settings | None = None,
     model_step: ModelStep = _default_step,
-    extra_tools: Sequence[BaseTool] = (),
+    jobs: LaceJobs | None = None,
 ):
-    """Compile the Lace for one startup. `store` scopes every tool to it."""
+    """Compile the Lace for one startup. `store` scopes every tool to it;
+    `jobs` runs the tools that take longer than a turn."""
     settings = settings or get_settings()
-    tools = [*build_tools(store, settings), *extra_tools]
+    tools = build_tools(store, settings, jobs)
 
     async def agent(state: LaceState) -> dict:
         profile, facts = await asyncio.gather(store.profile(), store.facts(None, BRIEF_FACTS))

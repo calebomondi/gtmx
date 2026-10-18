@@ -10,6 +10,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from agents.schemas.coercion import LenientModel
+from agents.schemas.competition import ProfileSkeleton
 
 FactTopic = Literal[
     "company",      # who the startup is: name, location, team, stage
@@ -109,3 +110,28 @@ class OnboardingResult(BaseModel):
 
 class PagePick(LenientModel):
     urls: list[str] = Field(default_factory=list, description="The chosen URLs, copied exactly, most useful first")
+
+
+class CompetitorHuntBrief(LenientModel):
+    """What the competitor hunt needs, drawn from the Lace's facts: the v1 hunt
+    is shaped by competitor archetypes, which a Lace has to sketch first."""
+    offer_summary: str = Field(description="Two or three sentences: what the startup sells and to whom")
+    target_geographies: list[str] = Field(
+        default_factory=list, description="Countries or regions it sells in, when the facts say; else empty")
+    profile: ProfileSkeleton = Field(description="The kinds of company that compete for this startup's buyers")
+
+
+CompetitorStatus = Literal["tracked", "dismissed"]
+COMPETITOR_STATUSES: tuple[str, ...] = CompetitorStatus.__args__
+CompetitorOrigin = Literal["found", "founder"]
+COMPETITOR_ORIGINS: tuple[str, ...] = CompetitorOrigin.__args__
+
+
+class CompetitorSummary(BaseModel):
+    id: str
+    name: str
+    website: str
+    summary: str | None = None
+    origin: CompetitorOrigin
+    status: CompetitorStatus
+

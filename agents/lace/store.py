@@ -6,9 +6,9 @@ Lace: no method takes a Lace or workspace id, which is what keeps the model from
 reaching another startup's data whatever it asks for.
 """
 
-from typing import Protocol
+from typing import Literal, Protocol
 
-from agents.schemas.lace import Fact, FactTopic, LaceProfile, NewFact, SourcePage
+from agents.schemas.lace import CompetitorSummary, Fact, FactTopic, LaceProfile, NewFact, SourcePage
 
 
 class LaceStore(Protocol):
@@ -27,4 +27,25 @@ class LaceStore(Protocol):
 
     async def save_source(self, page: SourcePage) -> None:
         """Keep a page the Lace read; re-reading a URL replaces its copy."""
+        ...
+
+    async def competitors(self, limit: int = 50) -> list[CompetitorSummary]:
+        """Tracked competitors, newest first; dismissed ones are left out."""
+        ...
+
+
+JobKind = Literal["find_competitors"]
+
+
+class JobRefused(Exception):
+    """A background job could not start: one is already running, or a limit
+    was reached. The message is said to the founder as is."""
+
+
+class LaceJobs(Protocol):
+    """Starts work too long for one turn. The job reports back by waking the
+    Lace with an update when it is done."""
+
+    async def start(self, kind: JobKind, params: dict) -> str:
+        """The job's id. Raises JobRefused."""
         ...

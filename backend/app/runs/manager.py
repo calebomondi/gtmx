@@ -14,20 +14,22 @@ from collections.abc import Coroutine
 from datetime import UTC, datetime
 
 from langgraph.types import Command
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.runs import background, discovery, events
+from agents.lace.store import JobRefused
 from backend.app.runs import lace as lace_runs
 from backend.app.runs import signals as run_signals
 from backend.app.runs.errors import user_facing_error
 from backend.app.schemas.agents import DiscoveryRequest
 from backend.app.services import limits
 from backend.app.services import runs as run_service
-from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError
+from backend.app.services import lace_events
+from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError, RateLimitedError
 from backend.app.services.runs import TERMINAL_STATUSES, set_run_fields
 from config import settings
 from utils.log import current_run_id, current_user_id, logger
@@ -123,7 +125,8 @@ async def _start_lace_run(kind: str, user_id: uuid.UUID, lace_id: uuid.UUID, par
 
 async def start_lace_onboarding(user_id: uuid.UUID, lace_id: uuid.UUID) -> models.Run:
     run = await _start_lace_run("lace_onboarding", user_id, lace_id, None)
-    _spawn(run.id, user_id, lace_runs.onboarding_segment(run.id, lace_id), settings.lace_onboarding_timeout_s)
+    _spawn(run.id, user_id, _then_wake(lace_runs.onboarding_segment(run.id, lace_id), user_id, lace_id),
+           settings.lace_onboarding_timeout_s)
     return run
 
 
@@ -134,8 +137,84 @@ async def start_lace_turn(user_id: uuid.UUID, lace_id: uuid.UUID, text: str) -> 
     if not text:
         raise InvalidInputError("Write a message first.")
     run = await _start_lace_run("lace_turn", user_id, lace_id, {"text": text})
-    _spawn(run.id, user_id, lace_runs.turn_segment(run.id, lace_id, text), settings.lace_turn_timeout_s)
+    _spawn_turn(run.id, user_id, lace_id, lace_runs.founder_message(text))
     return run
+
+
+def _spawn_turn(run_id: uuid.UUID, user_id: uuid.UUID, lace_id: uuid.UUID, message) -> None:
+    turn = lace_runs.turn_segment(run_id, lace_id, message, jobs=_LaceJobs(user_id, lace_id))
+    _spawn(run_id, user_id, _then_wake(turn, user_id, lace_id), settings.lace_turn_timeout_s)
+
+
+async def _then_wake(segment: Coroutine, user_id: uuid.UUID, lace_id: uuid.UUID) -> None:
+    """Run a conversation segment, then pass on any updates that queued while
+    it was busy. Only after success: a failed turn leaves them queued for the
+    founder's next message."""
+    await segment
+    await wake_lace(user_id, lace_id)
+
+
+async def wake_lace(user_id: uuid.UUID, lace_id: uuid.UUID) -> None:
+    """Start a turn carrying the Lace's queued updates, if it has any and is
+    not already in a conversation run; that run calls this again when it ends.
+    Not counted against the daily turn cap: updates come from jobs the founder
+    started, which are capped themselves."""
+    try:
+        async with AsyncSessionLocal() as db, db.begin():
+            updates = await lace_events.take_pending(db, lace_id)
+            if not updates:
+                return
+            run = models.Run(user_id=user_id, lace_id=lace_id, kind="lace_turn", status="running",
+                             input={"updates": updates}, started_at=datetime.now(UTC))
+            db.add(run)
+            await db.flush()
+    except IntegrityError as exc:
+        if "uq_runs_one_active_per_lace" not in str(exc):
+            raise
+        return  # rolled back: the updates stay queued for the running turn to pick up
+    _spawn_turn(run.id, user_id, lace_id, lace_runs.event_message(updates))
+
+
+# The run kind behind each job a Lace's tools can start.
+_LACE_JOB_RUN_KINDS = {"find_competitors": "lace_competitors"}
+_LACE_JOB_BUSY = {"find_competitors": "A competitor search is already running; I'll report when it's done."}
+
+
+class _LaceJobs:
+    """Starts a Lace's background jobs under the run manager. A job runs
+    alongside the conversation and, when it ends (either way), wakes the Lace
+    with what it queued."""
+
+    def __init__(self, user_id: uuid.UUID, lace_id: uuid.UUID):
+        self._user_id, self._lace_id = user_id, lace_id
+
+    async def start(self, kind: str, params: dict) -> str:
+        run_kind = _LACE_JOB_RUN_KINDS[kind]
+        async with AsyncSessionLocal() as db:
+            busy = await db.scalar(select(func.count()).select_from(models.Run).where(
+                models.Run.lace_id == self._lace_id, models.Run.kind == run_kind,
+                models.Run.status.not_in(TERMINAL_STATUSES)))
+            if busy:
+                raise JobRefused(_LACE_JOB_BUSY[kind])
+            try:
+                await limits.ensure_can_start(db, self._user_id, run_kind)
+            except RateLimitedError as exc:
+                raise JobRefused(str(exc)) from None
+            run = models.Run(user_id=self._user_id, lace_id=self._lace_id, kind=run_kind, status="running",
+                             input=params, started_at=datetime.now(UTC))
+            db.add(run)
+            await db.commit()
+        _spawn(run.id, self._user_id, self._run_then_wake(lace_runs.competitors_job(run.id, self._lace_id, params)),
+               settings.background_run_timeout_s)
+        return str(run.id)
+
+    async def _run_then_wake(self, job: Coroutine) -> None:
+        # Jobs queue an update even when they fail, so wake either way. A job
+        # run is not a conversation run, so its own row never blocks the wake.
+        try:
+            await job
+        finally:
+            await wake_lace(self._user_id, self._lace_id)
 
 
 async def answer(user_id: uuid.UUID, run_id: uuid.UUID, text: str) -> None:

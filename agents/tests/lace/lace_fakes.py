@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 
 from langchain_core.messages import AIMessage
 
-from agents.schemas.lace import Fact, LaceProfile, NewFact, SourcePage
+from agents.lace.store import JobRefused
+from agents.schemas.lace import CompetitorSummary, Fact, LaceProfile, NewFact, SourcePage
 
 
 class MemoryStore:
@@ -13,6 +14,7 @@ class MemoryStore:
         self._facts = list(facts or [])
         self.superseded: set[str] = set()
         self.sources: dict[str, SourcePage] = {}
+        self.tracked: list[CompetitorSummary] = []
         self._ids = itertools.count(len(self._facts) + 1)
         self.startup_name: str | None = "Acme"
         self.website = "https://acme.test"
@@ -38,6 +40,21 @@ class MemoryStore:
 
     async def save_source(self, page: SourcePage) -> None:
         self.sources[page.url] = page
+
+    async def competitors(self, limit=50) -> list[CompetitorSummary]:
+        return self.tracked[:limit]
+
+
+class RecordingJobs:
+    def __init__(self, refuse: str | None = None):
+        self.started: list[tuple[str, dict]] = []
+        self.refuse = refuse
+
+    async def start(self, kind, params):
+        if self.refuse:
+            raise JobRefused(self.refuse)
+        self.started.append((kind, params))
+        return f"job-{len(self.started)}"
 
 
 def make_fact(id: str, claim: str, topic="offer", confidence="high") -> Fact:

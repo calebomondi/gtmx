@@ -13,8 +13,9 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from agents.schemas.lace import Fact, FactTopic, LaceProfile, NewFact, SourcePage
+from agents.schemas.lace import CompetitorSummary, Fact, FactTopic, LaceProfile, NewFact, SourcePage
 from backend.app.database.lace_models import Lace, LaceFact, LaceSource
+from backend.app.services import lace_competitors
 from backend.app.services.errors import NotFoundError
 from backend.app.services.laces import current_facts_query
 
@@ -86,3 +87,9 @@ class DbLaceStore:
         async with self._sessions() as session, session.begin():
             await session.execute(stmt)
 
+
+    async def competitors(self, limit: int = 50) -> list[CompetitorSummary]:
+        async with self._sessions() as session:
+            rows = await lace_competitors.list_tracked(session, self._lace_id, limit)
+        return [CompetitorSummary(id=str(r.id), name=r.name, website=r.website, summary=r.summary,
+                                  origin=r.origin, status=r.status) for r in rows]
