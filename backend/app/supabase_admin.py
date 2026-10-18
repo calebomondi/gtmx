@@ -20,6 +20,12 @@ async def get_client() -> AsyncClient:
     return _client
 
 
+async def get_user(user_id) -> object:
+    """The Supabase user, outside a request (no access token to read it from)."""
+    client = await get_client()
+    return (await client.auth.admin.get_user_by_id(str(user_id))).user
+
+
 def is_admin(app_metadata: dict | None) -> bool:
     return (app_metadata or {}).get("role") == ADMIN_ROLE
 

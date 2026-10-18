@@ -5,7 +5,7 @@ from datetime import date, datetime
 from zoneinfo import available_timezones
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from agents.schemas.opportunities import OpportunityKind, OpportunityStatus
 from agents.schemas.lace import AccountStatus, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
@@ -200,12 +200,26 @@ class OpportunityUpdateRequest(BaseModel):
     status: OpportunityStatus
 
 
+class QuietHours(BaseModel):
+    start: int = Field(ge=0, le=23, description="Local hour quiet hours begin")
+    end: int = Field(ge=0, le=23, description="Local hour they end (exclusive); may be before start, wrapping midnight")
+
+    @model_validator(mode="after")
+    def _not_empty(self) -> "QuietHours":
+        if self.start == self.end:
+            raise ValueError("Quiet hours must start and end at different hours.")
+        return self
+
+
 class BriefSettings(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     brief_frequency: BriefFrequency
     brief_hour: int = Field(ge=0, le=23, description="Local hour the brief is posted")
     timezone: str = Field(description="IANA timezone name, e.g. Africa/Nairobi")
+    brief_email: bool = Field(description="Also email each brief to the founder")
+    quiet_hours: QuietHours | None = Field(default=None, description="Local hours in which nothing is emailed")
+    email_available: bool = Field(default=False, description="Whether this server can send email at all")
     last_brief_at: datetime | None = None
 
 
@@ -213,6 +227,8 @@ class BriefSettingsUpdate(BaseModel):
     brief_frequency: BriefFrequency | None = None
     brief_hour: int | None = Field(default=None, ge=0, le=23)
     timezone: str | None = Field(default=None, max_length=64)
+    brief_email: bool | None = None
+    quiet_hours: QuietHours | None = Field(default=None, description="Quiet hours; null removes them")
 
     @field_validator("timezone")
     @classmethod

@@ -268,8 +268,7 @@ def sender_name(name: str | None, email: str | None) -> str:
 async def sender_for_user(user_id: uuid.UUID) -> str:
     """The sender name for a user, outside a request (e.g. a scheduled sync)."""
     try:
-        client = await supabase_admin.get_client()
-        user = (await client.auth.admin.get_user_by_id(str(user_id))).user
+        user = await supabase_admin.get_user(user_id)
     except Exception:  # noqa: BLE001 -- signing falls back; drafting must not fail on it
         logger.exception("Looking up user %s for the sender name failed", user_id)
         return "Me"
