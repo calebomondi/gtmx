@@ -9,7 +9,7 @@ be shared across concurrent calls.
 import hashlib
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -73,6 +73,10 @@ class DbLaceStore:
             if replaced is not None:
                 replaced.superseded_by_id = row.id
         return _fact(row)
+
+    async def set_startup_name(self, name: str) -> None:
+        async with self._sessions() as session, session.begin():
+            await session.execute(update(Lace).where(Lace.id == self._lace_id).values(startup_name=name[:200]))
 
     async def save_source(self, page: SourcePage) -> None:
         digest = hashlib.sha256(page.markdown.encode()).hexdigest()

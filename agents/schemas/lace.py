@@ -9,6 +9,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from agents.schemas.coercion import LenientModel
+
 FactTopic = Literal[
     "company",      # who the startup is: name, location, team, stage
     "offer",        # what it sells, features, how it works
@@ -73,3 +75,37 @@ class ToolResult(BaseModel):
     @classmethod
     def failure(cls, error: str) -> "ToolResult":
         return cls(ok=False, summary=error, error=error)
+
+
+class ExtractedFact(LenientModel):
+    topic: FactTopic
+    claim: str = Field(description="One self-contained sentence about the startup, in your own words")
+    source_url: str = Field(description="The URL of the page above that states it, copied exactly")
+    confidence: Confidence = Field(description="high when the page states it outright, low when you inferred it")
+
+
+class SiteUnderstanding(LenientModel):
+    """What onboarding pulls out of the startup's own pages."""
+    # Required: models skip optional fields in structured output.
+    startup_name: str = Field(description="The company's name as its site gives it")
+    facts: list[ExtractedFact] = Field(default_factory=list)
+    open_questions: list[str] = Field(
+        default_factory=list,
+        description="Up to 3 short questions for the founder about what the site leaves unclear",
+    )
+
+
+class OnboardingResult(BaseModel):
+    startup_name: str | None
+    pages_read: list[str]
+    pages_failed: list[str]
+    facts_recorded: int
+    open_questions: list[str]
+
+    @property
+    def site_unreadable(self) -> bool:
+        return not self.pages_read
+
+
+class PagePick(LenientModel):
+    urls: list[str] = Field(default_factory=list, description="The chosen URLs, copied exactly, most useful first")
