@@ -162,3 +162,39 @@ export function sendLaceOutreach(laceId: string, messageId: string): Promise<Lac
 export function markLaceOutreachSent(laceId: string, messageId: string): Promise<LaceOutreachDto> {
   return apiFetch(`/api/v1/laces/${laceId}/outreach/${messageId}/mark-sent`, { method: "POST" })
 }
+
+export type InboxPlatform = "instagram" | "facebook"
+
+export interface LaceChannelDto {
+  id: string
+  platform: InboxPlatform
+  account_id: string
+  account_name: string
+  synced_until: string | null
+  created_at: string
+}
+
+export interface ChannelAccountDto {
+  id: string
+  name: string
+}
+
+/** The Instagram and Facebook accounts whose DMs this Lace reads. */
+export function listLaceChannels(laceId: string): Promise<LaceChannelDto[]> {
+  return apiFetch<LaceChannelDto[]>(`/api/v1/laces/${laceId}/channels`)
+}
+
+/** Accounts the founder's connected Instagram or Facebook manages. */
+export function listAvailableChannels(laceId: string, platform: InboxPlatform): Promise<ChannelAccountDto[]> {
+  return apiFetch<ChannelAccountDto[]>(`/api/v1/laces/${laceId}/channels/available?platform=${platform}`)
+}
+
+export function linkLaceChannel(laceId: string, platform: InboxPlatform, accountId: string): Promise<LaceChannelDto> {
+  return apiFetch(`/api/v1/laces/${laceId}/channels`, {
+    method: "POST", body: JSON.stringify({ platform, account_id: accountId }),
+  })
+}
+
+export function unlinkLaceChannel(laceId: string, channelId: string): Promise<void> {
+  return apiFetch(`/api/v1/laces/${laceId}/channels/${channelId}`, { method: "DELETE" })
+}
