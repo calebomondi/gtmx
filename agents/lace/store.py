@@ -34,7 +34,7 @@ class LaceStore(Protocol):
         ...
 
 
-JobKind = Literal["find_competitors"]
+JobKind = Literal["find_competitors", "check_competitors"]
 
 
 class JobRefused(Exception):

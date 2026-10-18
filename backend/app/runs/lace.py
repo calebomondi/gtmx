@@ -18,9 +18,10 @@ from datetime import UTC, datetime
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 
 from agents.lace.graph import BRIEF_FACTS, build_lace_graph
-from agents.lace.competitors import find_competitors
+from agents.lace.competitors import change_fact, find_competitors, material, offer_for_monitor
 from agents.lace.onboarding import onboard, opening_message
 from agents.lace.store import LaceJobs
+from agents.pipelines.monitor import check_competitor
 from agents.lace.prompts import system_prompt
 from backend.app.agents_runtime import get_checkpointer
 from backend.app.database import models
@@ -32,6 +33,11 @@ from backend.app.services import lace_competitors, lace_events
 from backend.app.services.lace_store import DbLaceStore
 from backend.app.services.runs import set_run_fields
 from config import settings
+from utils.progress import report
+
+# Competitors one monitoring run checks, and how many at once.
+MONITOR_BATCH = 15
+MONITOR_CONCURRENCY = 4
 
 # Characters per streamed "token" frame.
 TOKEN_FRAME_CHARS = 24
@@ -46,6 +52,7 @@ _STEP_TEXT = {
     "record_fact": lambda a: "Noting that down",
     "list_competitors": lambda a: "Checking the competitors I track",
     "find_competitors": lambda a: "Starting a competitor search",
+    "check_competitors": lambda a: "Checking competitors for changes",
 }
 
 # Marks a message on the thread as an update for the Lace, not the founder's words.
@@ -183,6 +190,58 @@ async def competitors_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -
     await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
                          progress={"found": len(found), "new": new, "refreshed": refreshed})
     await events.publish(run_id, "complete", {"found": len(found)})
+
+
+async def monitor_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
+    """Check the tracked competitors for moves since their last check. Each
+    firm's baseline is saved as it is checked. Material changes become sourced
+    facts and one queued update; when nothing material changed, the founder
+    is not told anything."""
+    store = DbLaceStore(AsyncSessionLocal, lace_id)
+    profile, facts = await asyncio.gather(store.profile(), store.facts(None, BRIEF_FACTS))
+    our_offer, offer_detail = offer_for_monitor(profile, facts)
+    async with AsyncSessionLocal() as db:
+        due = [(c.id, c.name, c.website, c.monitor_state)
+               for c in await lace_competitors.due_for_check(db, lace_id, MONITOR_BATCH)]
+    slots = asyncio.Semaphore(MONITOR_CONCURRENCY)
+
+    async def check_one(competitor_id, name, website, previous) -> tuple[str, list]:
+        async with slots:
+            state, changes = await asyncio.to_thread(check_competitor.check, name, website, previous, our_offer,
+                                                     None, offer_detail)
+        async with AsyncSessionLocal() as db, db.begin():
+            await lace_competitors.save_check(db, competitor_id, state)
+        return name, material(changes)
+
+    with events.reporting_steps(run_id):
+        report(f"Checking {len(due)} competitors for changes")
+        results = await asyncio.gather(*(check_one(*row) for row in due))
+
+    moves = [(name, change) for name, changes in results for change in changes]
+    for name, change in moves:
+        fact = change_fact(name, change)
+        if fact is not None:
+            await store.record_fact(fact)
+    if moves:
+        async with AsyncSessionLocal() as db, db.begin():
+            await lace_events.add(db, lace_id, monitor_update(moves))
+    await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
+                         progress={"checked": len(due), "changes": len(moves)})
+    await events.publish(run_id, "complete", {"checked": len(due), "changes": len(moves)})
+
+
+def monitor_update(moves: list) -> str:
+    lines = []
+    for name, c in moves:
+        line = f"{name} [{c.kind}, {c.importance}]: {c.title}. {c.summary}"
+        if c.implication:
+            line += f" What it means for us: {c.implication}"
+        if c.counter_move:
+            line += f" Suggested move: {c.counter_move}"
+        if c.source_url:
+            line += f" (source: {c.source_url})"
+        lines.append(line)
+    return "Competitor monitoring found changes that matter:\n" + "\n".join(lines)
 
 
 def competitors_update(found: list, new: int, refreshed: int) -> str:

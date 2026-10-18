@@ -79,3 +79,24 @@ async def test_list_competitors(settings):
     tool = {t.name: t for t in build_tools(store, settings)}["list_competitors"]
     out = json.loads(await tool.ainvoke({}))
     assert out["summary"] == "1 competitors tracked." and out["data"][0]["name"] == "Rival"
+
+
+async def test_check_competitors_tool_starts_a_check(settings):
+    jobs = RecordingJobs()
+    tool = {t.name: t for t in build_tools(MemoryStore(), settings, jobs)}["check_competitors"]
+    assert json.loads(await tool.ainvoke({}))["ok"]
+    assert jobs.started == [("check_competitors", {})]
+
+
+def test_only_material_sourced_changes_become_facts():
+    from agents.lace.competitors import change_fact, material
+    from agents.schemas.monitor import CompetitorChange
+    big = CompetitorChange(kind="pricing", title="Cut Pro to $8", summary="Undercuts us.", importance="high",
+                           source_url="https://rival.test/pricing")
+    small = CompetitorChange(kind="social", title="Posted a meme", summary="Noise.", importance="low")
+    unsourced = CompetitorChange(kind="news", title="Rumoured raise", summary="?", importance="medium")
+    assert material([big, small, unsourced]) == [big, unsourced]
+    fact = change_fact("Rival", big)
+    assert fact.claim == "Rival: Cut Pro to $8. Undercuts us." and fact.origin == "monitor"
+    assert fact.topic == "competition" and fact.source_url == "https://rival.test/pricing"
+    assert change_fact("Rival", unsourced) is None

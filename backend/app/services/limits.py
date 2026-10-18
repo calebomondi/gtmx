@@ -48,6 +48,7 @@ def default_daily_cap(kind: str) -> int:
         "lace_onboarding": settings.max_lace_onboardings_per_day,
         "lace_turn": settings.max_lace_turns_per_day,
         "lace_competitors": settings.max_competitor_runs_per_day,
+        "lace_monitor": settings.max_monitor_runs_per_day,
     }[kind]
 
 

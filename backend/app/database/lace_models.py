@@ -130,6 +130,11 @@ class LaceCompetitor(Base):
                                                     default=_now, server_default=func.now())
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
                                                    server_default=func.now(), index=True)
+    # The monitor's baseline between checks (site text hash, news and post URLs
+    # already seen): an opaque blob from agents.pipelines.monitor. NULL until
+    # the first check, which is how a never-checked firm is found.
+    monitor_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
 
 class LaceEvent(Base):

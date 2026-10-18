@@ -1,5 +1,5 @@
-"""In-process scheduler: keeps every active workspace's competitor monitoring
-fresh, and syncs replies to sent outreach from users' Gmail. Single-instance
+"""In-process scheduler: keeps every active workspace's and Lace's competitor
+monitoring fresh, and syncs replies to sent outreach from users' Gmail. Single-instance
 by design for launch (one backend process); a multi-instance deployment needs
 a leader lock or an external scheduler."""
 
@@ -11,7 +11,9 @@ from sqlalchemy import func, or_, select
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.runs import background, manager
+from agents.lace.store import JobRefused
 from backend.app.services import inbox as inbox_service
+from backend.app.services import lace_competitors
 from backend.app.services.errors import RateLimitedError
 from backend.app.services.runs import TERMINAL_STATUSES
 from config import settings
@@ -42,9 +44,24 @@ async def _stale_workspaces() -> list[tuple]:
         return list(rows.all())
 
 
-async def sweep() -> int:
-    """Start a monitor run for each stale workspace. Returns how many started."""
+async def sweep_laces() -> int:
+    """Start a competitor check for each Lace with stale competitors."""
+    async with AsyncSessionLocal() as db:
+        due = await lace_competitors.laces_due_for_monitoring(db, timedelta(hours=settings.monitor_max_age_h))
     started = 0
+    for lace_id, user_id in due:
+        try:
+            await manager.start_lace_job("lace_monitor", user_id, lace_id, {"scheduled": True})
+            started += 1
+        except JobRefused:
+            continue  # already checking, or this user hit the daily cap; try next sweep
+    return started
+
+
+async def sweep() -> int:
+    """Start a monitor run for each stale workspace and each stale Lace.
+    Returns how many started."""
+    started = await sweep_laces()
     for workspace_id, user_id in await _stale_workspaces():
         try:
             await manager.start_background("monitor", user_id, workspace_id)

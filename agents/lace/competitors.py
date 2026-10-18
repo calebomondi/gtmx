@@ -7,6 +7,9 @@ from them; the hunt then runs unchanged, with its brand-free queries, website
 screening, substitute gate and sourced profiles.
 
 Synchronous and long (minutes): the backend runs it as a background job.
+Monitoring reuses v1's change detector (pipelines/monitor/check_competitor)
+per firm; the helpers here describe the Lace's offer to it and turn what it
+finds into facts.
 """
 
 from collections.abc import Callable, Sequence
@@ -17,7 +20,8 @@ from agents.pipelines.competitors.get_competitors import build_competitors_graph
 from agents.lace.prompts import render_brief
 from agents.llm.main import invoke_structured_with_fallback
 from agents.schemas.competition import CompetitorProfile
-from agents.schemas.lace import CompetitorHuntBrief, Fact, LaceProfile
+from agents.schemas.lace import CompetitorHuntBrief, Fact, LaceProfile, NewFact
+from agents.schemas.monitor import CompetitorChange
 
 # The brief step, injectable so tests can script it: messages -> brief.
 Brief = Callable[[Sequence], CompetitorHuntBrief]
@@ -73,3 +77,30 @@ def find_competitors(profile: LaceProfile, facts: list[Fact], focus: str | None 
         target_market=plan.target_geographies,
     )
     return list(hunt(state).get("competitor_profiles") or [])
+
+
+# Changes worth telling the founder about; low-importance ones are only kept
+# in the monitor's baseline.
+MATERIAL = ("high", "medium")
+# The offer as the change detector sees it: enough to judge what a rival's
+# move means for the startup.
+OFFER_DETAIL_TOKENS = 600
+
+
+def offer_for_monitor(profile: LaceProfile, facts: list[Fact]) -> tuple[str, str]:
+    """(our offer's name, what it is) for v1's change detector."""
+    offer_facts = [f for f in facts if f.topic in ("offer", "pricing", "positioning", "icp")]
+    return profile.startup_name or profile.website, render_brief(offer_facts, cap=OFFER_DETAIL_TOKENS)
+
+
+def material(changes: list[CompetitorChange]) -> list[CompetitorChange]:
+    return [c for c in changes if c.importance in MATERIAL]
+
+
+def change_fact(competitor: str, change: CompetitorChange) -> NewFact | None:
+    """A sourced change as a fact on the Lace's timeline; None without a source,
+    because only the founder's word stands without one."""
+    if not change.source_url:
+        return None
+    return NewFact(topic="competition", claim=f"{competitor}: {change.title}. {change.summary}",
+                   source_url=change.source_url, confidence="high", origin="monitor")
