@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from agents.schemas.lace import CompetitorOrigin, CompetitorStatus, Confidence, FactOrigin, FactTopic
+from agents.schemas.lace import AccountStatus, CompetitorOrigin, CompetitorStatus, Confidence, FactOrigin, FactTopic
 
 
 class LaceCreateRequest(BaseModel):
@@ -70,3 +70,34 @@ class CompetitorResponse(BaseModel):
 
 class CompetitorUpdateRequest(BaseModel):
     status: CompetitorStatus = Field(description="tracked, or dismissed to stop tracking it (a later hunt won't bring it back)")
+
+
+class AccountTrigger(BaseModel):
+    event: str
+    source: str | None = None
+
+
+class AccountCase(BaseModel):
+    need: str
+    capability: str
+    payoff: str
+    angle: str | None = None
+    strength: str
+
+
+class AccountResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    account_type: str
+    website: str | None
+    geo: str | None
+    summary: str | None
+    trigger: AccountTrigger | None
+    case: AccountCase | None = Field(description="Why this startup suits this account now; none if it could not be made")
+    status: AccountStatus
+    first_seen_at: datetime
+    last_seen_at: datetime
+
+
+class AccountUpdateRequest(BaseModel):
+    status: AccountStatus = Field(description="target, or dismissed to drop it (a later search won't bring it back)")

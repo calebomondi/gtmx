@@ -84,3 +84,28 @@ export function setLaceCompetitorStatus(laceId: string, competitorId: string, st
     body: JSON.stringify({ status }),
   })
 }
+
+export type AccountStatus = "target" | "dismissed"
+
+export interface LaceAccountDto {
+  id: string
+  name: string
+  account_type: string
+  website: string | null
+  geo: string | null
+  summary: string | null
+  trigger: { event: string; source: string | null } | null
+  /** Why the startup suits this account now; null if it could not be made. */
+  case: { need: string; capability: string; payoff: string; angle: string | null; strength: "strong" | "moderate" | "weak" } | null
+  status: AccountStatus
+  first_seen_at: string
+  last_seen_at: string
+}
+
+export function listLaceAccounts(laceId: string, status: AccountStatus = "target"): Promise<LaceAccountDto[]> {
+  return apiFetch<LaceAccountDto[]>(`/api/v1/laces/${laceId}/accounts?status=${status}`)
+}
+
+export function setLaceAccountStatus(laceId: string, accountId: string, status: AccountStatus): Promise<LaceAccountDto> {
+  return apiFetch(`/api/v1/laces/${laceId}/accounts/${accountId}`, { method: "PATCH", body: JSON.stringify({ status }) })
+}

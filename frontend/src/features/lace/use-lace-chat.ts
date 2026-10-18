@@ -5,12 +5,15 @@ import {
   followRunEvents,
   getLace,
   listActiveRuns,
+  listLaceAccounts,
   listLaceCompetitors,
   listLaceFacts,
   listLaceMessages,
   sendLaceMessage,
+  setLaceAccountStatus,
   setLaceCompetitorStatus,
   type FactDto,
+  type LaceAccountDto,
   type LaceCompetitorDto,
   type LaceDto,
   type LaceMessageDto,
@@ -29,6 +32,9 @@ export interface LaceChat {
   competitors: LaceCompetitorDto[]
   /** A background competitor search is running. */
   searching: boolean
+  accounts: LaceAccountDto[]
+  /** A background search for target accounts is running. */
+  findingAccounts: boolean
   loading: boolean
   /** A load or send failure, or a run that failed. */
   error: string | null
@@ -40,6 +46,7 @@ export interface LaceChat {
   draft: string
   send: (text: string) => Promise<void>
   dismissCompetitor: (competitorId: string) => Promise<void>
+  dismissAccount: (accountId: string) => Promise<void>
 }
 
 function message(err: unknown): string {
@@ -56,6 +63,8 @@ export function useLaceChat(laceId: string): LaceChat {
   const [facts, setFacts] = useState<FactDto[]>([])
   const [competitors, setCompetitors] = useState<LaceCompetitorDto[]>([])
   const [searching, setSearching] = useState(false)
+  const [accounts, setAccounts] = useState<LaceAccountDto[]>([])
+  const [findingAccounts, setFindingAccounts] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [working, setWorking] = useState(false)
@@ -66,13 +75,15 @@ export function useLaceChat(laceId: string): LaceChat {
   const busy = useRef(false)
 
   const refresh = useCallback(async () => {
-    const [nextLace, nextMessages, nextFacts, nextCompetitors] = await Promise.all([
+    const [nextLace, nextMessages, nextFacts, nextCompetitors, nextAccounts] = await Promise.all([
       getLace(laceId), listLaceMessages(laceId), listLaceFacts(laceId), listLaceCompetitors(laceId),
+      listLaceAccounts(laceId),
     ])
     setLace(nextLace)
     setMessages(nextMessages)
     setFacts(nextFacts)
     setCompetitors(nextCompetitors)
+    setAccounts(nextAccounts)
   }, [laceId])
 
   const follow = useCallback(async (runId: string) => {
@@ -114,6 +125,7 @@ export function useLaceChat(laceId: string): LaceChat {
   const checkRuns = useCallback(async () => {
     const mine = (await listActiveRuns()).filter((run) => run.lace_id === laceId)
     setSearching(mine.some((run) => run.kind === "lace_competitors"))
+    setFindingAccounts(mine.some((run) => run.kind === "lace_accounts"))
     const turn = mine.find((run) => run.kind === "lace_turn" || run.kind === "lace_onboarding")
     if (turn && !busy.current) void follow(turn.id)
   }, [laceId, follow])
@@ -149,6 +161,15 @@ export function useLaceChat(laceId: string): LaceChat {
     }
   }, [laceId])
 
+  const dismissAccount = useCallback(async (accountId: string) => {
+    try {
+      await setLaceAccountStatus(laceId, accountId, "dismissed")
+      setAccounts((prev) => prev.filter((a) => a.id !== accountId))
+    } catch (err) {
+      setError(message(err))
+    }
+  }, [laceId])
+
   const send = useCallback(async (text: string) => {
     setError(null)
     setMessages((prev) => [...prev, { role: "founder", content: text }])
@@ -161,5 +182,8 @@ export function useLaceChat(laceId: string): LaceChat {
     }
   }, [laceId, follow, refresh])
 
-  return { lace, messages, facts, competitors, searching, loading, error, working, step, draft, send, dismissCompetitor }
+  return {
+    lace, messages, facts, competitors, searching, accounts, findingAccounts, loading, error, working, step, draft,
+    send, dismissCompetitor, dismissAccount,
+  }
 }

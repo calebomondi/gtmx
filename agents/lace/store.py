@@ -9,7 +9,7 @@ reaching another startup's data whatever it asks for.
 from typing import Literal, Protocol
 
 from agents.schemas.icp import ICP
-from agents.schemas.lace import CompetitorSummary, Fact, FactTopic, LaceProfile, NewFact, SourcePage
+from agents.schemas.lace import AccountSummary, CompetitorSummary, Fact, FactTopic, LaceProfile, NewFact, SourcePage
 
 
 class LaceStore(Protocol):
@@ -36,17 +36,27 @@ class LaceStore(Protocol):
         """Replace the Lace's ideal customer profile."""
         ...
 
+    async def accounts(self, limit: int = 50) -> list[AccountSummary]:
+        """Target accounts, strongest fit first; dismissed ones are left out."""
+        ...
+
     async def competitors(self, limit: int = 50) -> list[CompetitorSummary]:
         """Tracked competitors, newest first; dismissed ones are left out."""
         ...
 
 
-JobKind = Literal["find_competitors", "check_competitors"]
+JobKind = Literal["find_competitors", "check_competitors", "find_accounts"]
 
 
 class JobRefused(Exception):
     """A background job could not start: one is already running, or a limit
     was reached. The message is said to the founder as is."""
+
+
+class JobBlocked(Exception):
+    """A job cannot do its work for a reason the founder can fix (not enough
+    known yet, no ICP). The message is safe to say to them as is; any other
+    failure is reported in general terms."""
 
 
 class LaceJobs(Protocol):

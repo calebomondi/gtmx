@@ -18,6 +18,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from agents.pipelines.competitors.get_competitors import build_competitors_graph, state_from_workspace
 from agents.lace.prompts import render_brief
+from agents.lace.store import JobBlocked
 from agents.llm.main import invoke_structured_with_fallback
 from agents.schemas.competition import CompetitorProfile
 from agents.schemas.lace import CompetitorHuntBrief, Fact, LaceProfile, NewFact
@@ -65,10 +66,10 @@ def hunt_brief(facts: list[Fact], focus: str | None, brief: Brief = _default_bri
 def find_competitors(profile: LaceProfile, facts: list[Fact], focus: str | None = None,
                      brief: Brief = _default_brief, hunt: Hunt = _default_hunt) -> list[CompetitorProfile]:
     """Real, sourced competitor profiles for the Lace's startup. Raises
-    ValueError when the facts are too thin to say what competes."""
+    JobBlocked when the facts are too thin to say what competes."""
     plan = hunt_brief(facts, focus, brief)
     if not plan.profile.archetypes:
-        raise ValueError("Not enough is known about what the startup sells to say what competes with it.")
+        raise JobBlocked("Not enough is known about what the startup sells to say what competes with it.")
     state = state_from_workspace(
         offer_name=profile.startup_name or profile.website,
         offer_description=plan.offer_summary,

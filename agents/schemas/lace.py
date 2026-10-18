@@ -135,3 +135,19 @@ class CompetitorSummary(BaseModel):
     origin: CompetitorOrigin
     status: CompetitorStatus
 
+
+
+AccountStatus = Literal["target", "dismissed"]
+ACCOUNT_STATUSES: tuple[str, ...] = AccountStatus.__args__
+
+
+class AccountSummary(BaseModel):
+    id: str
+    name: str
+    account_type: str
+    website: str | None = None
+    geo: str | None = None
+    trigger: str | None = None
+    need: str | None = None
+    angle: str | None = None
+    fit_strength: str | None = None

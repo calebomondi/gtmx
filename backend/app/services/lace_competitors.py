@@ -67,6 +67,11 @@ async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
     return new, refreshed
 
 
+async def all_domains(db: AsyncSession, lace_id: uuid.UUID) -> list[str]:
+    """Every competitor domain on file, tracked or dismissed."""
+    return list((await db.scalars(select(LaceCompetitor.domain_key).where(LaceCompetitor.lace_id == lace_id))).all())
+
+
 async def due_for_check(db: AsyncSession, lace_id: uuid.UUID, limit: int) -> list[LaceCompetitor]:
     """Tracked competitors, never-checked first, then the longest unchecked."""
     rows = await db.scalars(

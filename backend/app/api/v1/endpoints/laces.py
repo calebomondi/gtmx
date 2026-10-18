@@ -10,6 +10,8 @@ from backend.app.api.deps import CurrentUser, DbSession, OwnedLace
 from backend.app.runs import lace as lace_runs
 from backend.app.runs import manager
 from backend.app.schemas.laces import (
+    AccountResponse,
+    AccountUpdateRequest,
     CompetitorResponse,
     CompetitorUpdateRequest,
     FactResponse,
@@ -20,9 +22,9 @@ from backend.app.schemas.laces import (
     LaceResponse,
     LaceTurnResponse,
 )
-from backend.app.services import lace_competitors
+from backend.app.services import lace_accounts, lace_competitors
 from backend.app.services import laces as lace_service
-from agents.schemas.lace import CompetitorStatus, FactTopic
+from agents.schemas.lace import AccountStatus, CompetitorStatus, FactTopic
 
 router = APIRouter()
 
@@ -30,6 +32,7 @@ MAX_LACES_PER_PAGE = 50
 MAX_FACTS_PER_PAGE = 200
 MAX_MESSAGES_PER_PAGE = 200
 MAX_COMPETITORS_PER_PAGE = 100
+MAX_ACCOUNTS_PER_PAGE = 100
 
 
 @router.post("", response_model=LaceCreateResponse, status_code=status.HTTP_201_CREATED)
@@ -77,3 +80,14 @@ async def list_competitors(lace: OwnedLace, db: DbSession,
 @router.patch("/{lace_id}/competitors/{competitor_id}", response_model=CompetitorResponse)
 async def update_competitor(lace: OwnedLace, competitor_id: uuid.UUID, payload: CompetitorUpdateRequest, db: DbSession):
     return await lace_competitors.set_status(db, lace.id, competitor_id, payload.status)
+
+
+@router.get("/{lace_id}/accounts", response_model=list[AccountResponse])
+async def list_accounts(lace: OwnedLace, db: DbSession, shown: AccountStatus = Query(default="target", alias="status"),
+                        limit: int = Query(default=50, ge=1, le=MAX_ACCOUNTS_PER_PAGE)):
+    return [lace_accounts.response(r) for r in await lace_accounts.list_for_lace(db, lace.id, shown, limit)]
+
+
+@router.patch("/{lace_id}/accounts/{account_id}", response_model=AccountResponse)
+async def update_account(lace: OwnedLace, account_id: uuid.UUID, payload: AccountUpdateRequest, db: DbSession):
+    return lace_accounts.response(await lace_accounts.set_status(db, lace.id, account_id, payload.status))

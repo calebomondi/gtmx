@@ -6,6 +6,7 @@ import json
 import pytest
 
 from agents.lace.competitors import find_competitors
+from agents.lace.store import JobBlocked
 from agents.lace.tools import build_tools
 from agents.schemas.competition import ArchetypeSketch, CompetitorProfile, ProfileSkeleton
 from agents.schemas.lace import CompetitorHuntBrief, CompetitorSummary, LaceProfile
@@ -50,7 +51,7 @@ def test_focus_and_facts_reach_the_brief():
 
 
 def test_no_archetypes_is_an_error_not_an_empty_hunt():
-    with pytest.raises(ValueError, match="Not enough is known"):
+    with pytest.raises(JobBlocked, match="Not enough is known"):
         find_competitors(PROFILE, FACTS, brief=_brief(archetypes=()), hunt=lambda s: pytest.fail("hunted"))
 
 

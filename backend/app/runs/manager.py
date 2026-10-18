@@ -176,11 +176,14 @@ async def wake_lace(user_id: uuid.UUID, lace_id: uuid.UUID) -> None:
 
 
 # The run kind behind each job a Lace's tools can start.
-_TOOL_JOB_RUN_KINDS = {"find_competitors": "lace_competitors", "check_competitors": "lace_monitor"}
-_JOB_SEGMENTS = {"lace_competitors": lace_runs.competitors_job, "lace_monitor": lace_runs.monitor_job}
+_TOOL_JOB_RUN_KINDS = {"find_competitors": "lace_competitors", "check_competitors": "lace_monitor",
+                       "find_accounts": "lace_accounts"}
+_JOB_SEGMENTS = {"lace_competitors": lace_runs.competitors_job, "lace_monitor": lace_runs.monitor_job,
+                 "lace_accounts": lace_runs.accounts_job}
 _JOB_BUSY = {
     "lace_competitors": "A competitor search is already running; I'll report when it's done.",
     "lace_monitor": "I'm already checking the competitors; I'll report anything that matters.",
+    "lace_accounts": "A search for target accounts is already running; I'll report when it's done.",
 }
 
 
