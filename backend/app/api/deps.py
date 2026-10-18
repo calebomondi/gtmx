@@ -19,6 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app import supabase_admin
 from backend.app.database import models
 from backend.app.database.connect import get_db
+from backend.app.database.lace_models import Lace
+from backend.app.services import laces as lace_service
 from backend.app.services import limits
 from backend.app.services import projects as project_service
 from backend.app.services import workspaces as workspace_service
@@ -116,7 +118,12 @@ async def get_owned_project(project_id: uuid.UUID, user: CurrentUser, db: DbSess
     return await project_service.get_owned(db, user.id, project_id)
 
 
+async def get_owned_lace(lace_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Lace:
+    return await lace_service.get_owned(db, user.id, lace_id)
+
+
 OwnedWorkspace = Annotated[models.Workspace, Depends(get_owned_workspace)]
+OwnedLace = Annotated[Lace, Depends(get_owned_lace)]
 OwnedProject = Annotated[models.Project, Depends(get_owned_project)]
 MatchingUser = Annotated[AuthUser, Depends(require_matching_user)]
 

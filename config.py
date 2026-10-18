@@ -80,6 +80,11 @@ class Settings(BaseSettings):
     # Hard cap per Exa call; its SDK sets no timeout of its own.
     exa_timeout_s: float = 60.0
     exa_api_key: str = ""
+    # Firecrawl reads the founder's own site for a Lace: map it, then scrape
+    # the key pages. Per HTTP request, and for a whole batch to finish.
+    firecrawl_api_key: str = ""
+    firecrawl_timeout_s: float = 60.0
+    firecrawl_batch_timeout_s: float = 180.0
     brightdata_api_key: str = ""
     composio_api_key: str = ""
     # Composio auth config per toolkit, for toolkits Composio does not manage
@@ -98,6 +103,9 @@ class Settings(BaseSettings):
     discovery_segment_timeout_s: float = 1800.0
     # Wall-clock cap on a whole background run (competitors, accounts, ...).
     background_run_timeout_s: float = 1800.0
+    # A Lace reading its site for the first time, and one founder turn.
+    lace_onboarding_timeout_s: float = 600.0
+    lace_turn_timeout_s: float = 300.0
 
     # -- Usage limits (per user) --
     max_active_discovery_runs: int = 1
@@ -106,6 +114,9 @@ class Settings(BaseSettings):
     max_account_runs_per_day: int = 20
     max_requests_per_minute: int = 120
     max_chat_messages_per_day: int = 200
+    max_laces_per_user: int = 5
+    max_lace_onboardings_per_day: int = 10
+    max_lace_turns_per_day: int = 200
     max_outreach_sends_per_day: int = 50
     max_monitor_runs_per_day: int = 6
 
@@ -160,8 +171,16 @@ class Settings(BaseSettings):
     api_call_prices: dict[str, float] = Field(default_factory=lambda: {
         "exa.search": 0.01,  # search + text for ~5 results
         "exa.contents": 0.001,
+        "firecrawl.scrape": 0.001,  # per page (1 credit)
+        "firecrawl.map": 0.001,
         "brightdata": 0.0015,  # per scraped record
     })
+
+    # -- Lace agent --
+    # Per founder turn: tool calls before the Lace must answer with what it
+    # has, and the conversation tokens re-sent to the model each step.
+    lace_max_tool_calls_per_turn: int = 20
+    lace_history_token_budget: int = 24_000
 
     # -- Competitor monitoring --
     # How often the scheduler looks for stale workspaces, and how old a check

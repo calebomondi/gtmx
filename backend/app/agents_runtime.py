@@ -57,12 +57,14 @@ _CHECKPOINT_TYPES = [
 
 _agent = None
 _pool: AsyncConnectionPool | None = None
+# Shared with the Lace graphs, which compile per run around one Lace's store.
+_saver: AsyncPostgresSaver | None = None
 
 
 async def start_agent_runtime(database_url: str):
     """Open the checkpointer pool, ensure its tables, compile the agent.
     Idempotent."""
-    global _agent, _pool
+    global _agent, _pool, _saver
     if _agent is not None:
         return _agent
 
@@ -96,20 +98,28 @@ async def start_agent_runtime(database_url: str):
         raise
 
     _pool = pool
+    _saver = saver
     _agent = build_discovery_agent(checkpointer=saver)
     logger.info("Discovery agent runtime ready (checkpointer=postgres)")
     return _agent
 
 
 async def stop_agent_runtime():
-    global _agent, _pool
+    global _agent, _pool, _saver
     if _pool is not None:
         await _pool.close()
         _pool = None
     _agent = None
+    _saver = None
 
 
 def get_agent():
     if _agent is None:
         raise RuntimeError("Agent runtime not started — lifespan did not run")
     return _agent
+
+
+def get_checkpointer() -> AsyncPostgresSaver:
+    if _saver is None:
+        raise RuntimeError("Agent runtime not started — lifespan did not run")
+    return _saver

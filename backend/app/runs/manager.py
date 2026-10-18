@@ -15,11 +15,13 @@ from datetime import UTC, datetime
 
 from langgraph.types import Command
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.runs import background, discovery, events
+from backend.app.runs import lace as lace_runs
 from backend.app.runs import signals as run_signals
 from backend.app.runs.errors import user_facing_error
 from backend.app.schemas.agents import DiscoveryRequest
@@ -101,6 +103,38 @@ async def start_background(
         db.add(run)
         await db.commit()
     _spawn(run.id, user_id, executor(run.id, workspace_id, params or {}), settings.background_run_timeout_s)
+    return run
+
+
+async def _start_lace_run(kind: str, user_id: uuid.UUID, lace_id: uuid.UUID, params: dict | None) -> models.Run:
+    async with AsyncSessionLocal() as db:
+        await limits.ensure_can_start(db, user_id, kind)
+        run = models.Run(user_id=user_id, lace_id=lace_id, kind=kind, status="running", input=params,
+                         started_at=datetime.now(UTC))
+        db.add(run)
+        try:
+            await db.commit()
+        except IntegrityError as exc:
+            if "uq_runs_one_active_per_lace" not in str(exc):
+                raise
+            raise ConflictError("Your Lace is still working on the last message.") from None
+    return run
+
+
+async def start_lace_onboarding(user_id: uuid.UUID, lace_id: uuid.UUID) -> models.Run:
+    run = await _start_lace_run("lace_onboarding", user_id, lace_id, None)
+    _spawn(run.id, user_id, lace_runs.onboarding_segment(run.id, lace_id), settings.lace_onboarding_timeout_s)
+    return run
+
+
+async def start_lace_turn(user_id: uuid.UUID, lace_id: uuid.UUID, text: str) -> models.Run:
+    """One founder message and the Lace's work on it. The caller has already
+    checked that `lace_id` is the user's."""
+    text = text.strip()
+    if not text:
+        raise InvalidInputError("Write a message first.")
+    run = await _start_lace_run("lace_turn", user_id, lace_id, {"text": text})
+    _spawn(run.id, user_id, lace_runs.turn_segment(run.id, lace_id, text), settings.lace_turn_timeout_s)
     return run
 
 

@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from functools import lru_cache
+from typing import Literal
 
 from exa_py import Exa
 
@@ -115,3 +116,40 @@ def search_and_scrape(
 
     logger.info("Exa search for %r returned %d results, kept %d", query, len(results.results), len(kept))
     return kept
+
+
+SearchType = Literal["auto", "fast", "deep-lite", "deep", "deep-reasoning"]
+
+
+def search_highlights(
+    query: str,
+    config: Settings,
+    search_type: SearchType = "auto",
+    num_results: int = 10,
+    start_published_date: str | None = None,
+) -> list[dict]:
+    """Search returning query-relevant highlights instead of full page text.
+
+    For an agent choosing what to read next: the highlights are enough to judge
+    a result, and full text would flood its context. "instant" is left out of
+    SearchType on purpose, it is priced for real-time paths.
+    """
+    exa = _client(config.exa_api_key)
+    with usage.track("exa", "search"):
+        results = _bounded(lambda: exa.search(
+            query,
+            type=search_type,
+            contents={"highlights": True},
+            num_results=num_results,
+            start_published_date=start_published_date,
+        ), config, "search")
+    return [
+        {
+            "url": r.url,
+            "title": r.title or "",
+            "highlights": list(getattr(r, "highlights", None) or []),
+            "published_date": getattr(r, "published_date", None),
+        }
+        for r in results.results
+        if r.url
+    ]

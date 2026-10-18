@@ -32,6 +32,7 @@ from langchain_openai import ChatOpenAI
 from typing import Any, Callable, Sequence
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
+from langchain_core.messages import AIMessage
 
 from utils.log import current_run_id, logger  # noqa: F401 -- current_run_id is re-exported for callers of agents.llm
 from config import get_settings
@@ -491,10 +492,46 @@ def invoke_structured_with_fallback(
     thinking_budget: int | None = None,
     rate_limit_retries: int = 5,
 ):
+    """The model's answer: a `schema` instance when one is given, else its text.
+    See _invoke_ladder for the retry and fallback behaviour."""
+    result = _invoke_ladder(messages, schema, None, providers, log_label, max_retries,
+                            thinking, thinking_budget, rate_limit_retries)
+    if schema is None and hasattr(result, "content"):
+        return result.content
+    return result
+
+
+def invoke_with_tools(
+    messages: Sequence[Any],
+    tools: Sequence[Any],
+    providers: list[tuple[str, list[str]]] | None = None,
+    log_label: str = "LLM call",
+    thinking: bool = False,
+    rate_limit_retries: int = 5,
+) -> AIMessage:
+    """One agent step: the model's full message, which may carry tool calls.
+    Same ladder as structured calls; tool-call arguments are validated by the
+    tool, not here."""
+    return _invoke_ladder(messages, None, tools, providers, log_label, 2,
+                          thinking, None, rate_limit_retries)
+
+
+def _invoke_ladder(
+    messages: Sequence[Any],
+    schema: Any | None,
+    tools: Sequence[Any] | None,
+    providers: list[tuple[str, list[str]]] | None,
+    log_label: str,
+    max_retries: int,
+    thinking: bool,
+    thinking_budget: int | None,
+    rate_limit_retries: int,
+):
     """
     Invoke an LLM across a prioritized list of (provider, [models]) pairs,
     falling back on failure. Retries on 429/rate-limit errors with backoff.
-    If `schema` is provided, uses structured output; otherwise does a plain invoke.
+    With `tools`, the model may call them; with `schema`, structured output;
+    otherwise a plain invoke.
 
     `thinking` defaults to False, so a new call site is fast by default and has
     to argue for the latency. Measured on qwen3.6-27b with an identical prompt,
@@ -555,7 +592,9 @@ def invoke_structured_with_fallback(
                         if waited > 1:
                             logger.info("%s waited %.1fs for a %s slot", log_label, waited, provider)
                         started = time.perf_counter()  # time the call, not the queue
-                        if schema is not None:
+                        if tools:
+                            result = llm.bind_tools(list(tools)).invoke(messages, config=config)
+                        elif schema is not None:
                             result = llm.with_structured_output(schema).invoke(messages, config=config)
                         else:
                             result = llm.invoke(messages, config=config)
@@ -570,8 +609,6 @@ def invoke_structured_with_fallback(
                     logger.info("%s succeeded with %s/%s", log_label, provider, model)
                     _DOWN_MODELS.discard((provider, model))
                     _note_throttle_outcome(True)
-                    if schema is None and hasattr(result, "content"):
-                        return result.content
                     return result
                 except Exception as e:
                     _report_usage(log_label, provider, model, usage, time.perf_counter() - started, ok=False)

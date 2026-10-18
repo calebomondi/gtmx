@@ -29,6 +29,9 @@ import { ArchiveComponent } from "@/features/archive/archive-components"
 import { AccountsComponent } from "@/features/connected-accounts/accounts-component"
 import { ArchivedWorkspace } from "@/features/archive/archived-workspace"
 import { HomeFeed } from "@/features/home-feed/home-feed-components"
+import LaceList from "@/features/lace/lace-list"
+import NewLace from "@/features/lace/new-lace"
+import LaceChat from "@/features/lace/lace-chat"
 import AuthPage from "@/features/auth/auth-component"
 import AuthCallback from "@/features/auth/auth-callback"
 import ForgotPasswordPage from "@/features/auth/forgot-password"
@@ -166,6 +169,9 @@ const router = createBrowserRouter([
         element: <ProjectHub />,
       },
       { path: 'feed', element: <HomeFeed /> },
+      { path: 'lace', element: <LaceList /> },
+      { path: 'lace/new', element: <NewLace /> },
+      { path: 'lace/:lace_id', element: <LaceChat /> },
       { path: 'archive', element: <ArchiveComponent /> },
       { path: 'accounts', element: <AccountsComponent /> },
       { path: 'archive/workspace/:workspace_id', element: <ArchivedWorkspace /> },

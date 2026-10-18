@@ -3,7 +3,7 @@ import uuid
 
 from datetime import date, datetime, UTC
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, String, Text, UUID, UniqueConstraint, false, func
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, String, Text, UUID, UniqueConstraint, false, func, text
 from sqlalchemy.dialects.postgresql import JSONB as JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -552,12 +552,24 @@ class Run(Base):
     """
 
     __tablename__ = "runs"
+    __table_args__ = (
+        # A Lace's conversation is one checkpoint thread, which takes one writer
+        # at a time: at most one unfinished run per Lace, enforced here so two
+        # simultaneous messages cannot both start a turn.
+        Index("uq_runs_one_active_per_lace", "lace_id", unique=True,
+              postgresql_where=text("lace_id IS NOT NULL AND status IN ('pending', 'running', 'awaiting_input')")),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     # Discovery creates its workspace mid-run, so this starts null for it.
     workspace_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("workspaces.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    # Set for Lace runs. SET NULL, not CASCADE: a run is also the billing
+    # record of its LLM and API calls, kept after the Lace is gone.
+    lace_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("laces.id", ondelete="SET NULL"), nullable=True, index=True,
     )
     # backend.app.runs.kinds.RunKind
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -865,3 +877,7 @@ class WaitlistSignup(Base):
         server_default=func.now(), nullable=False,
     )
 
+
+
+# Registered with the rest so Base.metadata (migrations, test cleanup) sees them.
+from backend.app.database.lace_models import Lace, LaceFact, LaceSource  # noqa: E402,F401
