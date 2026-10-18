@@ -41,6 +41,9 @@ _OUT_OF_TOOL_CALLS = (
 )
 
 
+_INTERRUPTED = '{"ok": false, "summary": "Interrupted before it finished.", "error": "interrupted"}'
+
+
 class LaceState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
 
@@ -59,6 +62,20 @@ def _turn_start(messages: Sequence[AnyMessage]) -> int:
 
 def tool_calls_this_turn(messages: Sequence[AnyMessage]) -> int:
     return sum(isinstance(m, ToolMessage) for m in messages[_turn_start(messages):])
+
+
+def close_dangling_tool_calls(messages: Sequence[AnyMessage]) -> list[AnyMessage]:
+    """Answer any tool call that never got a result, so the model is never sent
+    a call without its answer (providers reject that). It happens when a turn
+    is cancelled or the server restarts between the call and its result."""
+    answered = {m.tool_call_id for m in messages if isinstance(m, ToolMessage)}
+    out: list[AnyMessage] = []
+    for message in messages:
+        out.append(message)
+        for tool_call in getattr(message, "tool_calls", None) or []:
+            if tool_call["id"] not in answered:
+                out.append(ToolMessage(content=_INTERRUPTED, tool_call_id=tool_call["id"]))
+    return out
 
 
 def history_window(messages: Sequence[AnyMessage], budget: int) -> list[AnyMessage]:
@@ -93,7 +110,7 @@ def build_lace_graph(
         profile, facts = await asyncio.gather(store.profile(), store.facts(None, BRIEF_FACTS))
         messages = state["messages"]
         prompt: list[AnyMessage] = [SystemMessage(content=system_prompt(profile, facts))]
-        prompt += history_window(messages, settings.lace_history_token_budget)
+        prompt += close_dangling_tool_calls(history_window(messages, settings.lace_history_token_budget))
         allowed = tools
         if tool_calls_this_turn(messages) >= settings.lace_max_tool_calls_per_turn:
             prompt.append(SystemMessage(content=_OUT_OF_TOOL_CALLS))

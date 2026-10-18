@@ -103,6 +103,9 @@ class Settings(BaseSettings):
     discovery_segment_timeout_s: float = 1800.0
     # Wall-clock cap on a whole background run (competitors, accounts, ...).
     background_run_timeout_s: float = 1800.0
+    # A Lace reading its site for the first time, and one founder turn.
+    lace_onboarding_timeout_s: float = 600.0
+    lace_turn_timeout_s: float = 300.0
 
     # -- Usage limits (per user) --
     max_active_discovery_runs: int = 1
@@ -111,6 +114,9 @@ class Settings(BaseSettings):
     max_account_runs_per_day: int = 20
     max_requests_per_minute: int = 120
     max_chat_messages_per_day: int = 200
+    max_laces_per_user: int = 5
+    max_lace_onboardings_per_day: int = 10
+    max_lace_turns_per_day: int = 200
     max_outreach_sends_per_day: int = 50
     max_monitor_runs_per_day: int = 6
 

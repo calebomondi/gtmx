@@ -225,3 +225,33 @@ async def onboard(store: LaceStore, settings: Settings, extract: Extract = _defa
         facts_recorded=len(kept),
         open_questions=understanding.open_questions[:MAX_OPEN_QUESTIONS],
     )
+
+
+_OPENING_PROMPT = """You have just read your founder's website for the first time.
+Write your first message to them: introduce yourself by name in one line, then
+say in a few short bullets what you understood the startup sells, to whom, and
+how it is priced, then ask them to correct anything wrong. End with the open
+questions below, numbered. Plain and brief: under 180 words. No sign-off."""
+
+_UNREADABLE_PROMPT = """You tried to read your founder's website and could not
+({failed}). Write your first message: introduce yourself by name in one line,
+say plainly that you could not read the site, and ask them to describe in a few
+sentences what the startup sells, to whom, and at what price. Under 80 words."""
+
+# The opening turn, injectable so tests can script it: messages -> text.
+Write = Callable[[Sequence], str]
+
+
+def _default_write(messages: Sequence) -> str:
+    return invoke_structured_with_fallback(messages, log_label="lace:opening_message")
+
+
+def opening_message(system: str, result: OnboardingResult, write: Write = _default_write) -> str:
+    """The Lace's first message to its founder. `system` is its usual system
+    prompt, so the message is written from the brief onboarding just filled."""
+    if result.site_unreadable:
+        instruction = _UNREADABLE_PROMPT.format(failed=", ".join(result.pages_failed) or "no pages")
+    else:
+        questions = "\n".join(f"- {q}" for q in result.open_questions) or "- (none)"
+        instruction = f"{_OPENING_PROMPT}\n\nOpen questions:\n{questions}"
+    return write([SystemMessage(content=system), HumanMessage(content=instruction)]).strip()

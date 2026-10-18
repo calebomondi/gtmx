@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from agents.schemas.lace import Fact, FactTopic, LaceProfile, NewFact, SourcePage
 from backend.app.database.lace_models import Lace, LaceFact, LaceSource
 from backend.app.services.errors import NotFoundError
+from backend.app.services.laces import current_facts_query
 
 
 def _fact(row: LaceFact) -> Fact:
@@ -43,14 +44,7 @@ class DbLaceStore:
         return LaceProfile(name=lace.name, website=lace.website, startup_name=lace.startup_name)
 
     async def facts(self, topic: FactTopic | None = None, limit: int = 50) -> list[Fact]:
-        query = (
-            select(LaceFact)
-            .where(LaceFact.lace_id == self._lace_id, LaceFact.superseded_by_id.is_(None))
-            .order_by(LaceFact.recorded_at.desc())
-            .limit(limit)
-        )
-        if topic is not None:
-            query = query.where(LaceFact.topic == topic)
+        query = current_facts_query(self._lace_id, topic, limit)
         async with self._sessions() as session:
             rows = (await session.scalars(query)).all()
         return [_fact(r) for r in rows]
