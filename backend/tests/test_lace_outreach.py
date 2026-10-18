@@ -185,3 +185,69 @@ def test_another_users_message_cannot_be_sent(client, lace, lace_runtime, user, 
     client.sign_in(make_user("Intruder"))
     assert client.post(f"{API}/laces/{lace}/outreach/{message}/send").status_code == 404
     assert calls == []
+
+
+def _x(monkeypatch, connected=True, user_id="123", send_error=None):
+    from backend.app.services import connections as connection_service
+    from backend.app.services.connections import ConnectionInfo
+    calls = []
+
+    async def connections(db, user_id_):
+        return [ConnectionInfo("ca_x", "x", "live", "@me", None, None)] if connected else []
+
+    def execute(user_id_, tool, arguments, connection_id):
+        calls.append((tool, arguments))
+        if tool == "TWITTER_USER_LOOKUP_BY_USERNAME":
+            return {"data": {"data": {"id": user_id}} if user_id else {}, "error": None if user_id else "not found",
+                    "log_id": "l1"}
+        return {"data": None if send_error else {"data": {"dm_event_id": "e_1"}}, "error": send_error, "log_id": "l2"}
+
+    monkeypatch.setattr(connection_service, "list_for_user", connections)
+    monkeypatch.setattr(connection_service, "execute_tool", execute)
+    return calls
+
+
+def test_an_x_dm_is_sent_through_x_on_the_founders_click(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    calls = _x(monkeypatch)
+    message = _message(lace, user.id, channel="x", address="https://x.com/EnziMotors", subject=None)
+    sent = client.post(f"{API}/laces/{lace}/outreach/{message}/send").json()
+    assert sent["status"] == "sent" and sent["sent_at"]
+    assert calls == [("TWITTER_USER_LOOKUP_BY_USERNAME", {"username": "EnziMotors"}),
+                     ("TWITTER_SEND_A_NEW_MESSAGE_TO_A_USER", {"participant_id": "123", "text": "Hello Jane"})]
+    with psycopg.connect(settings.database_url) as conn:
+        assert conn.execute("SELECT provider_message_id, provider_log_id FROM lace_outreach WHERE id = %s",
+                            (message,)).fetchone() == ("e_1", "l2")
+    assert client.post(f"{API}/laces/{lace}/outreach/{message}/send").status_code == 409  # sent once
+
+
+def test_x_refusals_are_clear(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    _x(monkeypatch, connected=False)
+    no_x = _message(lace, user.id, channel="x", address="https://x.com/EnziMotors")
+    assert "Connect your X account" in client.post(f"{API}/laces/{lace}/outreach/{no_x}/send").json()["detail"]
+    _x(monkeypatch)
+    bad = _message(lace, user.id, channel="x", address="https://x.com/i/status/1")
+    assert client.post(f"{API}/laces/{lace}/outreach/{bad}/send").status_code == 422
+    _x(monkeypatch, user_id=None)
+    unknown = client.post(f"{API}/laces/{lace}/outreach/{no_x}/send").json()
+    assert unknown["status"] == "failed" and "Couldn't find @EnziMotors" in unknown["error"]
+    _x(monkeypatch, send_error="dm not allowed")
+    refused = client.post(f"{API}/laces/{lace}/outreach/{no_x}/send").json()
+    assert refused["status"] == "failed" and "may not accept DMs" in refused["error"]
+
+
+def test_other_social_channels_are_handed_to_the_founder(client, lace, lace_runtime, user):  # noqa: F811
+    for channel, words in (("instagram", "Instagram doesn't let apps start"), ("facebook", "only lets a Page reply"),
+                           ("tiktok", "TikTok has no messaging")):
+        message = _message(lace, user.id, channel=channel, address=f"https://{channel}.com/enzi")
+        refused = client.post(f"{API}/laces/{lace}/outreach/{message}/send")
+        assert refused.status_code == 409 and words in refused.json()["detail"]
+        assert client.post(f"{API}/laces/{lace}/outreach/{message}/mark-sent").json()["status"] == "sent"
+
+
+def test_x_sends_count_toward_the_daily_cap(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    _gmail(monkeypatch)
+    monkeypatch.setattr(settings, "max_outreach_sends_per_day", 1)
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        conn.execute("UPDATE lace_outreach SET status = 'sent', sent_at = now() WHERE id = %s",
+                     (_message(lace, user.id, channel="x", address="https://x.com/a"),))
+    assert client.post(f"{API}/laces/{lace}/outreach/{_message(lace, user.id)}/send").status_code == 429

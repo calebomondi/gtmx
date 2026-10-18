@@ -63,3 +63,18 @@ async def test_draft_outreach_tool_starts_a_job(settings):
     tool = {t.name: t for t in build_tools(MemoryStore(), settings, jobs)}["draft_outreach"]
     out = json.loads(await tool.ainvoke({"account_ids": ["a1"]}))
     assert out["ok"] and jobs.started == [("draft_outreach", {"account_ids": ["a1"]})]
+
+
+def test_with_no_one_reachable_the_organisations_own_account_is_messaged():
+    record = _record().model_copy(update={"socials": {"linkedin": "https://linkedin.com/company/sunculture",
+                                                       "instagram": "https://instagram.com/sunculture",
+                                                       "x": "https://x.com/SunCulture"}})
+    assert recipient_for(record) == Recipient("x", None, None, "https://x.com/SunCulture")
+    only_linkedin = _record().model_copy(update={"socials": {"linkedin": "https://linkedin.com/company/sunculture"}})
+    assert recipient_for(only_linkedin) is None  # a company page cannot be messaged
+
+
+def test_every_channel_has_a_writing_rule_and_only_email_a_subject():
+    from agents.pipelines.outreach import gtm_specialist
+    for channel in ("email", "linkedin", "x", "instagram", "facebook", "tiktok"):
+        assert channel in gtm_specialist.CHANNEL_RULES and channel in gtm_specialist._WORD_LIMITS

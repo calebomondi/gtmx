@@ -245,13 +245,25 @@ def test_lace_drafts_outreach_to_real_people(client, runtime, user):
                          " fit_strength) VALUES (%s, %s, %s, %s, 'company', %s, %s, 'person', 'strong')",
                          (uuid.uuid4(), lace_id, name.lower(), name, site, json.dumps(record.model_dump(mode="json"))))
 
+        # Nobody named: the organisation's own Instagram account gets the message.
+        record = AccountRecord(name="Synnefa", website="https://synnefa.io", geo="Kenya",
+                               socials={"instagram": "https://www.instagram.com/synnefa_"},
+                               trigger_event=TriggerEvent(event="Rolling out smart solar dryers to 7,000+ farmers",
+                                                          signal_type="product_listing", source="https://synnefa.io"))
+        conn.execute("INSERT INTO lace_accounts (id, lace_id, key, name, account_type, website, record, contact_status,"
+                     " fit_strength) VALUES (%s, %s, 'synnefa', 'Synnefa', 'company', 'https://synnefa.io', %s,"
+                     " 'organisation', 'strong')", (uuid.uuid4(), lace_id, json.dumps(record.model_dump(mode="json"))))
+
     job = client.portal.call(manager.start_lace_job, "lace_drafts", user.id, lace_id, {})
     job = client.portal.call(_wait_for_status, job.id, {"completed", "failed"}, DRAFTS_TIMEOUT_S)
     assert job.status == "completed", job.error
     drafts = client.get(f"{API}/laces/{lace_id}/outreach").json()
     for d in drafts:
-        print(f"\n--- to {d['recipient_name']} at {d['recipient_company']} ({d['channel']})\n{d['body']}")
-    assert len(drafts) == 2 and all(d["status"] == "draft" for d in drafts)
+        print(f"\n--- to {d['recipient_name'] or d['recipient_address']} at {d['recipient_company']} ({d['channel']})"
+              f"\n{d['body']}")
+    assert len(drafts) == 3 and all(d["status"] == "draft" for d in drafts)
+    instagram = next(d for d in drafts if d["recipient_company"] == "Synnefa")
+    assert instagram["channel"] == "instagram" and not instagram["subject"]
     turn = client.portal.call(_wait_for_status, client.portal.call(_first_turn, lace_id, 60.0), {"completed", "failed"},
                               TURN_TIMEOUT_S)
     assert turn.status == "completed", turn.error

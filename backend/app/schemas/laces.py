@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from agents.schemas.lace import AccountStatus, CompetitorOrigin, ContactStatus, CompetitorStatus, Confidence, FactOrigin, FactTopic
+from agents.schemas.lace import AccountStatus, CompetitorOrigin, ContactStatus, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
 
 
 class LaceCreateRequest(BaseModel):
@@ -120,7 +120,7 @@ class OutreachResponse(BaseModel):
 
     id: uuid.UUID
     account_id: uuid.UUID | None
-    channel: Literal["email", "linkedin"]
+    channel: OutreachChannel
     direction: Literal["outbound", "inbound"]
     status: str = Field(description="draft | sending | sent | failed | bounced | received")
     recipient_name: str | None

@@ -32,12 +32,19 @@ from utils.log import logger
 
 _PAGE_CHARS = 6_000
 MAX_REWRITES = 2
-_WORD_LIMITS = {"email": (50, 140), "linkedin": (25, 90)}
+_WORD_LIMITS = {"email": (50, 140), "linkedin": (25, 90), "x": (20, 70), "instagram": (20, 80),
+                "facebook": (20, 80), "tiktok": (20, 70)}
 _SCRAPE_TIMEOUT_S = 25
 
 CHANNEL_RULES = {
     "email": "A cold email: a subject under 8 words built on the hook (their name, event or number, not a generic benefit), and a body of 60-120 words in 3 short paragraphs after the greeting.",
     "linkedin": "A LinkedIn connection note or message: no subject, 40-80 words, conversational, one paragraph or two.",
+    "x": "An X direct message: no subject, 25-60 words, one short paragraph, plain and direct.",
+    "instagram": "An Instagram direct message to the organisation's account: no subject, 25-70 words, friendly, "
+                 "asking who handles this if it is not them.",
+    "facebook": "A message to the organisation's Facebook Page: no subject, 25-70 words, friendly, "
+                "asking who handles this if it is not them.",
+    "tiktok": "A TikTok direct message to the organisation's account: no subject, 25-60 words, friendly and short.",
 }
 
 @dataclass
@@ -239,7 +246,8 @@ def _write(brief: OutreachBrief, plan: OutreachPlan, notes: str, offer_name: str
         )), HumanMessage(content="Write the message now.")],
         OutreachDraft, log_label=f"outreach_write:{brief.channel}",
     )
-    return draft.model_copy(update={"subject": ""}) if brief.channel == "linkedin" else draft
+    # Only email has a subject line.
+    return draft.model_copy(update={"subject": ""}) if brief.channel != "email" else draft
 
 
 def lint(brief: OutreachBrief, draft: OutreachDraft, sources: str | None = None, offer_name: str = "") -> list[str]:

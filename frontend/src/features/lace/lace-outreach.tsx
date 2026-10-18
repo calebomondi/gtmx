@@ -5,9 +5,15 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import type { LaceOutreachDto, LaceOutreachChanges } from "@/lib/api"
+import type { LaceOutreachDto, LaceOutreachChanges, OutreachChannel } from "@/lib/api"
 
 const EDITABLE = new Set(["draft", "failed"])
+const CHANNEL_LABELS: Record<OutreachChannel, string> = {
+  email: "Email", linkedin: "LinkedIn", x: "X", instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok",
+}
+// Sent from here through the founder's own account. X needs it connected;
+// without that it is handed over like the rest.
+const SENT_FROM_HERE = new Set<OutreachChannel>(["email", "x"])
 
 function DraftCard({ message, onSave, onDiscard, onSend, onMarkSent }: {
   message: LaceOutreachDto
@@ -23,7 +29,10 @@ function DraftCard({ message, onSave, onDiscard, onSend, onMarkSent }: {
   const editable = EDITABLE.has(message.status)
   const changed = subject !== (message.subject ?? "") || body !== message.body
     || address !== (message.recipient_address ?? "")
-  const isLinkedIn = message.channel === "linkedin"
+  const isEmail = message.channel === "email"
+  const sendable = SENT_FROM_HERE.has(message.channel)
+  // Copy, open the profile, mark sent: every channel but email.
+  const handoff = !isEmail
   // An answer goes into the existing thread, under its subject.
   const isReply = Boolean(message.thread_id) && message.status === "draft"
 
@@ -37,11 +46,11 @@ function DraftCard({ message, onSave, onDiscard, onSend, onMarkSent }: {
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="font-medium">{message.recipient_name ?? message.recipient_address}</span>
         <span className="text-muted-foreground">at {message.recipient_company}</span>
-        <Badge variant="outline">{isLinkedIn ? "LinkedIn" : "Email"}</Badge>
+        <Badge variant="outline">{CHANNEL_LABELS[message.channel]}</Badge>
         {isReply && <Badge variant="secondary">reply</Badge>}
         {message.status !== "draft" && <Badge variant="secondary">{message.status}</Badge>}
       </div>
-      {!isLinkedIn && (
+      {isEmail && (
         <>
           <Input value={address} onChange={(e) => setAddress(e.target.value)} disabled={!editable}
                  aria-label="Recipient email" placeholder="name@company.com" inputMode="email" />
@@ -58,18 +67,18 @@ function DraftCard({ message, onSave, onDiscard, onSend, onMarkSent }: {
         <div className="flex flex-wrap items-center gap-2">
           {changed && (
             <Button size="sm" variant="outline"
-                    onClick={() => onSave(isLinkedIn ? { body } : { subject, body, recipient_address: address })}>
+                    onClick={() => onSave(isEmail ? { subject, body, recipient_address: address } : { body })}>
               Save changes
             </Button>
           )}
-          {!isLinkedIn && (
+          {sendable && (
             // Unsaved edits would not be what goes out: save first.
             <Button size="sm" onClick={onSend} disabled={changed || !message.recipient_address}
                     title={changed ? "Save your changes first" : undefined}>
               <Send /> Send
             </Button>
           )}
-          {isLinkedIn && (
+          {handoff && (
             <>
               <Button size="sm" variant="outline" onClick={() => void copy()}>
                 {copied ? <Check /> : <Copy />} {copied ? "Copied" : "Copy"}
@@ -80,7 +89,7 @@ function DraftCard({ message, onSave, onDiscard, onSend, onMarkSent }: {
               {message.recipient_address && (
                 <a href={message.recipient_address} target="_blank" rel="noreferrer"
                    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:underline">
-                  Open their profile <ExternalLink className="size-3" />
+                  Open on {CHANNEL_LABELS[message.channel]} <ExternalLink className="size-3" />
                 </a>
               )}
             </>
@@ -116,7 +125,8 @@ function ReplyCard({ message }: { message: LaceOutreachDto }) {
 }
 
 /** Messages the Lace drafted. Nothing is sent without the founder: Send is
- * their approval, and LinkedIn messages they send by hand. */
+ * their approval (email, and X once connected); on the other channels, whose
+ * APIs cannot start a conversation, they copy the message and send it there. */
 export function LaceOutreach({ outreach, drafting, onSave, onDiscard, onSend, onMarkSent }: {
   outreach: LaceOutreachDto[]
   drafting: boolean

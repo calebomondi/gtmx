@@ -14,7 +14,7 @@ from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, In
 from sqlalchemy.dialects.postgresql import JSONB as JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
-from agents.schemas.lace import ACCOUNT_STATUSES, CONTACT_STATUSES, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, FACT_ORIGINS, FACT_TOPICS
+from agents.schemas.lace import ACCOUNT_STATUSES, CONTACT_STATUSES, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, FACT_ORIGINS, FACT_TOPICS
 from backend.app.database.connect import Base
 
 LACE_STATUSES = ("onboarding", "active", "archived")
@@ -208,7 +208,6 @@ class LaceAccount(Base):
                                                    server_default=func.now(), index=True)
 
 
-OUTREACH_CHANNELS = ("email", "linkedin")
 OUTREACH_DIRECTIONS = ("outbound", "inbound")
 # outbound: draft | sending | sent | failed | bounced. inbound: received | bounced.
 OUTREACH_STATUSES = ("draft", "sending", "sent", "failed", "bounced", "received")
@@ -244,7 +243,7 @@ class LaceOutreach(Base):
     provider_log_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     recipient_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     recipient_company: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
-    # An email address, or the LinkedIn profile URL for a LinkedIn message.
+    # An email address, or the profile or page URL for any other channel.
     recipient_address: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
     body: Mapped[str] = mapped_column(Text, nullable=False)
