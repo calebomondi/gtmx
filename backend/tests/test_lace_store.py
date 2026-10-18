@@ -95,7 +95,7 @@ async def test_lace_records_a_fact_through_the_database(store):
             "topic": "pricing", "claim": "Plans start at $20.", "from_founder": True}}]),
         AIMessage(content="Noted."),
     ]
-    graph = build_lace_graph(store, model_step=lambda messages, tools: replies.pop(0))
+    graph = build_lace_graph(store, model_step=lambda messages, tools, sink: replies.pop(0))
     out = await graph.ainvoke({"messages": [HumanMessage(content="we charge $20")]})
     assert out["messages"][-1].content == "Noted."
     [fact] = await store.facts()

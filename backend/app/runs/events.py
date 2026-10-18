@@ -48,6 +48,16 @@ async def publish(run_id: uuid.UUID, type_: str, payload: dict | None = None) ->
     return frame
 
 
+def broadcast(run_id: uuid.UUID, type_: str, payload: dict | None = None) -> None:
+    """Hand a frame to live subscribers only, without storing it: for frames
+    too many to persist (a reply's tokens). It has no event_id, so it never
+    moves a subscriber's cursor; a client that reconnects gets the stored
+    frames, including the final message, instead."""
+    frame = {**(payload or {}), "type": type_, "event_id": None, "run_id": str(run_id)}
+    for queue in list(_subscribers.get(run_id, ())):
+        queue.put_nowait(frame)
+
+
 async def subscribe(run_id: uuid.UUID, after_id: int = 0) -> AsyncIterator[dict]:
     """Every frame of the run with id > after_id: the stored backlog, then live."""
     queue: asyncio.Queue = asyncio.Queue()
@@ -65,6 +75,9 @@ async def subscribe(run_id: uuid.UUID, after_id: int = 0) -> AsyncIterator[dict]
             yield _frame(event)
         while True:
             frame = await queue.get()
+            if frame["event_id"] is None:  # live-only: no cursor to check or move
+                yield frame
+                continue
             if frame["event_id"] <= last_id:
                 continue
             last_id = frame["event_id"]

@@ -27,6 +27,8 @@ export interface LaceChat {
   working: boolean
   /** What the Lace is doing right now, e.g. "Reading https://…/pricing". */
   step: string | null
+  /** The reply as it is being written; empty when nothing is streaming. */
+  draft: string
   send: (text: string) => Promise<void>
 }
 
@@ -46,6 +48,7 @@ export function useLaceChat(laceId: string): LaceChat {
   const [error, setError] = useState<string | null>(null)
   const [working, setWorking] = useState(false)
   const [step, setStep] = useState<string | null>(null)
+  const [draft, setDraft] = useState("")
   const abort = useRef<AbortController | null>(null)
 
   const refresh = useCallback(async () => {
@@ -64,7 +67,12 @@ export function useLaceChat(laceId: string): LaceChat {
     setWorking(true)
     setStep(null)
     const onFrame = (frame: RunFrame) => {
-      if (frame.type === "step" && frame.text) setStep(frame.text)
+      if (frame.type === "token" && frame.text) setDraft((prev) => prev + frame.text)
+      if (frame.type === "token_reset") setDraft("")
+      if (frame.type === "step" && frame.text) {
+        setStep(frame.text)
+        setDraft("")
+      }
       if (frame.type === "error" || frame.type === "cancelled") setError(frame.message ?? "The run stopped.")
     }
     try {
@@ -80,6 +88,7 @@ export function useLaceChat(laceId: string): LaceChat {
     setStep(null)
     try {
       await refresh()
+      setDraft("")
     } catch (err) {
       setError(message(err))
     }
@@ -113,5 +122,5 @@ export function useLaceChat(laceId: string): LaceChat {
     }
   }, [laceId, follow, refresh])
 
-  return { lace, messages, facts, loading, error, working, step, send }
+  return { lace, messages, facts, loading, error, working, step, draft, send }
 }

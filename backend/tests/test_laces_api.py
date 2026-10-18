@@ -37,8 +37,13 @@ def lace_runtime(monkeypatch):
 
     monkeypatch.setattr(lace_runs, "onboard", fake_onboard)
     monkeypatch.setattr(lace_runs, "opening_message", lambda system, result: "Hi, I'm Ada. Who is the buyer?")
-    monkeypatch.setattr(lace_runs, "build_lace_graph",
-                        partial(build_lace_graph, model_step=lambda messages, tools: replies.pop(0)))
+    def model_step(messages, tools, sink):
+        reply = replies.pop(0)
+        for word in str(reply.content).split(" "):
+            sink.token(word + " ")
+        return reply
+
+    monkeypatch.setattr(lace_runs, "build_lace_graph", partial(build_lace_graph, model_step=model_step))
     return replies
 
 
@@ -137,3 +142,49 @@ def test_lace_count_is_capped(client, lace_runtime, monkeypatch):
     first = _create(client).json()
     client.portal.call(_wait_for_status, uuid.UUID(first["run_id"]), {"completed"})
     assert _create(client, name="Second").status_code == 409
+
+
+async def test_live_subscribers_see_the_reply_stream_in(lace_runtime, user):
+    import asyncio
+
+    from backend.app.runs import events
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        lace_id = conn.execute("INSERT INTO laces (id, user_id, name, website) VALUES (%s, %s, 'Ada', 'https://acme.test')"
+                               " RETURNING id", (uuid.uuid4(), user.id)).fetchone()[0]
+        run_id = conn.execute("INSERT INTO runs (id, user_id, lace_id, kind, status) VALUES (%s, %s, %s, 'lace_turn',"
+                              " 'running') RETURNING id", (uuid.uuid4(), user.id, lace_id)).fetchone()[0]
+    lace_runtime.extend([
+        AIMessage(content="Let me check.", tool_calls=[{"name": "get_facts", "id": "c1", "args": {}}]),
+        AIMessage(content="Your buyers are clinic owners who run three or more sites."),
+    ])
+    frames: list[dict] = []
+
+    async def collect():
+        async for frame in events.subscribe(run_id):
+            frames.append(frame)
+            if frame["type"] == "complete":
+                return
+
+    collector = asyncio.create_task(collect())
+    await asyncio.sleep(0.05)  # subscribed before the turn starts
+    await lace_runs.turn_segment(run_id, lace_id, "who buys?")
+    await asyncio.wait_for(collector, 5)
+
+    types = [f["type"] for f in frames]
+    # The pre-tool-call text is withdrawn before the step is shown.
+    assert types.index("token_reset") < types.index("step")
+    after_step = frames[types.index("step"):]
+    streamed = "".join(f["text"] for f in after_step if f["type"] == "token")
+    assert streamed.strip() == "Your buyers are clinic owners who run three or more sites."
+    assert all(f["event_id"] is None for f in frames if f["type"].startswith("token"))
+    # Reconnecting replays only stored frames: no tokens.
+    stored = [f async for f in _stored(run_id)]
+    assert not any(f["type"].startswith("token") for f in stored)
+
+
+async def _stored(run_id):
+    from backend.app.runs import events
+    async for frame in events.subscribe(run_id):
+        yield frame
+        if frame["type"] == "complete":
+            return

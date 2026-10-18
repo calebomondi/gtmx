@@ -6,6 +6,9 @@ State is only the conversation. What the Lace knows lives in its store and
 reaches the model two ways: the brief in the system prompt on every step, and
 the tools.
 
+The model's text is streamed as it is written: run the graph with
+stream_mode "custom" to receive {"token": text} and {"reset": True} items.
+
 Bounds per founder turn: at most `lace_max_tool_calls_per_turn` tool calls,
 after which the model must answer with what it has. Each step re-sends at most
 `lace_history_token_budget` tokens of conversation. The run's wall clock is
@@ -19,6 +22,7 @@ from typing import Annotated, Literal, TypedDict
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
@@ -27,11 +31,12 @@ from agents.context_budget import count_tokens
 from agents.lace.prompts import system_prompt
 from agents.lace.store import LaceStore
 from agents.lace.tools import build_tools
-from agents.llm.main import invoke_with_tools
+from agents.llm.main import TokenSink, invoke_with_tools
 from config import Settings, get_settings
 
-# The model step, injectable so tests can script it: (messages, tools) -> AIMessage.
-ModelStep = Callable[[Sequence[AnyMessage], Sequence[BaseTool]], AnyMessage]
+# The model step, injectable so tests can script it:
+# (messages, tools, sink) -> AIMessage, streaming its text into `sink`.
+ModelStep = Callable[[Sequence[AnyMessage], Sequence[BaseTool], TokenSink], AnyMessage]
 
 BRIEF_FACTS = 80
 
@@ -48,8 +53,23 @@ class LaceState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
 
 
-def _default_step(messages: Sequence[AnyMessage], tools: Sequence[BaseTool]) -> AnyMessage:
-    return invoke_with_tools(messages, tools, log_label="lace:step")
+def _default_step(messages: Sequence[AnyMessage], tools: Sequence[BaseTool], sink: TokenSink) -> AnyMessage:
+    return invoke_with_tools(messages, tools, log_label="lace:step", sink=sink)
+
+
+class _StreamSink:
+    """Hands tokens from the model's worker thread to the graph's custom
+    stream, on the event loop that owns it. Under `ainvoke` (no custom
+    stream) the writer drops them."""
+
+    def __init__(self, loop: asyncio.AbstractEventLoop, write: Callable[[dict], None]):
+        self._loop, self._write = loop, write
+
+    def token(self, text: str) -> None:
+        self._loop.call_soon_threadsafe(self._write, {"token": text})
+
+    def reset(self) -> None:
+        self._loop.call_soon_threadsafe(self._write, {"reset": True})
 
 
 def _turn_start(messages: Sequence[AnyMessage]) -> int:
@@ -115,8 +135,9 @@ def build_lace_graph(
         if tool_calls_this_turn(messages) >= settings.lace_max_tool_calls_per_turn:
             prompt.append(SystemMessage(content=_OUT_OF_TOOL_CALLS))
             allowed = []
+        sink = _StreamSink(asyncio.get_running_loop(), get_stream_writer())
         # The ladder is synchronous and sleeps on throttles: off the event loop.
-        reply = await asyncio.to_thread(model_step, prompt, allowed)
+        reply = await asyncio.to_thread(model_step, prompt, allowed, sink)
         return {"messages": [reply]}
 
     def route(state: LaceState) -> Literal["tools", "__end__"]:
