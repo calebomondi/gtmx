@@ -14,7 +14,7 @@ from typing import Literal
 from langchain_core.tools import BaseTool, tool
 
 from agents.context_budget import _truncate_to_tokens, count_tokens
-from agents.lace.store import LaceStore
+from agents.lace.store import JobRefused, LaceJobs, LaceStore
 from agents.schemas.lace import Confidence, FactTopic, NewFact, SourcePage, ToolResult
 from config import Settings
 from data_sources.scraping import exa, firecrawl
@@ -30,6 +30,7 @@ MAX_MAP_LINKS = 60
 SEARCH_RESULTS = 8
 HIGHLIGHTS_PER_RESULT = 3
 FACTS_PER_READ = 50
+COMPETITORS_PER_READ = 50
 
 
 def _guarded(fn: Callable[..., Awaitable[ToolResult]]) -> Callable[..., Awaitable[str]]:
@@ -54,8 +55,9 @@ def _capped(markdown: str, cap: int) -> tuple[str, bool]:
     return _truncate_to_tokens(markdown, cap), True
 
 
-def build_tools(store: LaceStore, settings: Settings) -> list[BaseTool]:
-    """Every tool the Lace can call, closed over its store."""
+def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = None) -> list[BaseTool]:
+    """Every tool the Lace can call, closed over its store. The job-starting
+    tools are included only when there is something to run jobs."""
 
     @tool(parse_docstring=True)
     @_guarded
@@ -188,4 +190,31 @@ def build_tools(store: LaceStore, settings: Settings) -> list[BaseTool]:
             return ToolResult.failure(f"No fact with id {replaces_id!r} to replace.")
         return ToolResult.success(f"Recorded fact {saved.id}.", {"id": saved.id})
 
-    return [search_web, map_site, read_page, read_pages, get_facts, record_fact]
+    @tool(parse_docstring=True)
+    @_guarded
+    async def list_competitors() -> ToolResult:
+        """The competitors you are tracking for the startup, with what each one does."""
+        rows = await store.competitors(COMPETITORS_PER_READ)
+        data = [r.model_dump() for r in rows]
+        return ToolResult.success(f"{len(data)} competitors tracked.", data)
+
+    tools = [search_web, map_site, read_page, read_pages, get_facts, record_fact, list_competitors]
+    if jobs is None:
+        return tools
+
+    @tool(parse_docstring=True)
+    @_guarded
+    async def find_competitors(focus: str | None = None) -> ToolResult:
+        """Start a thorough search for the startup's real competitors: it finds companies, checks each has a real website and competes for the same buyers, and profiles them with sources. Takes several minutes and runs in the background; you get an update when it is done. Use list_competitors for ones already found.
+
+        Args:
+            focus: Optional angle from the founder, e.g. "local players in Kenya" or "AI-first tools".
+        """
+        try:
+            await jobs.start("find_competitors", {"focus": focus})
+        except JobRefused as exc:
+            return ToolResult.failure(str(exc))
+        return ToolResult.success("Started the competitor search. It takes a few minutes; "
+                                  "you will get an update here when it finishes.")
+
+    return [*tools, find_competitors]
