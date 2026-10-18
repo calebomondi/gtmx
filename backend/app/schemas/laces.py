@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from agents.schemas.lace import Confidence, FactOrigin, FactTopic
+from agents.schemas.lace import CompetitorOrigin, CompetitorStatus, Confidence, FactOrigin, FactTopic
 
 
 class LaceCreateRequest(BaseModel):
@@ -53,3 +53,20 @@ class LaceMessageRequest(BaseModel):
 
 class LaceTurnResponse(BaseModel):
     run_id: uuid.UUID = Field(description="The turn: follow it at /runs/{run_id}/events")
+
+
+class CompetitorResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    website: str
+    summary: str | None = None
+    origin: CompetitorOrigin
+    status: CompetitorStatus
+    first_seen_at: datetime
+    last_seen_at: datetime
+
+
+class CompetitorUpdateRequest(BaseModel):
+    status: CompetitorStatus = Field(description="tracked, or dismissed to stop tracking it (a later hunt won't bring it back)")

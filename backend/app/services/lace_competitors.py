@@ -10,15 +10,31 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agents.schemas.competition import CompetitorProfile
 from backend.app.database.lace_models import LaceCompetitor
 from backend.app.services.competitors import domain_key, normalize_website
+from backend.app.services.errors import NotFoundError
 
 
-async def list_tracked(db: AsyncSession, lace_id: uuid.UUID, limit: int) -> list[LaceCompetitor]:
+async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, status: str, limit: int) -> list[LaceCompetitor]:
     rows = await db.scalars(
         select(LaceCompetitor)
-        .where(LaceCompetitor.lace_id == lace_id, LaceCompetitor.status == "tracked")
+        .where(LaceCompetitor.lace_id == lace_id, LaceCompetitor.status == status)
         .order_by(LaceCompetitor.last_seen_at.desc()).limit(limit)
     )
     return list(rows.all())
+
+
+async def set_status(db: AsyncSession, lace_id: uuid.UUID, competitor_id: uuid.UUID, status: str) -> LaceCompetitor:
+    """404 for a competitor that is not this Lace's."""
+    row = await db.scalar(select(LaceCompetitor).where(
+        LaceCompetitor.id == competitor_id, LaceCompetitor.lace_id == lace_id))
+    if row is None:
+        raise NotFoundError("Competitor not found")
+    row.status = status
+    await db.commit()
+    return row
+
+
+async def list_tracked(db: AsyncSession, lace_id: uuid.UUID, limit: int) -> list[LaceCompetitor]:
+    return await list_for_lace(db, lace_id, "tracked", limit)
 
 
 async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,

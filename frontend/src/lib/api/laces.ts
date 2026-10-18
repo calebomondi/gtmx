@@ -60,3 +60,27 @@ export function listLaceMessages(laceId: string): Promise<LaceMessageDto[]> {
 export function sendLaceMessage(laceId: string, text: string): Promise<{ run_id: string }> {
   return apiFetch(`/api/v1/laces/${laceId}/messages`, { method: "POST", body: JSON.stringify({ text }) })
 }
+
+export type CompetitorStatus = "tracked" | "dismissed"
+
+export interface LaceCompetitorDto {
+  id: string
+  name: string
+  website: string
+  summary: string | null
+  origin: "found" | "founder"
+  status: CompetitorStatus
+  first_seen_at: string
+  last_seen_at: string
+}
+
+export function listLaceCompetitors(laceId: string, status: CompetitorStatus = "tracked"): Promise<LaceCompetitorDto[]> {
+  return apiFetch<LaceCompetitorDto[]>(`/api/v1/laces/${laceId}/competitors?status=${status}`)
+}
+
+export function setLaceCompetitorStatus(laceId: string, competitorId: string, status: CompetitorStatus): Promise<LaceCompetitorDto> {
+  return apiFetch(`/api/v1/laces/${laceId}/competitors/${competitorId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  })
+}

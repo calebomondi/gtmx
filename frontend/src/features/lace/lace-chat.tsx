@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { useParams } from "react-router-dom"
-import { AlertTriangle, BookOpen, Loader2 } from "lucide-react"
+import { AlertTriangle, BookOpen, Loader2, Swords } from "lucide-react"
 
 import { PromptInputWithActions } from "@/components/chat-input"
 import { Button } from "@/components/ui/button"
@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import type { LaceMessageDto } from "@/lib/api"
 
 import { LaceAvatar } from "./lace-avatar"
+import { LaceCompetitors } from "./lace-competitors"
 import { LaceFacts } from "./lace-facts"
 import { useLaceChat } from "./use-lace-chat"
 
@@ -39,7 +40,7 @@ export default function LaceChatPage() {
 
 function LaceChat({ laceId }: { laceId: string }) {
   const chat = useLaceChat(laceId)
-  const [factsOpen, setFactsOpen] = useState(false)
+  const [panel, setPanel] = useState<"facts" | "competitors" | null>(null)
   const end = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -59,9 +60,15 @@ function LaceChat({ laceId }: { laceId: string }) {
             {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={() => setFactsOpen(true)} disabled={chat.loading}>
-          <BookOpen /> What I know ({chat.facts.length})
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          <Button variant="outline" size="sm" onClick={() => setPanel("competitors")} disabled={chat.loading}>
+            {chat.searching ? <Loader2 className="animate-spin" /> : <Swords />}
+            <span className="hidden sm:inline">Competitors</span> ({chat.competitors.length})
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setPanel("facts")} disabled={chat.loading}>
+            <BookOpen /> <span className="hidden sm:inline">What I know</span> ({chat.facts.length})
+          </Button>
+        </div>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -101,14 +108,26 @@ function LaceChat({ laceId }: { laceId: string }) {
         />
       </div>
 
-      <Sheet open={factsOpen} onOpenChange={setFactsOpen}>
+      <Sheet open={panel !== null} onOpenChange={(open) => !open && setPanel(null)}>
         <SheetContent className="overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>What {title} knows</SheetTitle>
-            <SheetDescription>Learned from your site, its research and you. Each fact keeps its source.</SheetDescription>
-          </SheetHeader>
+          {panel === "competitors" ? (
+            <SheetHeader>
+              <SheetTitle>Competitors</SheetTitle>
+              <SheetDescription>Companies your buyers could pay instead of you, each checked and profiled from sources.</SheetDescription>
+            </SheetHeader>
+          ) : (
+            <SheetHeader>
+              <SheetTitle>What {title} knows</SheetTitle>
+              <SheetDescription>Learned from your site, its research and you. Each fact keeps its source.</SheetDescription>
+            </SheetHeader>
+          )}
           <div className="px-4 pb-6">
-            <LaceFacts facts={chat.facts} />
+            {panel === "competitors" ? (
+              <LaceCompetitors competitors={chat.competitors} searching={chat.searching}
+                               onDismiss={(id) => void chat.dismissCompetitor(id)} />
+            ) : (
+              <LaceFacts facts={chat.facts} />
+            )}
           </div>
         </SheetContent>
       </Sheet>

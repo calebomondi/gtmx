@@ -188,3 +188,37 @@ async def _stored(run_id):
         yield frame
         if frame["type"] == "complete":
             return
+
+
+def test_competitors_list_and_dismiss(client, lace_runtime):
+    body = _create(client).json()
+    client.portal.call(_wait_for_status, uuid.UUID(body["run_id"]), {"completed"})
+    lace_id = body["lace"]["id"]
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        rival = conn.execute("INSERT INTO lace_competitors (id, lace_id, name, website, domain_key, summary)"
+                             " VALUES (%s, %s, 'Rival', 'https://rival.test', 'rival.test', 'Payroll for vets.') RETURNING id",
+                             (uuid.uuid4(), lace_id)).fetchone()[0]
+    [row] = client.get(f"{API}/laces/{lace_id}/competitors").json()
+    assert row["name"] == "Rival" and row["status"] == "tracked" and row["origin"] == "found"
+
+    dismissed = client.patch(f"{API}/laces/{lace_id}/competitors/{rival}", json={"status": "dismissed"})
+    assert dismissed.status_code == 200 and dismissed.json()["status"] == "dismissed"
+    assert client.get(f"{API}/laces/{lace_id}/competitors").json() == []
+    assert [r["name"] for r in client.get(f"{API}/laces/{lace_id}/competitors?status=dismissed").json()] == ["Rival"]
+
+    client.sign_in(make_user("Intruder"))
+    assert client.get(f"{API}/laces/{lace_id}/competitors").status_code == 404
+    assert client.patch(f"{API}/laces/{lace_id}/competitors/{rival}", json={"status": "tracked"}).status_code == 404
+
+
+def test_another_laces_competitor_is_not_found(client, lace_runtime):
+    mine = _create(client).json()
+    client.portal.call(_wait_for_status, uuid.UUID(mine["run_id"]), {"completed"})
+    other = _create(client, name="Bob").json()
+    client.portal.call(_wait_for_status, uuid.UUID(other["run_id"]), {"completed"})
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        theirs = conn.execute("INSERT INTO lace_competitors (id, lace_id, name, website, domain_key)"
+                              " VALUES (%s, %s, 'Rival', 'https://rival.test', 'rival.test') RETURNING id",
+                              (uuid.uuid4(), other["lace"]["id"])).fetchone()[0]
+    assert client.patch(f"{API}/laces/{mine['lace']['id']}/competitors/{theirs}",
+                        json={"status": "dismissed"}).status_code == 404
