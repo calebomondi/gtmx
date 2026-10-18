@@ -12,7 +12,8 @@ from backend.app.services.errors import ConflictError, InvalidInputError, NotFou
 from config import settings
 
 
-async def create(db: AsyncSession, user_id: uuid.UUID, name: str, website: str) -> Lace:
+async def create(db: AsyncSession, user_id: uuid.UUID, name: str, website: str,
+                 timezone: str | None = None) -> Lace:
     name, website = name.strip(), normalize_website(website)
     if not name:
         raise InvalidInputError("Give your Lace a name.")
@@ -24,7 +25,7 @@ async def create(db: AsyncSession, user_id: uuid.UUID, name: str, website: str) 
         raise ConflictError(f"You can have up to {settings.max_laces_per_user} Laces.")
     # Checked before the insert, so a refused onboarding leaves no Lace behind.
     await limits.ensure_can_start(db, user_id, "lace_onboarding")
-    lace = Lace(user_id=user_id, name=name, website=website)
+    lace = Lace(user_id=user_id, name=name, website=website, timezone=timezone or "UTC")
     db.add(lace)
     await db.commit()
     return lace
@@ -58,3 +59,11 @@ def current_facts_query(lace_id: uuid.UUID, topic: str | None, limit: int) -> Se
 
 async def list_facts(db: AsyncSession, lace_id: uuid.UUID, topic: str | None, limit: int) -> list[LaceFact]:
     return list((await db.scalars(current_facts_query(lace_id, topic, limit))).all())
+
+
+async def update_brief_settings(db: AsyncSession, lace: Lace, changes: dict) -> Lace:
+    for field in ("brief_frequency", "brief_hour", "timezone"):
+        if field in changes:
+            setattr(lace, field, changes[field])
+    await db.commit()
+    return lace

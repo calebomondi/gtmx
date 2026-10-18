@@ -9,12 +9,12 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Index, String, Text, UUID, UniqueConstraint, false, func, text
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, SmallInteger, ForeignKey, Index, String, Text, UUID, UniqueConstraint, false, func, text
 from sqlalchemy.dialects.postgresql import JSONB as JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
 from agents.schemas.opportunities import OPPORTUNITY_KINDS, OPPORTUNITY_STATUSES
-from agents.schemas.lace import ACCOUNT_STATUSES, CONTACT_STATUSES, INBOX_PLATFORMS, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, FACT_ORIGINS, FACT_TOPICS
+from agents.schemas.lace import ACCOUNT_STATUSES, BRIEF_FREQUENCIES, CONTACT_STATUSES, INBOX_PLATFORMS, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, FACT_ORIGINS, FACT_TOPICS
 from backend.app.database.connect import Base
 
 LACE_STATUSES = ("onboarding", "active", "archived")
@@ -32,7 +32,11 @@ class Lace(Base):
     """One startup's agent. Its LangGraph thread id is its own id."""
 
     __tablename__ = "laces"
-    __table_args__ = (CheckConstraint(_one_of("status", LACE_STATUSES), name="status"),)
+    __table_args__ = (
+        CheckConstraint(_one_of("status", LACE_STATUSES), name="status"),
+        CheckConstraint(_one_of("brief_frequency", BRIEF_FREQUENCIES), name="brief_frequency"),
+        CheckConstraint("brief_hour BETWEEN 0 AND 23", name="brief_hour"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # Supabase owns users: indexed, no FK.
@@ -47,6 +51,12 @@ class Lace(Base):
     # judgment, so a blob rather than facts. NULL until first defined.
     icp: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     icp_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The brief: how often, at what local hour, in which timezone (IANA name).
+    brief_frequency: Mapped[str] = mapped_column(String(8), nullable=False, default="daily", server_default="daily")
+    brief_hour: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=8, server_default="8")
+    timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="UTC", server_default="UTC")
+    # When the last brief was due, whether or not there was news for it.
+    last_brief_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
                                                  default=_now, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
@@ -317,3 +327,20 @@ class LaceOpportunity(Base):
                                                     default=_now, server_default=func.now())
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
                                                    server_default=func.now(), index=True)
+
+
+class LaceBrief(Base):
+    """One brief: the digest it was written from, and the Lace's own words
+    once posted in the conversation (NULL until then)."""
+
+    __tablename__ = "lace_briefs"
+    __table_args__ = (Index("ix_lace_briefs_lace_id_created_at", "lace_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Indexed by the created_at index, which leads with it.
+    lace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("laces.id", ondelete="CASCADE"), nullable=False)
+    digest: Mapped[str] = mapped_column(Text, nullable=False)
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
+                                                 default=_now, server_default=func.now())
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)

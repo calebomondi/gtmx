@@ -8,18 +8,22 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, or_, select
 
+from agents.lace.brief import brief_request
+from agents.lace.store import JobRefused
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
+from backend.app.database.lace_models import Lace, LaceBrief
 from backend.app.runs import background, manager
-from agents.lace.store import JobRefused
 from backend.app.services import inbox as inbox_service
-from backend.app.services import lace_competitors, lace_opportunities, social_inbox
+from backend.app.services import lace_briefs, lace_competitors, lace_opportunities, social_inbox
 from backend.app.services.errors import RateLimitedError
 from backend.app.services.runs import TERMINAL_STATUSES
 from config import settings
 from utils.log import logger
 
 _tasks: list[asyncio.Task] = []
+# A brief that could not be posted within this long is dropped for the next one.
+_PENDING_BRIEF_MAX_AGE = timedelta(hours=12)
 
 
 async def _stale_workspaces() -> list[tuple]:
@@ -72,10 +76,46 @@ async def sweep_lace_opportunities() -> int:
     return started
 
 
+async def sweep_briefs(now: datetime | None = None) -> int:
+    """Post each Lace's brief when it is due in the founder's timezone. A Lace
+    with nothing to tell gets none; one that is mid-conversation gets it at the
+    next sweep. Returns how many briefs were started."""
+    now = now or datetime.now(UTC)
+    to_post: list[tuple] = []
+    async with AsyncSessionLocal() as db:
+        for lace in await lace_briefs.due_laces(db, now):
+            since = lace_briefs.since_for(lace, now)
+            digest = await lace_briefs.digest(db, lace.id, since, now.astimezone(lace_briefs.zone(lace.timezone)).date())
+            lace.last_brief_at = now
+            if digest:
+                brief = LaceBrief(lace_id=lace.id, digest=digest)
+                db.add(brief)
+                await db.flush()
+                to_post.append((lace.user_id, lace.id, brief.id, brief_request(digest, lace.brief_frequency,
+                                                                              _since_label(since, lace))))
+        # Briefs still waiting from an earlier sweep (the Lace was busy then).
+        waiting = (await db.execute(select(LaceBrief, Lace).join(Lace, Lace.id == LaceBrief.lace_id).where(
+            LaceBrief.posted_at.is_(None), LaceBrief.created_at >= now - _PENDING_BRIEF_MAX_AGE))).all()
+        await db.commit()
+    queued = {brief_id for _, _, brief_id, _ in to_post}
+    to_post += [(lace.user_id, lace.id, brief.id, brief_request(brief.digest, lace.brief_frequency,
+                                                                "since the last brief"))
+                for brief, lace in waiting if brief.id not in queued]
+    started = 0
+    for user_id, lace_id, brief_id, request in to_post:
+        if await manager.post_brief(user_id, lace_id, brief_id, request):
+            started += 1
+    return started
+
+
+def _since_label(since: datetime, lace: Lace) -> str:
+    return "since " + since.astimezone(lace_briefs.zone(lace.timezone)).strftime("%a %d %b, %H:%M")
+
+
 async def sweep() -> int:
     """Start a monitor run for each stale workspace and each stale Lace.
     Returns how many started."""
-    started = await sweep_laces() + await sweep_lace_opportunities()
+    started = await sweep_laces() + await sweep_lace_opportunities() + await sweep_briefs()
     for workspace_id, user_id in await _stale_workspaces():
         try:
             await manager.start_background("monitor", user_id, workspace_id)

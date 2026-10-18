@@ -36,8 +36,13 @@ export interface LaceMessageDto {
   content: string
 }
 
+/** The browser's IANA timezone, e.g. "Africa/Nairobi": when the founder's day starts. */
+export function localTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone
+}
+
 export function createLace(name: string, website: string): Promise<{ lace: LaceDto; run_id: string }> {
-  return apiFetch("/api/v1/laces", { method: "POST", body: JSON.stringify({ name, website }) })
+  return apiFetch("/api/v1/laces", { method: "POST", body: JSON.stringify({ name, website, timezone: localTimeZone() }) })
 }
 
 export function listLaces(): Promise<LaceDto[]> {
@@ -225,4 +230,22 @@ export function dismissLaceOpportunity(laceId: string, opportunityId: string): P
   return apiFetch(`/api/v1/laces/${laceId}/opportunities/${opportunityId}`, {
     method: "PATCH", body: JSON.stringify({ status: "dismissed" }),
   })
+}
+
+export type BriefFrequency = "off" | "daily" | "weekly"
+
+export interface BriefSettingsDto {
+  brief_frequency: BriefFrequency
+  /** Local hour, 0–23, in `timezone`. */
+  brief_hour: number
+  timezone: string
+  last_brief_at: string | null
+}
+
+export function getLaceBrief(laceId: string): Promise<BriefSettingsDto> {
+  return apiFetch<BriefSettingsDto>(`/api/v1/laces/${laceId}/brief`)
+}
+
+export function updateLaceBrief(laceId: string, changes: Partial<Omit<BriefSettingsDto, "last_brief_at">>): Promise<BriefSettingsDto> {
+  return apiFetch(`/api/v1/laces/${laceId}/brief`, { method: "PATCH", body: JSON.stringify(changes) })
 }

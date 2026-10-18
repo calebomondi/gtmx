@@ -2,17 +2,31 @@
 
 import uuid
 from datetime import date, datetime
+from zoneinfo import available_timezones
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from agents.schemas.opportunities import OpportunityKind, OpportunityStatus
-from agents.schemas.lace import AccountStatus, CompetitorOrigin, ContactStatus, InboxPlatform, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
+from agents.schemas.lace import AccountStatus, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
+
+
+def known_zone(value: str | None) -> str | None:
+    if value is not None and value not in available_timezones():
+        raise ValueError(f"Unknown timezone: {value}")
+    return value
 
 
 class LaceCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=60, description="What the founder calls their Lace")
     website: str = Field(min_length=3, max_length=2048, description="The startup's website; a bare host is fine")
+    timezone: str | None = Field(default=None, max_length=64,
+                                 description="The founder's IANA timezone, for the brief; UTC when absent")
+
+    @field_validator("timezone")
+    @classmethod
+    def _known_zone(cls, value: str | None) -> str | None:
+        return known_zone(value)
 
 
 class LaceResponse(BaseModel):
@@ -184,3 +198,23 @@ class OpportunityResponse(BaseModel):
 
 class OpportunityUpdateRequest(BaseModel):
     status: OpportunityStatus
+
+
+class BriefSettings(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    brief_frequency: BriefFrequency
+    brief_hour: int = Field(ge=0, le=23, description="Local hour the brief is posted")
+    timezone: str = Field(description="IANA timezone name, e.g. Africa/Nairobi")
+    last_brief_at: datetime | None = None
+
+
+class BriefSettingsUpdate(BaseModel):
+    brief_frequency: BriefFrequency | None = None
+    brief_hour: int | None = Field(default=None, ge=0, le=23)
+    timezone: str | None = Field(default=None, max_length=64)
+
+    @field_validator("timezone")
+    @classmethod
+    def _known_zone(cls, value: str | None) -> str | None:
+        return known_zone(value)

@@ -342,3 +342,27 @@ def test_lace_finds_open_opportunities(client, runtime, user):
         print(f"  [{o['kind']}] {o['title']} | deadline {o['deadline']} | date {o['event_date']} | {o['organiser']}"
               f" | {o['url']}\n      fits: {o['why_it_fits']}\n      next: {o['how_to_act']}")
     assert found
+
+
+def test_lace_writes_its_brief(client, runtime, user):
+    import psycopg
+
+    from backend.app.runs import scheduler
+    from backend.tests.test_lace_briefs import _due_now, _seed
+
+    created = client.post(f"{API}/laces", json={"name": "Ada", "website": "shangalabs.com",
+                                                "timezone": "Africa/Nairobi"}).json()
+    lace_id = created["lace"]["id"]
+    run = client.portal.call(_wait_for_status, uuid.UUID(created["run_id"]), {"completed", "failed"}, ONBOARDING_TIMEOUT_S)
+    assert run.status == "completed", run.error
+    _seed(uuid.UUID(lace_id), user.id)
+    _due_now(lace_id)
+    assert client.portal.call(scheduler.sweep_briefs) == 1
+    with psycopg.connect(settings.database_url) as conn:
+        [brief_run] = conn.execute("SELECT id FROM runs WHERE lace_id = %s AND input ? 'brief_id'", (lace_id,)).fetchone()
+    turn = client.portal.call(_wait_for_status, brief_run, {"completed", "failed"}, TURN_TIMEOUT_S)
+    assert turn.status == "completed", turn.error
+    with psycopg.connect(settings.database_url) as conn:
+        digest, body = conn.execute("SELECT digest, body FROM lace_briefs WHERE lace_id = %s", (lace_id,)).fetchone()
+    print(f"\n--- DIGEST\n{digest}\n--- BRIEF\n{body}")
+    assert body and "SunCulture" in body
