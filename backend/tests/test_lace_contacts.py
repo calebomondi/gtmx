@@ -9,7 +9,7 @@ from langchain_core.messages import AIMessage
 
 from agents.schemas.accounts import AccountRecord, ContactRecord, TriggerEvent
 from backend.app.database.connect import AsyncSessionLocal
-from backend.app.runs import lace as lace_runs
+from backend.app.runs import lace_jobs
 from backend.app.runs import manager
 from backend.app.services import lace_accounts
 from backend.tests.test_lace_jobs import _wait_for_turns, lace  # noqa: F401 -- fixture
@@ -46,7 +46,7 @@ def _fake_search(monkeypatch):
             return record.model_copy(update={"socials": {"x": "https://x.com/beta"}})
         return record
 
-    monkeypatch.setattr(lace_runs, "complete_contacts", complete)
+    monkeypatch.setattr(lace_jobs, "complete_contacts", complete)
     return searched
 
 

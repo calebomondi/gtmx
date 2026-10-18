@@ -7,7 +7,7 @@ import psycopg
 from langchain_core.messages import AIMessage
 
 from agents.schemas.accounts import AccountFit, AccountRecord, TriggerEvent
-from backend.app.runs import lace as lace_runs
+from backend.app.runs import lace_jobs
 from backend.app.runs import manager
 from backend.tests.helpers import make_user
 from backend.tests.test_lace_jobs import _call, _runs, _wait_for_turns, lace  # noqa: F401 -- fixture
@@ -41,7 +41,7 @@ def test_search_saves_accounts_and_the_lace_reports_back(client, lace, lace_runt
         seen.update(exclude=exclude, country=country, industries=icp.industries)
         return [_found("Weak", "weak"), _found("Strong", "strong"), _found("Unmade", None)]
 
-    monkeypatch.setattr(lace_runs, "find_accounts", fake)
+    monkeypatch.setattr(lace_jobs, "find_accounts", fake)
     lace_runtime.extend([_call("find_accounts", {"country": "Kenya"}), AIMessage(content="On it."),
                          AIMessage(content="Strong raised a round and needs payroll.")])
     client.post(f"{API}/laces/{lace}/messages", json={"text": "find me customers in Kenya"})
@@ -68,7 +68,7 @@ def test_no_icp_means_the_search_fails_and_says_so(client, lace, lace_runtime, u
 
 def test_a_dismissed_account_stays_dismissed(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
     _with_icp(lace)
-    monkeypatch.setattr(lace_runs, "find_accounts", lambda *a: [_found("Alpha", "strong")])
+    monkeypatch.setattr(lace_jobs, "find_accounts", lambda *a: [_found("Alpha", "strong")])
     lace_runtime.extend([AIMessage(content="Found Alpha."), AIMessage(content="Found Alpha again.")])
 
     run = client.portal.call(manager.start_lace_job, "lace_accounts", user.id, uuid.UUID(lace), {})

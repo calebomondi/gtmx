@@ -23,6 +23,7 @@ from backend.app.database.connect import AsyncSessionLocal
 from backend.app.runs import background, discovery, events
 from agents.lace.store import JobRefused
 from backend.app.runs import lace as lace_runs
+from backend.app.runs import lace_jobs
 from backend.app.runs import signals as run_signals
 from backend.app.runs.errors import user_facing_error
 from backend.app.schemas.agents import DiscoveryRequest
@@ -179,9 +180,9 @@ async def wake_lace(user_id: uuid.UUID, lace_id: uuid.UUID) -> None:
 _TOOL_JOB_RUN_KINDS = {"find_competitors": "lace_competitors", "check_competitors": "lace_monitor",
                        "find_accounts": "lace_accounts", "find_contacts": "lace_contacts",
                        "draft_outreach": "lace_drafts"}
-_JOB_SEGMENTS = {"lace_competitors": lace_runs.competitors_job, "lace_monitor": lace_runs.monitor_job,
-                 "lace_accounts": lace_runs.accounts_job, "lace_contacts": lace_runs.contacts_job,
-                 "lace_drafts": lace_runs.drafts_job}
+_JOB_SEGMENTS = {"lace_competitors": lace_jobs.competitors_job, "lace_monitor": lace_jobs.monitor_job,
+                 "lace_accounts": lace_jobs.accounts_job, "lace_contacts": lace_jobs.contacts_job,
+                 "lace_drafts": lace_jobs.drafts_job}
 _JOB_BUSY = {
     "lace_competitors": "A competitor search is already running; I'll report when it's done.",
     "lace_monitor": "I'm already checking the competitors; I'll report anything that matters.",
