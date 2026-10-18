@@ -22,6 +22,9 @@ from agents.schemas.lace import CompetitorSummary, Fact, LaceProfile
 from agents.schemas.outreach import OutreachDraft
 
 RESEARCH_TOKENS = 700
+# The organisation's own accounts a message can go to, best first. Not its
+# LinkedIn page: a company page cannot be messaged.
+ORG_DM_CHANNELS = ("x", "instagram", "facebook", "tiktok")
 COMPETITORS_SHOWN = 8
 # The facts each consulted specialist answers from.
 _DOMAIN_TOPICS = {
@@ -36,16 +39,17 @@ Write = Callable[[gtm_specialist.OutreachBrief, str], OutreachDraft]
 
 @dataclass(frozen=True)
 class Recipient:
-    channel: str  # email | linkedin
+    channel: str  # email | linkedin | x | instagram | facebook | tiktok
     name: str | None
     title: str | None
-    address: str  # an email address, or a LinkedIn profile URL
+    address: str  # an email address, or the profile or page URL
 
 
 def recipient_for(record: AccountRecord) -> Recipient | None:
     """Who the first message goes to: a named person with an email, else a
-    named person on LinkedIn, else the organisation's own email. None when
-    nobody can be reached by either."""
+    named person on LinkedIn, else the organisation's own email, else its own
+    account on X, Instagram, Facebook or TikTok. None when there is nothing to
+    reach them on."""
     people = [c for c in record.key_contacts if c.name]
     for c in people:
         if c.email:
@@ -56,6 +60,9 @@ def recipient_for(record: AccountRecord) -> Recipient | None:
     for c in record.key_contacts:
         if c.email:
             return Recipient("email", None, None, c.email)
+    for platform in ORG_DM_CHANNELS:
+        if record.socials.get(platform):
+            return Recipient(platform, None, None, record.socials[platform])
     return None
 
 

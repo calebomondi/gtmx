@@ -116,15 +116,17 @@ export function setLaceAccountStatus(laceId: string, accountId: string, status: 
   return apiFetch(`/api/v1/laces/${laceId}/accounts/${accountId}`, { method: "PATCH", body: JSON.stringify({ status }) })
 }
 
+export type OutreachChannel = "email" | "linkedin" | "x" | "instagram" | "facebook" | "tiktok"
+
 export interface LaceOutreachDto {
   id: string
   account_id: string | null
-  channel: "email" | "linkedin"
+  channel: OutreachChannel
   direction: "outbound" | "inbound"
   status: "draft" | "sending" | "sent" | "failed" | "bounced" | "received"
   recipient_name: string | null
   recipient_company: string
-  /** An email address, or a LinkedIn profile URL. */
+  /** An email address, or the profile or page URL on any other channel. */
   recipient_address: string | null
   subject: string | null
   body: string

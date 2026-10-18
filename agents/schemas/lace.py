@@ -157,3 +157,6 @@ class AccountSummary(BaseModel):
 
 ContactStatus = Literal["person", "organisation", "none"]
 CONTACT_STATUSES: tuple[str, ...] = ContactStatus.__args__
+
+OutreachChannel = Literal["email", "linkedin", "x", "instagram", "facebook", "tiktok"]
+OUTREACH_CHANNELS: tuple[str, ...] = OutreachChannel.__args__

@@ -117,16 +117,29 @@ async def delete(db: AsyncSession, message: models.OutreachMessage) -> None:
     await db.commit()
 
 
-async def _sends_today(db: AsyncSession, user_id: uuid.UUID) -> int:
-    """Emails the user sent in the last day, from a workspace or a Lace: the
-    daily cap is the user's, wherever they send from."""
+# Channels that send through the user's own accounts, under one daily cap.
+_SENT_BY_US = ("email", "x")
+
+
+async def sends_today(db: AsyncSession, user_id: uuid.UUID) -> int:
+    """Messages sent for the user in the last day, by email or X, from a
+    workspace or a Lace: the daily cap is the user's, wherever they send from."""
     since = datetime.now(UTC) - timedelta(days=1)
     total = 0
     for model in (models.OutreachMessage, models.LaceOutreach):
         total += int(await db.scalar(select(func.count()).select_from(model).where(
-            model.user_id == user_id, model.status == "sent", model.channel == "email", model.sent_at >= since,
+            model.user_id == user_id, model.status == "sent", model.channel.in_(_SENT_BY_US),
+            model.sent_at >= since,
         )) or 0)
     return total
+
+
+def ensure_under_daily_cap(sent: int) -> None:
+    if sent >= settings.max_outreach_sends_per_day:
+        raise RateLimitedError(
+            f"You've reached today's limit of {settings.max_outreach_sends_per_day} sent messages.",
+            retry_after_s=3600,
+        )
 
 
 async def send(db: AsyncSession, message: models.OutreachMessage) -> models.OutreachMessage:
@@ -150,11 +163,7 @@ async def send_email(db: AsyncSession, message):
         raise InvalidInputError("Add a valid recipient email address before sending.")
     if not (message.body or "").strip() or not (message.thread_id or (message.subject or "").strip()):
         raise InvalidInputError("Add a subject and a message before sending.")
-    if await _sends_today(db, message.user_id) >= settings.max_outreach_sends_per_day:
-        raise RateLimitedError(
-            f"You've reached today's limit of {settings.max_outreach_sends_per_day} sent emails.",
-            retry_after_s=3600,
-        )
+    ensure_under_daily_cap(await sends_today(db, message.user_id))
     gmail = next((c for c in await connection_service.list_for_user(db, message.user_id)
                   if c.platform == "gmail" and c.status == "live"), None)
     if gmail is None:
