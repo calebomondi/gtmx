@@ -22,7 +22,9 @@ FactTopic = Literal[
 FACT_TOPICS: tuple[str, ...] = FactTopic.__args__
 
 FactOrigin = Literal["crawl", "research", "user", "monitor"]
+FACT_ORIGINS: tuple[str, ...] = FactOrigin.__args__
 Confidence = Literal["high", "medium", "low"]
+CONFIDENCES: tuple[str, ...] = Confidence.__args__
 
 
 class NewFact(BaseModel):

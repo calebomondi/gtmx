@@ -865,3 +865,7 @@ class WaitlistSignup(Base):
         server_default=func.now(), nullable=False,
     )
 
+
+
+# Registered with the rest so Base.metadata (migrations, test cleanup) sees them.
+from backend.app.database.lace_models import Lace, LaceFact, LaceSource  # noqa: E402,F401
