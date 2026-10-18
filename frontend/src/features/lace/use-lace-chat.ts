@@ -11,7 +11,9 @@ import {
   listLaceFacts,
   listLaceMessages,
   listLaceOutreach,
+  markLaceOutreachSent,
   sendLaceMessage,
+  sendLaceOutreach,
   setLaceAccountStatus,
   setLaceCompetitorStatus,
   updateLaceOutreach,
@@ -57,6 +59,9 @@ export interface LaceChat {
   dismissAccount: (accountId: string) => Promise<void>
   saveDraft: (messageId: string, changes: LaceOutreachChanges) => Promise<void>
   discardDraft: (messageId: string) => Promise<void>
+  /** Send an email draft (the founder's approval), or mark a LinkedIn one sent. */
+  sendDraft: (messageId: string) => Promise<void>
+  markSent: (messageId: string) => Promise<void>
 }
 
 function message(err: unknown): string {
@@ -202,6 +207,17 @@ export function useLaceChat(laceId: string): LaceChat {
     }
   }, [laceId])
 
+  const replaceOutreach = useCallback(async (messageId: string, action: typeof sendLaceOutreach) => {
+    try {
+      const updated = await action(laceId, messageId)
+      setOutreach((prev) => prev.map((m) => (m.id === messageId ? updated : m)))
+    } catch (err) {
+      setError(message(err))
+    }
+  }, [laceId])
+  const sendDraft = useCallback((messageId: string) => replaceOutreach(messageId, sendLaceOutreach), [replaceOutreach])
+  const markSent = useCallback((messageId: string) => replaceOutreach(messageId, markLaceOutreachSent), [replaceOutreach])
+
   const send = useCallback(async (text: string) => {
     setError(null)
     setMessages((prev) => [...prev, { role: "founder", content: text }])
@@ -216,6 +232,6 @@ export function useLaceChat(laceId: string): LaceChat {
 
   return {
     lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, drafting, loading, error,
-    working, step, draft, send, dismissCompetitor, dismissAccount, saveDraft, discardDraft,
+    working, step, draft, send, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, markSent,
   }
 }

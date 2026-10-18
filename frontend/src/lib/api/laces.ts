@@ -146,3 +146,13 @@ export function updateLaceOutreach(laceId: string, messageId: string, changes: L
 export function deleteLaceOutreach(laceId: string, messageId: string): Promise<void> {
   return apiFetch(`/api/v1/laces/${laceId}/outreach/${messageId}`, { method: "DELETE" })
 }
+
+/** Send an email draft through the founder's Gmail: the founder's own action. */
+export function sendLaceOutreach(laceId: string, messageId: string): Promise<LaceOutreachDto> {
+  return apiFetch(`/api/v1/laces/${laceId}/outreach/${messageId}/send`, { method: "POST" })
+}
+
+/** Record a LinkedIn message the founder sent by hand. */
+export function markLaceOutreachSent(laceId: string, messageId: string): Promise<LaceOutreachDto> {
+  return apiFetch(`/api/v1/laces/${laceId}/outreach/${messageId}/mark-sent`, { method: "POST" })
+}

@@ -2,12 +2,14 @@
 only drafts; changing or deleting is the founder's, while still a draft."""
 
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database.lace_models import LaceAccount, LaceOutreach
+from backend.app.services import outreach as outreach_service
 from backend.app.services.errors import ConflictError, NotFoundError
 from backend.app.services.lace_accounts import BY_FIT
 
@@ -45,6 +47,23 @@ async def delete(db: AsyncSession, message: LaceOutreach) -> None:
         raise ConflictError("Only an unsent draft can be deleted.")
     await db.delete(message)
     await db.commit()
+
+
+async def send(db: AsyncSession, message: LaceOutreach) -> LaceOutreach:
+    """Send an email draft through the founder's Gmail: only ever on the
+    founder's own click, which is their approval."""
+    return await outreach_service.send_email(db, message)
+
+
+async def mark_sent(db: AsyncSession, message: LaceOutreach) -> LaceOutreach:
+    """Record a LinkedIn message the founder sent by hand."""
+    if message.channel != "linkedin":
+        raise ConflictError("Emails are sent from here, not marked as sent.")
+    if message.direction != "outbound" or message.status not in _EDITABLE_STATUSES:
+        raise ConflictError("This message was already sent.")
+    message.status, message.sent_at, message.error = "sent", datetime.now(UTC), None
+    await db.commit()
+    return message
 
 
 async def accounts_to_draft(db: AsyncSession, lace_id: uuid.UUID, ids: list[uuid.UUID] | None,

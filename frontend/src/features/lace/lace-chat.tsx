@@ -151,7 +151,8 @@ function LaceChat({ laceId }: { laceId: string }) {
             {panel === "outreach" && (
               <LaceOutreach outreach={chat.outreach} drafting={chat.drafting}
                             onSave={(id, changes) => void chat.saveDraft(id, changes)}
-                            onDiscard={(id) => void chat.discardDraft(id)} />
+                            onDiscard={(id) => void chat.discardDraft(id)}
+                            onSend={(id) => void chat.sendDraft(id)} onMarkSent={(id) => void chat.markSent(id)} />
             )}
             {panel === "accounts" && (
               <LaceAccounts accounts={chat.accounts} finding={chat.findingAccounts}

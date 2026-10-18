@@ -110,3 +110,16 @@ async def update_outreach(lace: OwnedLace, message_id: uuid.UUID, payload: Outre
 @router.delete("/{lace_id}/outreach/{message_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_outreach(lace: OwnedLace, message_id: uuid.UUID, db: DbSession):
     await lace_outreach.delete(db, await lace_outreach.get_in_lace(db, lace.id, message_id))
+
+
+@router.post("/{lace_id}/outreach/{message_id}/send", response_model=OutreachResponse)
+async def send_outreach(lace: OwnedLace, message_id: uuid.UUID, db: DbSession):
+    """Send an email draft through your Gmail. The Lace never sends: this
+    request, made by you, is the approval."""
+    return await lace_outreach.send(db, await lace_outreach.get_in_lace(db, lace.id, message_id))
+
+
+@router.post("/{lace_id}/outreach/{message_id}/mark-sent", response_model=OutreachResponse)
+async def mark_outreach_sent(lace: OwnedLace, message_id: uuid.UUID, db: DbSession):
+    """Record a LinkedIn message you sent by hand."""
+    return await lace_outreach.mark_sent(db, await lace_outreach.get_in_lace(db, lace.id, message_id))
