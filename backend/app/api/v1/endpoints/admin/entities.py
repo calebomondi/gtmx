@@ -1,4 +1,4 @@
-"""Read-only admin views: users, workspaces, Laces, runs (with timelines), signals."""
+"""Read-only admin views: users, Laces, runs (with timelines), founders' questions."""
 
 import uuid
 
@@ -6,15 +6,16 @@ from fastapi import APIRouter, Query
 
 from backend.app.api.deps import DbSession
 from backend.app.schemas.admin import (
-    AdminLaceDetail, AdminLaceRow, AdminRunDetail, AdminRunRow, AdminSignalRow, AdminUserDetail, AdminUserRow, AdminWorkspaceRow, Page,
+    AdminLaceDetail, AdminLaceRow, AdminQuestionRow, AdminRunDetail, AdminRunRow, AdminUserDetail, AdminUserRow, Page,
 )
-from backend.app.services import admin_directory, admin_engagement, admin_laces, admin_runs
+from backend.app.services import admin_directory, admin_engagement, admin_laces, admin_questions, admin_runs
 
 router = APIRouter()
 
 PageNo = Query(default=1, ge=1)
 PerPage = Query(default=25, ge=1, le=100)
 RECENT_RUNS = 20
+USER_LACES = 100
 
 
 @router.get("/users", response_model=Page[AdminUserRow])
@@ -32,13 +33,8 @@ async def get_user(user_id: uuid.UUID, db: DbSession):
         **engagement,
         spend_usd=await admin_runs.user_spend(db, user_id),
         recent_runs=(await admin_runs.list_runs(db, 1, RECENT_RUNS, user_id=user_id)).items,
-        workspace_list=(await admin_directory.list_workspaces(db, 1, 100, user_id=user_id)).items,
+        lace_list=(await admin_laces.list_laces(db, 1, USER_LACES, user_id=user_id)).items,
     )
-
-
-@router.get("/workspaces", response_model=Page[AdminWorkspaceRow])
-async def list_workspaces(db: DbSession, page: int = PageNo, per_page: int = PerPage, q: str | None = None):
-    return await admin_directory.list_workspaces(db, page, per_page, q)
 
 
 @router.get("/laces", response_model=Page[AdminLaceRow])
@@ -68,9 +64,10 @@ async def get_run(run_id: uuid.UUID, db: DbSession):
     return await admin_runs.get_run(db, run_id)
 
 
-@router.get("/signals", response_model=Page[AdminSignalRow])
-async def list_signals(
-    db: DbSession, page: int = PageNo, per_page: int = PerPage, user_id: uuid.UUID | None = None,
-    category: str | None = None,
+@router.get("/questions", response_model=Page[AdminQuestionRow])
+async def list_questions(
+    db: DbSession, page: int = PageNo, per_page: int = PerPage, q: str | None = None,
+    user_id: uuid.UUID | None = None, lace_id: uuid.UUID | None = None,
 ):
-    return await admin_runs.list_signals(db, page, per_page, user_id=user_id, category=category)
+    """What founders asked their Laces, newest first; `q` matches the text."""
+    return await admin_questions.list_questions(db, page, per_page, q=q, user_id=user_id, lace_id=lace_id)

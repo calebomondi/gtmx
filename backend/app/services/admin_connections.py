@@ -7,7 +7,7 @@ from datetime import datetime
 from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.database import models
+from backend.app.database.lace_models import LaceOutreach
 from backend.app.schemas.admin import ConnectionMetrics, PlatformUsage
 from backend.app.services import admin as admin_service
 from backend.app.services import connections as connection_service
@@ -32,7 +32,7 @@ async def sends_by_platform(
     db: AsyncSession, *, since: datetime | None = None, user_id: uuid.UUID | None = None,
 ) -> dict[str, tuple[int, int]]:
     """platform -> (messages sent, distinct senders)."""
-    o = models.OutreachMessage
+    o = LaceOutreach
     where = [o.status == "sent"]
     if since:
         where.append(o.sent_at >= since)

@@ -1,62 +1,46 @@
-"""Where users drop off: the activation funnel, abandoned discovery
-interviews, and why runs fail."""
+"""Where users drop off: the activation funnel from sign-up to a reply, Lace
+onboardings, and why runs fail."""
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 
 from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import models
-from backend.app.schemas.admin import FailureReason, FunnelMetrics, FunnelStep, InterviewDropOff
+from backend.app.database.lace_models import Lace, LaceAccount, LaceContact, LaceOutreach
+from backend.app.schemas.admin import FailureReason, FunnelMetrics, FunnelStep
 from backend.app.services import admin as admin_service
 from backend.app.services.admin_time import window
 
 TOP_FAILURES = 8
-# A discovery still waiting for an answer after this long has been abandoned.
-STALE_INTERVIEW = timedelta(hours=24)
-RESEARCH_KINDS = ("competitors", "competitor_research", "accounts")
 
 
 async def _steps(db: AsyncSession) -> list[FunnelStep]:
     """Counted over existing accounts only, so no step exceeds sign-ups."""
     user_ids = [uuid.UUID(str(u.id)) for u in await admin_service.list_all_users()]
 
-    async def _users_where(model, *where) -> int:
+    async def _users_where(user_id, *where) -> int:
         return await db.scalar(
-            select(func.count(distinct(model.user_id))).where(model.user_id.in_(user_ids), *where)
+            select(func.count(distinct(user_id))).where(user_id.in_(user_ids), *where)
         ) or 0
 
-    r, o = models.Run, models.OutreachMessage
+    async def _lace_users_where(model, *where) -> int:
+        return await _users_where(Lace.user_id, Lace.id == model.lace_id, *where)
+
+    r, o = models.Run, LaceOutreach
     counts = [
         ("signed_up", "Signed up", len(user_ids)),
-        ("started_discovery", "Started a discovery", await _users_where(r, r.kind == "discovery")),
-        ("completed_discovery", "Finished a discovery",
-         await _users_where(r, r.kind == "discovery", r.status == "completed")),
-        ("ran_research", "Researched competitors or accounts", await _users_where(r, r.kind.in_(RESEARCH_KINDS))),
-        ("drafted_outreach", "Drafted outreach", await _users_where(o)),
-        ("sent_outreach", "Sent outreach", await _users_where(o, o.status == "sent")),
+        ("created_lace", "Created a Lace", await _users_where(Lace.user_id)),
+        ("onboarded", "Finished onboarding",
+         await _users_where(r.user_id, r.kind == "lace_onboarding", r.status == "completed")),
+        ("saved_account", "Saved an account", await _lace_users_where(LaceAccount, LaceAccount.status == "target")),
+        ("approved_contact", "Approved a contact",
+         await _lace_users_where(LaceContact, LaceContact.approved_at.is_not(None))),
+        ("sent_outreach", "Sent outreach", await _users_where(o.user_id, o.status == "sent")),
+        ("got_reply", "Got a reply", await _users_where(o.user_id, o.direction == "inbound")),
     ]
     return [FunnelStep(key=key, label=label, users=users) for key, label, users in counts]
-
-
-async def _interview_dropoffs(db: AsyncSession, since: datetime) -> list[InterviewDropOff]:
-    """Discoveries the user walked away from mid-interview, by the question
-    they stopped at: cancelled, or left waiting for an answer."""
-    r, e = models.Run, models.RunEvent
-    stale = datetime.now(UTC) - STALE_INTERVIEW
-    abandoned = (r.status == "cancelled") | ((r.status == "awaiting_input") & (r.updated_at < stale))
-    last_question = (
-        select(e.run_id, e.payload["interrupt_type"].astext.label("question"))
-        .join(r, r.id == e.run_id)
-        .where(e.type == "interrupt", r.kind == "discovery", r.created_at >= since, abandoned)
-        .distinct(e.run_id).order_by(e.run_id, e.id.desc())
-    ).subquery()
-    rows = (await db.execute(
-        select(last_question.c.question, func.count()).group_by(last_question.c.question)
-        .order_by(func.count().desc())
-    )).all()
-    return [InterviewDropOff(question=question or "unknown", runs=n) for question, n in rows]
 
 
 async def _failure_reasons(db: AsyncSession, since: datetime) -> list[FailureReason]:
@@ -72,12 +56,12 @@ async def _failure_reasons(db: AsyncSession, since: datetime) -> list[FailureRea
 async def funnel(db: AsyncSession, days: int) -> FunnelMetrics:
     since, _ = window(days)
     r = models.Run
-    discoveries = (r.kind == "discovery", r.created_at >= since)
+    onboardings = (r.kind == "lace_onboarding", r.created_at >= since)
     return FunnelMetrics(
         days=days,
         steps=await _steps(db),
-        discoveries_started=await db.scalar(select(func.count()).where(*discoveries)) or 0,
-        discoveries_completed=await db.scalar(select(func.count()).where(*discoveries, r.status == "completed")) or 0,
-        interview_dropoffs=await _interview_dropoffs(db, since),
+        laces_created=await db.scalar(select(func.count()).where(Lace.created_at >= since)) or 0,
+        onboardings_completed=await db.scalar(select(func.count()).where(*onboardings, r.status == "completed")) or 0,
+        onboardings_failed=await db.scalar(select(func.count()).where(*onboardings, r.status == "failed")) or 0,
         failure_reasons=await _failure_reasons(db, since),
     )

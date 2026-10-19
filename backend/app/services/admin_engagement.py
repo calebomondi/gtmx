@@ -1,5 +1,5 @@
-"""Admin engagement metrics: growth, time in the app, what people create and
-which features they use. Identity (sign-ups) comes from Supabase; everything
+"""Admin engagement metrics: growth, time in the app, the Laces people create
+and what they use them for. Identity (sign-ups) comes from Supabase; everything
 else from our own tables. Time in app comes from customer-app heartbeats
 (services/activity.py), so it starts on the day tracking shipped."""
 
@@ -10,7 +10,8 @@ from sqlalchemy import distinct, func, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import models
-from backend.app.schemas.admin import ActivityDay, EngagementDay, EngagementMetrics, TopWorkspace, UserConnection
+from backend.app.database.lace_models import Lace, LaceActivity, LaceOutreach
+from backend.app.schemas.admin import ActivityDay, EngagementDay, EngagementMetrics, TopLace, UserConnection
 from backend.app.services import admin as admin_service
 from backend.app.services import connections as connection_service
 from backend.app.services.admin_connections import COMPOSIO_UNAVAILABLE, sends_by_platform
@@ -18,9 +19,10 @@ from backend.app.services.admin_directory import emails_by_id
 from backend.app.services.admin_time import utc_day, window
 from utils.log import logger
 
-TOP_WORKSPACES = 10
+TOP_LACES = 10
 USER_DETAIL_DAYS = 30
-USER_TOP_WORKSPACES = 5
+USER_TOP_LACES = 5
+COMPETITOR_RUN_KINDS = ("lace_competitors", "lace_monitor")
 WEEK, MONTH = 7, 30
 
 
@@ -86,12 +88,13 @@ async def _time_in_app(
     )).all():
         if day in series:
             series[day].active_users = n
-    wa = models.WorkspaceActivity
+    r = models.Run
     for day, n in (await db.execute(
-        select(wa.day, func.count(distinct(wa.workspace_id))).where(wa.day >= since.date()).group_by(wa.day)
+        select(utc_day(r.created_at), func.count(distinct(r.lace_id)))
+        .where(r.created_at >= since, r.lace_id.is_not(None)).group_by(utc_day(r.created_at))
     )).all():
         if day in series:
-            series[day].workspaces_interacted = n
+            series[day].laces_active = n
     return {
         "sessions": sessions,
         "active_time_users": users,
@@ -110,50 +113,42 @@ async def _per_day(db: AsyncSession, series: dict[date, EngagementDay], since: d
 
 
 async def _creations(db: AsyncSession, since: datetime, series: dict[date, EngagementDay]) -> dict:
-    w, p = models.Workspace, models.Project
-    await _per_day(db, series, since, "workspaces_created", w.date_created)
-    await _per_day(db, series, since, "products_created", w.date_created, w.offer_type == "product")
-    await _per_day(db, series, since, "services_created", w.date_created, w.offer_type == "service")
-    await _per_day(db, series, since, "projects_created", p.date_created)
-    offer_types = {"product": 0, "service": 0, "unknown": 0}
-    for offer_type, n in (await db.execute(select(w.offer_type, func.count()).group_by(w.offer_type))).all():
-        offer_types[offer_type or "unknown"] += n
+    r = models.Run
+    onboarding = r.kind == "lace_onboarding"
+    await _per_day(db, series, since, "laces_created", Lace.created_at)
+    await _per_day(db, series, since, "onboardings_completed", r.finished_at, onboarding, r.status == "completed")
+    await _per_day(db, series, since, "onboardings_failed", r.finished_at, onboarding, r.status == "failed")
     return {
-        "workspaces_total": sum(offer_types.values()),
-        "workspaces_created": await db.scalar(select(func.count()).where(w.date_created >= since)) or 0,
-        "projects_total": await db.scalar(select(func.count()).select_from(p)) or 0,
-        "projects_created": await db.scalar(select(func.count()).where(p.date_created >= since)) or 0,
-        "offer_types": offer_types,
+        "laces_total": await db.scalar(select(func.count()).select_from(Lace)) or 0,
+        "laces_created": await db.scalar(select(func.count()).where(Lace.created_at >= since)) or 0,
     }
 
 
-async def _adoption(db: AsyncSession, since: datetime, series: dict[date, EngagementDay]) -> None:
-    r, o = models.Run, models.OutreachMessage
-    await _per_day(db, series, since, "chat_messages", models.ChatMessage.created_at, models.ChatMessage.role == "user")
-    await _per_day(db, series, since, "competitor_runs", r.created_at, r.kind.in_(["competitors", "competitor_research"]))
-    await _per_day(db, series, since, "account_runs", r.created_at, r.kind == "accounts")
-    await _per_day(db, series, since, "outreach_drafted", o.created_at)
+async def _adoption(db: AsyncSession, since: datetime, series: dict[date, EngagementDay]) -> int:
+    """Fills the per-day feature use; returns the questions asked in the window."""
+    r, o = models.Run, LaceOutreach
+    await _per_day(db, series, since, "questions", r.created_at, r.kind == "lace_turn")
+    await _per_day(db, series, since, "competitor_runs", r.created_at, r.kind.in_(COMPETITOR_RUN_KINDS))
+    await _per_day(db, series, since, "account_runs", r.created_at, r.kind == "lace_accounts")
+    await _per_day(db, series, since, "outreach_drafted", o.created_at, o.direction == "outbound")
     await _per_day(db, series, since, "outreach_sent", o.sent_at, o.status == "sent")
+    return sum(point.questions for point in series.values())
 
 
-async def top_workspaces(
-    db: AsyncSession, since: date, limit: int, user_id: uuid.UUID | None = None,
-) -> list[TopWorkspace]:
-    """Workspaces with the most active time since `since`, optionally one user's."""
-    wa, w = models.WorkspaceActivity, models.Workspace
-    seconds = func.sum(wa.active_seconds)
+async def top_laces(db: AsyncSession, since: datetime, limit: int, user_id: uuid.UUID | None = None) -> list[TopLace]:
+    """Laces with the most runs since `since`, then the most Feed items,
+    optionally one user's. Time isn't tracked per Lace."""
+    r, a = models.Run, LaceActivity
+    runs = select(func.count()).where(r.lace_id == Lace.id, r.created_at >= since).scalar_subquery()
+    activity = select(func.count()).where(a.lace_id == Lace.id, a.created_at >= since).scalar_subquery()
     rows = (await db.execute(
-        select(w.id, w.name, w.user_id, w.offer_type, seconds, func.sum(wa.visits))
-        .join(wa, wa.workspace_id == w.id)
-        .where(wa.day >= since, *([w.user_id == user_id] if user_id else []))
-        .group_by(w.id).order_by(seconds.desc()).limit(limit)
+        select(Lace.id, Lace.name, Lace.user_id, runs.label("runs"), activity.label("activity"))
+        .where(*([Lace.user_id == user_id] if user_id else []), (runs > 0) | (activity > 0))
+        .order_by(runs.desc(), activity.desc(), Lace.name).limit(limit)
     )).all()
     emails = await emails_by_id() if rows else {}
-    return [
-        TopWorkspace(id=wid, name=name, user_id=uid, user_email=emails.get(uid), offer_type=offer_type,
-                     active_seconds=int(secs or 0), visits=int(visits or 0))
-        for wid, name, uid, offer_type, secs, visits in rows
-    ]
+    return [TopLace(id=lid, name=name, user_id=uid, user_email=emails.get(uid), runs=n_runs, activity=n_activity)
+            for lid, name, uid, n_runs, n_activity in rows]
 
 
 async def engagement(db: AsyncSession, days: int) -> EngagementMetrics:
@@ -168,7 +163,7 @@ async def engagement(db: AsyncSession, days: int) -> EngagementMetrics:
     user_ids = [uuid.UUID(str(u.id)) for u in users]
     time_in_app = await _time_in_app(db, since, series, user_ids)
     creations = await _creations(db, since, series)
-    await _adoption(db, since, series)
+    questions = await _adoption(db, since, series)
     total_users = len(users)
     return EngagementMetrics(
         days=days,
@@ -177,9 +172,9 @@ async def engagement(db: AsyncSession, days: int) -> EngagementMetrics:
         **await _retention(db, user_ids),
         **time_in_app,
         **creations,
-        avg_workspaces_per_user=round(creations["workspaces_total"] / total_users, 2) if total_users else None,
-        avg_projects_per_user=round(creations["projects_total"] / total_users, 2) if total_users else None,
-        top_workspaces=await top_workspaces(db, since.date(), TOP_WORKSPACES),
+        avg_laces_per_user=round(creations["laces_total"] / total_users, 2) if total_users else None,
+        questions=questions,
+        top_laces=await top_laces(db, since, TOP_LACES),
         series=list(series.values()),
     )
 
@@ -200,7 +195,7 @@ async def _user_connections(db: AsyncSession, user_id: uuid.UUID) -> dict:
 
 
 async def user_engagement(db: AsyncSession, user_id: uuid.UUID) -> dict:
-    """The user detail page's activity, top workspaces and connected accounts."""
+    """The user detail page's activity, top Laces and connected accounts."""
     since, dates = window(USER_DETAIL_DAYS)
     s = models.AppSession
     by_day = dict((await db.execute(
@@ -209,6 +204,6 @@ async def user_engagement(db: AsyncSession, user_id: uuid.UUID) -> dict:
     )).all())
     return {
         "activity": [ActivityDay(day=d, active_seconds=int(by_day.get(d) or 0)) for d in dates],
-        "top_workspaces": await top_workspaces(db, since.date(), USER_TOP_WORKSPACES, user_id),
+        "top_laces": await top_laces(db, since, USER_TOP_LACES, user_id),
         **await _user_connections(db, user_id),
     }
