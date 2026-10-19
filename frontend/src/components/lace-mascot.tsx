@@ -8,6 +8,7 @@
  * Usage:
  *   <Lace state="thinking" size={48} />
  *   <Lace state="sleepy" size={32} phase={3} />   // start 3s into the loop
+ *   <Lace state="idle" look={{ x: 6, y: -3 }} />   // eyes turned up and right
  *
  * States:
  *   sleepy    heavy lids, slow drift          (queued, low priority)
@@ -33,6 +34,9 @@ export interface LaceProps
   phase?: number;
   /** Set false for a still face. Reduced-motion preferences are always respected. */
   animated?: boolean;
+  /** Where the eyes look, as an offset in viewBox units (about ±8 reads
+   * well). While set, the state's own glancing around stops; blinks go on. */
+  look?: { x: number; y: number } | null;
   /** Accessible name. Defaults to "Lace, <state>". */
   title?: string;
   /** Hide from assistive tech when the state is already shown in text nearby. */
@@ -88,6 +92,8 @@ const LACE_CSS = `
 @keyframes lace-think-eye{0%,16%{transform:scale(1)}24%,50%{transform:scaleY(.78)}56%{transform:scale(1.08,1.18)}62%,100%{transform:scale(1)}}
 @keyframes lace-think-glint{0%,24%{transform:translate(0,0)}30.5%{transform:translate(16px,0)}37%{transform:translate(16px,16px)}43.5%{transform:translate(0,16px)}50%,100%{transform:translate(0,0)}}
 @keyframes lace-alert-look{0%,8%{transform:translate(0,0)}12%,26%{transform:translate(-10px,-2px)}30%,44%{transform:translate(10px,-2px)}48%,62%{transform:translate(0,-8px)}66%,80%{transform:translate(8px,3px)}84%,100%{transform:translate(0,0)}}
+.lace-gaze{transition:transform .12s ease-out}
+.lace-looking .lace-sleepy-look,.lace-looking .lace-think-look,.lace-looking .lace-alert-look{animation:none}
 .lace-static *{animation:none!important}
 @media (prefers-reduced-motion:reduce){.lace *{animation:none!important}}
 `;
@@ -97,6 +103,7 @@ export function Lace({
   size = 48,
   phase = 0,
   animated = true,
+  look = null,
   title,
   decorative = false,
   className,
@@ -134,7 +141,7 @@ export function Lace({
       viewBox="0 0 140 140"
       width={size}
       height={size}
-      className={["lace", animated ? "" : "lace-static", className].filter(Boolean).join(" ")}
+      className={["lace", animated ? "" : "lace-static", look ? "lace-looking" : "", className].filter(Boolean).join(" ")}
       style={{ "--lace-phase": `-${phase}s`, ...style } as CSSProperties}
       role={decorative ? undefined : "img"}
       aria-hidden={decorative || undefined}
@@ -142,7 +149,9 @@ export function Lace({
       {!decorative && <title>{title ?? `Lace, ${state}`}</title>}
       <style>{LACE_CSS}</style>
       <rect width="140" height="140" rx="9" fill={LACE_COLORS.body} />
-      {face}
+      <g className="lace-gaze" style={look ? { transform: `translate(${look.x}px,${look.y}px)` } : undefined}>
+        {face}
+      </g>
     </svg>
   );
 }
