@@ -21,10 +21,6 @@ class RunResponse(BaseModel):
     finished_at: datetime | None = None
 
 
-class RunAnswer(BaseModel):
-    answer: str = Field(min_length=1)
-
-
 class RunStepResponse(BaseModel):
     """One progress step a run reported, oldest first."""
 

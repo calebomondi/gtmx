@@ -1,29 +1,24 @@
 """Auth and ownership dependencies -- the only place either is enforced.
 
-Identity: verify the Supabase access token from the Authorization header (or a
-`?token=` query param for WebSockets, which cannot send headers). Supabase owns
-identity (no local users table): a verified token IS the user.
+Identity: verify the Supabase access token from the Authorization header.
+Supabase owns identity (no local users table): a verified token IS the user.
 
-Ownership: every workspace- or project-scoped route resolves its resource
-through OwnedWorkspace / OwnedProject. Someone else's resource is a 404,
-indistinguishable from a missing one."""
+Ownership: every Lace-scoped route resolves its Lace through OwnedLace.
+Someone else's Lace is a 404, indistinguishable from a missing one."""
 
 import uuid
 from dataclasses import dataclass
 from typing import Annotated, Optional
 
-from fastapi import Depends, HTTPException, WebSocket, status
+from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app import supabase_admin
-from backend.app.database import models
 from backend.app.database.connect import get_db
 from backend.app.database.lace_models import Lace
 from backend.app.services import laces as lace_service
 from backend.app.services import limits
-from backend.app.services import projects as project_service
-from backend.app.services import workspaces as workspace_service
 from utils.log import current_user_id
 
 _bearer = HTTPBearer(auto_error=False)
@@ -86,46 +81,15 @@ async def require_user(
     return user
 
 
-async def require_matching_user(
-    user_id: uuid.UUID,
-    current_user: Annotated[AuthUser, Depends(require_user)],
-) -> AuthUser:
-    """For `/user/{user_id}/...` routes: the caller must BE that user."""
-    if current_user.id != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot access another user's resources",
-        )
-    return current_user
-
-
-async def websocket_user(websocket: WebSocket) -> Optional[AuthUser]:
-    token = websocket.query_params.get("token")
-    if not token:
-        return None
-    return await user_from_token(token)
-
-
 CurrentUser = Annotated[AuthUser, Depends(require_user)]
 DbSession = Annotated[AsyncSession, Depends(get_db)]
-
-
-async def get_owned_workspace(workspace_id: uuid.UUID, user: CurrentUser, db: DbSession) -> models.Workspace:
-    return await workspace_service.get_owned(db, user.id, workspace_id)
-
-
-async def get_owned_project(project_id: uuid.UUID, user: CurrentUser, db: DbSession) -> models.Project:
-    return await project_service.get_owned(db, user.id, project_id)
 
 
 async def get_owned_lace(lace_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Lace:
     return await lace_service.get_owned(db, user.id, lace_id)
 
 
-OwnedWorkspace = Annotated[models.Workspace, Depends(get_owned_workspace)]
 OwnedLace = Annotated[Lace, Depends(get_owned_lace)]
-OwnedProject = Annotated[models.Project, Depends(get_owned_project)]
-MatchingUser = Annotated[AuthUser, Depends(require_matching_user)]
 
 
 async def require_admin(user: CurrentUser) -> AuthUser:

@@ -14,7 +14,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import models
-from backend.app.services import workspaces as workspace_service
+from backend.app.services.errors import NotFoundError
 from config import settings
 
 
@@ -26,6 +26,15 @@ async def _current_session(db: AsyncSession, user_id: uuid.UUID, now: datetime) 
         .order_by(models.AppSession.last_seen_at.desc())
         .limit(1)
     )
+
+
+async def _owned_workspace(db: AsyncSession, user_id: uuid.UUID, workspace_id: uuid.UUID) -> models.Workspace:
+    """A v1 workspace of this user's: their time on it is still credited."""
+    workspace = await db.scalar(select(models.Workspace).where(
+        models.Workspace.id == workspace_id, models.Workspace.user_id == user_id))
+    if workspace is None:
+        raise NotFoundError("Workspace not found")
+    return workspace
 
 
 async def _credit_workspace(
@@ -55,7 +64,7 @@ async def record_heartbeat(
     # Pings from two tabs (or a page load plus a route change) arrive together.
     # Without this they'd each open a session and each count the visit.
     await db.execute(select(func.pg_advisory_xact_lock(func.hashtext(f"activity:{user_id}"))))
-    workspace = await workspace_service.get_owned(db, user_id, workspace_id) if workspace_id else None
+    workspace = await _owned_workspace(db, user_id, workspace_id) if workspace_id else None
 
     session = await _current_session(db, user_id, now)
     if session is None:
