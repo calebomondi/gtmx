@@ -198,6 +198,25 @@ class AdminWorkspaceRow(BaseModel):
     runs: int = 0
 
 
+class AdminLaceRow(BaseModel):
+    id: uuid.UUID
+    name: str
+    website: str
+    startup_name: str | None = None
+    status: str
+    user_id: uuid.UUID
+    user_email: str | None = None
+    created_at: datetime
+    last_active_at: datetime = Field(description="Its latest run, or its creation")
+    facts: int = 0
+    competitors: int = Field(default=0, description="Saved (tracked)")
+    accounts: int = Field(default=0, description="Saved targets")
+    contacts: int = 0
+    sent: int = Field(default=0, description="Outreach messages sent")
+    runs: int = 0
+    cost_usd: float | None = Field(default=None, description="All its runs; null when any usage is unpriced")
+
+
 class AdminRunRow(BaseModel):
     id: uuid.UUID
     kind: str
@@ -206,12 +225,24 @@ class AdminRunRow(BaseModel):
     user_email: str | None = None
     workspace_id: uuid.UUID | None = None
     workspace_name: str | None = None
+    lace_id: uuid.UUID | None = None
+    lace_name: str | None = None
     error: str | None = None
     created_at: datetime
     started_at: datetime | None = None
     finished_at: datetime | None = None
     duration_s: float | None = None
     cost_usd: float | None = Field(default=None, description="null when any of its usage is unpriced")
+
+
+class AdminLaceDetail(AdminLaceRow):
+    suggestions: int = Field(description="Competitors, accounts and opportunities waiting for the founder")
+    drafts_waiting: int
+    replies: int = Field(description="Inbound messages received")
+    opportunities: int = Field(description="Saved, still open")
+    brief_frequency: str
+    brief_email: bool
+    recent_runs: list[AdminRunRow]
 
 
 class AdminRunEvent(BaseModel):
