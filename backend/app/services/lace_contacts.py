@@ -22,7 +22,8 @@ def _clean(value: str | None) -> str:
 def contact_key(contact: ContactRecord) -> str | None:
     """Who the contact is, for dedup: their email, else their LinkedIn URL
     (no trailing slash), else their name; lowercased. None for a contact with
-    none of these. The contacts backfill migration mirrors this in SQL: keep them in step."""
+    none of these. Mirrored in SQL by migration 20261019_0927_backfill_lace_contacts:
+    keep the two in step."""
     key = _clean(contact.email) or _clean(contact.linkedin).rstrip("/") or _clean(contact.name)
     return key.lower()[:320] or None
 
