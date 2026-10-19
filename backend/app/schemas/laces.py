@@ -311,4 +311,13 @@ class ContactResponse(BaseModel):
     email: str | None = None
     linkedin: str | None = None
     source: ContactSource
+    approved_at: datetime | None = Field(default=None, description="When the founder cleared them for outreach")
     first_seen_at: datetime
+
+
+class ContactApproval(BaseModel):
+    approved: bool = Field(description="Clear this person for outreach, or take it back")
+
+
+class AccountApprovalResponse(BaseModel):
+    approved: int = Field(description="How many people at the account were waiting")

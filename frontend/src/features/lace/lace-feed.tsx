@@ -29,7 +29,7 @@ export function LaceFeed({ laceId, name, chat, activity, onOpen }: {
   const needs = needsYou(chat.waiting, activity.items.filter((a) => a.kind === "job_failed" && activity.isNew(a)), {
     opportunities: opps.suggested.length, accounts: chat.suggestedAccounts.length,
     competitors: chat.suggestedCompetitors.length,
-  })
+  }, chat.contacts.filter((c) => !c.approved_at).length)
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 py-6">
       {needs.length > 0 && (

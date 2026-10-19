@@ -29,8 +29,9 @@ from backend.app.database.lace_models import LaceAccount, LaceOutreach
 from backend.app.runs import events
 from backend.app.runs.errors import user_facing_error
 
-from backend.app.services import lace_accounts, lace_activity, lace_competitors, lace_events, lace_opportunities, lace_outreach
+from backend.app.services import lace_accounts, lace_activity, lace_competitors, lace_contacts, lace_events, lace_opportunities, lace_outreach
 from backend.app.services.lace_activity import names, plural
+from backend.app.services.lace_contacts import contact_key
 from backend.app.services import calendar as calendar_service
 from backend.app.services import outreach as outreach_service
 from backend.app.services.competitors import domain_key
@@ -218,8 +219,14 @@ async def drafts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> Non
         user_id = run.user_id
         accounts = [(a.id, a.name, AccountRecord.model_validate(a.record))
                     for a in await lace_outreach.accounts_to_draft(db, lace_id, ids or None, DRAFTS_BATCH)]
+        cleared = await lace_contacts.approved_keys(db, [account_id for account_id, _, _ in accounts])
     sender = await outreach_service.sender_for_user(user_id)
-    targets = [(account_id, name, record, recipient_for(record)) for account_id, name, record in accounts]
+    # Only people the founder approved are written to. An account whose people
+    # all wait for approval waits too, rather than falling back to its pages.
+    awaiting = [name for account_id, name, record in accounts
+                if record.key_contacts and not cleared.get(account_id)]
+    targets = [(account_id, name, record, recipient_for(approved_only(record, cleared.get(account_id, set()))))
+               for account_id, name, record in accounts if name not in awaiting]
     unreachable = [name for _, name, _, recipient in targets if recipient is None]
     failed: list[str] = []
     slots = asyncio.Semaphore(DRAFTS_CONCURRENCY)
@@ -242,7 +249,7 @@ async def drafts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> Non
         drafts = [d for d in await asyncio.gather(*(draft(*t) for t in targets if t[3] is not None)) if d]
     async with AsyncSessionLocal() as db, db.begin():
         db.add_all(drafts)
-        await lace_events.add(db, lace_id, drafts_update(drafts, unreachable, failed))
+        await lace_events.add(db, lace_id, drafts_update(drafts, unreachable, failed, awaiting))
         if drafts:
             await lace_activity.add(db, lace_id, "drafts_ready", f"{plural(len(drafts), 'message')} drafted for you to send",
                                     names([d.recipient_company for d in drafts]))
@@ -251,8 +258,14 @@ async def drafts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> Non
     await events.publish(run_id, "complete", {"drafted": len(drafts)})
 
 
-def drafts_update(drafts: list[LaceOutreach], unreachable: list[str], failed: list[str]) -> str:
-    if not drafts and not unreachable and not failed:
+def approved_only(record: AccountRecord, keys: set[str]) -> AccountRecord:
+    """The record with only the people the founder approved."""
+    return record.model_copy(update={"key_contacts": [c for c in record.key_contacts if contact_key(c) in keys]})
+
+
+def drafts_update(drafts: list[LaceOutreach], unreachable: list[str], failed: list[str],
+                  awaiting: list[str]) -> str:
+    if not drafts and not unreachable and not failed and not awaiting:
         return "There was no account to draft for: every target with someone to reach already has a message."
     lines = [f"{d.recipient_company} [draft {d.id}]: to {d.recipient_name or d.recipient_address} by {d.channel}"
              + (f', subject "{d.subject}"' if d.subject else "") for d in drafts]
@@ -260,8 +273,12 @@ def drafts_update(drafts: list[LaceOutreach], unreachable: list[str], failed: li
         lines.append("Not drafted, nobody to reach yet (use find_contacts): " + ", ".join(unreachable))
     if failed:
         lines.append("Drafting failed for (try again later): " + ", ".join(failed))
-    return ("Drafted first messages; they wait in Outreach for the founder to review, edit and send:\n"
-            + "\n".join(lines))
+    if awaiting:
+        lines.append("Not drafted, their people wait for the founder to approve them (in Contacts, or on the "
+                     "account's card): " + ", ".join(awaiting))
+    head = ("Drafted first messages; they wait in Outreach for the founder to review, edit and send:" if drafts
+            else "No message was drafted:")
+    return head + "\n" + "\n".join(lines)
 
 
 def contacts_update(results: list[AccountRecord]) -> str:
@@ -279,7 +296,8 @@ def contacts_update(results: list[AccountRecord]) -> str:
             lines.append(f"{r.name}: no named person found; reachable through {reach}")
         else:
             lines.append(f"{r.name}: could not find anyone to contact, nor any page of its own")
-    return "The contact search finished:\n" + "\n".join(lines)
+    return ("The contact search finished:\n" + "\n".join(lines)
+            + "\nDrafts go only to people the founder approves: show these accounts so they can approve them.")
 
 
 def accounts_update(found: list, new: int, refreshed: int, country: str | None) -> str:

@@ -6,13 +6,14 @@ import uuid
 from collections.abc import Iterable
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.schemas.accounts import ContactRecord
 from agents.schemas.lace import ContactSource
 from backend.app.database.lace_models import LaceAccount, LaceContact
+from backend.app.services.errors import NotFoundError
 
 
 def _clean(value: str | None) -> str:
@@ -46,6 +47,35 @@ async def sync(db: AsyncSession, lace_id: uuid.UUID, account_id: uuid.UUID, cont
             set_={**{c: func.coalesce(stmt.excluded[c], getattr(LaceContact, c)) for c in values},
                   "account_id": stmt.excluded.account_id, "last_seen_at": now},
         ))
+
+
+async def approved_keys(db: AsyncSession, account_ids: Iterable[uuid.UUID]) -> dict[uuid.UUID, set[str]]:
+    """Per account, the keys of the people the founder cleared for outreach."""
+    rows = await db.execute(select(LaceContact.account_id, LaceContact.key).where(
+        LaceContact.account_id.in_(list(account_ids)), LaceContact.approved_at.is_not(None)))
+    keys: dict[uuid.UUID, set[str]] = {}
+    for account_id, key in rows.all():
+        keys.setdefault(account_id, set()).add(key)
+    return keys
+
+
+async def set_approved(db: AsyncSession, lace_id: uuid.UUID, contact_id: uuid.UUID, approved: bool) -> LaceContact:
+    """404 for a contact that is not this Lace's."""
+    contact = await db.scalar(select(LaceContact).where(LaceContact.id == contact_id, LaceContact.lace_id == lace_id))
+    if contact is None:
+        raise NotFoundError("Contact not found")
+    contact.approved_at = datetime.now(UTC) if approved else None
+    await db.commit()
+    return contact
+
+
+async def approve_account(db: AsyncSession, lace_id: uuid.UUID, account_id: uuid.UUID) -> int:
+    """Clear everyone at one account for outreach. Returns how many were waiting."""
+    result = await db.execute(update(LaceContact).where(
+        LaceContact.lace_id == lace_id, LaceContact.account_id == account_id, LaceContact.approved_at.is_(None),
+    ).values(approved_at=datetime.now(UTC)))
+    await db.commit()
+    return result.rowcount or 0
 
 
 async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, limit: int) -> list[tuple[LaceContact, LaceAccount]]:

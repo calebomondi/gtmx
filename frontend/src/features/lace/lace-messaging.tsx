@@ -22,8 +22,9 @@ export function LaceMessaging({ laceId, chat }: { laceId: string; chat: LaceChat
         }} />
       </LaceSection>
       <LaceSection title="Contacts" busy={chat.findingAccounts}
-                   description="The people your Lace found at your target accounts, and how to reach each.">
-        <LaceContacts laceId={laceId} refreshKey={chat.accounts.map((a) => `${a.id}:${a.contact_status}`).join(",")} />
+                   description="The people found at your saved accounts. Messages are drafted only to people you approve.">
+        <LaceContacts contacts={chat.contacts} onApprove={(id, approved) => void chat.approveContact(id, approved)}
+                      onApproveAccount={(id) => void chat.approveAccountContacts(id)} />
       </LaceSection>
       <LaceSection title="Inboxes" description="Business accounts whose messages your Lace reads and answers.">
         <LaceChannels laceId={laceId} />

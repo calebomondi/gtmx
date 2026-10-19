@@ -149,7 +149,12 @@ position rule follows recency too. The list response carries `mood` and
   - Suggestions count in "Needs you", turn the sidebar mascot alert, and appear in the brief ("waiting for the founder").
 - **API:** list endpoints take `status=suggested`. The update requests accept only saved or dismissed values.
 - **Migration:** only the CHECK constraints change. A downgrade turns suggestions into saved items.
-- **H2 (contacts):** a status on `lace_contacts`, so the people found are confirmed before outreach is drafted to them.
+- **H2 (contacts), as the owner chose on 2026-10-19:**
+  - People found at saved accounts go into Contacts automatically.
+  - Outreach is drafted only to people the founder approved (`lace_contacts.approved_at`), one by one or everyone at an account in one click (in Contacts, or on the account's chat card).
+  - An account whose people all wait for approval isn't drafted to; it's reported as waiting, rather than falling back to its own pages. An account with no people can still be reached through its own pages.
+  - Contacts on file before this start unapproved.
+  - People waiting for approval count in "Needs you".
 
 ## 9. Also
 

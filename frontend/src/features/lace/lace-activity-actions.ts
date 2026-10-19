@@ -29,12 +29,17 @@ export interface NeedsYouItem {
 }
 
 /** What waits on the founder, for the strip at the top of the Feed: what
- * searches found to save or dismiss, messages to send or read, and searches
+ * searches found to save or dismiss, people to approve for outreach,
+ * messages to send or read, and searches
  * that stopped for something only the founder can give (unseen until this
  * visit). */
 export function needsYou(waiting: number, failedSearches: ActivityDto[],
-                         suggestions: Partial<Record<FeedSection, number>> = {}): NeedsYouItem[] {
+                         suggestions: Partial<Record<FeedSection, number>> = {}, toApprove = 0): NeedsYouItem[] {
   const items: NeedsYouItem[] = []
+  if (toApprove > 0) {
+    items.push({ label: `${toApprove} ${toApprove === 1 ? "person" : "people"} to approve for outreach`,
+                 target: { tab: "messaging" } })
+  }
   const toReview = Object.values(suggestions).reduce((sum, n) => sum + (n ?? 0), 0)
   const first = (Object.keys(suggestions) as FeedSection[]).find((section) => suggestions[section])
   if (toReview > 0 && first) {
