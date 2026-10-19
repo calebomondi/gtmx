@@ -98,9 +98,6 @@ class Settings(BaseSettings):
     # Threads for the event loop's default executor (sync graph nodes and
     # asyncio.to_thread). Each running discovery holds up to two for minutes.
     default_executor_workers: int = 256
-    # Wall-clock cap on one active segment of a run (time spent waiting for a
-    # user's answer does not count: no task is alive then).
-    discovery_segment_timeout_s: float = 1800.0
     # Wall-clock cap on a whole background run (competitors, accounts, ...).
     background_run_timeout_s: float = 1800.0
     # A Lace reading its site for the first time, and one founder turn.
@@ -110,7 +107,6 @@ class Settings(BaseSettings):
     lace_opportunity_scan_days: int = 7
 
     # -- Usage limits (per user) --
-    max_active_discovery_runs: int = 1
     max_discovery_runs_per_day: int = 10
     max_competitor_runs_per_day: int = 20
     max_account_runs_per_day: int = 20
@@ -193,9 +189,6 @@ class Settings(BaseSettings):
     # dev reload) doesn't immediately fan out paid monitoring runs.
     monitor_initial_delay_s: float = 120.0
     monitor_max_age_h: float = 24.0
-    # Social stats move slowly and every Bright Data scrape is paid, so a
-    # monitor run refreshes them only when they are older than this.
-    socials_max_age_h: float = 168.0
 
     # -- Agent tuning --
     # How far back (days) research may look for sources. Kept short so the

@@ -1,14 +1,16 @@
 # GTMX — Go-To-Market Expert
 
-GTMX researches a product or service end to end. A user signs in, describes an
-offer by URL or in their own words, answers a few interview questions, and gets
-offer, market, competition and ICP analysis. They then track competitors,
-discover target accounts, and run outreach.
+GTMX (Thalace) gives each startup a Lace: one agent, created from a name and the
+startup's website, that learns what the startup sells and works as the founder's
+go-to-market assistant. It finds and watches competitors, works out the ideal
+customer, finds target accounts and the people there, spots opportunities
+(events, tenders, partners), drafts outreach and answers replies. The founder
+works with it in a chat, and sees what it did in a Feed and Messaging.
 
-- **Agents**: LangGraph pipelines in `agents/`. They are pure: web search, scraping and LLM calls only.
+- **Agents**: the Lace (a ReAct agent) in `agents/lace/`, and the LangGraph pipelines it reuses as skills in `agents/pipelines/`. They are pure: web search, scraping and LLM calls only; a Lace reaches the database only through its store protocol, which the backend implements.
 - **Backend**: FastAPI in `backend/app/`. It owns persistence, auth, and running agents.
 - **Frontend**: React 19, Vite, Tailwind v4 and shadcn in `frontend/`. This is the customer app.
-- **Waitlist page**: React, Vite and Tailwind v4 in `waitlist/`. The public landing page at gtmx.co, with signup and pilot opt-in.
+- **Waitlist page**: React, Vite and Tailwind v4 in `waitlist/`. The public landing page at thalace.com, with signup and pilot opt-in.
 - **Admin dashboard**: a **separate git repository** (Turborepo + Bun, `apps/web` + `packages/ui`) checked out at `admin_dashboard/` and ignored by this repo. It's the internal ops console and follows the same rules and git workflow in its own repo.
 - **Identity**: Supabase Auth. **Database**: Postgres (Supabase in prod, Docker locally).
 
@@ -57,7 +59,7 @@ bun run build && bun run typecheck && bun run lint
 3. One concern per branch and PR. Don't mix a refactor with a feature or a migration with unrelated UI.
 4. Open the PR **into `dev`** with `gh pr create --base dev`. The body covers what changed, why, how it was tested, and any migration or env changes.
 5. **Never merge your own PR.** The owner reviews and merges. `dev` is promoted to `main` for release.
-6. Commit messages are imperative and specific ("Enforce workspace ownership on competitor routes"), not "fix stuff".
+6. Commit messages are imperative and specific ("Enforce Lace ownership on contact routes"), not "fix stuff".
 7. Before opening a PR, all of these pass for every app the PR touches: `uv run ruff check .`, `uv run pytest`, `bun run build` and `bun run lint` (frontend), `bun run build`, `typecheck` and `lint` (admin_dashboard), and `alembic upgrade head` on an empty database.
 8. Use **Bun only** for JavaScript (`bun install`, `bun run`, `bunx`). Never add a `package-lock.json`, `yarn.lock` or `pnpm-lock.yaml`.
 9. Never commit `.env*` (except `.env.example`), `*.db`, `node_modules/`, `dist/`, `agents/.cache/`, or test `_out/` artifacts.
@@ -68,11 +70,11 @@ bun run build && bun run typecheck && bun run lint
 
 ```
 agents/
+  lace/                     # the Lace: graph, tools, store protocol, prompts, its skills' glue
   pipelines/<feature>/      # one LangGraph graph per module: build_<x>_graph()
   schemas/                  # ALL pydantic state/IO models for agents (single source)
   llm/                      # LLM client, provider ladder, retries
   prompts/                  # long prompt templates, when they outgrow their node file
-  runtime.py                # top-level discovery graph wiring only
 backend/app/
   api/v1/endpoints/<resource>.py   # thin HTTP layer: validate, authorize, call service
   api/deps.py               # auth + ownership dependencies (the ONLY place they live)
@@ -110,7 +112,7 @@ admin_dashboard/
 Treat each of these as a review blocker:
 
 - **Silent failure.** `except Exception: pass`, or returning `""`/`None` for a hard error the caller can't tell apart from "no data". Catch narrowly, log with context (`logger.exception`), and raise or return a typed result.
-- **Missing authorization.** Any route that touches a workspace, project, competitor, account or run without going through the ownership dependency in `api/deps.py`.
+- **Missing authorization.** Any route that touches a Lace (or anything under it: facts, competitors, accounts, contacts, outreach, opportunities, activity) or a run without going through the ownership dependency in `api/deps.py`. `backend/tests/test_ownership.py` walks every Lace route to check this.
 - **Env reads outside settings.** `os.environ`/`getenv`/`load_dotenv` anywhere except root `config.py` (add a field to `Settings` instead), or `import.meta.env` outside `lib/` (frontend).
 - **Dialect-specific code in shared paths.** SQLite-only `connect_args`, raw SQL that only works on one database, or `ALTER TABLE` in app startup.
 - **Blocking the event loop.** Calling sync LLM/HTTP/graph `.invoke()` inside an `async def` without `asyncio.to_thread`, or `time.sleep` in async code.
@@ -130,10 +132,10 @@ Treat each of these as a review blocker:
 
 - **One source of truth per schema.** Agent state models live only in `agents/schemas/`. API shapes live only in `backend/app/schemas/`. Frontend types mirror the API in `lib/api/` and are imported from there, never redeclared in a feature.
 - **Before writing a helper, search for it.** Before adding a function, `grep` for one that already exists, especially in `agents/helpers.py`, `utils/`, `frontend/src/lib/`. Extend it; don't fork a near-copy.
-- **Rule of two.** The second time logic is copied, extract it. This covers shared prompt fragments, serialization of the offer snapshot, fetch-and-404 lookups, store boilerplate, and error-to-message mapping.
+- **Rule of two.** The second time logic is copied, extract it. This covers shared prompt fragments, rendering a Lace's facts for a prompt, fetch-and-404 lookups, store boilerplate, and error-to-message mapping.
 - **One way to do each cross-cutting thing:**
   - DB session: `Depends(get_db)` in routes, `AsyncSessionLocal()` only in the run manager.
-  - Ownership lookup: `get_owned_workspace()` / `get_owned_project()` from `api/deps.py`.
+  - Ownership lookup: `OwnedLace` (`get_owned_lace()`) from `api/deps.py`.
   - LLM call: `agents/llm` (never instantiate a chat model directly in a node).
   - Web search/scrape: `data_sources/scraping` (never call Exa directly from an agent).
   - Frontend HTTP: `apiFetch` in `lib/api` (never bare `fetch` in a component).
@@ -167,7 +169,7 @@ Treat each of these as a review blocker:
 ## Backend rules
 
 - Endpoints stay thin: parse → authorize → call a service → return a response model. Every route declares `response_model`.
-- Every resource route depends on the authenticated user. Every workspace-scoped route resolves the workspace through the ownership dependency, which returns 404 (not 403) for someone else's resource.
+- Every resource route depends on the authenticated user. Every Lace-scoped route resolves the Lace through the ownership dependency (`OwnedLace`), which returns 404 (not 403) for someone else's resource.
 - Agent runs never live inside a request or a WebSocket handler. They're started by the run manager, persisted as a run row plus an event log, and survive client disconnects. WebSockets/SSE only *subscribe* to a run's events.
 - Long-running agent work is cancellable and has a wall-clock timeout. Failures are recorded on the run row with a user-facing message.
 - Per-user rate limits and concurrent-run caps are enforced before a run starts.
@@ -179,6 +181,7 @@ Treat each of these as a review blocker:
 - All LLM access goes through `agents/llm` with a `log_label`. Structured output uses pydantic models from `agents/schemas/`.
 - Prompts never contain secrets or other users' data. Scraped content is treated as untrusted input.
 - Any pydantic model that can reach a checkpoint must live in a module registered with the checkpointer serializer.
+- A Lace tool returns a `ToolResult`; a failure is a result the model reads, never an exception that ends the turn. What a search finds is a suggestion until the founder saves it, and nothing is sent without the founder's click.
 
 ## Frontend rules
 
@@ -196,7 +199,7 @@ Treat each of these as a review blocker:
 - Admin endpoints are read-mostly. Every admin write (suspend a user, cancel a run, change a quota) goes through a service function and writes an `admin_audit_log` row recording who, what, when, and the before and after values.
 - No mock data ships. The template's `data.json` and placeholder nav items are deleted, not hidden.
 - Admin and customer app don't import each other's code. If both need the same API types, the backend's OpenAPI schema is the shared contract.
-- Paginate every list (users, runs, workspaces). Never fetch an unbounded table into the browser.
+- Paginate every list (users, runs, Laces). Never fetch an unbounded table into the browser.
 
 ---
 
