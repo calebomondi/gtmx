@@ -321,3 +321,16 @@ class ContactApproval(BaseModel):
 
 class AccountApprovalResponse(BaseModel):
     approved: int = Field(description="How many people at the account were waiting")
+
+
+# What a search across Laces can find; each opens in its own Lace.
+LaceSearchKind = Literal["lace", "fact", "competitor", "account", "contact", "opportunity", "conversation"]
+
+
+class LaceSearchHit(BaseModel):
+    kind: LaceSearchKind
+    id: uuid.UUID
+    title: str
+    subtitle: str | None = None
+    lace_id: uuid.UUID
+    lace_name: str
