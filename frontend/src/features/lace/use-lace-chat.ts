@@ -27,7 +27,11 @@ import {
   type RunFrame,
 } from "@/lib/api"
 
+import { waitsOnFounder } from "./outreach-threads"
+
 const TERMINAL = new Set(["complete", "error", "cancelled"])
+// How long the founder has to undo a send before the message goes out.
+export const UNDO_SEND_MS = 5_000
 // How often an idle page looks for work the Lace started on its own, such as
 // a turn reporting a finished competitor search.
 const IDLE_POLL_MS = 15_000
@@ -63,15 +67,12 @@ export interface LaceChat {
   dismissAccount: (accountId: string) => Promise<void>
   saveDraft: (messageId: string, changes: LaceOutreachChanges) => Promise<void>
   discardDraft: (messageId: string) => Promise<void>
-  /** Send an email draft (the founder's approval), or mark a LinkedIn one sent. */
-  sendDraft: (messageId: string) => Promise<void>
+  /** Send a draft (the founder's approval) after UNDO_SEND_MS, unless undone. */
+  sendDraft: (messageId: string) => void
+  /** Drafts counting down to being sent. */
+  sendingSoon: ReadonlySet<string>
+  undoSend: (messageId: string) => void
   markSent: (messageId: string) => Promise<void>
-}
-
-/** A draft to review and send, or a reply the Lace has not read yet. */
-function waitsOnFounder(m: LaceOutreachDto): boolean {
-  return (m.direction === "outbound" && m.status === "draft")
-    || (m.direction === "inbound" && m.status === "received" && m.intent === null)
 }
 
 function message(err: unknown): string {
@@ -227,7 +228,34 @@ export function useLaceChat(laceId: string): LaceChat {
       setError(message(err))
     }
   }, [laceId])
-  const sendDraft = useCallback((messageId: string) => replaceOutreach(messageId, sendLaceOutreach), [replaceOutreach])
+  // Sends waiting out their undo window: message id -> timer.
+  const pendingSends = useRef(new Map<string, number>())
+  const [sendingSoon, setSendingSoon] = useState<ReadonlySet<string>>(new Set())
+  const settle = useCallback((messageId: string) => {
+    window.clearTimeout(pendingSends.current.get(messageId))
+    pendingSends.current.delete(messageId)
+    setSendingSoon(new Set(pendingSends.current.keys()))
+  }, [])
+  const sendDraft = useCallback((messageId: string) => {
+    if (pendingSends.current.has(messageId)) return
+    pendingSends.current.set(messageId, window.setTimeout(() => {
+      settle(messageId)
+      void replaceOutreach(messageId, sendLaceOutreach)
+    }, UNDO_SEND_MS))
+    setSendingSoon(new Set(pendingSends.current.keys()))
+  }, [replaceOutreach, settle])
+  const undoSend = useCallback((messageId: string) => settle(messageId), [settle])
+  // Leaving the Lace mid-countdown sends at once: the founder meant to send.
+  useEffect(() => {
+    const pending = pendingSends.current
+    return () => {
+      for (const [messageId, timer] of pending) {
+        window.clearTimeout(timer)
+        void sendLaceOutreach(laceId, messageId).catch(() => undefined) // the draft stays a draft
+      }
+      pending.clear()
+    }
+  }, [laceId])
   const markSent = useCallback((messageId: string) => replaceOutreach(messageId, markLaceOutreachSent), [replaceOutreach])
 
   const send = useCallback(async (text: string) => {
@@ -247,6 +275,7 @@ export function useLaceChat(laceId: string): LaceChat {
   return {
     lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, waiting, drafting, findingOpportunities,
     loading, error,
-    working, step, draft, send, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, markSent,
+    working, step, draft, send, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, sendingSoon,
+    undoSend, markSent,
   }
 }
