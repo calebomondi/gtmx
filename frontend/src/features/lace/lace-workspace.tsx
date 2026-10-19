@@ -82,8 +82,8 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
       </header>
       <div className="relative flex min-h-0 flex-1">
         <LaceRail {...nav} className="absolute top-6 left-4 z-10 hidden md:flex" />
-        <main className={tab === "chat" ? "flex min-h-0 flex-1 flex-col md:pl-20" : "min-h-0 flex-1 overflow-y-auto md:pl-20"}>
-          {tab === "chat" && <LaceConversation chat={chat} name={name} />}
+        <main className={tab === "chat" ? "flex min-h-0 min-w-0 flex-1 flex-col md:pl-20" : "min-h-0 min-w-0 flex-1 overflow-y-auto md:pl-20"}>
+          {tab === "chat" && <LaceConversation chat={chat} name={name} onOpenMessaging={() => select("messaging")} />}
           {tab === "feed" && <LaceFeed laceId={laceId} name={name} chat={chat} activity={activity} onOpen={open} />}
           {tab === "messaging" && <LaceMessaging laceId={laceId} chat={chat} />}
         </main>

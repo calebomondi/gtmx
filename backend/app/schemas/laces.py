@@ -7,6 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from agents.schemas.lace_ui import UiBlock
 from agents.schemas.opportunities import OpportunityKind, OpportunityStatus
 from agents.schemas.lace import AccountStatus, ActivityKind, ActivityRef, ContactSource, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
 
@@ -88,10 +89,15 @@ class FactCorrection(BaseModel):
 class LaceMessage(BaseModel):
     role: Literal["founder", "lace"]
     content: str
+    ui: list[UiBlock] | None = Field(default=None, description="Cards and choices shown under a Lace reply")
 
 
 class LaceMessageRequest(BaseModel):
     text: str = Field(min_length=1, max_length=8000)
+
+
+class JobStartedResponse(BaseModel):
+    run_id: uuid.UUID = Field(description="The background job: the Lace reports back when it is done")
 
 
 class LaceTurnResponse(BaseModel):

@@ -366,3 +366,29 @@ def test_lace_writes_its_brief(client, runtime, user):
         digest, body = conn.execute("SELECT digest, body FROM lace_briefs WHERE lace_id = %s", (lace_id,)).fetchone()
     print(f"\n--- DIGEST\n{digest}\n--- BRIEF\n{body}")
     assert body and "SunCulture" in body
+
+
+def test_lace_shows_cards_and_offers_choices(client, runtime, user):
+    import psycopg
+
+    created = client.post(f"{API}/laces", json={"name": "Ada", "website": "shangalabs.com"}).json()
+    lace_id = created["lace"]["id"]
+    run = client.portal.call(_wait_for_status, uuid.UUID(created["run_id"]), {"completed", "failed"}, ONBOARDING_TIMEOUT_S)
+    assert run.status == "completed", run.error
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        conn.execute("INSERT INTO lace_competitors (id, lace_id, name, website, domain_key, summary) VALUES"
+                     " (%s, %s, 'Fleetsmart', 'https://fleetsmart.test', 'fleetsmart.test', 'Fleet tracking for SMEs')",
+                     (uuid.uuid4(), lace_id))
+
+    def turn(text: str) -> dict:
+        sent = client.post(f"{API}/laces/{lace_id}/messages", json={"text": text}).json()
+        done = client.portal.call(_wait_for_status, uuid.UUID(sent["run_id"]), {"completed", "failed"}, TURN_TIMEOUT_S)
+        assert done.status == "completed", done.error
+        reply = client.get(f"{API}/laces/{lace_id}/messages").json()[-1]
+        print(f"\n--- {text}\n{reply['content']}\n--- ui: {reply.get('ui')}")
+        return reply
+
+    shown = turn("Which competitors are you tracking for us? Show them to me.")
+    assert any(b["type"] == "card" and b["kind"] == "competitor" for b in shown.get("ui") or [])
+    asked = turn("I want to pick our first market: Kenya, Uganda or Nigeria. Give me the options to choose from.")
+    assert any(b["type"] == "choices" for b in asked.get("ui") or [])

@@ -155,6 +155,16 @@ class AccountSummary(BaseModel):
     contacts: list[dict] = Field(default_factory=list, description="People to reach: name, title, email, linkedin")
     channels: dict[str, str] = Field(default_factory=dict, description="The organisation's own pages by platform")
 
+class DraftSummary(BaseModel):
+    """A message the Lace drafted that waits for the founder to send."""
+    id: str
+    channel: str
+    recipient: str = Field(description="The person's name, else their address")
+    company: str
+    subject: str | None = None
+    body: str
+
+
 ContactStatus = Literal["person", "organisation", "none"]
 CONTACT_STATUSES: tuple[str, ...] = ContactStatus.__args__
 

@@ -3,8 +3,10 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import {
   ApiError,
   followRunEvents,
+  findLaceAccountContacts,
   getLace,
   deleteLaceOutreach,
+  dismissLaceOpportunity,
   listActiveRuns,
   listLaceAccounts,
   listLaceCompetitors,
@@ -73,6 +75,10 @@ export interface LaceChat {
   sendingSoon: ReadonlySet<string>
   undoSend: (messageId: string) => void
   markSent: (messageId: string) => Promise<void>
+  /** Look for who to contact at one account, in the background. */
+  findContacts: (accountId: string) => Promise<void>
+  /** "Not for us": the opportunity leaves the Lace's list. True when done. */
+  dismissOpportunity: (opportunityId: string) => Promise<boolean>
 }
 
 function message(err: unknown): string {
@@ -258,6 +264,25 @@ export function useLaceChat(laceId: string): LaceChat {
   }, [laceId])
   const markSent = useCallback((messageId: string) => replaceOutreach(messageId, markLaceOutreachSent), [replaceOutreach])
 
+  const dismissOpportunity = useCallback(async (opportunityId: string) => {
+    try {
+      await dismissLaceOpportunity(laceId, opportunityId)
+      return true
+    } catch (err) {
+      setError(message(err))
+      return false
+    }
+  }, [laceId])
+
+  const findContacts = useCallback(async (accountId: string) => {
+    try {
+      await findLaceAccountContacts(laceId, accountId)
+      await checkRuns()
+    } catch (err) {
+      setError(message(err))
+    }
+  }, [laceId, checkRuns])
+
   const send = useCallback(async (text: string) => {
     setError(null)
     setMessages((prev) => [...prev, { role: "founder", content: text }])
@@ -276,6 +301,6 @@ export function useLaceChat(laceId: string): LaceChat {
     lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, waiting, drafting, findingOpportunities,
     loading, error,
     working, step, draft, send, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, sendingSoon,
-    undoSend, markSent,
+    undoSend, markSent, findContacts, dismissOpportunity,
   }
 }

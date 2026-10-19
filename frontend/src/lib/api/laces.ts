@@ -46,9 +46,33 @@ export interface FactDto {
 /** The founder's verdict on a fact: right, or wrong (it leaves what the Lace knows). */
 export type FactVerdict = "confirmed" | "retracted"
 
+export type CardKind = "competitor" | "account" | "opportunity" | "draft"
+
+/** Answers the founder can click instead of typing. */
+export interface ChoicesBlockDto {
+  type: "choices"
+  question: string
+  options: string[]
+}
+
+/** A snapshot of one saved item, as it was when the Lace showed it. */
+export interface CardBlockDto {
+  type: "card"
+  kind: CardKind
+  id: string
+  title: string
+  subtitle: string | null
+  body: string | null
+  url: string | null
+}
+
+export type UiBlockDto = ChoicesBlockDto | CardBlockDto
+
 export interface LaceMessageDto {
   role: "founder" | "lace"
   content: string
+  /** Cards and choices under a Lace reply. */
+  ui?: UiBlockDto[]
 }
 
 /** The browser's IANA timezone, e.g. "Africa/Nairobi": when the founder's day starts. */
@@ -366,4 +390,9 @@ export interface ContactDto {
 
 export function listLaceContacts(laceId: string): Promise<ContactDto[]> {
   return apiFetch<ContactDto[]>(`/api/v1/laces/${laceId}/contacts`)
+}
+
+/** Look for who to contact at one account; the Lace reports back when done. */
+export function findLaceAccountContacts(laceId: string, accountId: string): Promise<{ run_id: string }> {
+  return apiFetch(`/api/v1/laces/${laceId}/accounts/${accountId}/find-contacts`, { method: "POST" })
 }

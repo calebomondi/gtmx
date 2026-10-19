@@ -15,9 +15,11 @@ from langchain_core.tools import BaseTool, tool
 
 from agents.context_budget import _truncate_to_tokens, count_tokens
 from agents.lace import icp as lace_icp
+from agents.lace.cards import cards
 from agents.lace.store import JobRefused, LaceJobs, LaceStore
 from agents.schemas.opportunities import OPPORTUNITY_KINDS, OpportunityKind
 from agents.schemas.lace import Confidence, FactTopic, NewFact, SourcePage, ToolResult
+from agents.schemas.lace_ui import CardKind, ChoicesBlock
 from config import Settings
 from data_sources.scraping import exa, firecrawl
 from data_sources.scraping.firecrawl import FirecrawlError
@@ -37,6 +39,10 @@ ACCOUNTS_PER_READ = 50
 OPPORTUNITIES_PER_READ = 50
 # Facts the ICP is drawn from.
 ICP_FACTS = 150
+# What one reply can put in front of the founder.
+MAX_CARDS = 6
+MIN_CHOICES, MAX_CHOICES = 2, 5
+CHOICE_CHARS = 60
 
 
 def _guarded(fn: Callable[..., Awaitable[ToolResult]]) -> Callable[..., Awaitable[str]]:
@@ -232,8 +238,47 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
         rows = await store.opportunities(OPPORTUNITIES_PER_READ)
         return ToolResult.success(f"{len(rows)} open opportunities.", [r.model_dump(exclude_none=True) for r in rows])
 
+    @tool(parse_docstring=True)
+    @_guarded
+    async def ask_choice(question: str, options: list[str]) -> ToolResult:
+        """Put a question to the founder with a few answers they can click instead of typing, shown under your reply. Use it when the next step turns on a choice between a few clear options (which country first, which accounts to draft to, whether to go ahead). Then keep your reply short and stop: their click comes back as their next message.
+
+        Args:
+            question: The question, in one short sentence.
+            options: 2 to 5 short answers, each a few words, written as the founder would say them.
+        """
+        options = [o.strip() for o in options if o.strip()]
+        if not question.strip():
+            return ToolResult.failure("The question is empty.")
+        if not MIN_CHOICES <= len(options) <= MAX_CHOICES:
+            return ToolResult.failure(f"Give {MIN_CHOICES} to {MAX_CHOICES} options; got {len(options)}.")
+        if any(len(o) > CHOICE_CHARS for o in options):
+            return ToolResult.failure(f"Keep each option under {CHOICE_CHARS} characters.")
+        block = ChoicesBlock(question=question.strip(), options=options)
+        return ToolResult.success("The founder will see these options under your reply.", {"ui": [block.model_dump()]})
+
+    @tool(parse_docstring=True)
+    @_guarded
+    async def show(kind: CardKind, ids: list[str]) -> ToolResult:
+        """Show the founder saved items as cards under your reply, with buttons to act on them (dismiss, find contacts, send, open). Use it whenever you tell them about specific competitors, accounts, opportunities or drafts, instead of listing their details in your text. Ids come from list_competitors, list_accounts, list_opportunities or an update.
+
+        Args:
+            kind: What the ids are: competitor, account, opportunity or draft.
+            ids: Up to 6 ids, in the order to show them.
+        """
+        if not ids:
+            return ToolResult.failure("No ids given.")
+        if len(ids) > MAX_CARDS:
+            return ToolResult.failure(f"Show at most {MAX_CARDS} at a time; got {len(ids)}.")
+        shown, missing = await cards(store, kind, ids)
+        if not shown:
+            return ToolResult.failure(f"No saved {kind} has any of those ids.")
+        note = f" Not found: {', '.join(missing)}." if missing else ""
+        return ToolResult.success(f"The founder will see {len(shown)} {kind} card(s) under your reply.{note}",
+                                  {"ui": [c.model_dump() for c in shown]})
+
     tools = [search_web, map_site, read_page, read_pages, get_facts, record_fact, list_competitors, define_icp,
-             list_accounts, list_opportunities]
+             list_accounts, list_opportunities, ask_choice, show]
     if jobs is None:
         return tools
 

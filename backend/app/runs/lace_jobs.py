@@ -232,7 +232,8 @@ async def drafts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> Non
                 logger.exception("Drafting to %s failed", name)
                 failed.append(name)
                 return None
-        return LaceOutreach(lace_id=lace_id, user_id=user_id, account_id=account_id, run_id=run_id,
+        # The id is set here, not at flush, so the update can name it.
+        return LaceOutreach(id=uuid.uuid4(), lace_id=lace_id, user_id=user_id, account_id=account_id, run_id=run_id,
                             channel=recipient.channel, recipient_name=recipient.name, recipient_company=name[:255],
                             recipient_address=recipient.address, subject=written.subject or None, body=written.body)
 
@@ -253,7 +254,7 @@ async def drafts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> Non
 def drafts_update(drafts: list[LaceOutreach], unreachable: list[str], failed: list[str]) -> str:
     if not drafts and not unreachable and not failed:
         return "There was no account to draft for: every target with someone to reach already has a message."
-    lines = [f"{d.recipient_company}: to {d.recipient_name or d.recipient_address} by {d.channel}"
+    lines = [f"{d.recipient_company} [draft {d.id}]: to {d.recipient_name or d.recipient_address} by {d.channel}"
              + (f', subject "{d.subject}"' if d.subject else "") for d in drafts]
     if unreachable:
         lines.append("Not drafted, nobody to reach yet (use find_contacts): " + ", ".join(unreachable))
