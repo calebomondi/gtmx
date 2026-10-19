@@ -95,6 +95,9 @@ def test_a_reply_is_read_answered_as_a_draft_and_reported(client, lace, lace_run
         assert conn.execute("SELECT thread_id FROM lace_outreach WHERE status = 'draft'").fetchone()[0] == "t_1"
         assert conn.execute("SELECT intent FROM lace_outreach WHERE direction = 'inbound'").fetchone()[0] == "question"
         assert conn.execute("SELECT count(*) FROM signals").fetchone()[0] == 0  # the Lace tells the founder itself
+        kind, title, ref_type, ref_id = conn.execute("SELECT kind, title, ref_type, ref_id FROM lace_activity").fetchone()
+        assert (kind, title, ref_type, str(ref_id)) == ("reply_received", "SunCulture replied (question)", "outreach",
+                                                        inbound["id"])
     # Synced once: the same message is not stored twice.
     assert client.portal.call(scheduler.sync_inboxes) == 0
 
