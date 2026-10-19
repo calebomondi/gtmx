@@ -46,7 +46,8 @@ def test_opportunities_are_found_listed_and_reported(client, lace, lace_runtime,
     assert run.progress == {"found": 2, "new": 2, "refreshed": 0}
     update = turns[-1].input["updates"][0]
     assert update.index("IoT sensors tender") < update.index("Agritech Expo")  # soonest first
-    listed = client.get(f"{API}/laces/{lace}/opportunities").json()
+    assert client.get(f"{API}/laces/{lace}/opportunities").json() == []  # nothing saved yet
+    listed = client.get(f"{API}/laces/{lace}/opportunities?status=suggested").json()
     assert [o["title"] for o in listed] == ["IoT sensors tender", "Agritech Expo"]
     assert listed[0]["deadline"] == SOON and listed[0]["how_to_act"] == "Apply now."
 
@@ -60,7 +61,7 @@ def test_closed_ones_are_hidden_and_dismissal_sticks(client, lace, lace_runtime,
     lace_runtime.extend([AIMessage(content="One."), AIMessage(content="Again.")])
     run = client.portal.call(manager.start_lace_job, "lace_opportunities", user.id, uuid.UUID(lace), {})
     client.portal.call(_wait_for_status, run.id, {"completed"})
-    [open_one] = client.get(f"{API}/laces/{lace}/opportunities").json()
+    [open_one] = client.get(f"{API}/laces/{lace}/opportunities?status=suggested").json()
     assert open_one["title"] == "Reseller programme"
     client.patch(f"{API}/laces/{lace}/opportunities/{open_one['id']}", json={"status": "dismissed"})
     client.portal.call(_wait_for_turns, lace, 1)

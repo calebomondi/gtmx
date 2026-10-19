@@ -297,7 +297,7 @@ def accounts_update(found: list, new: int, refreshed: int, country: str | None) 
         lines.append(line)
     return (f"The search for target accounts{where} finished: {len(found)} accounts ({new} new, {refreshed} "
             "already on file), each with a current trigger:\n" + "\n".join(lines)
-            + "\nThey are saved; use list_accounts for the full cases, and find_contacts to find who to reach.")
+            + "\nNew ones wait for the founder to save or dismiss: show them (ids from list_suggestions); once saved, find_contacts finds who to reach.")
 
 
 def monitor_update(moves: list) -> str:
@@ -320,7 +320,7 @@ def competitors_update(found: list, new: int, refreshed: int) -> str:
                 "(a real website, competing for the same buyers).")
     names = ", ".join(f"{p.name} ({p.website})" for p in found)
     return (f"The competitor search finished: {len(found)} competitors ({new} new, {refreshed} already tracked): "
-            f"{names}. Their profiles are saved; use list_competitors for details.")
+            f"{names}. New ones wait for the founder to save or dismiss: show them (ids from list_suggestions).")
 
 
 async def reply_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
@@ -420,4 +420,4 @@ def opportunities_update(found: list, new: int) -> str:
         when = f" (deadline {o.deadline})" if o.deadline else f" ({o.date})" if o.date else ""
         lines.append(f"[{o.kind}] {o.title}{when}: {o.why_it_fits} Next step: {o.how_to_act} ({o.url})")
     return (f"The opportunity search found {len(found)} open opportunities ({new} new):\n" + "\n".join(lines)
-            + "\nThey are saved; use list_opportunities for all of them.")
+            + "\nNew ones wait for the founder to save or dismiss: show them (ids from list_suggestions).")

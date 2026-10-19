@@ -50,12 +50,18 @@ def test_search_saves_accounts_and_the_lace_reports_back(client, lace, lace_runt
     assert seen == {"exclude": ["acme.test", "rival.test"], "country": "Kenya", "industries": ["Clinics"]}
     update = turns[-1].input["updates"][0]
     assert "in Kenya finished: 3 accounts (3 new, 0 already on file)" in update and "Strong raised a round" in update
-    accounts = client.get(f"{API}/laces/{lace}/accounts").json()
+    # Found accounts wait for the founder: none is a target until saved.
+    assert client.get(f"{API}/laces/{lace}/accounts").json() == []
+    accounts = client.get(f"{API}/laces/{lace}/accounts?status=suggested").json()
     assert [a["name"] for a in accounts] == ["Strong", "Weak", "Unmade"]  # strongest case first
     top = accounts[0]
     assert top["trigger"]["event"] == "Strong raised a round" and top["case"]["strength"] == "strong"
     assert accounts[2]["case"] is None
     assert client.get(f"{API}/laces/{lace}/messages").json()[-1]["content"] == "Strong raised a round and needs payroll."
+    saved = client.patch(f"{API}/laces/{lace}/accounts/{top['id']}", json={"status": "target"}).json()
+    assert saved["status"] == "target"
+    assert [a["name"] for a in client.get(f"{API}/laces/{lace}/accounts").json()] == ["Strong"]
+    assert client.patch(f"{API}/laces/{lace}/accounts/{top['id']}", json={"status": "suggested"}).status_code == 422
 
 
 def test_no_icp_means_the_search_fails_and_says_so(client, lace, lace_runtime, user):  # noqa: F811
@@ -74,7 +80,7 @@ def test_a_dismissed_account_stays_dismissed(client, lace, lace_runtime, user, m
     run = client.portal.call(manager.start_lace_job, "lace_accounts", user.id, uuid.UUID(lace), {})
     client.portal.call(_wait_for_status, run.id, {"completed"})
     client.portal.call(_wait_for_turns, lace, 1)
-    [alpha] = client.get(f"{API}/laces/{lace}/accounts").json()
+    [alpha] = client.get(f"{API}/laces/{lace}/accounts?status=suggested").json()
     assert client.patch(f"{API}/laces/{lace}/accounts/{alpha['id']}", json={"status": "dismissed"}).status_code == 200
 
     run = client.portal.call(manager.start_lace_job, "lace_accounts", user.id, uuid.UUID(lace), {})

@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Check, ExternalLink, Loader2, Search, Send, Undo2, X } from "lucide-react"
+import { Bookmark, Check, ExternalLink, Loader2, Search, Send, Undo2, X } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -39,17 +39,29 @@ function Actions({ card, state, chat, onReview }: {
   chat: LaceChat
   onReview: () => void
 }) {
-  const [dismissed, setDismissed] = useState(false)
+  const [decided, setDecided] = useState<"open" | "dismissed" | null>(null)
   switch (state.kind) {
     case "competitor":
-      return state.tracked ? (
+      if (state.standing === "gone") return <Badge variant="secondary">Dismissed</Badge>
+      return (
         <>
+          {state.standing === "suggested" && (
+            <Button size="sm" onClick={() => void chat.saveCompetitor(card.id)}><Bookmark /> Track</Button>
+          )}
           <OpenLink url={card.url} />
           <Button size="sm" variant="ghost" onClick={() => void chat.dismissCompetitor(card.id)}><X /> Not a competitor</Button>
         </>
-      ) : <Badge variant="secondary">Dismissed</Badge>
+      )
     case "account": {
-      if (!state.account) return <Badge variant="secondary">Dismissed</Badge>
+      if (state.standing === "gone" || !state.account) return <Badge variant="secondary">Dismissed</Badge>
+      if (state.standing === "suggested") {
+        return (
+          <>
+            <Button size="sm" onClick={() => void chat.saveAccount(card.id)}><Bookmark /> Save</Button>
+            <Button size="sm" variant="ghost" onClick={() => void chat.dismissAccount(card.id)}><X /> Dismiss</Button>
+          </>
+        )
+      }
       const line = contactsLine(state.account)
       return (
         <>
@@ -65,15 +77,18 @@ function Actions({ card, state, chat, onReview }: {
         </>
       )
     }
-    case "opportunity":
-      return dismissed ? <Badge variant="secondary">Not for us</Badge> : (
+    case "opportunity": {
+      const decide = (status: "open" | "dismissed") =>
+        void chat.decideOpportunity(card.id, status).then((done) => done && setDecided(status))
+      if (decided) return <Badge variant="secondary">{decided === "open" ? <><Check /> Saved</> : "Not for us"}</Badge>
+      return (
         <>
+          <Button size="sm" onClick={() => decide("open")}><Bookmark /> Save</Button>
           <OpenLink url={card.url} />
-          <Button size="sm" variant="ghost" onClick={() => void chat.dismissOpportunity(card.id).then(setDismissed)}>
-            <X /> Not for us
-          </Button>
+          <Button size="sm" variant="ghost" onClick={() => decide("dismissed")}><X /> Not for us</Button>
         </>
       )
+    }
     case "draft": {
       const message = state.message
       if (!message) return <Badge variant="secondary">Discarded</Badge>
@@ -100,13 +115,16 @@ function Actions({ card, state, chat, onReview }: {
   }
 }
 
-function LaceCard({ card, chat, competitorIds, onReview }: {
+function LaceCard({ card, chat, ids, onReview }: {
   card: CardBlockDto
   chat: LaceChat
-  competitorIds: ReadonlySet<string>
+  ids: { saved: ReadonlySet<string>; suggested: ReadonlySet<string> }
   onReview: () => void
 }) {
-  const state = cardState(card, { competitorIds, accounts: chat.accounts, outreach: chat.outreach })
+  const state = cardState(card, {
+    competitorIds: ids.saved, suggestedCompetitorIds: ids.suggested, accounts: chat.accounts,
+    suggestedAccounts: chat.suggestedAccounts, outreach: chat.outreach,
+  })
   return (
     <Card size="sm" className="gap-2">
       <CardHeader>
@@ -129,7 +147,10 @@ export function ChatBlocks({ blocks, chat, live, onReview }: {
   live: boolean
   onReview: () => void
 }) {
-  const competitorIds = new Set(chat.competitors.map((c) => c.id))
+  const ids = {
+    saved: new Set(chat.competitors.map((c) => c.id)),
+    suggested: new Set(chat.suggestedCompetitors.map((c) => c.id)),
+  }
   const cards = blocks.filter((b): b is CardBlockDto => b.type === "card")
   const choices = blocks.filter((b): b is ChoicesBlockDto => b.type === "choices")
   return (
@@ -137,7 +158,7 @@ export function ChatBlocks({ blocks, chat, live, onReview }: {
       {cards.length > 0 && (
         <div className="grid gap-2 sm:grid-cols-2">
           {cards.map((card) => (
-            <LaceCard key={`${card.kind}:${card.id}`} card={card} chat={chat} competitorIds={competitorIds} onReview={onReview} />
+            <LaceCard key={`${card.kind}:${card.id}`} card={card} chat={chat} ids={ids} onReview={onReview} />
           ))}
         </div>
       )}

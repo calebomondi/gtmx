@@ -119,7 +119,8 @@ export function sendLaceMessage(laceId: string, text: string): Promise<{ run_id:
   return apiFetch(`/api/v1/laces/${laceId}/messages`, { method: "POST", body: JSON.stringify({ text }) })
 }
 
-export type CompetitorStatus = "tracked" | "dismissed"
+/** suggested: a search found it and it waits for the founder to save (tracked) or dismiss. */
+export type CompetitorStatus = "suggested" | "tracked" | "dismissed"
 
 export interface LaceCompetitorDto {
   id: string
@@ -136,14 +137,15 @@ export function listLaceCompetitors(laceId: string, status: CompetitorStatus = "
   return apiFetch<LaceCompetitorDto[]>(`/api/v1/laces/${laceId}/competitors?status=${status}`)
 }
 
-export function setLaceCompetitorStatus(laceId: string, competitorId: string, status: CompetitorStatus): Promise<LaceCompetitorDto> {
+export function setLaceCompetitorStatus(laceId: string, competitorId: string, status: Exclude<CompetitorStatus, "suggested">): Promise<LaceCompetitorDto> {
   return apiFetch(`/api/v1/laces/${laceId}/competitors/${competitorId}`, {
     method: "PATCH",
     body: JSON.stringify({ status }),
   })
 }
 
-export type AccountStatus = "target" | "dismissed"
+/** suggested: a search found it and it waits for the founder to save (target) or dismiss. */
+export type AccountStatus = "suggested" | "target" | "dismissed"
 
 export interface LaceAccountDto {
   id: string
@@ -170,7 +172,7 @@ export function listLaceAccounts(laceId: string, status: AccountStatus = "target
   return apiFetch<LaceAccountDto[]>(`/api/v1/laces/${laceId}/accounts?status=${status}`)
 }
 
-export function setLaceAccountStatus(laceId: string, accountId: string, status: AccountStatus): Promise<LaceAccountDto> {
+export function setLaceAccountStatus(laceId: string, accountId: string, status: Exclude<AccountStatus, "suggested">): Promise<LaceAccountDto> {
   return apiFetch(`/api/v1/laces/${laceId}/accounts/${accountId}`, { method: "PATCH", body: JSON.stringify({ status }) })
 }
 
@@ -258,6 +260,8 @@ export function unlinkLaceChannel(laceId: string, channelId: string): Promise<vo
 }
 
 export type OpportunityKind = "showcase" | "sell" | "partner"
+/** suggested: a search found it and it waits for the founder to save (open) or dismiss. */
+export type OpportunityStatus = "suggested" | "open" | "dismissed"
 
 export interface LaceOpportunityDto {
   id: string
@@ -270,18 +274,20 @@ export interface LaceOpportunityDto {
   location: string | null
   why_it_fits: string
   how_to_act: string
-  status: "open" | "dismissed"
+  status: OpportunityStatus
   first_seen_at: string
 }
 
 /** Open opportunities (none past their deadline or date), soonest first. */
-export function listLaceOpportunities(laceId: string): Promise<LaceOpportunityDto[]> {
-  return apiFetch<LaceOpportunityDto[]>(`/api/v1/laces/${laceId}/opportunities`)
+export function listLaceOpportunities(laceId: string, status: OpportunityStatus = "open"): Promise<LaceOpportunityDto[]> {
+  return apiFetch<LaceOpportunityDto[]>(`/api/v1/laces/${laceId}/opportunities?status=${status}`)
 }
 
-export function dismissLaceOpportunity(laceId: string, opportunityId: string): Promise<LaceOpportunityDto> {
+/** Save an opportunity (open) or drop it (dismissed: not for us). */
+export function setLaceOpportunityStatus(laceId: string, opportunityId: string,
+                                         status: Exclude<OpportunityStatus, "suggested">): Promise<LaceOpportunityDto> {
   return apiFetch(`/api/v1/laces/${laceId}/opportunities/${opportunityId}`, {
-    method: "PATCH", body: JSON.stringify({ status: "dismissed" }),
+    method: "PATCH", body: JSON.stringify({ status }),
   })
 }
 

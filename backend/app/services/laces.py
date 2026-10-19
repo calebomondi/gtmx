@@ -7,7 +7,15 @@ from datetime import UTC, datetime
 from sqlalchemy import Select, and_, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.database.lace_models import Lace, LaceActivity, LaceFact, LaceOutreach
+from backend.app.database.lace_models import (
+    Lace,
+    LaceAccount,
+    LaceActivity,
+    LaceCompetitor,
+    LaceFact,
+    LaceOpportunity,
+    LaceOutreach,
+)
 from backend.app.database.models import Run
 from backend.app.schemas.laces import FactVerdict, LaceMood
 from backend.app.services.runs import TERMINAL_STATUSES
@@ -46,7 +54,8 @@ class LaceSummary:
 async def list_for_user(db: AsyncSession, user_id: uuid.UUID, limit: int) -> list[LaceSummary]:
     """The user's Laces, most recently active first, each with its mood:
     thinking while a run is unfinished, alert while something waits on the
-    founder (a draft to send, a reply not yet read, activity not yet seen)."""
+    founder (a draft to send, a reply not yet read, activity not yet seen, a
+    suggestion to save or dismiss)."""
     working = exists().where(Run.lace_id == Lace.id, Run.status.not_in(TERMINAL_STATUSES))
     waiting = or_(
         exists().where(LaceOutreach.lace_id == Lace.id, or_(
@@ -54,6 +63,8 @@ async def list_for_user(db: AsyncSession, user_id: uuid.UUID, limit: int) -> lis
             and_(LaceOutreach.direction == "inbound", LaceOutreach.status == "received", LaceOutreach.intent.is_(None)),
         )),
         exists().where(LaceActivity.lace_id == Lace.id, LaceActivity.read_at.is_(None)),
+        *(exists().where(model.lace_id == Lace.id, model.status == "suggested")
+          for model in (LaceCompetitor, LaceAccount, LaceOpportunity)),
     )
     last_run = select(func.max(Run.created_at)).where(Run.lace_id == Lace.id).correlate(Lace).scalar_subquery()
     last_active = func.coalesce(last_run, Lace.created_at)

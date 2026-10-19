@@ -44,14 +44,16 @@ def draft_card(d: DraftSummary) -> CardBlock:
 
 
 async def cards(store: LaceStore, kind: CardKind, ids: Sequence[str]) -> tuple[list[CardBlock], list[str]]:
-    """Cards for the saved items with these ids, in the order asked, and the
-    ids that matched nothing of that kind."""
-    if kind == "competitor":
-        found = {c.id: competitor_card(c) for c in await store.competitors(LOOKUP_LIMIT)}
-    elif kind == "account":
-        found = {a.id: account_card(a) for a in await store.accounts(LOOKUP_LIMIT)}
-    elif kind == "opportunity":
-        found = {o.id: opportunity_card(o) for o in await store.opportunities(LOOKUP_LIMIT)}
-    else:
+    """Cards for the saved or suggested items with these ids, in the order
+    asked, and the ids that matched nothing of that kind."""
+    if kind == "draft":
         found = {d.id: draft_card(d) for d in await store.drafts(LOOKUP_LIMIT)}
+        return [found[i] for i in ids if i in found], [i for i in ids if i not in found]
+    suggested = await store.suggestions(LOOKUP_LIMIT)
+    if kind == "competitor":
+        found = {c.id: competitor_card(c) for c in [*await store.competitors(LOOKUP_LIMIT), *suggested.competitors]}
+    elif kind == "account":
+        found = {a.id: account_card(a) for a in [*await store.accounts(LOOKUP_LIMIT), *suggested.accounts]}
+    else:
+        found = {o.id: opportunity_card(o) for o in [*await store.opportunities(LOOKUP_LIMIT), *suggested.opportunities]}
     return [found[i] for i in ids if i in found], [i for i in ids if i not in found]

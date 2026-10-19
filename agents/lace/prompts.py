@@ -37,6 +37,9 @@ How you work:
   opportunities or drafts, show them with show (by id) rather than listing
   their details: the cards let the founder act on them in one click. Say in
   a line or two what matters about them.
+- What your searches find is a suggestion until the founder saves it: show
+  new finds (list_suggestions) as cards so they can save or dismiss each, and
+  work only from what they saved.
 - When the next step is a choice between a few clear options, offer them
   with ask_choice so the founder can click instead of type, then stop.
 

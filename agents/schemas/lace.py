@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from agents.schemas.coercion import LenientModel
 from agents.schemas.competition import ProfileSkeleton
+from agents.schemas.opportunities import OpportunitySummary
 
 FactTopic = Literal[
     "company",      # who the startup is: name, location, team, stage
@@ -121,7 +122,8 @@ class CompetitorHuntBrief(LenientModel):
     profile: ProfileSkeleton = Field(description="The kinds of company that compete for this startup's buyers")
 
 
-CompetitorStatus = Literal["tracked", "dismissed"]
+# suggested: found by a search, waiting for the founder to save (tracked) or dismiss it.
+CompetitorStatus = Literal["suggested", "tracked", "dismissed"]
 COMPETITOR_STATUSES: tuple[str, ...] = CompetitorStatus.__args__
 CompetitorOrigin = Literal["found", "founder"]
 COMPETITOR_ORIGINS: tuple[str, ...] = CompetitorOrigin.__args__
@@ -137,7 +139,8 @@ class CompetitorSummary(BaseModel):
 
 
 
-AccountStatus = Literal["target", "dismissed"]
+# suggested: found by a search, waiting for the founder to save (target) or dismiss it.
+AccountStatus = Literal["suggested", "target", "dismissed"]
 ACCOUNT_STATUSES: tuple[str, ...] = AccountStatus.__args__
 
 
@@ -154,6 +157,17 @@ class AccountSummary(BaseModel):
     contact_status: str | None = Field(default=None, description="person | organisation | none; unset until contacts were looked for")
     contacts: list[dict] = Field(default_factory=list, description="People to reach: name, title, email, linkedin")
     channels: dict[str, str] = Field(default_factory=dict, description="The organisation's own pages by platform")
+
+class Suggestions(BaseModel):
+    """What searches found that the founder has not saved or dismissed yet."""
+    competitors: list[CompetitorSummary] = Field(default_factory=list)
+    accounts: list[AccountSummary] = Field(default_factory=list)
+    opportunities: list[OpportunitySummary] = Field(default_factory=list)
+
+    @property
+    def empty(self) -> bool:
+        return not (self.competitors or self.accounts or self.opportunities)
+
 
 class DraftSummary(BaseModel):
     """A message the Lace drafted that waits for the founder to send."""

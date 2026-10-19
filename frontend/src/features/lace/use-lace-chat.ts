@@ -6,7 +6,7 @@ import {
   findLaceAccountContacts,
   getLace,
   deleteLaceOutreach,
-  dismissLaceOpportunity,
+  setLaceOpportunityStatus,
   listActiveRuns,
   listLaceAccounts,
   listLaceCompetitors,
@@ -43,9 +43,13 @@ export interface LaceChat {
   messages: LaceMessageDto[]
   facts: FactDto[]
   competitors: LaceCompetitorDto[]
+  /** Competitors a search found, waiting for the founder to save or dismiss. */
+  suggestedCompetitors: LaceCompetitorDto[]
   /** A background competitor search is running. */
   searching: boolean
   accounts: LaceAccountDto[]
+  /** Accounts a search found, waiting for the founder to save or dismiss. */
+  suggestedAccounts: LaceAccountDto[]
   /** A background search for target accounts, or for their contacts, is running. */
   findingAccounts: boolean
   outreach: LaceOutreachDto[]
@@ -77,8 +81,10 @@ export interface LaceChat {
   markSent: (messageId: string) => Promise<void>
   /** Look for who to contact at one account, in the background. */
   findContacts: (accountId: string) => Promise<void>
-  /** "Not for us": the opportunity leaves the Lace's list. True when done. */
-  dismissOpportunity: (opportunityId: string) => Promise<boolean>
+  saveCompetitor: (competitorId: string) => Promise<void>
+  saveAccount: (accountId: string) => Promise<void>
+  /** Save an opportunity (open) or drop it (dismissed). True when done. */
+  decideOpportunity: (opportunityId: string, status: "open" | "dismissed") => Promise<boolean>
 }
 
 function message(err: unknown): string {
@@ -94,8 +100,10 @@ export function useLaceChat(laceId: string): LaceChat {
   const [messages, setMessages] = useState<LaceMessageDto[]>([])
   const [facts, setFacts] = useState<FactDto[]>([])
   const [competitors, setCompetitors] = useState<LaceCompetitorDto[]>([])
+  const [suggestedCompetitors, setSuggestedCompetitors] = useState<LaceCompetitorDto[]>([])
   const [searching, setSearching] = useState(false)
   const [accounts, setAccounts] = useState<LaceAccountDto[]>([])
+  const [suggestedAccounts, setSuggestedAccounts] = useState<LaceAccountDto[]>([])
   const [findingAccounts, setFindingAccounts] = useState(false)
   const [outreach, setOutreach] = useState<LaceOutreachDto[]>([])
   const [drafting, setDrafting] = useState(false)
@@ -110,15 +118,19 @@ export function useLaceChat(laceId: string): LaceChat {
   const busy = useRef(false)
 
   const refresh = useCallback(async () => {
-    const [nextLace, nextMessages, nextFacts, nextCompetitors, nextAccounts, nextOutreach] = await Promise.all([
-      getLace(laceId), listLaceMessages(laceId), listLaceFacts(laceId), listLaceCompetitors(laceId),
-      listLaceAccounts(laceId), listLaceOutreach(laceId),
+    const [nextLace, nextMessages, nextFacts, nextCompetitors, nextSuggestedCompetitors, nextAccounts,
+      nextSuggestedAccounts, nextOutreach] = await Promise.all([
+      getLace(laceId), listLaceMessages(laceId), listLaceFacts(laceId), listLaceCompetitors(laceId, "tracked"),
+      listLaceCompetitors(laceId, "suggested"), listLaceAccounts(laceId, "target"),
+      listLaceAccounts(laceId, "suggested"), listLaceOutreach(laceId),
     ])
     setLace(nextLace)
     setMessages(nextMessages)
     setFacts(nextFacts)
     setCompetitors(nextCompetitors)
+    setSuggestedCompetitors(nextSuggestedCompetitors)
     setAccounts(nextAccounts)
+    setSuggestedAccounts(nextSuggestedAccounts)
     setOutreach(nextOutreach)
   }, [laceId])
 
@@ -190,23 +202,34 @@ export function useLaceChat(laceId: string): LaceChat {
     return () => clearInterval(timer)
   }, [working, checkRuns])
 
-  const dismissCompetitor = useCallback(async (competitorId: string) => {
+  // Saving moves an item from suggested to saved; dismissing drops it from both.
+  const decideCompetitor = useCallback(async (competitorId: string, status: "tracked" | "dismissed") => {
     try {
-      await setLaceCompetitorStatus(laceId, competitorId, "dismissed")
-      setCompetitors((prev) => prev.filter((c) => c.id !== competitorId))
+      const updated = await setLaceCompetitorStatus(laceId, competitorId, status)
+      setSuggestedCompetitors((prev) => prev.filter((c) => c.id !== competitorId))
+      setCompetitors((prev) => status === "tracked"
+        ? [updated, ...prev.filter((c) => c.id !== competitorId)]
+        : prev.filter((c) => c.id !== competitorId))
     } catch (err) {
       setError(message(err))
     }
   }, [laceId])
+  const dismissCompetitor = useCallback((id: string) => decideCompetitor(id, "dismissed"), [decideCompetitor])
+  const saveCompetitor = useCallback((id: string) => decideCompetitor(id, "tracked"), [decideCompetitor])
 
-  const dismissAccount = useCallback(async (accountId: string) => {
+  const decideAccount = useCallback(async (accountId: string, status: "target" | "dismissed") => {
     try {
-      await setLaceAccountStatus(laceId, accountId, "dismissed")
-      setAccounts((prev) => prev.filter((a) => a.id !== accountId))
+      const updated = await setLaceAccountStatus(laceId, accountId, status)
+      setSuggestedAccounts((prev) => prev.filter((a) => a.id !== accountId))
+      setAccounts((prev) => status === "target"
+        ? [...prev.filter((a) => a.id !== accountId), updated]
+        : prev.filter((a) => a.id !== accountId))
     } catch (err) {
       setError(message(err))
     }
   }, [laceId])
+  const dismissAccount = useCallback((id: string) => decideAccount(id, "dismissed"), [decideAccount])
+  const saveAccount = useCallback((id: string) => decideAccount(id, "target"), [decideAccount])
 
   const saveDraft = useCallback(async (messageId: string, changes: LaceOutreachChanges) => {
     try {
@@ -264,9 +287,9 @@ export function useLaceChat(laceId: string): LaceChat {
   }, [laceId])
   const markSent = useCallback((messageId: string) => replaceOutreach(messageId, markLaceOutreachSent), [replaceOutreach])
 
-  const dismissOpportunity = useCallback(async (opportunityId: string) => {
+  const decideOpportunity = useCallback(async (opportunityId: string, status: "open" | "dismissed") => {
     try {
-      await dismissLaceOpportunity(laceId, opportunityId)
+      await setLaceOpportunityStatus(laceId, opportunityId, status)
       return true
     } catch (err) {
       setError(message(err))
@@ -301,6 +324,7 @@ export function useLaceChat(laceId: string): LaceChat {
     lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, waiting, drafting, findingOpportunities,
     loading, error,
     working, step, draft, send, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, sendingSoon,
-    undoSend, markSent, findContacts, dismissOpportunity,
+    undoSend, markSent, findContacts, saveCompetitor, saveAccount, decideOpportunity, suggestedCompetitors,
+    suggestedAccounts,
   }
 }

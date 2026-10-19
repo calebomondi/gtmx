@@ -37,6 +37,11 @@ async def _contact_search(lace_id, name, contacts):
         await lace_accounts.save_contacts(db, account.id, record)
 
 
+def _save_accounts(lace_id):
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        conn.execute("UPDATE lace_accounts SET status = 'target' WHERE lace_id = %s", (lace_id,))
+
+
 def _contacts(client, lace_id):
     return client.get(f"{API}/laces/{lace_id}/contacts").json()
 
@@ -44,6 +49,8 @@ def _contacts(client, lace_id):
 def test_searches_fill_contacts_one_row_per_person(client, lace):  # noqa: F811
     record, fit = _found("SunCulture", "strong")
     client.portal.call(_search, lace, (record.model_copy(update={"key_contacts": [AMINA]}), fit))
+    assert _contacts(client, lace) == []  # the account is only suggested
+    _save_accounts(lace)
     [row] = _contacts(client, lace)
     assert (row["name"], row["email"], row["account_name"], row["source"]) == (
         "Amina Otieno", "Amina@SunCulture.test", "SunCulture", "discovery")

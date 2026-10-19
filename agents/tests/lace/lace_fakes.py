@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from langchain_core.messages import AIMessage
 
 from agents.lace.store import JobRefused
-from agents.schemas.lace import CompetitorSummary, DraftSummary, Fact, LaceProfile, NewFact, SourcePage
+from agents.schemas.lace import CompetitorSummary, DraftSummary, Fact, Suggestions, LaceProfile, NewFact, SourcePage
 
 
 class MemoryStore:
@@ -16,6 +16,7 @@ class MemoryStore:
         self.sources: dict[str, SourcePage] = {}
         self.tracked: list[CompetitorSummary] = []
         self.drafted: list[DraftSummary] = []
+        self.suggested = Suggestions()
         self.saved_icp = None
         self.targets: list = []
         self._ids = itertools.count(len(self._facts) + 1)
@@ -52,6 +53,9 @@ class MemoryStore:
 
     async def drafts(self, limit=50):
         return self.drafted[:limit]
+
+    async def suggestions(self, limit=50):
+        return self.suggested
 
     async def icp(self):
         return self.saved_icp

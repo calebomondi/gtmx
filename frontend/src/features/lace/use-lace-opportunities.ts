@@ -1,34 +1,62 @@
 import { useCallback, useEffect, useState } from "react"
 
-import { dismissLaceOpportunity, listLaceOpportunities, type LaceOpportunityDto } from "@/lib/api"
+import { listLaceOpportunities, setLaceOpportunityStatus, type LaceOpportunityDto } from "@/lib/api"
 
 function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
-/** A Lace's open opportunities, loaded when shown. */
-export function useLaceOpportunities(laceId: string) {
+export interface LaceOpportunities {
+  /** Saved and still open. */
+  opportunities: LaceOpportunityDto[]
+  /** Found by a search, waiting for the founder. */
+  suggested: LaceOpportunityDto[]
+  loading: boolean
+  error: string | null
+  save: (id: string) => Promise<void>
+  dismiss: (id: string) => Promise<void>
+}
+
+/** A Lace's open opportunities and the ones waiting to be saved. Refetched
+ * when `refreshKey` changes (a search finished). */
+export function useLaceOpportunities(laceId: string, refreshKey = ""): LaceOpportunities {
   const [opportunities, setOpportunities] = useState<LaceOpportunityDto[]>([])
+  const [suggested, setSuggested] = useState<LaceOpportunityDto[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    listLaceOpportunities(laceId)
-      .then((rows) => !cancelled && setOpportunities(rows))
+    Promise.all([listLaceOpportunities(laceId, "open"), listLaceOpportunities(laceId, "suggested")])
+      .then(([saved, waiting]) => {
+        if (cancelled) return
+        setOpportunities(saved)
+        setSuggested(waiting)
+      })
       .catch((err) => !cancelled && setError(message(err)))
       .finally(() => !cancelled && setLoading(false))
     return () => { cancelled = true }
-  }, [laceId])
+  }, [laceId, refreshKey])
 
-  const dismiss = useCallback(async (id: string) => {
+  const save = useCallback(async (id: string) => {
     try {
-      await dismissLaceOpportunity(laceId, id)
-      setOpportunities((prev) => prev.filter((o) => o.id !== id))
+      const saved = await setLaceOpportunityStatus(laceId, id, "open")
+      setSuggested((prev) => prev.filter((o) => o.id !== id))
+      setOpportunities((prev) => [...prev, saved])
     } catch (err) {
       setError(message(err))
     }
   }, [laceId])
 
-  return { opportunities, loading, error, dismiss }
+  const dismiss = useCallback(async (id: string) => {
+    try {
+      await setLaceOpportunityStatus(laceId, id, "dismissed")
+      setOpportunities((prev) => prev.filter((o) => o.id !== id))
+      setSuggested((prev) => prev.filter((o) => o.id !== id))
+    } catch (err) {
+      setError(message(err))
+    }
+  }, [laceId])
+
+  return { opportunities, suggested, loading, error, save, dismiss }
 }

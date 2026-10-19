@@ -10,7 +10,7 @@ from typing import Literal, Protocol
 
 from agents.schemas.icp import ICP
 from agents.schemas.opportunities import OpportunitySummary
-from agents.schemas.lace import AccountSummary, CompetitorSummary, DraftSummary, Fact, FactTopic, LaceProfile, NewFact, SourcePage
+from agents.schemas.lace import AccountSummary, CompetitorSummary, DraftSummary, Suggestions, Fact, FactTopic, LaceProfile, NewFact, SourcePage
 
 
 class LaceStore(Protocol):
@@ -38,15 +38,20 @@ class LaceStore(Protocol):
         ...
 
     async def accounts(self, limit: int = 50) -> list[AccountSummary]:
-        """Target accounts, strongest fit first; dismissed ones are left out."""
+        """Saved target accounts, strongest fit first."""
         ...
 
     async def opportunities(self, limit: int = 50) -> list[OpportunitySummary]:
-        """Open opportunities, the soonest deadline first."""
+        """Saved opportunities still open, the soonest deadline first."""
         ...
 
     async def competitors(self, limit: int = 50) -> list[CompetitorSummary]:
-        """Tracked competitors, newest first; dismissed ones are left out."""
+        """Saved (tracked) competitors, newest first."""
+        ...
+
+    async def suggestions(self, limit: int = 50) -> Suggestions:
+        """What searches found that the founder has not saved or dismissed yet.
+        Only saved items are worked from; these wait for the founder."""
         ...
 
     async def drafts(self, limit: int = 50) -> list[DraftSummary]:

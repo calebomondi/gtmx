@@ -16,8 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agents.schemas.icp import ICP
 from agents.schemas.opportunities import OpportunitySummary
-from agents.schemas.lace import AccountSummary, CompetitorSummary, DraftSummary, Fact, FactTopic, LaceProfile, NewFact, SourcePage
-from backend.app.database.lace_models import Lace, LaceFact, LaceSource
+from agents.schemas.lace import AccountSummary, CompetitorSummary, DraftSummary, Fact, Suggestions, FactTopic, LaceProfile, NewFact, SourcePage
+from backend.app.database.lace_models import Lace, LaceCompetitor, LaceFact, LaceSource
 from backend.app.services import lace_accounts, lace_competitors, lace_opportunities, lace_outreach
 from backend.app.services.errors import NotFoundError
 from backend.app.services.laces import current_facts_query
@@ -26,6 +26,11 @@ from backend.app.services.laces import current_facts_query
 def _fact(row: LaceFact) -> Fact:
     return Fact(id=str(row.id), topic=row.topic, claim=row.claim, source_url=row.source_url,
                 confidence=row.confidence, origin=row.origin, recorded_at=row.recorded_at)
+
+
+def _competitor(row: LaceCompetitor) -> CompetitorSummary:
+    return CompetitorSummary(id=str(row.id), name=row.name, website=row.website, summary=row.summary,
+                             origin=row.origin, status=row.status)
 
 
 def _parse_id(value: str) -> uuid.UUID | None:
@@ -114,8 +119,16 @@ class DbLaceStore:
     async def competitors(self, limit: int = 50) -> list[CompetitorSummary]:
         async with self._sessions() as session:
             rows = await lace_competitors.list_tracked(session, self._lace_id, limit)
-        return [CompetitorSummary(id=str(r.id), name=r.name, website=r.website, summary=r.summary,
-                                  origin=r.origin, status=r.status) for r in rows]
+        return [_competitor(r) for r in rows]
+
+    async def suggestions(self, limit: int = 50) -> Suggestions:
+        async with self._sessions() as session:
+            rivals = await lace_competitors.list_for_lace(session, self._lace_id, "suggested", limit)
+            accounts = await lace_accounts.list_for_lace(session, self._lace_id, "suggested", limit)
+            opportunities = await lace_opportunities.list_for_lace(session, self._lace_id, "suggested", limit)
+        return Suggestions(competitors=[_competitor(r) for r in rivals],
+                           accounts=[lace_accounts.summary(r) for r in accounts],
+                           opportunities=[lace_opportunities.summary(r) for r in opportunities])
 
     async def drafts(self, limit: int = 50) -> list[DraftSummary]:
         async with self._sessions() as session:
