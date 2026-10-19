@@ -57,11 +57,16 @@ async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, status: str, limit
     return list(rows.all())
 
 
-async def set_status(db: AsyncSession, lace_id: uuid.UUID, account_id: uuid.UUID, status: str) -> LaceAccount:
+async def get_in_lace(db: AsyncSession, lace_id: uuid.UUID, account_id: uuid.UUID) -> LaceAccount:
     """404 for an account that is not this Lace's."""
     row = await db.scalar(select(LaceAccount).where(LaceAccount.id == account_id, LaceAccount.lace_id == lace_id))
     if row is None:
         raise NotFoundError("Account not found")
+    return row
+
+
+async def set_status(db: AsyncSession, lace_id: uuid.UUID, account_id: uuid.UUID, status: str) -> LaceAccount:
+    row = await get_in_lace(db, lace_id, account_id)
     row.status = status
     await db.commit()
     return row

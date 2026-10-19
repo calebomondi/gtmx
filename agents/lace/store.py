@@ -10,7 +10,7 @@ from typing import Literal, Protocol
 
 from agents.schemas.icp import ICP
 from agents.schemas.opportunities import OpportunitySummary
-from agents.schemas.lace import AccountSummary, CompetitorSummary, Fact, FactTopic, LaceProfile, NewFact, SourcePage
+from agents.schemas.lace import AccountSummary, CompetitorSummary, DraftSummary, Fact, FactTopic, LaceProfile, NewFact, SourcePage
 
 
 class LaceStore(Protocol):
@@ -47,6 +47,10 @@ class LaceStore(Protocol):
 
     async def competitors(self, limit: int = 50) -> list[CompetitorSummary]:
         """Tracked competitors, newest first; dismissed ones are left out."""
+        ...
+
+    async def drafts(self, limit: int = 50) -> list[DraftSummary]:
+        """Messages drafted and not yet sent, newest first."""
         ...
 
 

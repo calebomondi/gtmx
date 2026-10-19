@@ -203,6 +203,7 @@ async def _converse(run_id: uuid.UUID, lace_id: uuid.UUID, message: HumanMessage
     graph, _ = _graph(lace_id, jobs)
     relay = _TokenRelay(run_id)
     reply = ""
+    blocks: list[dict] = []
     async for mode, chunk in graph.astream({"messages": [message]}, thread_config(lace_id),
                                            stream_mode=["updates", "custom"]):
         if mode == "custom":
@@ -223,18 +224,50 @@ async def _converse(run_id: uuid.UUID, lace_id: uuid.UUID, message: HumanMessage
                     reply = str(message.content)
                 elif isinstance(message, ToolMessage):
                     await events.publish(run_id, "tool_result", _tool_summary(message))
+                    blocks += _ui_blocks(message)
+    if blocks:
+        await _attach_ui(graph, lace_id, blocks)
     return reply
+
+
+# Where a reply keeps the cards and choices shown under it.
+UI_KEY = "ui"
+# The tools whose results put something under the reply.
+_UI_TOOLS = frozenset({"ask_choice", "show"})
+
+
+def _ui_blocks(message: ToolMessage) -> list[dict]:
+    if message.name not in _UI_TOOLS:
+        return []
+    try:
+        result = json.loads(str(message.content))
+    except ValueError:
+        return []
+    return list((result.get("data") or {}).get("ui") or []) if result.get("ok") else []
+
+
+async def _attach_ui(graph, lace_id: uuid.UUID, blocks: list[dict]) -> None:
+    """Keep the turn's cards and choices on its final reply, in the thread,
+    so they show with it whenever the conversation is read."""
+    state = await graph.aget_state(thread_config(lace_id))
+    reply = next((m for m in reversed(state.values.get("messages", [])) if isinstance(m, AIMessage)), None)
+    if reply is None:
+        return
+    updated = reply.model_copy(update={"additional_kwargs": {**reply.additional_kwargs, UI_KEY: blocks}})
+    await graph.aupdate_state(thread_config(lace_id), {"messages": [updated]}, as_node="agent")
 
 
 def visible_messages(messages: list[AnyMessage]) -> list[dict]:
     """The conversation as the founder sees it: their messages and the Lace's
-    replies, without tool calls, results or updates."""
+    replies (with any cards or choices), without tool calls, results or updates."""
     out = []
     for m in messages:
         if isinstance(m, HumanMessage) and not m.additional_kwargs.get(EVENT_FLAG):
             out.append({"role": "founder", "content": str(m.content)})
-        elif isinstance(m, AIMessage) and not m.tool_calls and str(m.content).strip():
-            out.append({"role": "lace", "content": str(m.content)})
+        elif isinstance(m, AIMessage) and not m.tool_calls:
+            ui = m.additional_kwargs.get(UI_KEY)
+            if str(m.content).strip() or ui:
+                out.append({"role": "lace", "content": str(m.content), **({"ui": ui} if ui else {})})
     return out
 
 

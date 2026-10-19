@@ -49,6 +49,13 @@ EDITABLE_FIELDS = ("subject", "body", "recipient_address", "recipient_name")
 _EDITABLE_STATUSES = ("draft", "failed")
 
 
+async def drafts(db: AsyncSession, lace_id: uuid.UUID, limit: int) -> list[LaceOutreach]:
+    """Outbound messages waiting for the founder to send, newest first."""
+    return list((await db.scalars(select(LaceOutreach).where(
+        LaceOutreach.lace_id == lace_id, LaceOutreach.direction == "outbound", LaceOutreach.status == "draft",
+    ).order_by(LaceOutreach.created_at.desc()).limit(limit))).all())
+
+
 async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, limit: int) -> list[LaceOutreach]:
     rows = await db.scalars(select(LaceOutreach).where(LaceOutreach.lace_id == lace_id)
                             .order_by(LaceOutreach.created_at.desc()).limit(limit))

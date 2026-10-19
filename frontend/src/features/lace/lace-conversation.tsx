@@ -2,14 +2,17 @@ import { useEffect, useRef } from "react"
 import { AlertTriangle, Loader2 } from "lucide-react"
 
 import { PromptInputWithActions } from "@/components/chat-input"
+import { Button } from "@/components/ui/button"
 import { Markdown } from "@/components/ui/markdown"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { LaceMessageDto } from "@/lib/api"
 
+import { suggestions } from "./chat-suggestions"
 import { LaceAvatar } from "./lace-avatar"
+import { ChatBlocks } from "./lace-chat-blocks"
 import type { LaceChat } from "./use-lace-chat"
 
-function Message({ message }: { message: LaceMessageDto }) {
+function Message({ message, children }: { message: LaceMessageDto; children?: React.ReactNode }) {
   if (message.role === "founder") {
     return (
       <div className="flex justify-end">
@@ -20,22 +23,36 @@ function Message({ message }: { message: LaceMessageDto }) {
   return (
     <div className="flex gap-3">
       <LaceAvatar animated={false} />
-      <Markdown className="prose prose-sm dark:prose-invert min-w-0 max-w-none">{message.content}</Markdown>
+      <div className="flex min-w-0 flex-1 flex-col gap-3">
+        {message.content.trim() && (
+          <Markdown className="prose prose-sm dark:prose-invert min-w-0 max-w-none">{message.content}</Markdown>
+        )}
+        {children}
+      </div>
     </div>
   )
 }
 
 /** The founder's conversation with their Lace: the messages, what it is
  * doing now, the reply as it streams in, and the input. */
-export function LaceConversation({ chat, name }: { chat: LaceChat; name: string }) {
+export function LaceConversation({ chat, name, onOpenMessaging }: {
+  chat: LaceChat
+  name: string
+  onOpenMessaging: () => void
+}) {
   const end = useRef<HTMLDivElement>(null)
+  const lastIndex = chat.messages.length - 1
+  const ideas = suggestions({
+    accounts: chat.accounts, competitors: chat.competitors, outreach: chat.outreach,
+    busy: chat.searching || chat.findingAccounts || chat.drafting || chat.findingOpportunities,
+  })
 
   useEffect(() => {
     end.current?.scrollIntoView({ behavior: "smooth", block: "end" })
   }, [chat.messages.length, chat.step, chat.draft])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6">
           {chat.loading && (
@@ -47,7 +64,13 @@ export function LaceConversation({ chat, name }: { chat: LaceChat; name: string 
           {!chat.loading && chat.messages.length === 0 && !chat.working && (
             <p className="text-sm text-muted-foreground">No messages yet. Say hello to {name}.</p>
           )}
-          {chat.messages.map((message, i) => <Message key={i} message={message} />)}
+          {chat.messages.map((message, i) => (
+            <Message key={i} message={message}>
+              {message.ui && message.ui.length > 0 && (
+                <ChatBlocks blocks={message.ui} chat={chat} live={i === lastIndex} onReview={onOpenMessaging} />
+              )}
+            </Message>
+          ))}
           {chat.draft && <Message message={{ role: "lace", content: chat.draft }} />}
           {chat.working && !chat.draft && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">
@@ -63,7 +86,17 @@ export function LaceConversation({ chat, name }: { chat: LaceChat; name: string 
           <div ref={end} />
         </div>
       </div>
-      <div className="flex justify-center px-4 py-3">
+      <div className="flex min-w-0 flex-col items-center gap-2 px-4 py-3">
+        {!chat.working && !chat.loading && (
+          // One row that scrolls sideways on narrow screens, so it never crowds the chat.
+          <div className="flex w-full max-w-3xl gap-2 overflow-x-auto [scrollbar-width:none]" aria-label="Suggestions">
+            {ideas.map((idea) => (
+              <Button key={idea} size="sm" variant="outline" className="shrink-0 rounded-full" onClick={() => void chat.send(idea)}>
+                {idea}
+              </Button>
+            ))}
+          </div>
+        )}
         <PromptInputWithActions
           onSubmit={(text) => void chat.send(text)}
           isLoading={chat.working}

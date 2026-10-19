@@ -61,9 +61,11 @@ def test_drafts_go_to_the_best_person_and_wait_for_the_founder(client, lace, lac
     assert sorted(written) == [("Alpha", "jane@alpha.test", "Caleb"), ("Beta", "https://linkedin.com/in/tom", "Caleb")]
     assert run.progress == {"drafted": 2, "unreachable": 0}
     update = turns[-1].input["updates"][0]
-    assert "Alpha: to Jane Doe by email" in update and "Beta: to Tom by linkedin" in update
     assert "Drafting failed for (try again later): Broken" in update
     drafts = {d["recipient_company"]: d for d in client.get(f"{API}/laces/{lace}/outreach").json()}
+    # Each draft is named by id, so the Lace can show it as a card.
+    assert f"Alpha [draft {drafts['Alpha']['id']}]: to Jane Doe by email" in update
+    assert f"Beta [draft {drafts['Beta']['id']}]: to Tom by linkedin" in update
     assert set(drafts) == {"Alpha", "Beta"} and all(d["status"] == "draft" for d in drafts.values())
     assert drafts["Alpha"]["subject"] == "About Alpha" and drafts["Beta"]["channel"] == "linkedin"
 

@@ -118,17 +118,23 @@ position rule follows recency too. The list response carries `mood` and
 
 ## 7. An interactive chat
 
-- **Cards in messages:** the Lace's messages carry UI blocks in `additional_kwargs`, each typed in `agents/schemas/`:
-  - choices (buttons)
-  - competitor (Track / Dismiss)
-  - account (Save / Find contacts / Dismiss)
-  - contact (Save)
-  - draft (Edit / Send / Discard)
-  - opportunity (Save / Not for us)
-  - facts to confirm (✓ / ✗ / edit)
-- **Choices:** a new `ask_choice` tool lets the Lace offer them. Job results already carry the data the cards need.
-- **Clicks:** `POST /laces/{id}/actions` either acts directly (send this draft, save this account) and tells the Lace, or sends the choice back as the founder's reply. The founder rarely has to type.
-- **Prompt chips** above the input change with context ("Find 10 buyers in Nairobi", "Draft follow-ups", "What did competitors ship this week?").
+- **Blocks** (`agents/schemas/lace_ui.py`): a reply can carry `choices` (a question with 2–5 answers) and `card`s (a snapshot of a saved competitor, account, opportunity or draft).
+- **Tools:**
+  - `ask_choice(question, options)`
+  - `show(kind, ids)`: up to 6 cards, drawn only from saved items (`agents/lace/cards.py`)
+
+  The system prompt tells the Lace to show items instead of listing them, and to offer choices when the next step is one.
+- **Kept with the reply:** a turn's blocks are attached to its final reply in the checkpoint (`additional_kwargs.ui`), so they show whenever the conversation is read. `GET /messages` returns `ui` only on replies that have some.
+- **Card actions act on the item as it is now:**
+  - competitor: Open, Not a competitor
+  - account: Find contacts (or Look again), Dismiss. Uses `POST /laces/{id}/accounts/{aid}/find-contacts`, the one new endpoint.
+  - opportunity: Open, Not for us
+  - draft: Review in Messaging, or Send with the 5-second undo
+
+  A card shows Dismissed, Sent or Discarded once that has happened.
+- **Choices:** a click sends the option as the founder's message, only on the latest reply while the Lace is free.
+- **Prompt chips:** above the input, from where the work stands (the next pipeline step first, then standing questions), in one row.
+- **Not done:** a direct action does not tell the Lace (it reads current state with its list tools anyway), and the fact-confirm card stays on the creation page.
 
 ## 8. Suggested, then saved
 

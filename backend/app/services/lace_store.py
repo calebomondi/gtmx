@@ -16,9 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agents.schemas.icp import ICP
 from agents.schemas.opportunities import OpportunitySummary
-from agents.schemas.lace import AccountSummary, CompetitorSummary, Fact, FactTopic, LaceProfile, NewFact, SourcePage
+from agents.schemas.lace import AccountSummary, CompetitorSummary, DraftSummary, Fact, FactTopic, LaceProfile, NewFact, SourcePage
 from backend.app.database.lace_models import Lace, LaceFact, LaceSource
-from backend.app.services import lace_accounts, lace_competitors, lace_opportunities
+from backend.app.services import lace_accounts, lace_competitors, lace_opportunities, lace_outreach
 from backend.app.services.errors import NotFoundError
 from backend.app.services.laces import current_facts_query
 
@@ -116,3 +116,10 @@ class DbLaceStore:
             rows = await lace_competitors.list_tracked(session, self._lace_id, limit)
         return [CompetitorSummary(id=str(r.id), name=r.name, website=r.website, summary=r.summary,
                                   origin=r.origin, status=r.status) for r in rows]
+
+    async def drafts(self, limit: int = 50) -> list[DraftSummary]:
+        async with self._sessions() as session:
+            rows = await lace_outreach.drafts(session, self._lace_id, limit)
+        return [DraftSummary(id=str(r.id), channel=r.channel, company=r.recipient_company, subject=r.subject,
+                             recipient=r.recipient_name or r.recipient_address or r.recipient_company, body=r.body)
+                for r in rows]

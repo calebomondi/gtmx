@@ -27,6 +27,7 @@ from backend.app.schemas.laces import (
     FactCorrection,
     FactResponse,
     FunnelResponse,
+    JobStartedResponse,
     FactReview,
     LaceCreateRequest,
     LaceActivityItem,
@@ -44,6 +45,8 @@ from backend.app.schemas.laces import (
 )
 from backend.app.services import email, lace_accounts, lace_activity, lace_contacts, lace_channels, lace_competitors, lace_opportunities, lace_outreach
 from backend.app.services import laces as lace_service
+from agents.lace.store import JobRefused
+from backend.app.services.errors import ConflictError
 from agents.schemas.lace import AccountStatus, CompetitorStatus, FactTopic, InboxPlatform
 from agents.schemas.opportunities import OpportunityStatus
 
@@ -143,7 +146,7 @@ async def list_contacts(lace: OwnedLace, db: DbSession,
             for c, a in await lace_contacts.list_for_lace(db, lace.id, limit)]
 
 
-@router.get("/{lace_id}/messages", response_model=list[LaceMessage])
+@router.get("/{lace_id}/messages", response_model=list[LaceMessage], response_model_exclude_none=True)
 async def list_messages(lace: OwnedLace, limit: int = Query(default=100, ge=1, le=MAX_MESSAGES_PER_PAGE)):
     return await lace_runs.history(lace.id, limit)
 
@@ -175,6 +178,19 @@ async def list_accounts(lace: OwnedLace, db: DbSession, shown: AccountStatus = Q
 @router.patch("/{lace_id}/accounts/{account_id}", response_model=AccountResponse)
 async def update_account(lace: OwnedLace, account_id: uuid.UUID, payload: AccountUpdateRequest, db: DbSession):
     return lace_accounts.response(await lace_accounts.set_status(db, lace.id, account_id, payload.status))
+
+
+@router.post("/{lace_id}/accounts/{account_id}/find-contacts", response_model=JobStartedResponse,
+             status_code=status.HTTP_202_ACCEPTED)
+async def find_account_contacts(lace: OwnedLace, account_id: uuid.UUID, user: CurrentUser, db: DbSession):
+    """Look for the people to contact at one account, from a card in the
+    chat. The Lace reports back when it is done."""
+    await lace_accounts.get_in_lace(db, lace.id, account_id)
+    try:
+        run = await manager.start_lace_job("lace_contacts", user.id, lace.id, {"account_ids": [str(account_id)]})
+    except JobRefused as exc:
+        raise ConflictError(str(exc)) from None
+    return JobStartedResponse(run_id=run.id)
 
 
 @router.get("/{lace_id}/outreach", response_model=list[OutreachResponse])
