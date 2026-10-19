@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { createLace } from "@/lib/api"
+import { refetchLaces } from "@/lib/laces-store"
 
 /** Name a Lace and give it the startup's website; it starts reading at once. */
 export default function NewLace() {
@@ -21,6 +22,7 @@ export default function NewLace() {
     setError(null)
     try {
       const { lace } = await createLace(name.trim(), website.trim())
+      void refetchLaces()
       navigate(`/lace/${lace.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))

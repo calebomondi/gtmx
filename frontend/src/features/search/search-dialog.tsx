@@ -28,9 +28,8 @@ const KIND_ICONS: Record<SearchKind, ReactNode> = {
 }
 
 const QUICK_ACTIONS = [
-  { label: "New workspace", path: "/new", icon: <SquarePen /> },
+  { label: "New Lace", path: "/new", icon: <SquarePen /> },
   { label: "Home feed", path: "/feed", icon: <Home /> },
-  { label: "Projects", path: "/projects", icon: <FolderClosed /> },
   { label: "Connected accounts", path: "/accounts", icon: <Link2 /> },
   { label: "Archive", path: "/archive", icon: <Archive /> },
 ]

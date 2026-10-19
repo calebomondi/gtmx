@@ -1,11 +1,16 @@
 """Laces: create one, find the user's own, and read what it knows."""
 
 import uuid
+from dataclasses import dataclass
+from datetime import datetime
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, and_, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.database.lace_models import Lace, LaceFact
+from backend.app.database.lace_models import Lace, LaceFact, LaceOutreach
+from backend.app.database.models import Run
+from backend.app.schemas.laces import LaceMood
+from backend.app.services.runs import TERMINAL_STATUSES
 from backend.app.services.competitors import domain_key, normalize_website
 from backend.app.services import limits
 from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError
@@ -31,12 +36,37 @@ async def create(db: AsyncSession, user_id: uuid.UUID, name: str, website: str,
     return lace
 
 
-async def list_for_user(db: AsyncSession, user_id: uuid.UUID, limit: int) -> list[Lace]:
-    rows = await db.scalars(
-        select(Lace).where(Lace.user_id == user_id, Lace.status != "archived")
-        .order_by(Lace.created_at.desc()).limit(limit)
+@dataclass(frozen=True)
+class LaceSummary:
+    lace: Lace
+    mood: LaceMood | None
+    last_active_at: datetime
+
+
+async def list_for_user(db: AsyncSession, user_id: uuid.UUID, limit: int) -> list[LaceSummary]:
+    """The user's Laces, most recently active first, each with its mood:
+    thinking while a run is unfinished, alert while something waits on the
+    founder (a draft to send, a reply not yet read)."""
+    working = exists().where(Run.lace_id == Lace.id, Run.status.not_in(TERMINAL_STATUSES))
+    waiting = exists().where(LaceOutreach.lace_id == Lace.id, or_(
+        and_(LaceOutreach.direction == "outbound", LaceOutreach.status == "draft"),
+        and_(LaceOutreach.direction == "inbound", LaceOutreach.status == "received", LaceOutreach.intent.is_(None)),
+    ))
+    last_run = select(func.max(Run.created_at)).where(Run.lace_id == Lace.id).correlate(Lace).scalar_subquery()
+    last_active = func.coalesce(last_run, Lace.created_at)
+    rows = await db.execute(
+        select(Lace, working.label("working"), waiting.label("waiting"), last_active.label("last_active_at"))
+        .where(Lace.user_id == user_id, Lace.status != "archived")
+        .order_by(last_active.desc()).limit(limit)
     )
-    return list(rows.all())
+    return [LaceSummary(lace, "thinking" if busy else "alert" if needs else None, active)
+            for lace, busy, needs, active in rows.all()]
+
+
+async def set_pinned(db: AsyncSession, lace: Lace, pinned: bool) -> Lace:
+    lace.pinned = pinned
+    await db.commit()
+    return lace
 
 
 async def get_owned(db: AsyncSession, user_id: uuid.UUID, lace_id: uuid.UUID) -> Lace:

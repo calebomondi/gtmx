@@ -13,17 +13,3 @@ export function isNavItemActive(pathname: string, url: string): boolean {
   // The trailing slash keeps /projects-archive from matching /projects.
   return pathname === url || pathname.startsWith(`${url}/`)
 }
-
-/**
- * Is this workspace the one on screen? Covers both /workspace/:id and the
- * nested /projects/:project_id/workspace/:id route, but deliberately not the
- * read-only snapshot at /archive/workspace/:id.
- */
-export function isWorkspaceActive(pathname: string, id: string): boolean {
-  // An archived snapshot has its own route; highlighting the live entry of the
-  // same id would point at the wrong thing.
-  if (pathname.startsWith("/archive/")) return false
-  return (
-    pathname === `/workspace/${id}` || pathname.endsWith(`/workspace/${id}`)
-  )
-}

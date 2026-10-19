@@ -49,7 +49,7 @@ function GlobalInterruptDialog() {
   const open =
     run.stage === "awaiting_input" &&
     run.currentInterrupt !== null &&
-    location.pathname !== "/new"
+    location.pathname !== "/new-workspace"
 
   if (!open || !run.currentInterrupt) return null
 
@@ -161,7 +161,9 @@ const router = createBrowserRouter([
       { path: 'workspace', element: <Workspace /> },
       { path: 'workspace/:workspace_id', element: <Workspace /> },
       { path: 'recent', element: <RecentSession /> },
-      { path: 'new', element: <NewWorkspace /> },
+      { path: 'new', element: <NewLace /> },
+      // The v1 workspace form, until v1 is retired (docs/lace-ui-plan.md, PR I).
+      { path: 'new-workspace', element: <NewWorkspace /> },
       { path: 'projects', element: <ProjectsComponent /> },
       { path: 'projects/:project_id', element: <ProjectHub /> },
       {
@@ -170,7 +172,7 @@ const router = createBrowserRouter([
       },
       { path: 'feed', element: <HomeFeed /> },
       { path: 'lace', element: <LaceList /> },
-      { path: 'lace/new', element: <NewLace /> },
+      { path: 'lace/new', element: <Navigate to="/new" replace /> },
       { path: 'lace/:lace_id', element: <LaceChat /> },
       { path: 'archive', element: <ArchiveComponent /> },
       { path: 'accounts', element: <AccountsComponent /> },

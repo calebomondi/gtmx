@@ -62,7 +62,7 @@ function Message({ message }: { message: LaceMessageDto }) {
   }
   return (
     <div className="flex gap-3">
-      <LaceAvatar />
+      <LaceAvatar animated={false} />
       <Markdown className="prose prose-sm dark:prose-invert min-w-0 max-w-none">{message.content}</Markdown>
     </div>
   )
@@ -92,7 +92,7 @@ function LaceChat({ laceId }: { laceId: string }) {
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex items-center justify-between gap-3 border-b px-4 py-3">
         <div className="flex min-w-0 items-center gap-3">
-          <LaceAvatar working={chat.working} />
+          <LaceAvatar state={chat.working ? "thinking" : "alert"} />
           <div className="min-w-0">
             <h1 className="truncate text-base font-medium">{title}</h1>
             {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
