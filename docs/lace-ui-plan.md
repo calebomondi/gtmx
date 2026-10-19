@@ -176,4 +176,14 @@ position rule follows recency too. The list response carries `mood` and
 | H | Suggested, then saved |
 | I | The rest of Phase 12: admin views for Laces, runs, jobs and cost; moving pilot workspaces into Laces; retiring v1 |
 
+### PR I progress
+
+- **Admin views:** gtmx #189 (API) is merged. gtmx-admin #16 (pages) is open, to merge when v2 reaches production, since the console deploys from `main`.
+- **Pilot migration:** `scripts/migrate_pilots.py` over `services/pilot_migration.py`.
+  - A dry run by default; `--apply` writes. `--user-id` limits it to one founder. Idempotent.
+  - One Lace per founder per site, matched by domain key.
+  - Carried: the offer profile as facts; competitors (tracked, with their monitoring baseline); accounts (with their review status; those without a trigger stay behind); contacts (unapproved); outreach that went out or came in.
+  - Not carried: drafts, v1 chat, signals.
+  - The owner runs it: first the dry run, then `--apply`.
+
 Each PR goes into `feat/v2.0.0` and is merged on green CI. Moving pilot workspaces in I changes real data, so it waits for the owner's go-ahead.
