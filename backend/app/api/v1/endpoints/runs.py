@@ -1,5 +1,5 @@
 """The signed-in user's agent runs: find the ones still going (to reattach after
-a reload), inspect one, follow its events, answer its question, or cancel it."""
+a reload), inspect one, follow its events, or cancel it."""
 
 import json
 import uuid
@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 
 from backend.app.api.deps import CurrentUser, DbSession
 from backend.app.runs import events, manager
-from backend.app.schemas.runs import RunAnswer, RunResponse, RunStepResponse
+from backend.app.schemas.runs import RunResponse, RunStepResponse
 from backend.app.services import runs as run_service
 
 router = APIRouter()
@@ -55,11 +55,6 @@ async def stream_run_events(run_id: uuid.UUID, user: CurrentUser, db: DbSession,
     with a streaming fetch, which (unlike EventSource) sends the auth header."""
     await run_service.get_owned(db, user.id, run_id)
     return StreamingResponse(_ndjson(run_id, after), media_type="application/x-ndjson")
-
-
-@router.post("/{run_id}/answer", status_code=202)
-async def answer_run(run_id: uuid.UUID, payload: RunAnswer, user: CurrentUser):
-    await manager.answer(user.id, run_id, payload.answer)
 
 
 @router.post("/{run_id}/cancel", response_model=RunResponse)

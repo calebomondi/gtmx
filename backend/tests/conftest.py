@@ -137,15 +137,20 @@ def seed_workspace():
 
 @pytest.fixture
 def owned(client, user, seed_workspace):
-    """A workspace, project, competitor, account and one run of each kind, all
-    owned by `user`."""
+    """A v1 workspace, project, competitor, account and one run of each kind,
+    all owned by `user`, inserted directly (v1 has no API any more; the admin
+    views still read these tables)."""
     workspace_id = seed_workspace(user.id, "Owner Workspace")
-    project = client.post(f"{settings.api_v1_str}/projects/user/{user.id}", json={"name": "owner project"}).json()
-    competitor = client.post(
-        f"{settings.api_v1_str}/workspaces/{workspace_id}/competitors",
-        json={"website": "rival.example", "deep_research": False},
-    ).json()
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        project_id = conn.execute("INSERT INTO projects (id, user_id, name, name_key) VALUES"
+                                  " (%s, %s, 'owner project', 'owner project') RETURNING id",
+                                  (uuid.uuid4(), user.id)).fetchone()[0]
+        conn.execute("UPDATE workspaces SET project_id = %s WHERE id = %s", (project_id, workspace_id))
+        competitor_id = conn.execute(
+            "INSERT INTO competitors (id, workspace_id, name, website, domain_key, strengths, weaknesses, opportunities,"
+            " notable_customers, pain_signals, customer_sentiment, tracking_sources, unsourced_fields, source)"
+            " VALUES (%s, %s, 'Rival', 'https://rival.example', 'rival.example', '[]', '[]', '[]', '[]', '[]', '[]',"
+            " '[]', '[]', 'user') RETURNING id", (uuid.uuid4(), workspace_id)).fetchone()[0]
         account_id = conn.execute(
             "INSERT INTO accounts (id, workspace_id, name, account_type, tech_stack, recent_news, key_contacts,"
             " pain_signals, hiring_signals, sources, source_queries, why_selected, why_reach_out)"
@@ -162,8 +167,8 @@ def owned(client, user, seed_workspace):
         )
     return {
         "workspace": workspace_id,
-        "project": project["id"],
-        "competitor": competitor["id"],
+        "project": str(project_id),
+        "competitor": str(competitor_id),
         "account": str(account_id),
         "competitor_run": str(competitor_run_id),
         "account_run": str(account_run_id),

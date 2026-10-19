@@ -1,7 +1,7 @@
 """Replies and bounces for sent outreach, synced from the user's Gmail.
 
 One mailbox search per user per sync (recent mail not from the user), matched
-to the threads of emails sent from Thalace, from a workspace or a Lace. A reply
+to the threads of emails a Lace sent. A reply
 becomes an inbound message in that thread, in the same table as the email it
 answers; a delivery-failure notice marks the sent email bounced. Read only:
 syncing never sends, labels or deletes anything in the mailbox.
@@ -31,9 +31,9 @@ _BOUNCE_SUBJECTS = re.compile(r"delivery status notification|undeliverable|deliv
 _ADDRESS_RE = re.compile(r"<?([^<>\s]+@[^<>\s]+)>?\s*$")
 
 
-# Sent outreach lives in two tables with the same fields: a workspace's and a Lace's.
-_OUTREACH = (models.OutreachMessage, models.LaceOutreach)
-Outreach = models.OutreachMessage | models.LaceOutreach
+# Sent outreach the sync watches. v1 workspace outreach is no longer synced.
+_OUTREACH = (models.LaceOutreach,)
+Outreach = models.LaceOutreach
 
 
 @dataclass
@@ -109,15 +109,11 @@ def _text(message: dict) -> str:
     return ""
 
 
-def _owner(sent: Outreach) -> dict:
-    return {"lace_id": sent.lace_id} if isinstance(sent, models.LaceOutreach) else {"workspace_id": sent.workspace_id}
-
-
 def _inbound(sent: Outreach, message: dict, status: str) -> Outreach:
     """The received message, in the same table as the email it answers."""
     sender = message.get("sender") or ""
     return type(sent)(
-        **_owner(sent), user_id=sent.user_id, account_id=sent.account_id,
+        lace_id=sent.lace_id, user_id=sent.user_id, account_id=sent.account_id,
         channel="email", direction="inbound", status=status, thread_id=sent.thread_id,
         provider_message_id=message.get("messageId"),
         recipient_name=_display_name(sender) or sent.recipient_name,
@@ -179,8 +175,7 @@ async def sync_user(db: AsyncSession, user_id: uuid.UUID) -> SyncResult:
 
 
 async def users_to_sync(db: AsyncSession) -> list[uuid.UUID]:
-    """Users with an email sent from Thalace (a workspace or a Lace) inside the
-    sync window."""
+    """Users with an email a Lace sent inside the sync window."""
     since = datetime.now(UTC) - timedelta(days=settings.inbox_sync_window_days)
     users: set[uuid.UUID] = set()
     for model in _OUTREACH:
