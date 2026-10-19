@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App'
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { SessionProviderWithState } from "@/lib/session-context"
 import { AuthProvider } from "@/lib/auth"
 import { initSentry } from "@/lib/sentry"
 
@@ -13,9 +12,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <TooltipProvider>
       <AuthProvider>
-        <SessionProviderWithState>
-          <App />
-        </SessionProviderWithState>
+        <App />
       </AuthProvider>
     </TooltipProvider>
   </StrictMode>,
