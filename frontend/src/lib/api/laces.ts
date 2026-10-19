@@ -350,3 +350,20 @@ export interface FunnelDto {
 export function getLaceFunnel(laceId: string): Promise<FunnelDto> {
   return apiFetch<FunnelDto>(`/api/v1/laces/${laceId}/funnel`)
 }
+
+/** A person at one of the Lace's target accounts. */
+export interface ContactDto {
+  id: string
+  account_id: string
+  account_name: string
+  name: string | null
+  title: string | null
+  email: string | null
+  linkedin: string | null
+  source: "discovery" | "contact_search"
+  first_seen_at: string
+}
+
+export function listLaceContacts(laceId: string): Promise<ContactDto[]> {
+  return apiFetch<ContactDto[]>(`/api/v1/laces/${laceId}/contacts`)
+}

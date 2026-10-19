@@ -8,7 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from agents.schemas.opportunities import OpportunityKind, OpportunityStatus
-from agents.schemas.lace import AccountStatus, ActivityKind, ActivityRef, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
+from agents.schemas.lace import AccountStatus, ActivityKind, ActivityRef, ContactSource, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
 
 
 def known_zone(value: str | None) -> str | None:
@@ -292,3 +292,15 @@ class FunnelResponse(BaseModel):
     contacted: int = Field(description="Accounts written to (a message sent)")
     replied: int = Field(description="Accounts that wrote back")
     interested: int = Field(description="Accounts that replied keen, or asking to meet")
+
+
+class ContactResponse(BaseModel):
+    id: uuid.UUID
+    account_id: uuid.UUID
+    account_name: str
+    name: str | None = None
+    title: str | None = None
+    email: str | None = None
+    linkedin: str | None = None
+    source: ContactSource
+    first_seen_at: datetime

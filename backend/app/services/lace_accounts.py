@@ -11,6 +11,7 @@ from agents.schemas.accounts import AccountFit, AccountRecord
 from agents.lace.contacts import contact_status
 from agents.schemas.lace import AccountSummary
 from backend.app.database.lace_models import LaceAccount
+from backend.app.services import lace_contacts
 from backend.app.services.competitors import domain_key
 from backend.app.services.errors import NotFoundError
 
@@ -99,7 +100,9 @@ async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
         refresh = {c: stmt.excluded[c] for c in (
             "name", "account_type", "website", "geo", "score", "fit_strength", "contact_status", "record", "fit",
             "found_by_run_id", "last_seen_at")}
-        await db.execute(stmt.on_conflict_do_update(constraint="uq_lace_accounts_lace_id_key", set_=refresh))
+        account_id = await db.scalar(stmt.on_conflict_do_update(
+            constraint="uq_lace_accounts_lace_id_key", set_=refresh).returning(LaceAccount.id))
+        await lace_contacts.sync(db, lace_id, account_id, found_record.key_contacts, "discovery")
     refreshed = len(set(keys) & set(stored))
     return len(set(keys)) - refreshed, refreshed
 
@@ -122,3 +125,4 @@ async def save_contacts(db: AsyncSession, account_id: uuid.UUID, record: Account
         row.record = record.model_dump(mode="json")
         row.contact_status = contact_status(record)
         row.contacts_checked_at = datetime.now(UTC)
+        await lace_contacts.sync(db, row.lace_id, account_id, record.key_contacts, "contact_search")

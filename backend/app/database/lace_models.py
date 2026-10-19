@@ -14,7 +14,7 @@ from sqlalchemy.dialects.postgresql import JSONB as JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
 from agents.schemas.opportunities import OPPORTUNITY_KINDS, OPPORTUNITY_STATUSES
-from agents.schemas.lace import ACCOUNT_STATUSES, ACTIVITY_KINDS, ACTIVITY_REFS, BRIEF_FREQUENCIES, CONTACT_STATUSES, INBOX_PLATFORMS, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, FACT_ORIGINS, FACT_TOPICS
+from agents.schemas.lace import ACCOUNT_STATUSES, ACTIVITY_KINDS, ACTIVITY_REFS, CONTACT_SOURCES, BRIEF_FREQUENCIES, CONTACT_STATUSES, INBOX_PLATFORMS, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, FACT_ORIGINS, FACT_TOPICS
 from backend.app.database.connect import Base
 
 LACE_STATUSES = ("onboarding", "active", "archived")
@@ -263,6 +263,36 @@ class LaceAccount(Base):
 
 OUTREACH_DIRECTIONS = ("outbound", "inbound")
 # outbound: draft | sending | sent | failed | bounced. inbound: received | bounced.
+class LaceContact(Base):
+    """A person at one of the Lace's target accounts, for the founder's
+    Contacts. One row per person per Lace, keyed by email, else LinkedIn URL,
+    else name (services.lace_contacts.contact_key); the account record keeps
+    its own copy for the agents, which read the record."""
+
+    __tablename__ = "lace_contacts"
+    __table_args__ = (
+        UniqueConstraint("lace_id", "key", name="uq_lace_contacts_lace_id_key"),
+        CheckConstraint(_one_of("source", CONTACT_SOURCES), name="source"),
+        CheckConstraint("email IS NOT NULL OR linkedin IS NOT NULL OR name IS NOT NULL", name="identified"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Indexed by the unique constraint, which leads with it.
+    lace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("laces.id", ondelete="CASCADE"), nullable=False)
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("lace_accounts.id", ondelete="CASCADE"),
+                                                  nullable=False, index=True)
+    key: Mapped[str] = mapped_column(String(320), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    linkedin: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
+                                                    default=_now, server_default=func.now())
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
+                                                   server_default=func.now())
+
+
 OUTREACH_STATUSES = ("draft", "sending", "sent", "failed", "bounced", "received")
 
 

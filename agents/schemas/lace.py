@@ -168,6 +168,10 @@ INBOX_PLATFORMS: tuple[str, ...] = InboxPlatform.__args__
 BriefFrequency = Literal["off", "daily", "weekly"]
 BRIEF_FREQUENCIES: tuple[str, ...] = BriefFrequency.__args__
 
+# Where a contact came from: the account search's own sources, or a contact search.
+ContactSource = Literal["discovery", "contact_search"]
+CONTACT_SOURCES: tuple[str, ...] = ContactSource.__args__
+
 # What a Lace's Feed shows the founder it did (docs/lace-ui-plan.md, Feed).
 ActivityKind = Literal[
     "brief", "competitors_found", "competitor_moves", "accounts_found", "contacts_found",
