@@ -326,3 +326,27 @@ export function listLaceActivity(laceId: string, before?: string): Promise<Activ
 export function markLaceActivityRead(laceId: string): Promise<{ marked: number }> {
   return apiFetch(`/api/v1/laces/${laceId}/activity/read`, { method: "POST" })
 }
+
+/** An activity in the feed across all the founder's Laces. */
+export interface LaceActivityItemDto extends ActivityDto {
+  lace_id: string
+  lace_name: string
+}
+
+/** Newest first across every Lace; `before` (an item's created_at) pages back. */
+export function listAllLaceActivity(before?: string): Promise<LaceActivityItemDto[]> {
+  const query = before ? `?before=${encodeURIComponent(before)}` : ""
+  return apiFetch<LaceActivityItemDto[]>(`/api/v1/laces/activity${query}`)
+}
+
+/** How far a Lace's target accounts have come. Counts of distinct accounts. */
+export interface FunnelDto {
+  accounts: number
+  contacted: number
+  replied: number
+  interested: number
+}
+
+export function getLaceFunnel(laceId: string): Promise<FunnelDto> {
+  return apiFetch<FunnelDto>(`/api/v1/laces/${laceId}/funnel`)
+}

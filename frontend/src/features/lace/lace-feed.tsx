@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { needsYou, sectionId, type FeedTarget } from "./lace-activity-actions"
 import { LaceActivityList } from "./lace-activity"
 import { LaceAccounts } from "./lace-accounts"
+import { LaceFunnel } from "./lace-funnel"
 import { LaceCompetitors } from "./lace-competitors"
 import { LaceOpportunities } from "./lace-opportunities"
 import { LaceSection } from "./lace-section"
@@ -33,6 +34,7 @@ export function LaceFeed({ laceId, name, chat, activity, onOpen }: {
           ))}
         </section>
       )}
+      <LaceFunnel laceId={laceId} refreshKey={`${activity.items[0]?.id ?? ""}:${chat.outreach.length}:${chat.waiting}`} />
       <LaceSection title="Activity" description={`What ${name} did and found, newest first.`}>
         <LaceActivityList activity={activity} name={name} onOpen={onOpen} />
       </LaceSection>

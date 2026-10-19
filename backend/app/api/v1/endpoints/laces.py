@@ -25,8 +25,10 @@ from backend.app.schemas.laces import (
     CompetitorUpdateRequest,
     FactCorrection,
     FactResponse,
+    FunnelResponse,
     FactReview,
     LaceCreateRequest,
+    LaceActivityItem,
     LaceCreateResponse,
     LaceListItem,
     LaceUpdate,
@@ -68,6 +70,15 @@ async def list_laces(user: CurrentUser, db: DbSession,
                      limit: int = Query(default=20, ge=1, le=MAX_LACES_PER_PAGE)):
     return [LaceListItem(**LaceResponse.model_validate(s.lace).model_dump(), mood=s.mood, last_active_at=s.last_active_at)
             for s in await lace_service.list_for_user(db, user.id, limit)]
+
+
+# Declared before /{lace_id}, which would otherwise take "activity" as an id.
+@router.get("/activity", response_model=list[LaceActivityItem])
+async def list_all_activity(user: CurrentUser, db: DbSession, before: datetime | None = None,
+                            limit: int = Query(default=30, ge=1, le=MAX_ACTIVITY_PER_PAGE)):
+    """What all the founder's Laces did or found, newest first."""
+    return [LaceActivityItem(**ActivityResponse.model_validate(a).model_dump(), lace_id=lace.id, lace_name=lace.name)
+            for a, lace in await lace_activity.list_for_user(db, user.id, limit, before)]
 
 
 @router.get("/{lace_id}", response_model=LaceResponse)
@@ -113,6 +124,12 @@ async def list_activity(lace: OwnedLace, db: DbSession, before: datetime | None 
 async def mark_activity_read(lace: OwnedLace, db: DbSession):
     """The founder has seen the Feed."""
     return ActivityReadResponse(marked=await lace_activity.mark_all_read(db, lace.id))
+
+
+@router.get("/{lace_id}/funnel", response_model=FunnelResponse)
+async def get_funnel(lace: OwnedLace, db: DbSession):
+    """How far the target accounts have come: on file, contacted, replied, interested."""
+    return FunnelResponse(**await lace_outreach.funnel(db, lace.id))
 
 
 @router.get("/{lace_id}/messages", response_model=list[LaceMessage])
