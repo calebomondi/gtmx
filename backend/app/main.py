@@ -114,7 +114,7 @@ def create_application() -> FastAPI:
             checks["database"] = f"error: {exc}"
             status = 503
         try:
-            agents_runtime.get_agent()
+            agents_runtime.get_checkpointer()
         except Exception as exc:
             checks["agent_runtime"] = f"error: {exc}"
             status = 503
