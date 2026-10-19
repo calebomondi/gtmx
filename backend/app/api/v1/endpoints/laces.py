@@ -22,6 +22,7 @@ from backend.app.schemas.laces import (
     ChannelResponse,
     AccountUpdateRequest,
     CompetitorResponse,
+    ContactResponse,
     CompetitorUpdateRequest,
     FactCorrection,
     FactResponse,
@@ -41,7 +42,7 @@ from backend.app.schemas.laces import (
     OutreachResponse,
     OutreachUpdateRequest,
 )
-from backend.app.services import email, lace_accounts, lace_activity, lace_channels, lace_competitors, lace_opportunities, lace_outreach
+from backend.app.services import email, lace_accounts, lace_activity, lace_contacts, lace_channels, lace_competitors, lace_opportunities, lace_outreach
 from backend.app.services import laces as lace_service
 from agents.schemas.lace import AccountStatus, CompetitorStatus, FactTopic, InboxPlatform
 from agents.schemas.opportunities import OpportunityStatus
@@ -56,6 +57,7 @@ MAX_ACCOUNTS_PER_PAGE = 100
 MAX_OUTREACH_PER_PAGE = 100
 MAX_OPPORTUNITIES_PER_PAGE = 100
 MAX_ACTIVITY_PER_PAGE = 100
+MAX_CONTACTS_PER_PAGE = 500
 
 
 @router.post("", response_model=LaceCreateResponse, status_code=status.HTTP_201_CREATED)
@@ -130,6 +132,15 @@ async def mark_activity_read(lace: OwnedLace, db: DbSession):
 async def get_funnel(lace: OwnedLace, db: DbSession):
     """How far the target accounts have come: on file, contacted, replied, interested."""
     return FunnelResponse(**await lace_outreach.funnel(db, lace.id))
+
+
+@router.get("/{lace_id}/contacts", response_model=list[ContactResponse])
+async def list_contacts(lace: OwnedLace, db: DbSession,
+                        limit: int = Query(default=200, ge=1, le=MAX_CONTACTS_PER_PAGE)):
+    """The people found at the Lace's target accounts, by account."""
+    return [ContactResponse(id=c.id, account_id=a.id, account_name=a.name, name=c.name, title=c.title, email=c.email,
+                            linkedin=c.linkedin, source=c.source, first_seen_at=c.first_seen_at)
+            for c, a in await lace_contacts.list_for_lace(db, lace.id, limit)]
 
 
 @router.get("/{lace_id}/messages", response_model=list[LaceMessage])
