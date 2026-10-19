@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { OpportunityKind } from "@/lib/api"
 
-import { useLaceOpportunities } from "./use-lace-opportunities"
+import type { LaceOpportunities as Opportunities } from "./use-lace-opportunities"
 
 const KINDS: { id: OpportunityKind; label: string }[] = [
   { id: "sell", label: "Sell" },
@@ -20,10 +20,10 @@ function when(deadline: string | null, eventDate: string | null): string | null 
   return null
 }
 
-/** Events to showcase at, tenders and buyers to sell to, partners: open ones
- * only, the soonest first. Dismissing one drops it for good. */
-export function LaceOpportunities({ laceId, searching }: { laceId: string; searching: boolean }) {
-  const { opportunities, loading, error, dismiss } = useLaceOpportunities(laceId)
+/** Events to showcase at, tenders and buyers to sell to, partners: the saved
+ * ones still open, the soonest first. Dismissing one drops it for good. */
+export function LaceOpportunities({ opps, searching }: { opps: Opportunities; searching: boolean }) {
+  const { opportunities, loading, error, dismiss } = opps
   if (loading) return <Skeleton className="h-24 w-full" />
   return (
     <div className="flex flex-col gap-6">
@@ -34,7 +34,7 @@ export function LaceOpportunities({ laceId, searching }: { laceId: string; searc
       )}
       {opportunities.length === 0 && !searching && (
         <p className="text-sm text-muted-foreground">
-          None open yet. Ask your Lace to look for opportunities; it also looks every week.
+          None saved yet. Ask your Lace to look for opportunities; it also looks every week.
         </p>
       )}
       {KINDS.map((kind) => {

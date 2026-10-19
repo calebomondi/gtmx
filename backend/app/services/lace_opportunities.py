@@ -39,9 +39,10 @@ def summary(row: LaceOpportunity) -> OpportunitySummary:
 
 async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, status: str, limit: int,
                         today: date | None = None) -> list[LaceOpportunity]:
-    """For "open": only what has not closed, the soonest deadline first."""
+    """Open or suggested ones only while they have not closed; the soonest
+    deadline first."""
     query = select(LaceOpportunity).where(LaceOpportunity.lace_id == lace_id, LaceOpportunity.status == status)
-    if status == "open":
+    if status != "dismissed":
         today = today or datetime.now(UTC).date()
         query = query.where(or_(LaceOpportunity.deadline.is_(None), LaceOpportunity.deadline >= today),
                             or_(LaceOpportunity.event_date.is_(None), LaceOpportunity.event_date >= today))
@@ -63,8 +64,9 @@ async def set_status(db: AsyncSession, lace_id: uuid.UUID, opportunity_id: uuid.
 
 async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
                        found: list[Opportunity]) -> tuple[int, int]:
-    """Save a search's opportunities. One already on file is refreshed and keeps
-    its status, so a dismissed one stays dismissed. Returns (new, refreshed)."""
+    """Save a search's opportunities. A new one is a suggestion until the
+    founder saves it. One already on file is refreshed and keeps its status,
+    so a dismissed one stays dismissed. Returns (new, refreshed)."""
     keys = [url_key(o.url) for o in found]
     known = set((await db.scalars(select(LaceOpportunity.url_key).where(
         LaceOpportunity.lace_id == lace_id, LaceOpportunity.url_key.in_(keys)))).all())
@@ -74,7 +76,7 @@ async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
             id=uuid.uuid4(), lace_id=lace_id, kind=o.kind, title=o.title[:500], organiser=(o.organiser or None)
             and o.organiser[:255], url=o.url, url_key=key, deadline=_date(o.deadline), event_date=_date(o.date),
             location=(o.location or None) and o.location[:255], why_it_fits=o.why_it_fits, how_to_act=o.how_to_act,
-            found_by_run_id=run_id, last_seen_at=now,
+            found_by_run_id=run_id, last_seen_at=now, status="suggested",
         )
         refresh = {c: stmt.excluded[c] for c in ("kind", "title", "organiser", "url", "deadline", "event_date",
                                                  "location", "why_it_fits", "how_to_act", "found_by_run_id",

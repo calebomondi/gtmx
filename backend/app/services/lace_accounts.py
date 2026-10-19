@@ -86,9 +86,10 @@ def _merged(found: AccountRecord, stored: dict | None) -> AccountRecord:
 
 async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
                        found: list[tuple[AccountRecord, AccountFit | None]]) -> tuple[int, int]:
-    """Save a search's accounts. One already on file gets the fresh record and
-    case, keeping its contacts and its status, so an account the founder
-    dismissed stays dismissed. Returns (new, refreshed)."""
+    """Save a search's accounts. A new one is a suggestion until the founder
+    saves it. One already on file gets the fresh record and case, keeping its
+    contacts and its status, so an account the founder dismissed stays
+    dismissed. Returns (new, refreshed)."""
     keys = [account_key(r) for r, _ in found]
     stored = dict((await db.execute(select(LaceAccount.key, LaceAccount.record).where(
         LaceAccount.lace_id == lace_id, LaceAccount.key.in_(keys)))).all())
@@ -100,7 +101,7 @@ async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
             account_type=record.account_type, website=record.website, geo=(record.geo or None) and record.geo[:120],
             score=record.score, fit_strength=fit.strength if fit else None, contact_status=contact_status(record),
             record=record.model_dump(mode="json"), fit=fit.model_dump(mode="json") if fit else None,
-            found_by_run_id=run_id, last_seen_at=now,
+            found_by_run_id=run_id, last_seen_at=now, status="suggested",
         )
         refresh = {c: stmt.excluded[c] for c in (
             "name", "account_type", "website", "geo", "score", "fit_strength", "contact_status", "record", "fit",

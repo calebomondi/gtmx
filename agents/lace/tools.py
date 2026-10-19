@@ -37,6 +37,7 @@ FACTS_PER_READ = 50
 COMPETITORS_PER_READ = 50
 ACCOUNTS_PER_READ = 50
 OPPORTUNITIES_PER_READ = 50
+SUGGESTIONS_PER_READ = 30
 # Facts the ICP is drawn from.
 ICP_FACTS = 150
 # What one reply can put in front of the founder.
@@ -205,7 +206,7 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
     @tool(parse_docstring=True)
     @_guarded
     async def list_competitors() -> ToolResult:
-        """The competitors you are tracking for the startup, with what each one does."""
+        """The competitors the founder saved (tracked), with what each one does. New finds wait in list_suggestions."""
         rows = await store.competitors(COMPETITORS_PER_READ)
         data = [r.model_dump() for r in rows]
         return ToolResult.success(f"{len(data)} competitors tracked.", data)
@@ -227,14 +228,14 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
     @tool(parse_docstring=True)
     @_guarded
     async def list_accounts() -> ToolResult:
-        """The target accounts found so far: who they are, the trigger that makes them worth contacting now, and the case for them."""
+        """The target accounts the founder saved: who they are, the trigger that makes them worth contacting now, and the case for them. New finds wait in list_suggestions."""
         rows = await store.accounts(ACCOUNTS_PER_READ)
         return ToolResult.success(f"{len(rows)} target accounts.", [r.model_dump(exclude_none=True) for r in rows])
 
     @tool(parse_docstring=True)
     @_guarded
     async def list_opportunities() -> ToolResult:
-        """The open opportunities found so far (events to showcase at, tenders and buyers to sell to, partners), soonest deadline first."""
+        """The opportunities the founder saved that are still open (events to showcase at, tenders and buyers to sell to, partners), soonest deadline first. New finds wait in list_suggestions."""
         rows = await store.opportunities(OPPORTUNITIES_PER_READ)
         return ToolResult.success(f"{len(rows)} open opportunities.", [r.model_dump(exclude_none=True) for r in rows])
 
@@ -277,8 +278,19 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
         return ToolResult.success(f"The founder will see {len(shown)} {kind} card(s) under your reply.{note}",
                                   {"ui": [c.model_dump() for c in shown]})
 
+    @tool(parse_docstring=True)
+    @_guarded
+    async def list_suggestions() -> ToolResult:
+        """What your searches found that the founder has not saved or dismissed yet: competitors, accounts and opportunities. You work only from what they saved, so put these in front of them with show, and say briefly why each is worth saving."""
+        found = await store.suggestions(SUGGESTIONS_PER_READ)
+        if found.empty:
+            return ToolResult.success("Nothing is waiting for the founder to review.", {})
+        return ToolResult.success(
+            f"{len(found.competitors)} competitors, {len(found.accounts)} accounts and "
+            f"{len(found.opportunities)} opportunities wait for the founder.", found.model_dump(exclude_none=True))
+
     tools = [search_web, map_site, read_page, read_pages, get_facts, record_fact, list_competitors, define_icp,
-             list_accounts, list_opportunities, ask_choice, show]
+             list_accounts, list_opportunities, list_suggestions, ask_choice, show]
     if jobs is None:
         return tools
 

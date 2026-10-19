@@ -138,10 +138,18 @@ position rule follows recency too. The list response carries `mood` and
 
 ## 8. Suggested, then saved
 
-- **The status change:** competitors, accounts, contacts and opportunities gain a `suggested` status and are created with it. Approval makes them `saved`; dismissing keeps today's `dismissed`.
-- **What shows where:** Feed, Messaging and Contacts show saved items; suggested ones appear as cards awaiting a decision in the chat and in Feed's "Needs you" strip.
-- **Migration:** existing rows become `saved`, so nothing a founder already has disappears.
-- **Background jobs** (monitoring, contact search, drafting) run only on saved items.
+- **H1 (competitors, accounts, opportunities):** what a search finds is inserted as `suggested`. The founder saves it (tracked, target, open) or dismisses it. Items already on file keep their status, so everything from before counts as saved and a dismissal still sticks.
+- **Worked from only once saved:**
+  - The store's `competitors()`, `accounts()` and `opportunities()` stay saved-only, so the ICP, drafting, contact search and monitoring use only what the founder approved.
+  - `suggestions()` and the `list_suggestions` tool let the Lace put new finds in front of the founder as cards (`show` finds suggested items too).
+  - The prompt and the job updates say so.
+- **Where the founder decides:**
+  - A "To review" list at the top of each Feed section, with Save (Track for competitors) and Dismiss.
+  - Save and Dismiss on chat cards.
+  - Suggestions count in "Needs you", turn the sidebar mascot alert, and appear in the brief ("waiting for the founder").
+- **API:** list endpoints take `status=suggested`. The update requests accept only saved or dismissed values.
+- **Migration:** only the CHECK constraints change. A downgrade turns suggestions into saved items.
+- **H2 (contacts):** a status on `lace_contacts`, so the people found are confirmed before outreach is drafted to them.
 
 ## 9. Also
 

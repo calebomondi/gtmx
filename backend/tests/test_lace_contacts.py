@@ -6,9 +6,11 @@ import uuid
 
 import psycopg
 from langchain_core.messages import AIMessage
+from sqlalchemy import update
 
 from agents.schemas.accounts import AccountRecord, ContactRecord, TriggerEvent
 from backend.app.database.connect import AsyncSessionLocal
+from backend.app.database.lace_models import LaceAccount
 from backend.app.runs import lace_jobs
 from backend.app.runs import manager
 from backend.app.services import lace_accounts
@@ -95,6 +97,9 @@ async def test_finding_an_account_again_keeps_its_contacts(lace):  # noqa: F811
                               " 'lace_accounts', 'completed') RETURNING id", (uuid.uuid4(), user_id, lace_id)).fetchone()[0]
     async with AsyncSessionLocal() as db, db.begin():
         assert await lace_accounts.upsert_found(db, lace_id, run_id, [(_record("Alpha"), None)]) == (1, 0)
+        # Contacts are searched for at accounts the founder saved.
+        assert await lace_accounts.due_for_contacts(db, lace_id, None, 10) == []
+        await db.execute(update(LaceAccount).where(LaceAccount.lace_id == lace_id).values(status="target"))
         [row] = await lace_accounts.due_for_contacts(db, lace_id, None, 10)
         await lace_accounts.save_contacts(db, row.id, _record("Alpha", key_contacts=[
             ContactRecord(name="Jane Doe", email="jane@alpha.test")], socials={"x": "https://x.com/alpha"}))

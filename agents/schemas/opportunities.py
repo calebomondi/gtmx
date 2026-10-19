@@ -36,7 +36,8 @@ class OpportunityList(LenientModel):
     opportunities: list[Opportunity] = Field(default_factory=list)
 
 
-OpportunityStatus = Literal["open", "dismissed"]
+# suggested: found by a search, waiting for the founder to save (open) or dismiss it.
+OpportunityStatus = Literal["suggested", "open", "dismissed"]
 OPPORTUNITY_STATUSES: tuple[str, ...] = OpportunityStatus.__args__
 
 

@@ -61,7 +61,7 @@ def test_hunt_saves_competitors_and_the_lace_reports_back(client, lace, lace_run
     assert job.status == "completed" and job.input == {"focus": "local"} and job.progress["new"] == 1
     with psycopg.connect(settings.database_url) as conn:
         assert conn.execute("SELECT name, domain_key, origin, status FROM lace_competitors").fetchall() == [
-            ("Rival", "rival.test", "found", "tracked")]
+            ("Rival", "rival.test", "found", "suggested")]
         assert conn.execute("SELECT count(*) FROM lace_events WHERE consumed_at IS NULL").fetchone()[0] == 0
     messages = client.get(f"{API}/laces/{lace}/messages").json()
     # The update the Lace was handed is not shown as something the founder said.

@@ -118,7 +118,8 @@ class CompetitorResponse(BaseModel):
 
 
 class CompetitorUpdateRequest(BaseModel):
-    status: CompetitorStatus = Field(description="tracked, or dismissed to stop tracking it (a later hunt won't bring it back)")
+    status: Literal["tracked", "dismissed"] = Field(
+        description="tracked to save it, or dismissed to drop it (a later hunt won't bring it back)")
 
 
 class AccountTrigger(BaseModel):
@@ -161,7 +162,8 @@ class AccountResponse(BaseModel):
 
 
 class AccountUpdateRequest(BaseModel):
-    status: AccountStatus = Field(description="target, or dismissed to drop it (a later search won't bring it back)")
+    status: Literal["target", "dismissed"] = Field(
+        description="target to save it, or dismissed to drop it (a later search won't bring it back)")
 
 
 class OutreachResponse(BaseModel):
@@ -231,7 +233,7 @@ class OpportunityResponse(BaseModel):
 
 
 class OpportunityUpdateRequest(BaseModel):
-    status: OpportunityStatus
+    status: Literal["open", "dismissed"] = Field(description="open to save it, or dismissed: not for us")
 
 
 class QuietHours(BaseModel):

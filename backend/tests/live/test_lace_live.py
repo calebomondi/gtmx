@@ -392,3 +392,22 @@ def test_lace_shows_cards_and_offers_choices(client, runtime, user):
     assert any(b["type"] == "card" and b["kind"] == "competitor" for b in shown.get("ui") or [])
     asked = turn("I want to pick our first market: Kenya, Uganda or Nigeria. Give me the options to choose from.")
     assert any(b["type"] == "choices" for b in asked.get("ui") or [])
+
+
+def test_lace_puts_suggestions_in_front_of_the_founder(client, runtime, user):
+    import psycopg
+
+    created = client.post(f"{API}/laces", json={"name": "Ada", "website": "shangalabs.com"}).json()
+    lace_id = created["lace"]["id"]
+    run = client.portal.call(_wait_for_status, uuid.UUID(created["run_id"]), {"completed", "failed"}, ONBOARDING_TIMEOUT_S)
+    assert run.status == "completed", run.error
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        conn.execute("INSERT INTO lace_competitors (id, lace_id, name, website, domain_key, summary, status) VALUES"
+                     " (%s, %s, 'Particle', 'https://particle.test', 'particle.test',"
+                     " 'IoT hardware design and connectivity platform', 'suggested')", (uuid.uuid4(), lace_id))
+    sent = client.post(f"{API}/laces/{lace_id}/messages", json={"text": "Have you found anything I need to decide on?"}).json()
+    done = client.portal.call(_wait_for_status, uuid.UUID(sent["run_id"]), {"completed", "failed"}, TURN_TIMEOUT_S)
+    assert done.status == "completed", done.error
+    reply = client.get(f"{API}/laces/{lace_id}/messages").json()[-1]
+    print(f"\n--- REPLY\n{reply['content']}\n--- ui: {reply.get('ui')}")
+    assert any(b["type"] == "card" and b["title"] == "Particle" for b in reply.get("ui") or [])
