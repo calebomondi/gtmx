@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Bookmark, Check, ExternalLink, Loader2, Search, Send, Undo2, X } from "lucide-react"
+import { Bookmark, Check, CheckCheck, ExternalLink, Loader2, Search, Send, Undo2, X } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import type { CardBlockDto, ChoicesBlockDto, UiBlockDto } from "@/lib/api"
 
 import { cardState, contactsLine, type CardState } from "./chat-cards"
+import { waitingAt } from "./contacts-model"
 import type { LaceChat } from "./use-lace-chat"
 
 function Choices({ block, live, onChoose }: { block: ChoicesBlockDto; live: boolean; onChoose: (option: string) => void }) {
@@ -63,9 +64,15 @@ function Actions({ card, state, chat, onReview }: {
         )
       }
       const line = contactsLine(state.account)
+      const waiting = waitingAt(chat.contacts, card.id)
       return (
         <>
           {line && <span className="text-xs text-muted-foreground">{line}</span>}
+          {waiting > 0 && (
+            <Button size="sm" onClick={() => void chat.approveAccountContacts(card.id)}>
+              <CheckCheck /> Approve {waiting === 1 ? "1 person" : `${waiting} people`}
+            </Button>
+          )}
           {chat.findingAccounts ? (
             <Button size="sm" variant="outline" disabled><Loader2 className="animate-spin" /> Looking…</Button>
           ) : (

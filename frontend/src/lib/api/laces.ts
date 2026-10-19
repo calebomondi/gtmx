@@ -391,7 +391,18 @@ export interface ContactDto {
   email: string | null
   linkedin: string | null
   source: "discovery" | "contact_search"
+  /** When the founder cleared them for outreach: drafts go only to approved people. */
+  approved_at: string | null
   first_seen_at: string
+}
+
+export function setLaceContactApproved(laceId: string, contactId: string, approved: boolean): Promise<ContactDto> {
+  return apiFetch(`/api/v1/laces/${laceId}/contacts/${contactId}`, { method: "PATCH", body: JSON.stringify({ approved }) })
+}
+
+/** Clear everyone found at one account for outreach. */
+export function approveLaceAccountContacts(laceId: string, accountId: string): Promise<{ approved: number }> {
+  return apiFetch(`/api/v1/laces/${laceId}/accounts/${accountId}/contacts/approve`, { method: "POST" })
 }
 
 export function listLaceContacts(laceId: string): Promise<ContactDto[]> {

@@ -287,6 +287,9 @@ class LaceContact(Base):
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     linkedin: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[str] = mapped_column(String(16), nullable=False)
+    # The founder cleared this person for outreach: nothing is drafted to
+    # anyone until then.
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
                                                     default=_now, server_default=func.now())
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,

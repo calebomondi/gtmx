@@ -22,6 +22,8 @@ from backend.app.schemas.laces import (
     ChannelResponse,
     AccountUpdateRequest,
     CompetitorResponse,
+    AccountApprovalResponse,
+    ContactApproval,
     ContactResponse,
     CompetitorUpdateRequest,
     FactCorrection,
@@ -141,9 +143,28 @@ async def get_funnel(lace: OwnedLace, db: DbSession):
 async def list_contacts(lace: OwnedLace, db: DbSession,
                         limit: int = Query(default=200, ge=1, le=MAX_CONTACTS_PER_PAGE)):
     """The people found at the Lace's target accounts, by account."""
-    return [ContactResponse(id=c.id, account_id=a.id, account_name=a.name, name=c.name, title=c.title, email=c.email,
-                            linkedin=c.linkedin, source=c.source, first_seen_at=c.first_seen_at)
-            for c, a in await lace_contacts.list_for_lace(db, lace.id, limit)]
+    return [_contact(c, a.name) for c, a in await lace_contacts.list_for_lace(db, lace.id, limit)]
+
+
+def _contact(c, account_name: str) -> ContactResponse:
+    return ContactResponse(id=c.id, account_id=c.account_id, account_name=account_name, name=c.name, title=c.title,
+                           email=c.email, linkedin=c.linkedin, source=c.source, approved_at=c.approved_at,
+                           first_seen_at=c.first_seen_at)
+
+
+@router.patch("/{lace_id}/contacts/{contact_id}", response_model=ContactResponse)
+async def approve_contact(lace: OwnedLace, contact_id: uuid.UUID, payload: ContactApproval, db: DbSession):
+    """Clear one person for outreach (or take it back): drafts go only to them."""
+    contact = await lace_contacts.set_approved(db, lace.id, contact_id, payload.approved)
+    account = await lace_accounts.get_in_lace(db, lace.id, contact.account_id)
+    return _contact(contact, account.name)
+
+
+@router.post("/{lace_id}/accounts/{account_id}/contacts/approve", response_model=AccountApprovalResponse)
+async def approve_account_contacts(lace: OwnedLace, account_id: uuid.UUID, db: DbSession):
+    """Clear everyone found at one account for outreach, in one click."""
+    await lace_accounts.get_in_lace(db, lace.id, account_id)
+    return AccountApprovalResponse(approved=await lace_contacts.approve_account(db, lace.id, account_id))
 
 
 @router.get("/{lace_id}/messages", response_model=list[LaceMessage], response_model_exclude_none=True)

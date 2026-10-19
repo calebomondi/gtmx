@@ -3,6 +3,7 @@ saved for the founder to edit or discard, never sent by the Lace."""
 
 import json
 import uuid
+from datetime import UTC, datetime
 
 import psycopg
 from langchain_core.messages import AIMessage
@@ -11,6 +12,7 @@ from agents.schemas.accounts import AccountRecord, ContactRecord, TriggerEvent
 from agents.schemas.outreach import OutreachDraft
 from backend.app.runs import lace_jobs
 from backend.app.runs import manager
+from backend.app.services.lace_contacts import contact_key
 from backend.tests.helpers import make_user
 from backend.tests.test_lace_jobs import _wait_for_turns, lace  # noqa: F401 -- fixture
 from backend.tests.test_laces_api import API, lace_runtime  # noqa: F401 -- fixture
@@ -18,15 +20,23 @@ from backend.tests.test_runs import _wait_for_status
 from config import settings
 
 
-def _account(lace_id, name, contacts, status="person", strength="strong") -> uuid.UUID:
+def _account(lace_id, name, contacts, status="person", strength="strong", approved=True) -> uuid.UUID:
+    """A saved target account with its people on file, cleared for outreach
+    unless `approved` is False."""
     record = AccountRecord(name=name, website=f"https://{name.lower()}.test", key_contacts=contacts,
                            trigger_event=TriggerEvent(event="Raised", signal_type="funding_round", source="https://n.test"))
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
-        return conn.execute(
+        account_id = conn.execute(
             "INSERT INTO lace_accounts (id, lace_id, key, name, account_type, record, contact_status, fit_strength)"
             " VALUES (%s, %s, %s, %s, 'company', %s, %s, %s) RETURNING id",
             (uuid.uuid4(), lace_id, name.lower(), name, json.dumps(record.model_dump(mode="json")), status, strength),
         ).fetchone()[0]
+        for c in contacts:
+            conn.execute("INSERT INTO lace_contacts (id, lace_id, account_id, key, name, email, linkedin, source,"
+                         " approved_at) VALUES (%s, %s, %s, %s, %s, %s, %s, 'discovery', %s)",
+                         (uuid.uuid4(), lace_id, account_id, contact_key(c), c.name, c.email, c.linkedin,
+                          datetime.now(UTC) if approved else None))
+    return account_id
 
 
 def _stub_writer(monkeypatch, fail_for=()):
@@ -68,6 +78,46 @@ def test_drafts_go_to_the_best_person_and_wait_for_the_founder(client, lace, lac
     assert f"Beta [draft {drafts['Beta']['id']}]: to Tom by linkedin" in update
     assert set(drafts) == {"Alpha", "Beta"} and all(d["status"] == "draft" for d in drafts.values())
     assert drafts["Alpha"]["subject"] == "About Alpha" and drafts["Beta"]["channel"] == "linkedin"
+
+
+def test_nothing_is_drafted_to_people_not_yet_approved(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    written = _stub_writer(monkeypatch)
+    waiting = _account(lace, "Waiting", [ContactRecord(name="Jane Doe", email="jane@waiting.test"),
+                                         ContactRecord(name="Tom", linkedin="https://linkedin.com/in/tom")],
+                       approved=False)
+    lace_runtime.append(AIMessage(content="Approve the people at Waiting first."))
+    run = client.portal.call(manager.start_lace_job, "lace_drafts", user.id, uuid.UUID(lace), {})
+    client.portal.call(_wait_for_status, run.id, {"completed"})
+    turns = client.portal.call(_wait_for_turns, lace, 1)
+    assert written == []
+    assert "No message was drafted" in turns[-1].input["updates"][0]
+    assert "wait for the founder to approve them" in turns[-1].input["updates"][0]
+
+    # One click clears both; the next draft goes to the best of them.
+    assert client.post(f"{API}/laces/{lace}/accounts/{waiting}/contacts/approve").json() == {"approved": 2}
+    lace_runtime.append(AIMessage(content="Drafted to Jane."))
+    run = client.portal.call(manager.start_lace_job, "lace_drafts", user.id, uuid.UUID(lace), {})
+    client.portal.call(_wait_for_status, run.id, {"completed"})
+    assert written == [("Waiting", "jane@waiting.test", "Caleb")]
+    client.portal.call(_wait_for_turns, lace, 2)
+
+
+def test_only_approved_people_are_written_to(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    written = _stub_writer(monkeypatch)
+    account = _account(lace, "Mixed", [ContactRecord(name="Jane Doe", email="jane@mixed.test"),
+                                       ContactRecord(name="Tom", linkedin="https://linkedin.com/in/tom")],
+                       approved=False)
+    contacts = {c["name"]: c for c in client.get(f"{API}/laces/{lace}/contacts").json()}
+    approved = client.patch(f"{API}/laces/{lace}/contacts/{contacts['Tom']['id']}", json={"approved": True}).json()
+    assert approved["approved_at"] is not None and approved["account_name"] == "Mixed"
+    lace_runtime.append(AIMessage(content="Drafted to Tom."))
+    run = client.portal.call(manager.start_lace_job, "lace_drafts", user.id, uuid.UUID(lace), {"account_ids": [str(account)]})
+    client.portal.call(_wait_for_status, run.id, {"completed"})
+    assert written == [("Mixed", "https://linkedin.com/in/tom", "Caleb")]  # not Jane, who was not approved
+    client.portal.call(_wait_for_turns, lace, 1)
+    client.sign_in(make_user("Intruder"))
+    assert client.patch(f"{API}/laces/{lace}/contacts/{contacts['Tom']['id']}", json={"approved": False}).status_code == 404
+    assert client.post(f"{API}/laces/{lace}/accounts/{account}/contacts/approve").status_code == 404
 
 
 def test_accounts_already_written_to_are_not_redrafted(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
