@@ -45,9 +45,9 @@ export default function NewLace() {
     setSubmitting(true)
     setError(null)
     try {
-      const { lace } = await createLace(name.trim(), website.trim())
+      const { lace, run_id } = await createLace(name.trim(), website.trim())
       void refetchLaces()
-      navigate(`/lace/${lace.id}`)
+      navigate(`/lace/${lace.id}/setup?run=${run_id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
       setSubmitting(false)

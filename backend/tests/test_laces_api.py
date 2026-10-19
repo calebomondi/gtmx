@@ -28,7 +28,8 @@ def lace_runtime(monkeypatch):
     replies: list[AIMessage] = []
     monkeypatch.setattr(lace_runs, "get_checkpointer", lambda: saver)
 
-    async def fake_onboard(store, cfg):
+    async def fake_onboard(store, cfg, progress):
+        progress(0.5, "Read 1 of 1 pages")
         await store.record_fact(NewFact(topic="offer", claim="Acme sells payroll to clinics.",
                                         source_url="https://acme.test/", confidence="high", origin="crawl"))
         await store.set_startup_name("Acme")

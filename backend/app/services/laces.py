@@ -2,14 +2,14 @@
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import Select, and_, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database.lace_models import Lace, LaceFact, LaceOutreach
 from backend.app.database.models import Run
-from backend.app.schemas.laces import LaceMood
+from backend.app.schemas.laces import FactVerdict, LaceMood
 from backend.app.services.runs import TERMINAL_STATUSES
 from backend.app.services.competitors import domain_key, normalize_website
 from backend.app.services import limits
@@ -78,10 +78,10 @@ async def get_owned(db: AsyncSession, user_id: uuid.UUID, lace_id: uuid.UUID) ->
 
 
 def current_facts_query(lace_id: uuid.UUID, topic: str | None, limit: int) -> Select[tuple[LaceFact]]:
-    """A Lace's current facts (superseded ones hidden), newest first."""
+    """A Lace's current facts (superseded and retracted ones hidden), newest first."""
     query = (
         select(LaceFact)
-        .where(LaceFact.lace_id == lace_id, LaceFact.superseded_by_id.is_(None))
+        .where(LaceFact.lace_id == lace_id, LaceFact.superseded_by_id.is_(None), LaceFact.retracted_at.is_(None))
         .order_by(LaceFact.recorded_at.desc()).limit(limit)
     )
     return query if topic is None else query.where(LaceFact.topic == topic)
@@ -102,3 +102,39 @@ async def update_brief_settings(db: AsyncSession, lace: Lace, changes: dict) -> 
         lace.quiet_start, lace.quiet_end = quiet.get("start"), quiet.get("end")
     await db.commit()
     return lace
+
+
+async def _current_fact(db: AsyncSession, lace_id: uuid.UUID, fact_id: uuid.UUID) -> LaceFact:
+    fact = await db.scalar(select(LaceFact).where(
+        LaceFact.id == fact_id, LaceFact.lace_id == lace_id,
+        LaceFact.superseded_by_id.is_(None), LaceFact.retracted_at.is_(None)).with_for_update())
+    if fact is None:
+        raise NotFoundError("Fact not found")
+    return fact
+
+
+async def review_fact(db: AsyncSession, lace_id: uuid.UUID, fact_id: uuid.UUID, verdict: FactVerdict) -> LaceFact:
+    """The founder confirms a fact, or says it is wrong."""
+    fact = await _current_fact(db, lace_id, fact_id)
+    now = datetime.now(UTC)
+    if verdict == "confirmed":
+        fact.confirmed_at = now
+    else:
+        fact.retracted_at = now
+    await db.commit()
+    return fact
+
+
+async def correct_fact(db: AsyncSession, lace_id: uuid.UUID, fact_id: uuid.UUID, claim: str) -> LaceFact:
+    """The founder rewrites a fact: their version supersedes it."""
+    claim = claim.strip()
+    if not claim:
+        raise InvalidInputError("Write the fact as it should read.")
+    old = await _current_fact(db, lace_id, fact_id)
+    new = LaceFact(lace_id=lace_id, topic=old.topic, claim=claim, source_url=None, confidence="high",
+                   origin="user", confirmed_at=datetime.now(UTC))
+    db.add(new)
+    await db.flush()
+    old.superseded_by_id = new.id
+    await db.commit()
+    return new

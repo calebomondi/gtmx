@@ -67,10 +67,12 @@ position rule follows recency too. The list response carries `mood` and
 
 - **The step line under the mascot** ("Reading /pricing…") stays as it is.
 - **Confirm:**
-  - Cards show what the Lace learned: offer, who it is for, pricing, competitors.
-  - Each card has ✓, ✗ and edit; corrections are saved as founder facts.
-  - Confirming opens the Lace's workspace.
-- **A crawl that fails** (unreachable site, nothing readable) shows the reason and a retry, never a half-printed mascot left hanging.
+  - Cards show what the Lace learned, grouped: what you sell, who buys, who it is for, pricing, how you stand out.
+  - Each fact has ✓ (`confirmed_at`), ✎ (the founder's wording supersedes it as a `user` fact) and ✗ (`retracted_at`: it leaves what the Lace knows but stays on record).
+  - "Looks right, meet {name}" opens the Lace.
+- **A site that can't be read:** the page says so and offers "Tell {name}". That goes to the chat, where the Lace has already asked the founder to describe the startup. A retry would mostly hit the same unreadable site.
+- **A run that fails:** shows the reason, "Start again" (`/new`) and "Open {name}".
+- **Route:** `/lace/:id/setup?run=…`. Without `run`, it finds the active onboarding run, or goes straight to review once onboarding has finished.
 
 ## 4. The Lace's workspace
 

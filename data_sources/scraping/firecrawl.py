@@ -10,6 +10,8 @@ Failures raise `FirecrawlError` rather than returning empty values, so a caller
 can tell "the site has nothing" from "the call failed".
 """
 
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -24,6 +26,8 @@ from utils.log import logger
 # The SDK retries on its own; one retry is enough to ride out a blip without
 # multiplying the caller's wait.
 _SDK_RETRIES = 1
+_BATCH_POLL_S = 2
+_BATCH_DONE = ("completed", "failed", "cancelled")
 
 
 class FirecrawlError(RuntimeError):
@@ -99,11 +103,30 @@ def scrape_page(url: str, config: Settings) -> Page:
     return page
 
 
-def scrape_pages(urls: list[str], config: Settings) -> tuple[list[Page], list[PageFailure]]:
+def _run_batch(client: Firecrawl, urls: list[str], timeout_s: float,
+               on_progress: Callable[[int, int], None] | None):
+    """Start a batch and poll it to the end, as the SDK's own wait does, but
+    reporting how many pages are done after each check."""
+    started = client.start_batch_scrape(urls, formats=["markdown"], only_main_content=True)
+    deadline = time.monotonic() + timeout_s
+    while True:
+        job = client.get_batch_scrape_status(started.id)
+        if on_progress:
+            on_progress(job.completed or 0, job.total or len(urls))
+        if job.status in _BATCH_DONE:
+            return job
+        if time.monotonic() > deadline:
+            raise TimeoutError(f"batch {started.id} did not finish within {timeout_s:.0f}s")
+        time.sleep(_BATCH_POLL_S)
+
+
+def scrape_pages(urls: list[str], config: Settings,
+                 on_progress: Callable[[int, int], None] | None = None) -> tuple[list[Page], list[PageFailure]]:
     """Several pages in one batch, waiting at most `firecrawl_batch_timeout_s`.
 
-    Pages that fail come back as failures alongside the ones that worked; only
-    a failure of the whole batch raises.
+    `on_progress(done, total)` is called after each status check while the
+    batch runs. Pages that fail come back as failures alongside the ones that
+    worked; only a failure of the whole batch raises.
     """
     if not urls:
         return [], []
@@ -112,12 +135,7 @@ def scrape_pages(urls: list[str], config: Settings) -> tuple[list[Page], list[Pa
         # One record per batch, billed per page: left unpriced rather than
         # reported at one page's price.
         with usage.track("firecrawl", "batch_scrape"):
-            job = client.batch_scrape(
-                urls,
-                formats=["markdown"],
-                only_main_content=True,
-                wait_timeout=int(config.firecrawl_batch_timeout_s),
-            )
+            job = _run_batch(client, urls, config.firecrawl_batch_timeout_s, on_progress)
     except Exception as exc:
         raise FirecrawlError(f"batch scrape failed: {exc}") from exc
 

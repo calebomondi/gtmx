@@ -31,6 +31,7 @@ import { ArchivedWorkspace } from "@/features/archive/archived-workspace"
 import { HomeFeed } from "@/features/home-feed/home-feed-components"
 import LaceList from "@/features/lace/lace-list"
 import NewLace from "@/features/lace/new-lace"
+import LaceSetup from "@/features/lace/lace-setup"
 import LaceChat from "@/features/lace/lace-chat"
 import AuthPage from "@/features/auth/auth-component"
 import AuthCallback from "@/features/auth/auth-callback"
@@ -174,6 +175,7 @@ const router = createBrowserRouter([
       { path: 'lace', element: <LaceList /> },
       { path: 'lace/new', element: <Navigate to="/new" replace /> },
       { path: 'lace/:lace_id', element: <LaceChat /> },
+      { path: 'lace/:lace_id/setup', element: <LaceSetup /> },
       { path: 'archive', element: <ArchiveComponent /> },
       { path: 'accounts', element: <AccountsComponent /> },
       { path: 'archive/workspace/:workspace_id', element: <ArchivedWorkspace /> },

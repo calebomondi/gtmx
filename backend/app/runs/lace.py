@@ -4,7 +4,8 @@ Both run under the run manager (timeout, failure recording, restart recovery).
 The Lace's conversation lives on one LangGraph thread per Lace, in the shared
 Postgres checkpointer; the graph is compiled per run around that Lace's store.
 
-Frames: "step" (what the Lace is doing, for the progress line), "tool_result"
+Frames: "step" (what the Lace is doing, for the progress line), "progress"
+(onboarding only: {fraction, text} for the creation page), "tool_result"
 (each tool's summary), "message" (the Lace's reply), then "complete". While
 the model writes, live-only "token" frames carry the reply as it forms, and
 "token_reset" says to discard the text so far.
@@ -13,12 +14,14 @@ the model writes, live-only "token" frames carry the reply as it forms, and
 import asyncio
 import json
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 
 from agents.lace.graph import BRIEF_FACTS, build_lace_graph
-from agents.lace.onboarding import onboard, opening_message
+from agents.lace.onboarding import Progress, onboard, opening_message
 from agents.lace.store import LaceJobs
 from agents.lace.prompts import system_prompt
 from backend.app.agents_runtime import get_checkpointer
@@ -31,6 +34,9 @@ from backend.app.services.lace_store import DbLaceStore
 from backend.app.services.runs import set_run_fields
 from config import settings
 
+# Where the founder's progress bar stands while the Lace writes its first
+# message, after onboarding's own stages (agents/lace/onboarding.py).
+WRITING_PROGRESS = 0.95
 # Characters per streamed "token" frame.
 TOKEN_FRAME_CHARS = 24
 
@@ -86,13 +92,34 @@ async def _finish(run_id: uuid.UUID, reply: str) -> None:
     await events.publish(run_id, "complete", {})
 
 
+@asynccontextmanager
+async def _progress_frames(run_id: uuid.UUID) -> AsyncIterator[Progress]:
+    """A thread-safe progress callback whose reports become "progress"
+    frames, published in order; all are out when the block ends."""
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue[tuple[float, str] | None] = asyncio.Queue()
+
+    async def publish_all() -> None:
+        while (item := await queue.get()) is not None:
+            await events.publish(run_id, "progress", {"fraction": round(item[0], 3), "text": item[1]})
+
+    publisher = asyncio.create_task(publish_all())
+    try:
+        yield lambda fraction, text: loop.call_soon_threadsafe(queue.put_nowait, (fraction, text))
+    finally:
+        loop.call_soon_threadsafe(queue.put_nowait, None)
+        await publisher
+
+
 async def onboarding_segment(run_id: uuid.UUID, lace_id: uuid.UUID) -> None:
     graph, store = _graph(lace_id)
     await events.publish(run_id, "step", {"text": "Reading your website"})
-    result = await onboard(store, settings)
+    async with _progress_frames(run_id) as progress:
+        result = await onboard(store, settings, progress=progress)
     await events.publish(run_id, "onboarded", result.model_dump(mode="json"))
 
     await events.publish(run_id, "step", {"text": "Writing to you"})
+    await events.publish(run_id, "progress", {"fraction": WRITING_PROGRESS, "text": "Writing to you"})
     profile, facts = await asyncio.gather(store.profile(), store.facts(None, BRIEF_FACTS))
     reply = await asyncio.to_thread(opening_message, system_prompt(profile, facts), result)
     # The opening is the Lace's own first message on its thread, so the next

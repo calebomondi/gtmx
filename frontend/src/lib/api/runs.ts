@@ -65,6 +65,10 @@ export interface RunFrame {
   tool?: string
   ok?: boolean
   summary?: string
+  /** "progress" frames: how far onboarding has got, 0 to 1. */
+  fraction?: number
+  /** "onboarded" frames: the pages onboarding could read. */
+  pages_read?: string[]
 }
 
 /** Every frame of a run after `after`: the backlog, then live, ending after
