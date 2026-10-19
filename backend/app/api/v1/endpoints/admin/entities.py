@@ -1,4 +1,4 @@
-"""Read-only admin views: users, workspaces, runs (with timelines), signals."""
+"""Read-only admin views: users, workspaces, Laces, runs (with timelines), signals."""
 
 import uuid
 
@@ -6,9 +6,9 @@ from fastapi import APIRouter, Query
 
 from backend.app.api.deps import DbSession
 from backend.app.schemas.admin import (
-    AdminRunDetail, AdminRunRow, AdminSignalRow, AdminUserDetail, AdminUserRow, AdminWorkspaceRow, Page,
+    AdminLaceDetail, AdminLaceRow, AdminRunDetail, AdminRunRow, AdminSignalRow, AdminUserDetail, AdminUserRow, AdminWorkspaceRow, Page,
 )
-from backend.app.services import admin_directory, admin_engagement, admin_runs
+from backend.app.services import admin_directory, admin_engagement, admin_laces, admin_runs
 
 router = APIRouter()
 
@@ -41,13 +41,26 @@ async def list_workspaces(db: DbSession, page: int = PageNo, per_page: int = Per
     return await admin_directory.list_workspaces(db, page, per_page, q)
 
 
+@router.get("/laces", response_model=Page[AdminLaceRow])
+async def list_laces(db: DbSession, page: int = PageNo, per_page: int = PerPage, q: str | None = None,
+                     user_id: uuid.UUID | None = None):
+    """Every Lace, most recently active first; `q` matches name, website or startup."""
+    return await admin_laces.list_laces(db, page, per_page, q, user_id)
+
+
+@router.get("/laces/{lace_id}", response_model=AdminLaceDetail)
+async def get_lace(lace_id: uuid.UUID, db: DbSession):
+    return await admin_laces.get_lace(db, lace_id)
+
+
 @router.get("/runs", response_model=Page[AdminRunRow])
 async def list_runs(
     db: DbSession, page: int = PageNo, per_page: int = PerPage, status: str | None = None,
     kind: str | None = None, user_id: uuid.UUID | None = None, workspace_id: uuid.UUID | None = None,
+    lace_id: uuid.UUID | None = None,
 ):
     return await admin_runs.list_runs(db, page, per_page, status=status, kind=kind,
-                                      user_id=user_id, workspace_id=workspace_id)
+                                      user_id=user_id, workspace_id=workspace_id, lace_id=lace_id)
 
 
 @router.get("/runs/{run_id}", response_model=AdminRunDetail)
