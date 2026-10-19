@@ -87,6 +87,9 @@ def test_the_lace_posts_its_brief_once(client, lace, lace_runtime, user):  # noq
     with psycopg.connect(settings.database_url) as conn:
         body, posted = conn.execute("SELECT body, posted_at IS NOT NULL FROM lace_briefs").fetchone()
     assert body.startswith("Good morning") and posted
+    with psycopg.connect(settings.database_url) as conn:
+        kind, summary, ref_type = conn.execute("SELECT kind, summary, ref_type FROM lace_activity").fetchone()
+    assert (kind, ref_type) == ("brief", "brief") and summary.startswith("Good morning")
     assert client.portal.call(scheduler.sweep_briefs) == 0  # once a day
 
 

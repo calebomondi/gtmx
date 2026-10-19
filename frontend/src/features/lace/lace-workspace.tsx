@@ -4,13 +4,18 @@ import { Settings2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 
+import { sectionId, type FeedTarget } from "./lace-activity-actions"
 import { LaceConversation } from "./lace-conversation"
 import { LaceFeed } from "./lace-feed"
 import { LaceMessaging } from "./lace-messaging"
 import { LaceRail, LaceTabBar } from "./lace-rail"
 import { chatMascot, LACE_TABS, type LaceTab } from "./lace-tabs"
 import { LaceSettings } from "./lace-settings"
+import { useLaceActivity } from "./use-lace-activity"
 import { useLaceChat } from "./use-lace-chat"
+
+// Long enough for a tab's content to mount before scrolling to a section in it.
+const SECTION_SCROLL_DELAY_MS = 100
 
 function isTab(value: string | undefined): value is LaceTab {
   return LACE_TABS.includes(value as LaceTab)
@@ -31,15 +36,25 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
   // One load of the Lace serves all three tabs, so the chat keeps following
   // its run while the founder looks at the Feed.
   const chat = useLaceChat(laceId)
+  const activity = useLaceActivity(laceId, tab === "feed")
   const [settingsOpen, setSettingsOpen] = useState(false)
   const name = chat.lace?.name ?? "Lace"
   const subtitle = chat.lace?.startup_name ?? chat.lace?.website
+  const select = (next: LaceTab) => navigate(`/lace/${laceId}/${next}`)
+  const open = ({ tab: next, section }: FeedTarget) => {
+    const scroll = () => section && document.getElementById(sectionId(section))?.scrollIntoView({ behavior: "smooth" })
+    if (next === tab) return scroll()
+    select(next)
+    // The section mounts with the tab: scroll once it is there.
+    window.setTimeout(scroll, SECTION_SCROLL_DELAY_MS)
+  }
   const nav = {
     tab,
-    onSelect: (next: LaceTab) => navigate(`/lace/${laceId}/${next}`),
+    onSelect: select,
     name,
     mascot: chatMascot(tab, chat.working),
     waiting: chat.waiting,
+    unread: activity.unread,
     feedBusy: chat.searching || chat.findingAccounts || chat.findingOpportunities,
     messagingBusy: chat.drafting,
   }
@@ -60,7 +75,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
         <LaceRail {...nav} className="absolute top-6 left-4 z-10 hidden md:flex" />
         <main className={tab === "chat" ? "flex min-h-0 flex-1 flex-col md:pl-20" : "min-h-0 flex-1 overflow-y-auto md:pl-20"}>
           {tab === "chat" && <LaceConversation chat={chat} name={name} />}
-          {tab === "feed" && <LaceFeed laceId={laceId} chat={chat} />}
+          {tab === "feed" && <LaceFeed laceId={laceId} name={name} chat={chat} activity={activity} onOpen={open} />}
           {tab === "messaging" && <LaceMessaging laceId={laceId} chat={chat} />}
         </main>
       </div>

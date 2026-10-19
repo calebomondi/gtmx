@@ -167,3 +167,13 @@ INBOX_PLATFORMS: tuple[str, ...] = InboxPlatform.__args__
 
 BriefFrequency = Literal["off", "daily", "weekly"]
 BRIEF_FREQUENCIES: tuple[str, ...] = BriefFrequency.__args__
+
+# What a Lace's Feed shows the founder it did (docs/lace-ui-plan.md, Feed).
+ActivityKind = Literal[
+    "brief", "competitors_found", "competitor_moves", "accounts_found", "contacts_found",
+    "drafts_ready", "reply_received", "opportunities_found", "job_failed",
+]
+ACTIVITY_KINDS: tuple[str, ...] = ActivityKind.__args__
+# What an activity is about, when it is one thing the founder can open.
+ActivityRef = Literal["brief", "outreach"]
+ACTIVITY_REFS: tuple[str, ...] = ActivityRef.__args__

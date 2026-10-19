@@ -3,6 +3,7 @@ list them, read what one knows, read its conversation, and send it a message.
 Work happens in runs; follow them at /runs/{run_id}/events."""
 
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Query, status
 
@@ -10,6 +11,8 @@ from backend.app.api.deps import CurrentUser, DbSession, OwnedLace
 from backend.app.runs import lace as lace_runs
 from backend.app.runs import manager
 from backend.app.schemas.laces import (
+    ActivityReadResponse,
+    ActivityResponse,
     AccountResponse,
     BriefSettings,
     BriefSettingsUpdate,
@@ -36,7 +39,7 @@ from backend.app.schemas.laces import (
     OutreachResponse,
     OutreachUpdateRequest,
 )
-from backend.app.services import email, lace_accounts, lace_channels, lace_competitors, lace_opportunities, lace_outreach
+from backend.app.services import email, lace_accounts, lace_activity, lace_channels, lace_competitors, lace_opportunities, lace_outreach
 from backend.app.services import laces as lace_service
 from agents.schemas.lace import AccountStatus, CompetitorStatus, FactTopic, InboxPlatform
 from agents.schemas.opportunities import OpportunityStatus
@@ -50,6 +53,7 @@ MAX_COMPETITORS_PER_PAGE = 100
 MAX_ACCOUNTS_PER_PAGE = 100
 MAX_OUTREACH_PER_PAGE = 100
 MAX_OPPORTUNITIES_PER_PAGE = 100
+MAX_ACTIVITY_PER_PAGE = 100
 
 
 @router.post("", response_model=LaceCreateResponse, status_code=status.HTTP_201_CREATED)
@@ -96,6 +100,19 @@ async def review_fact(lace: OwnedLace, fact_id: uuid.UUID, payload: FactReview, 
 async def correct_fact(lace: OwnedLace, fact_id: uuid.UUID, payload: FactCorrection, db: DbSession):
     """Rewrite a fact in the founder's words; the original is superseded."""
     return await lace_service.correct_fact(db, lace.id, fact_id, payload.claim)
+
+
+@router.get("/{lace_id}/activity", response_model=list[ActivityResponse])
+async def list_activity(lace: OwnedLace, db: DbSession, before: datetime | None = None,
+                        limit: int = Query(default=30, ge=1, le=MAX_ACTIVITY_PER_PAGE)):
+    """What the Lace did or found, newest first; `before` pages back."""
+    return await lace_activity.list_for_lace(db, lace.id, limit, before)
+
+
+@router.post("/{lace_id}/activity/read", response_model=ActivityReadResponse)
+async def mark_activity_read(lace: OwnedLace, db: DbSession):
+    """The founder has seen the Feed."""
+    return ActivityReadResponse(marked=await lace_activity.mark_all_read(db, lace.id))
 
 
 @router.get("/{lace_id}/messages", response_model=list[LaceMessage])

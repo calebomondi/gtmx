@@ -14,7 +14,7 @@ from sqlalchemy.dialects.postgresql import JSONB as JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
 from agents.schemas.opportunities import OPPORTUNITY_KINDS, OPPORTUNITY_STATUSES
-from agents.schemas.lace import ACCOUNT_STATUSES, BRIEF_FREQUENCIES, CONTACT_STATUSES, INBOX_PLATFORMS, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, FACT_ORIGINS, FACT_TOPICS
+from agents.schemas.lace import ACCOUNT_STATUSES, ACTIVITY_KINDS, ACTIVITY_REFS, BRIEF_FREQUENCIES, CONTACT_STATUSES, INBOX_PLATFORMS, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, FACT_ORIGINS, FACT_TOPICS
 from backend.app.database.connect import Base
 
 LACE_STATUSES = ("onboarding", "active", "archived")
@@ -163,6 +163,35 @@ class LaceCompetitor(Base):
     # the first check, which is how a never-checked firm is found.
     monitor_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+
+
+class LaceActivity(Base):
+    """Something the Lace did or found, shown to the founder in its Feed.
+    Written in the same transaction as the result it reports. Not the same as
+    a LaceEvent, which is an update queued for the Lace itself to read."""
+
+    __tablename__ = "lace_activity"
+    __table_args__ = (
+        CheckConstraint(_one_of("kind", ACTIVITY_KINDS), name="kind"),
+        CheckConstraint(f"ref_type IS NULL OR {_one_of('ref_type', ACTIVITY_REFS)}", name="ref_type"),
+        CheckConstraint("(ref_type IS NULL) = (ref_id IS NULL)", name="ref_paired"),
+        Index("ix_lace_activity_lace_id_created_at", "lace_id", "created_at"),
+        Index("ix_lace_activity_unread", "lace_id", postgresql_where=text("read_at IS NULL")),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Indexed by the created_at index, which leads with it.
+    lace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("laces.id", ondelete="CASCADE"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(24), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The one thing it is about, when there is one (a reply, a brief); not a
+    # foreign key, since it may point at different tables.
+    ref_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    ref_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
+                                                 default=_now, server_default=func.now())
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class LaceEvent(Base):

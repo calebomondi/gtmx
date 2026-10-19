@@ -92,18 +92,18 @@ position rule follows recency too. The list response carries `mood` and
 
 ## 5. Feed: the notification centre
 
-- **The `lace_activity` table:** `id`, `lace_id`, `kind` (Literal), `title`, `summary`, `ref_type`/`ref_id` (the item it is about), `created_at`, `read_at`.
-  - Written in the same transaction as the result it reports.
+- **The `lace_activity` table:** `id`, `lace_id`, `kind` (Literal), `title`, `summary`, `ref_type`/`ref_id` (a reply or a brief), `created_at`, `read_at`.
+  - Written in the same transaction as the result it reports, beside the update each job queues for the Lace.
   - Kept separate from `lace_events`: events are updates queued for the Lace to read, activity is for the founder.
-- **What appears:** briefs, opportunities found and closing soon, competitor moves, accounts and contacts found, drafts ready, replies and DMs received, jobs blocked on something the founder can fix.
-- **Actions on each item:** Review, Save, Dismiss, Open in chat.
-- **"Needs you" strip:** pinned at the top, listing everything waiting on the founder.
-- **Funnel line:** accounts, then contacted, replied and meetings.
+- **What appears:** briefs, new competitors, competitor moves, new target accounts, contacts found, drafts ready, each reply received, new opportunities, and searches that failed (with the reason).
+- **Each item's action** opens where it leads: Messaging, the chat, or a Feed section.
+- **"Needs you" strip:** messages waiting (drafts to send, replies not yet read) and searches that stopped for the founder's input.
+- **Unread:** opening Feed marks everything read; what was new keeps a dot for the rest of the visit. Unread items badge the Feed button and turn the sidebar mascot alert.
 - **API:**
-  - `GET /laces/{id}/activity` (paginated, unread filter)
+  - `GET /laces/{id}/activity` (newest first, `before` pages back)
   - `POST /laces/{id}/activity/read`
-  - Polling first; a live stream per Lace can come later.
-- **Home Feed** (`/feed`) shows the same items across all of the founder's Laces.
+  - Polled every 30 seconds.
+- **E2:** Home Feed (`/feed`) shows the same items across all of the founder's Laces, plus the funnel line (accounts, then contacted, replied and interested).
 
 ## 6. Messaging
 
@@ -147,7 +147,8 @@ position rule follows recency too. The list response carries `mood` and
 | B | `/new` with eye tracking |
 | C | Creation page: `progress` frames, the print effect, confirm cards |
 | D | Workspace shell: three buttons, mascot states, Feed as the landing tab, panels re-homed |
-| E | `lace_activity`, its writers and API, the Feed UI and Home Feed |
+| E1 | `lace_activity`, its writers and API, the Lace's Feed (Needs you, Activity, unread badges) |
+| E2 | Home Feed across every Lace, and the funnel line |
 | F | Messaging: threads, undo send, `lace_contacts` (schema PR, then the backfill PR) |
 | G | Interactive chat: UI blocks, `ask_choice`, the actions endpoint, prompt chips |
 | H | Suggested, then saved |

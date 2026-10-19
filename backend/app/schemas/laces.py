@@ -8,7 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from agents.schemas.opportunities import OpportunityKind, OpportunityStatus
-from agents.schemas.lace import AccountStatus, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
+from agents.schemas.lace import AccountStatus, ActivityKind, ActivityRef, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
 
 
 def known_zone(value: str | None) -> str | None:
@@ -262,3 +262,20 @@ class BriefSettingsUpdate(BaseModel):
     @classmethod
     def _known_zone(cls, value: str | None) -> str | None:
         return known_zone(value)
+
+
+class ActivityResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    kind: ActivityKind
+    title: str
+    summary: str | None = None
+    ref_type: ActivityRef | None = None
+    ref_id: uuid.UUID | None = None
+    created_at: datetime
+    read_at: datetime | None = None
+
+
+class ActivityReadResponse(BaseModel):
+    marked: int = Field(description="How many items were unread")

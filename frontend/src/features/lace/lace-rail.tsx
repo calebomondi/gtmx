@@ -13,6 +13,8 @@ interface RailProps {
   mascot: LaceState
   /** Messages waiting on the founder: drafts to send, replies to read. */
   waiting: number
+  /** Feed activity the founder has not seen. */
+  unread: number
   /** The Lace is searching (Feed) or drafting (Messaging) in the background. */
   feedBusy: boolean
   messagingBusy: boolean
@@ -56,7 +58,7 @@ function RoundButton({ active, label, onClick, children, count = 0, busy = false
   )
 }
 
-function Buttons({ tab, onSelect, name, mascot, waiting, feedBusy, messagingBusy }: RailProps) {
+function Buttons({ tab, onSelect, name, mascot, waiting, unread, feedBusy, messagingBusy }: RailProps) {
   return (
     <>
       <RoundButton active={tab === "chat"} label={`Chat with ${name}`} onClick={() => onSelect("chat")}
@@ -64,7 +66,7 @@ function Buttons({ tab, onSelect, name, mascot, waiting, feedBusy, messagingBusy
         {/* The mascot fills the button: it is the Lace you talk to. */}
         <Lace state={mascot} size={46} decorative className="rounded-full" />
       </RoundButton>
-      <RoundButton active={tab === "feed"} label="Feed" busy={feedBusy} onClick={() => onSelect("feed")}>
+      <RoundButton active={tab === "feed"} label="Feed" count={unread} busy={feedBusy} onClick={() => onSelect("feed")}>
         <Newspaper className="size-5" />
       </RoundButton>
       <RoundButton active={tab === "messaging"} label="Messaging" count={waiting} busy={messagingBusy}

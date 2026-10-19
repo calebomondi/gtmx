@@ -292,3 +292,37 @@ export function getLaceBrief(laceId: string): Promise<BriefSettingsDto> {
 export function updateLaceBrief(laceId: string, changes: BriefSettingsChanges): Promise<BriefSettingsDto> {
   return apiFetch(`/api/v1/laces/${laceId}/brief`, { method: "PATCH", body: JSON.stringify(changes) })
 }
+
+export type ActivityKind =
+  | "brief"
+  | "competitors_found"
+  | "competitor_moves"
+  | "accounts_found"
+  | "contacts_found"
+  | "drafts_ready"
+  | "reply_received"
+  | "opportunities_found"
+  | "job_failed"
+
+/** Something the Lace did or found, for its Feed. */
+export interface ActivityDto {
+  id: string
+  kind: ActivityKind
+  title: string
+  summary: string | null
+  ref_type: "brief" | "outreach" | null
+  ref_id: string | null
+  created_at: string
+  /** When the founder saw it in the Feed; null while unseen. */
+  read_at: string | null
+}
+
+/** Newest first; `before` (an item's created_at) pages back. */
+export function listLaceActivity(laceId: string, before?: string): Promise<ActivityDto[]> {
+  const query = before ? `?before=${encodeURIComponent(before)}` : ""
+  return apiFetch<ActivityDto[]>(`/api/v1/laces/${laceId}/activity${query}`)
+}
+
+export function markLaceActivityRead(laceId: string): Promise<{ marked: number }> {
+  return apiFetch(`/api/v1/laces/${laceId}/activity/read`, { method: "POST" })
+}

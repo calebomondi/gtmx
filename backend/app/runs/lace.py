@@ -29,7 +29,7 @@ from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.database.lace_models import Lace
 from backend.app.runs import events
-from backend.app.services import lace_brief_email, lace_briefs
+from backend.app.services import lace_activity, lace_brief_email, lace_briefs
 from backend.app.services.lace_store import DbLaceStore
 from backend.app.services.runs import set_run_fields
 from config import settings
@@ -169,6 +169,12 @@ def event_message(updates: list[str]) -> HumanMessage:
     )
 
 
+def _first_line(text: str) -> str:
+    """A brief's opening line, without markdown emphasis, for its Feed item."""
+    line = next((l.strip() for l in text.splitlines() if l.strip()), "")
+    return line.strip("#*_ ")
+
+
 def _brief_message(request: str) -> HumanMessage:
     """The brief request, flagged like an update: the founder sees the
     Lace's brief, not what it was asked."""
@@ -187,6 +193,7 @@ async def brief_segment(run_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UU
     reply = await _converse(run_id, lace_id, _brief_message(request), jobs)
     async with AsyncSessionLocal() as db, db.begin():
         await lace_briefs.mark_posted(db, brief_id, reply)
+        await lace_activity.add(db, lace_id, "brief", "Your brief", _first_line(reply), ref=("brief", brief_id))
     await lace_brief_email.email_brief(brief_id, datetime.now(UTC))
     await _finish(run_id, reply)
 

@@ -5,14 +5,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 
 /** One titled block of a Lace's Feed or Messaging tab. `busy` shows the Lace
  * is working on it in the background. */
-export function LaceSection({ title, description, busy = false, children }: {
+export function LaceSection({ id, title, description, busy = false, children }: {
+  id?: string
   title: string
   description: string
   busy?: boolean
   children: ReactNode
 }) {
   return (
-    <Card>
+    <Card id={id} className="scroll-mt-4">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           {title}
