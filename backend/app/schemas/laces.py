@@ -37,7 +37,22 @@ class LaceResponse(BaseModel):
     website: str
     startup_name: str | None = None
     status: str = Field(description="onboarding | active | archived")
+    pinned: bool = False
     created_at: datetime
+
+
+# What a Lace's mascot shows in the sidebar, when something is actually going
+# on: working (a turn or job running), or waiting on the founder.
+LaceMood = Literal["thinking", "alert"]
+
+
+class LaceListItem(LaceResponse):
+    mood: LaceMood | None = Field(default=None, description="thinking: working now; alert: needs the founder")
+    last_active_at: datetime = Field(description="The Lace's latest run, or its creation; the list is newest first")
+
+
+class LaceUpdate(BaseModel):
+    pinned: bool | None = None
 
 
 class LaceCreateResponse(BaseModel):

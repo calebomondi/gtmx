@@ -287,7 +287,7 @@ export function ProjectHub() {
                 size="icon-sm"
                 variant="ghost"
                 aria-label="New workspace"
-                onClick={() => navigate('/new')}
+                onClick={() => navigate('/new-workspace')}
               >
                 <Plus className="size-4" />
               </Button> */}
@@ -352,7 +352,7 @@ export function ProjectHub() {
                   type="button"
                   size="sm"
                   className="cursor-pointer rounded-md bg-[#FEA853] text-black hover:bg-[#FEA853]"
-                  onClick={() => navigate('/new')}
+                  onClick={() => navigate('/new-workspace')}
                 >
                   <Plus className="size-4" />
                   New workspace

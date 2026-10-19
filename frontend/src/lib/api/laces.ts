@@ -18,7 +18,17 @@ export interface LaceDto {
   website: string
   startup_name: string | null
   status: LaceStatus
+  /** Shown first in the sidebar. */
+  pinned: boolean
   created_at: string
+}
+
+/** What is actually going on with a Lace: working now, or waiting on the founder. */
+export type LaceMood = "thinking" | "alert"
+
+export interface LaceListItemDto extends LaceDto {
+  mood: LaceMood | null
+  last_active_at: string
 }
 
 export interface FactDto {
@@ -45,8 +55,13 @@ export function createLace(name: string, website: string): Promise<{ lace: LaceD
   return apiFetch("/api/v1/laces", { method: "POST", body: JSON.stringify({ name, website, timezone: localTimeZone() }) })
 }
 
-export function listLaces(): Promise<LaceDto[]> {
-  return apiFetch<LaceDto[]>("/api/v1/laces")
+/** The founder's Laces, most recently active first. */
+export function listLaces(): Promise<LaceListItemDto[]> {
+  return apiFetch<LaceListItemDto[]>("/api/v1/laces")
+}
+
+export function updateLace(laceId: string, changes: { pinned?: boolean }): Promise<LaceDto> {
+  return apiFetch(`/api/v1/laces/${laceId}`, { method: "PATCH", body: JSON.stringify(changes) })
 }
 
 export function getLace(laceId: string): Promise<LaceDto> {

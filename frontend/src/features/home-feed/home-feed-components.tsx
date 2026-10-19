@@ -207,7 +207,7 @@ function EmptyHomeFeed({ workspaceCount }: { workspaceCount: number }) {
           type="button"
           size="lg"
           className="cursor-pointer rounded-lg bg-[#FEA853]"
-          onClick={() => navigate('/new')}
+          onClick={() => navigate('/new-workspace')}
         >
           Create a workspace
           <ArrowRight className="size-3.5" />

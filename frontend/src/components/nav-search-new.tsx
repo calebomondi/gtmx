@@ -4,7 +4,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { SquarePen, Search, Home, FolderClosed } from "lucide-react"
+import { SquarePen, Search, Home } from "lucide-react"
 import { useCallback, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 
@@ -44,13 +44,13 @@ export function NavSearchNew({
         </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton
-            tooltip="New"
+            tooltip="New Lace"
             isActive={isNavItemActive(pathname, "/new")}
             className="cursor-pointer"
             onClick={() => navigate("/new")}
           >
             <SquarePen />
-            <span>New Workspace</span>
+            <span>New Lace</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
         <SidebarMenuItem>
@@ -62,17 +62,6 @@ export function NavSearchNew({
             <Search />
             <span>Search Anything</span>
             <kbd className="ml-auto text-xs text-muted-foreground">Ctrl K</kbd>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            tooltip="Projects"
-            isActive={isNavItemActive(pathname, "/projects")}
-            className="cursor-pointer"
-            onClick={() => navigate("/projects")}
-          >
-            <FolderClosed />
-            <span>Projects</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>

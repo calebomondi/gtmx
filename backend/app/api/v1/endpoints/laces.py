@@ -23,6 +23,8 @@ from backend.app.schemas.laces import (
     FactResponse,
     LaceCreateRequest,
     LaceCreateResponse,
+    LaceListItem,
+    LaceUpdate,
     LaceMessage,
     LaceMessageRequest,
     LaceResponse,
@@ -55,14 +57,23 @@ async def create_lace(payload: LaceCreateRequest, user: CurrentUser, db: DbSessi
     return LaceCreateResponse(lace=LaceResponse.model_validate(lace), run_id=run.id)
 
 
-@router.get("", response_model=list[LaceResponse])
+@router.get("", response_model=list[LaceListItem])
 async def list_laces(user: CurrentUser, db: DbSession,
                      limit: int = Query(default=20, ge=1, le=MAX_LACES_PER_PAGE)):
-    return await lace_service.list_for_user(db, user.id, limit)
+    return [LaceListItem(**LaceResponse.model_validate(s.lace).model_dump(), mood=s.mood, last_active_at=s.last_active_at)
+            for s in await lace_service.list_for_user(db, user.id, limit)]
 
 
 @router.get("/{lace_id}", response_model=LaceResponse)
 async def get_lace(lace: OwnedLace):
+    return lace
+
+
+@router.patch("/{lace_id}", response_model=LaceResponse)
+async def update_lace(lace: OwnedLace, payload: LaceUpdate, db: DbSession):
+    """Pin or unpin the Lace in the founder's sidebar."""
+    if payload.pinned is not None:
+        lace = await lace_service.set_pinned(db, lace, payload.pinned)
     return lace
 
 

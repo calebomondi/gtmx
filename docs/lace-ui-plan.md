@@ -24,20 +24,22 @@ and Messaging hold what it finds and does. Implementation starts with PR A.
 
 ### Mascot state
 
-Real status comes first:
+Each Lace in the list carries a `mood` from the backend when something is
+actually going on:
 
-| State | When |
+| Mood | When |
 |---|---|
-| thinking | A conversation turn or a background job is running |
-| alert | Something needs the founder: an unread reply or DM, a draft waiting, an unread brief, a blocked job |
-| idle | Active in the last 3 days, nothing pending |
-| sleepy | No activity for 3 days or more |
+| thinking | A conversation turn or a background job is unfinished |
+| alert | Something waits on the founder: an outreach draft to send, or a reply or DM not yet read |
 
-The owner's rule applies when no real state does:
+With no mood, the owner's rule applies:
 - Pinned rows are alert.
 - In Laces, the first row is alert, the second idle, and the rest sleepy.
 
-The backend returns each Lace's status in the list response, derived from runs and `lace_activity`, so the sidebar makes no per-Lace calls.
+The list is ordered by latest activity (the Lace's newest run), so the
+position rule follows recency too. The list response carries `mood` and
+`last_active_at`, so the sidebar makes no per-Lace calls. It refreshes every
+30 seconds. PR E adds unread activity to alert.
 
 ## 2. `/new`: name and website
 
