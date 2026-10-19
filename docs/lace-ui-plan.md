@@ -83,11 +83,12 @@ position rule follows recency too. The list response carries `mood` and
   - alert when the chat is open
   - thinking while the Lace works on a reply
 - **Unread counts** show as badges on Feed and Messaging.
-- **Today's panels** (facts, competitors, accounts, outreach, inboxes, opportunities, brief) move into these places:
-  - Feed: activity and opportunities
-  - Messaging: outreach, inboxes and contacts
-  - The chat: everything else, as cards
-  - A settings sheet: the brief, inboxes and what the Lace knows
+- **Routes:** `/lace/:id/feed|chat|messaging`; `/lace/:id` opens Feed. Creation's "meet {name}" opens the chat, where the first message waits.
+- **Where today's panels went** (PR D):
+  - Feed: opportunities, target accounts and competitors, as Cards. PR E puts the activity feed above them.
+  - Messaging: outreach and inboxes. PR F adds threads and contacts.
+  - Settings sheet (header button): the brief and what the Lace knows.
+- **The rail:** one load of the Lace serves all three tabs, so a running reply keeps streaming while the founder is on Feed.
 
 ## 5. Feed: the notification centre
 

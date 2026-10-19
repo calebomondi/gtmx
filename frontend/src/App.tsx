@@ -32,7 +32,7 @@ import { HomeFeed } from "@/features/home-feed/home-feed-components"
 import LaceList from "@/features/lace/lace-list"
 import NewLace from "@/features/lace/new-lace"
 import LaceSetup from "@/features/lace/lace-setup"
-import LaceChat from "@/features/lace/lace-chat"
+import LaceWorkspace from "@/features/lace/lace-workspace"
 import AuthPage from "@/features/auth/auth-component"
 import AuthCallback from "@/features/auth/auth-callback"
 import ForgotPasswordPage from "@/features/auth/forgot-password"
@@ -174,8 +174,9 @@ const router = createBrowserRouter([
       { path: 'feed', element: <HomeFeed /> },
       { path: 'lace', element: <LaceList /> },
       { path: 'lace/new', element: <Navigate to="/new" replace /> },
-      { path: 'lace/:lace_id', element: <LaceChat /> },
+      { path: 'lace/:lace_id', element: <LaceWorkspace /> },
       { path: 'lace/:lace_id/setup', element: <LaceSetup /> },
+      { path: 'lace/:lace_id/:tab', element: <LaceWorkspace /> },
       { path: 'archive', element: <ArchiveComponent /> },
       { path: 'accounts', element: <AccountsComponent /> },
       { path: 'archive/workspace/:workspace_id', element: <ArchivedWorkspace /> },
