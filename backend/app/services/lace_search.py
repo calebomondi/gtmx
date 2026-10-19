@@ -31,7 +31,7 @@ def _escape(term: str) -> str:
     return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def _contains(column, term: str):
+def contains(column, term: str):
     return column.ilike(f"%{_escape(term)}%", escape="\\")
 
 
@@ -46,7 +46,7 @@ async def _hits(db: AsyncSession, user_id: uuid.UUID, term: str, limit: int, kin
     rows = await db.execute(
         select(model.id, title, subtitle, Lace.id, Lace.name)
         .join(Lace, Lace.id == model.lace_id)
-        .where(Lace.user_id == user_id, Lace.status != "archived", or_(*(_contains(c, term) for c in matched)), *where)
+        .where(Lace.user_id == user_id, Lace.status != "archived", or_(*(contains(c, term) for c in matched)), *where)
         .order_by(_prefix_first(title, term), title).limit(limit)
     )
     return [LaceSearchHit(kind=kind, id=row_id, title=row_title or "", subtitle=row_subtitle or None, lace_id=lace_id,
@@ -59,8 +59,8 @@ async def search(db: AsyncSession, user_id: uuid.UUID, term: str, per_kind: int)
     term = term.strip()[:MAX_QUERY_LEN]
     laces = await db.execute(
         select(Lace).where(Lace.user_id == user_id, Lace.status != "archived",
-                           or_(_contains(Lace.name, term), _contains(Lace.startup_name, term),
-                               _contains(Lace.website, term)))
+                           or_(contains(Lace.name, term), contains(Lace.startup_name, term),
+                               contains(Lace.website, term)))
         .order_by(_prefix_first(Lace.name, term), Lace.name).limit(per_kind))
     hits = [LaceSearchHit(kind="lace", id=lace.id, title=lace.name, subtitle=lace.startup_name or lace.website,
                           lace_id=lace.id, lace_name=lace.name) for lace in laces.scalars()]
