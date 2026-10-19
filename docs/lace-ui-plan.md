@@ -110,11 +110,11 @@ position rule follows recency too. The list response carries `mood` and
 
 ## 6. Messaging
 
-- **Threads:** one inbox for email, X and the Instagram/Facebook DMs, holding drafts, sends, replies and answers. LinkedIn and TikTok show as handoffs (copy, open profile, mark sent). Sending goes through the existing endpoints.
-- **Undo send:** a 5-second window to undo before a message goes out.
-- **Contacts:** a new `lace_contacts` table (person, title, email, LinkedIn, the account, source, status, timestamps), with indexes on what it is filtered and sorted by.
-  - Backfilled from `lace_accounts` key contacts in a separate, idempotent data migration.
-  - Contact search writes to it from then on.
+- **Conversations (F3):** the Lace's outreach grouped into conversations by `thread_id`, else by channel and recipient. On wider screens, the list (the ones that need the founder first) sits beside the open conversation. On phones, the list opens into one conversation with a back button.
+  - Sent messages and replies show as bubbles; replies carry how they were read (asked a question, wants to meet, …).
+  - Drafts sit at the bottom of their conversation, editable, using the same send and handoff rules as before (email, X, and Instagram or Facebook answers are sent from here; LinkedIn and TikTok are copied, sent there and marked sent).
+- **Undo send (F3):** Send counts down 5 seconds with an Undo button. Leaving the Lace mid-countdown sends at once.
+- **Contacts (F1, F2):** `lace_contacts`, one row per person per Lace, keyed by email, else LinkedIn, else name. Synced by account and contact searches, and backfilled from account records by an idempotent data migration. Messaging lists them in a searchable table.
 
 ## 7. An interactive chat
 

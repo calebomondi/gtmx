@@ -1,5 +1,6 @@
 import { useState } from "react"
-import { Check, Copy, ExternalLink, Loader2, Send, Trash2 } from "lucide-react"
+import { Check, Copy, ExternalLink, Send, Trash2, Undo2 } from "lucide-react"
+import { motion } from "motion/react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -7,20 +8,27 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import type { LaceOutreachDto, LaceOutreachChanges, OutreachChannel } from "@/lib/api"
 
+import { CHANNEL_LABELS } from "./outreach-threads"
+import { UNDO_SEND_MS } from "./use-lace-chat"
+
 const EDITABLE = new Set(["draft", "failed"])
-const CHANNEL_LABELS: Record<OutreachChannel, string> = {
-  email: "Email", linkedin: "LinkedIn", x: "X", instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok",
-}
 // Sent from here through the founder's own account. X needs it connected;
 // without that it is handed over like the rest.
 const SENT_FROM_HERE = new Set<OutreachChannel>(["email", "x"])
 const ANSWERABLE_IN_THREAD = new Set<OutreachChannel>(["instagram", "facebook"])
 
-function DraftCard({ message, onSave, onDiscard, onSend, onMarkSent }: {
+/** A message the Lace drafted, editable until it goes. Send is the founder's
+ * approval (email, X once connected, and Instagram or Facebook answers);
+ * on the other channels, whose APIs cannot start a conversation, they copy
+ * it, send it there and mark it sent. A send counts down `UNDO_SEND_MS`,
+ * with Undo, before it goes. */
+export function DraftCard({ message, sendingSoon, onSave, onDiscard, onSend, onUndo, onMarkSent }: {
   message: LaceOutreachDto
+  sendingSoon: boolean
   onSave: (changes: LaceOutreachChanges) => void
   onDiscard: () => void
   onSend: () => void
+  onUndo: () => void
   onMarkSent: () => void
 }) {
   const [address, setAddress] = useState(message.recipient_address ?? "")
@@ -46,13 +54,10 @@ function DraftCard({ message, onSave, onDiscard, onSend, onMarkSent }: {
   }
 
   return (
-    <li className="flex flex-col gap-2 rounded-lg border p-3">
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="font-medium">{message.recipient_name ?? message.recipient_address}</span>
-        <span className="text-muted-foreground">at {message.recipient_company}</span>
-        <Badge variant="outline">{CHANNEL_LABELS[message.channel]}</Badge>
-        {isReply && <Badge variant="secondary">reply</Badge>}
-        {message.status !== "draft" && <Badge variant="secondary">{message.status}</Badge>}
+    <div className="flex flex-col gap-2 rounded-lg border border-dashed border-theme/50 p-3">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <Badge variant="outline">{message.status === "failed" ? "Not sent" : isReply ? "Draft answer" : "Draft"}</Badge>
+        {!isReply && <span>to {message.recipient_name ?? message.recipient_address} by {CHANNEL_LABELS[message.channel]}</span>}
       </div>
       {isEmail && (
         <>
@@ -67,7 +72,17 @@ function DraftCard({ message, onSave, onDiscard, onSend, onMarkSent }: {
       <Textarea value={body} onChange={(e) => setBody(e.target.value)} disabled={!editable}
                 aria-label="Message" className="min-h-40 text-sm" />
       {message.error && <p className="text-xs text-destructive">{message.error}</p>}
-      {editable && (
+      {editable && sendingSoon && (
+        <div className="flex items-center gap-3" aria-live="polite">
+          <span className="text-sm">Sending…</span>
+          <span aria-hidden className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+            <motion.span className="block h-full origin-left bg-theme" initial={{ scaleX: 1 }} animate={{ scaleX: 0 }}
+                         transition={{ duration: UNDO_SEND_MS / 1000, ease: "linear" }} />
+          </span>
+          <Button size="sm" variant="outline" onClick={onUndo}><Undo2 /> Undo</Button>
+        </div>
+      )}
+      {editable && !sendingSoon && (
         <div className="flex flex-wrap items-center gap-2">
           {changed && (
             <Button size="sm" variant="outline"
@@ -103,68 +118,6 @@ function DraftCard({ message, onSave, onDiscard, onSend, onMarkSent }: {
           </Button>
         </div>
       )}
-    </li>
-  )
-}
-
-const INTENT_LABELS: Record<string, string> = {
-  interested: "Interested", question: "Asked a question", objection: "Raised an objection",
-  meeting_request: "Wants to meet", not_now: "Not now", unsubscribe: "Asked to stop",
-  out_of_office: "Out of office", referral: "Referred you on",
-}
-
-function ReplyCard({ message }: { message: LaceOutreachDto }) {
-  return (
-    <li className="flex flex-col gap-1 rounded-lg border bg-muted/40 p-3 text-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">{message.recipient_name ?? message.recipient_address}</span>
-        <span className="text-muted-foreground">
-          {message.recipient_company ? `at ${message.recipient_company}` : `on ${CHANNEL_LABELS[message.channel]}`}
-        </span>
-        <Badge variant={message.intent === "unsubscribe" ? "destructive" : "default"}>
-          {message.intent ? INTENT_LABELS[message.intent] ?? message.intent : "Reading…"}
-        </Badge>
-      </div>
-      <p className="line-clamp-6 whitespace-pre-wrap text-muted-foreground">{message.body}</p>
-    </li>
-  )
-}
-
-/** Messages the Lace drafted. Nothing is sent without the founder: Send is
- * their approval (email, and X once connected); on the other channels, whose
- * APIs cannot start a conversation, they copy the message and send it there. */
-export function LaceOutreach({ outreach, drafting, onSave, onDiscard, onSend, onMarkSent }: {
-  outreach: LaceOutreachDto[]
-  drafting: boolean
-  onSave: (id: string, changes: LaceOutreachChanges) => void
-  onDiscard: (id: string) => void
-  onSend: (id: string) => void
-  onMarkSent: (id: string) => void
-}) {
-  const outbound = outreach.filter((m) => m.direction === "outbound")
-  const replies = outreach.filter((m) => m.direction === "inbound" && m.status === "received")
-  return (
-    <div className="flex flex-col gap-4">
-      {drafting && (
-        <p className="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">
-          <Loader2 className="size-4 animate-spin" /> Drafting messages. This takes a few minutes.
-        </p>
-      )}
-      {replies.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Replies</h3>
-          <ul className="flex flex-col gap-2">{replies.map((m) => <ReplyCard key={m.id} message={m} />)}</ul>
-        </section>
-      )}
-      {outbound.length === 0 && !drafting && (
-        <p className="text-sm text-muted-foreground">No drafts yet. Ask your Lace to draft outreach to your accounts.</p>
-      )}
-      <ul className="flex flex-col gap-4">
-        {outbound.map((m) => (
-          <DraftCard key={m.id} message={m} onSave={(changes) => onSave(m.id, changes)} onDiscard={() => onDiscard(m.id)}
-                     onSend={() => onSend(m.id)} onMarkSent={() => onMarkSent(m.id)} />
-        ))}
-      </ul>
     </div>
   )
 }
