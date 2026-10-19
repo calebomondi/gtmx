@@ -39,7 +39,12 @@ export interface FactDto {
   confidence: "high" | "medium" | "low"
   origin: "crawl" | "research" | "user" | "monitor"
   recorded_at: string
+  /** When the founder confirmed it; null until then. */
+  confirmed_at: string | null
 }
+
+/** The founder's verdict on a fact: right, or wrong (it leaves what the Lace knows). */
+export type FactVerdict = "confirmed" | "retracted"
 
 export interface LaceMessageDto {
   role: "founder" | "lace"
@@ -70,6 +75,15 @@ export function getLace(laceId: string): Promise<LaceDto> {
 
 export function listLaceFacts(laceId: string): Promise<FactDto[]> {
   return apiFetch<FactDto[]>(`/api/v1/laces/${laceId}/facts`)
+}
+
+export function reviewLaceFact(laceId: string, factId: string, verdict: FactVerdict): Promise<FactDto> {
+  return apiFetch(`/api/v1/laces/${laceId}/facts/${factId}`, { method: "PATCH", body: JSON.stringify({ verdict }) })
+}
+
+/** The founder's own wording replaces the fact; returns the new fact. */
+export function correctLaceFact(laceId: string, factId: string, claim: string): Promise<FactDto> {
+  return apiFetch(`/api/v1/laces/${laceId}/facts/${factId}/correction`, { method: "POST", body: JSON.stringify({ claim }) })
 }
 
 export function listLaceMessages(laceId: string): Promise<LaceMessageDto[]> {

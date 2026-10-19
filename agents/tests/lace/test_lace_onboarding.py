@@ -1,6 +1,8 @@
 """Onboarding: the right pages are read, facts must cite them, and a dead site
 is reported rather than papered over."""
 
+import re
+
 from agents.lace import onboarding
 from agents.lace.onboarding import candidates, onboard, pick_pages
 from agents.schemas.lace import ExtractedFact, PagePick, SiteUnderstanding
@@ -62,8 +64,10 @@ def _fake_site(monkeypatch, pages, failures=(), map_fails=False):
 
     read = {}
 
-    def scrape_pages(urls, cfg):
+    def scrape_pages(urls, cfg, on_progress=None):
         read["urls"] = urls
+        if on_progress:
+            on_progress(len(urls), len(urls))
         return list(pages), list(failures)
 
     monkeypatch.setattr(onboarding.firecrawl, "map_site", map_site)
@@ -100,6 +104,18 @@ async def test_onboard_records_cited_facts_and_the_startup_name(monkeypatch, set
     assert store.startup_name == "Acme Health"
     assert set(store.sources) == {"https://acme.test/", "https://acme.test/pricing"}
     assert '<page url="https://acme.test/pricing"' in seen["prompt"]
+
+
+async def test_onboard_reports_its_progress_in_order(monkeypatch, settings):
+    _fake_site(monkeypatch, [Page(url="https://acme.test/", title="Acme", markdown="x " * 500)])
+    seen: list[tuple[float, str]] = []
+    await onboard(MemoryStore(), settings, extract=lambda m: SiteUnderstanding(startup_name="Acme"), pick=_never,
+                  progress=lambda fraction, text: seen.append((fraction, text)))
+    fractions = [f for f, _ in seen]
+    assert fractions == sorted(fractions) and fractions[-1] == onboarding.UNDERSTOOD
+    texts = [t for _, t in seen]
+    assert texts[:2] == ["Mapping your site", "Choosing the pages to read"] and texts[3] == "Learning what you sell"
+    assert re.fullmatch(r"Read (\d+) of \1 pages", texts[2])
 
 
 async def test_onboard_reads_the_homepage_when_the_map_fails(monkeypatch, settings):

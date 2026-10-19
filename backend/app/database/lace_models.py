@@ -99,6 +99,10 @@ class LaceFact(Base):
     superseded_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("lace_facts.id", ondelete="SET NULL"), nullable=True, index=True,
     )
+    # The founder's review: confirmed it, or said it is wrong (retracted facts
+    # drop out of what the Lace knows but stay on record).
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    retracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
                                                   default=_now, server_default=func.now(), index=True)
 

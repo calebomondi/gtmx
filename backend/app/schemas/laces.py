@@ -70,6 +70,19 @@ class FactResponse(BaseModel):
     confidence: Confidence
     origin: FactOrigin
     recorded_at: datetime
+    confirmed_at: datetime | None = Field(default=None, description="When the founder confirmed it")
+
+
+# The founder's verdict on a fact the Lace recorded.
+FactVerdict = Literal["confirmed", "retracted"]
+
+
+class FactReview(BaseModel):
+    verdict: FactVerdict
+
+
+class FactCorrection(BaseModel):
+    claim: str = Field(min_length=1, max_length=500, description="The fact as it should read")
 
 
 class LaceMessage(BaseModel):

@@ -20,7 +20,9 @@ from backend.app.schemas.laces import (
     AccountUpdateRequest,
     CompetitorResponse,
     CompetitorUpdateRequest,
+    FactCorrection,
     FactResponse,
+    FactReview,
     LaceCreateRequest,
     LaceCreateResponse,
     LaceListItem,
@@ -81,6 +83,19 @@ async def update_lace(lace: OwnedLace, payload: LaceUpdate, db: DbSession):
 async def list_facts(lace: OwnedLace, db: DbSession, topic: FactTopic | None = None,
                      limit: int = Query(default=100, ge=1, le=MAX_FACTS_PER_PAGE)):
     return await lace_service.list_facts(db, lace.id, topic, limit)
+
+
+@router.patch("/{lace_id}/facts/{fact_id}", response_model=FactResponse)
+async def review_fact(lace: OwnedLace, fact_id: uuid.UUID, payload: FactReview, db: DbSession):
+    """Confirm a fact, or retract it as wrong: it leaves what the Lace knows."""
+    return await lace_service.review_fact(db, lace.id, fact_id, payload.verdict)
+
+
+@router.post("/{lace_id}/facts/{fact_id}/correction", response_model=FactResponse,
+             status_code=status.HTTP_201_CREATED)
+async def correct_fact(lace: OwnedLace, fact_id: uuid.UUID, payload: FactCorrection, db: DbSession):
+    """Rewrite a fact in the founder's words; the original is superseded."""
+    return await lace_service.correct_fact(db, lace.id, fact_id, payload.claim)
 
 
 @router.get("/{lace_id}/messages", response_model=list[LaceMessage])

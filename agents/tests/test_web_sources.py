@@ -26,8 +26,16 @@ class FakeFirecrawl:
             raise ConnectionError("boom")
         return self.docs[0]
 
-    def batch_scrape(self, urls, **kw):
-        return BatchScrapeJob(status="completed", completed=len(self.docs), total=len(urls), data=self.docs)
+    def start_batch_scrape(self, urls, **kw):
+        self.urls, self.polls = urls, 0
+        return SimpleNamespace(id="batch-1")
+
+    def get_batch_scrape_status(self, job_id):
+        # Running on the first check, done on the second.
+        self.polls += 1
+        if self.polls == 1:
+            return BatchScrapeJob(status="scraping", completed=0, total=len(self.urls), data=[])
+        return BatchScrapeJob(status="completed", completed=len(self.docs), total=len(self.urls), data=self.docs)
 
     def map(self, url, **kw):
         return MapData(links=self.links)
@@ -40,6 +48,7 @@ def cfg():
 
 def _use(monkeypatch, fake):
     monkeypatch.setattr(firecrawl, "_client", lambda key, timeout: fake)
+    monkeypatch.setattr(firecrawl, "_BATCH_POLL_S", 0)
 
 
 def test_missing_key_is_an_error_not_an_empty_result():
@@ -76,6 +85,13 @@ def test_batch_separates_pages_from_failures(monkeypatch, cfg):
     pages, failures = firecrawl.scrape_pages(["https://acme.test", "https://acme.test/x"], cfg)
     assert [p.url for p in pages] == ["https://acme.test/"]
     assert [f.url for f in failures] == ["https://acme.test/x"]
+
+
+def test_batch_reports_progress_as_it_runs(monkeypatch, cfg):
+    _use(monkeypatch, FakeFirecrawl([_doc("https://acme.test/"), _doc("https://acme.test/x")]))
+    seen = []
+    firecrawl.scrape_pages(["https://acme.test", "https://acme.test/x"], cfg, on_progress=lambda d, t: seen.append((d, t)))
+    assert seen == [(0, 2), (2, 2)]
 
 
 def test_short_batch_reports_the_missing_page_but_not_a_redirected_one(monkeypatch, cfg):
