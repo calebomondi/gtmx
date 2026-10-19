@@ -6,9 +6,9 @@ import type { InboxPlatform } from "@/lib/api"
 
 import { useLaceChannels } from "./use-lace-channels"
 
-const PLATFORMS: { id: InboxPlatform; label: string; what: string }[] = [
-  { id: "instagram", label: "Instagram", what: "business account" },
-  { id: "facebook", label: "Facebook", what: "Page" },
+const PLATFORMS: { id: InboxPlatform; label: string; what: string; link: string }[] = [
+  { id: "instagram", label: "Instagram", what: "business account", link: "Link an Instagram business account" },
+  { id: "facebook", label: "Facebook", what: "Page", link: "Link a Facebook Page" },
 ]
 
 /** Link the founder's Instagram business account or Facebook Page, so the
@@ -50,7 +50,7 @@ export function LaceChannels({ laceId }: { laceId: string }) {
               </div>
             ) : (
               <Button variant="outline" size="sm" className="w-fit" onClick={() => void choose(platform.id)}>
-                <Link2 /> Link a {platform.label} {platform.what}
+                <Link2 /> {platform.link}
               </Button>
             )}
           </section>
