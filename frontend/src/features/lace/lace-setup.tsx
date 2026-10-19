@@ -25,7 +25,8 @@ function LaceSetup({ laceId, runId }: { laceId: string; runId: string | null }) 
   const setup = useLaceSetup(laceId, runId)
   const name = setup.lace?.name ?? "your Lace"
   const startup = setup.lace?.startup_name ?? "your startup"
-  const meet = () => navigate(`/lace/${laceId}`)
+  // Into the chat, where the Lace's first message waits.
+  const meet = () => navigate(`/lace/${laceId}/chat`)
 
   if (setup.phase === "printing" || setup.phase === "waking") {
     const awake = setup.phase === "waking"

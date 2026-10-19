@@ -43,6 +43,8 @@ export interface LaceChat {
   /** A background search for target accounts, or for their contacts, is running. */
   findingAccounts: boolean
   outreach: LaceOutreachDto[]
+  /** Messages waiting on the founder: drafts to send, and replies not yet read. */
+  waiting: number
   /** The Lace is drafting messages in the background. */
   drafting: boolean
   /** The Lace is looking for opportunities in the background. */
@@ -64,6 +66,12 @@ export interface LaceChat {
   /** Send an email draft (the founder's approval), or mark a LinkedIn one sent. */
   sendDraft: (messageId: string) => Promise<void>
   markSent: (messageId: string) => Promise<void>
+}
+
+/** A draft to review and send, or a reply the Lace has not read yet. */
+function waitsOnFounder(m: LaceOutreachDto): boolean {
+  return (m.direction === "outbound" && m.status === "draft")
+    || (m.direction === "inbound" && m.status === "received" && m.intent === null)
 }
 
 function message(err: unknown): string {
@@ -234,8 +242,10 @@ export function useLaceChat(laceId: string): LaceChat {
     }
   }, [laceId, follow, refresh])
 
+  const waiting = outreach.filter(waitsOnFounder).length
+
   return {
-    lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, drafting, findingOpportunities,
+    lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, waiting, drafting, findingOpportunities,
     loading, error,
     working, step, draft, send, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, markSent,
   }
