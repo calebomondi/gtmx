@@ -245,3 +245,24 @@ async def accounts_to_draft(db: AsyncSession, lace_id: uuid.UUID, ids: list[uuid
         query = query.where(~written, LaceAccount.contact_status.in_(("person", "organisation")))
     query = query.where(LaceAccount.do_not_contact.is_(False))
     return list((await db.scalars(query.order_by(BY_FIT, LaceAccount.score.desc().nulls_last()).limit(limit))).all())
+
+
+# Reply intents that count as a lead warming up.
+_INTERESTED = ("interested", "meeting_request")
+
+
+async def funnel(db: AsyncSession, lace_id: uuid.UUID) -> dict[str, int]:
+    """How far the Lace's target accounts have come: on file, written to,
+    replied, and interested (keen, or asking to meet). Distinct accounts."""
+    def accounts_where(*conditions):
+        return select(func.count(func.distinct(LaceOutreach.account_id))).where(
+            LaceOutreach.lace_id == lace_id, LaceOutreach.account_id.is_not(None), *conditions)
+
+    targets = await db.scalar(select(func.count()).select_from(LaceAccount).where(
+        LaceAccount.lace_id == lace_id, LaceAccount.status == "target"))
+    contacted = await db.scalar(accounts_where(LaceOutreach.direction == "outbound", LaceOutreach.status == "sent"))
+    replied = await db.scalar(accounts_where(LaceOutreach.direction == "inbound"))
+    interested = await db.scalar(accounts_where(LaceOutreach.direction == "inbound",
+                                                LaceOutreach.intent.in_(_INTERESTED)))
+    return {"accounts": targets or 0, "contacted": contacted or 0, "replied": replied or 0,
+            "interested": interested or 0}

@@ -1,5 +1,5 @@
-import { useState } from "react"
-import { Navigate, useNavigate, useParams } from "react-router-dom"
+import { useEffect, useState } from "react"
+import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom"
 import { Settings2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -38,6 +38,15 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
   const chat = useLaceChat(laceId)
   const activity = useLaceActivity(laceId, tab === "feed")
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const { hash } = useLocation()
+
+  // A link to a Feed section (from Home) scrolls there once the tab is in.
+  useEffect(() => {
+    if (!hash) return
+    const timer = window.setTimeout(
+      () => document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: "smooth" }), SECTION_SCROLL_DELAY_MS)
+    return () => window.clearTimeout(timer)
+  }, [hash])
   const name = chat.lace?.name ?? "Lace"
   const subtitle = chat.lace?.startup_name ?? chat.lace?.website
   const select = (next: LaceTab) => navigate(`/lace/${laceId}/${next}`)

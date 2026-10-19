@@ -103,7 +103,10 @@ position rule follows recency too. The list response carries `mood` and
   - `GET /laces/{id}/activity` (newest first, `before` pages back)
   - `POST /laces/{id}/activity/read`
   - Polled every 30 seconds.
-- **E2:** Home Feed (`/feed`) shows the same items across all of the founder's Laces, plus the funnel line (accounts, then contacted, replied and interested).
+- **E2:**
+  - Home (`/feed`, where login lands) shows activity across all the founder's Laces (`GET /laces/activity`), each item labelled with its Lace and opening there. A "Needs you" row lists the Laces whose mood is alert.
+  - Each Lace's Feed gets the funnel line (`GET /laces/{id}/funnel`): target accounts, then contacted (a message sent), replied, and interested (keen, or asking to meet), counting distinct accounts.
+  - The v1 workspace feed moves to `/workspace-feed` until PR I.
 
 ## 6. Messaging
 

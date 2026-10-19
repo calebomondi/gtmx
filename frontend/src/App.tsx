@@ -33,6 +33,7 @@ import LaceList from "@/features/lace/lace-list"
 import NewLace from "@/features/lace/new-lace"
 import LaceSetup from "@/features/lace/lace-setup"
 import LaceWorkspace from "@/features/lace/lace-workspace"
+import LaceHomeFeed from "@/features/lace/lace-home-feed"
 import AuthPage from "@/features/auth/auth-component"
 import AuthCallback from "@/features/auth/auth-callback"
 import ForgotPasswordPage from "@/features/auth/forgot-password"
@@ -171,7 +172,9 @@ const router = createBrowserRouter([
         path: 'projects/:project_id/workspace/:workspace_id',
         element: <ProjectHub />,
       },
-      { path: 'feed', element: <HomeFeed /> },
+      { path: 'feed', element: <LaceHomeFeed /> },
+      // The v1 workspace feed, until v1 is retired (docs/lace-ui-plan.md, PR I).
+      { path: 'workspace-feed', element: <HomeFeed /> },
       { path: 'lace', element: <LaceList /> },
       { path: 'lace/new', element: <Navigate to="/new" replace /> },
       { path: 'lace/:lace_id', element: <LaceWorkspace /> },

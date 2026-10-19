@@ -279,3 +279,16 @@ class ActivityResponse(BaseModel):
 
 class ActivityReadResponse(BaseModel):
     marked: int = Field(description="How many items were unread")
+
+
+class LaceActivityItem(ActivityResponse):
+    """An activity in the feed across all the founder's Laces."""
+    lace_id: uuid.UUID
+    lace_name: str
+
+
+class FunnelResponse(BaseModel):
+    accounts: int = Field(description="Target accounts on file")
+    contacted: int = Field(description="Accounts written to (a message sent)")
+    replied: int = Field(description="Accounts that wrote back")
+    interested: int = Field(description="Accounts that replied keen, or asking to meet")

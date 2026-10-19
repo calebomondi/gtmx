@@ -10,7 +10,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.schemas.lace import ActivityKind, ActivityRef
-from backend.app.database.lace_models import LaceActivity
+from backend.app.database.lace_models import Lace, LaceActivity
 
 # Names quoted in an activity's summary; the rest are counted.
 NAMES_SHOWN = 3
@@ -59,3 +59,14 @@ async def mark_all_read(db: AsyncSession, lace_id: uuid.UUID) -> int:
         LaceActivity.lace_id == lace_id, LaceActivity.read_at.is_(None)).values(read_at=datetime.now(UTC)))
     await db.commit()
     return result.rowcount or 0
+
+
+async def list_for_user(db: AsyncSession, user_id: uuid.UUID, limit: int,
+                        before: datetime | None = None) -> list[tuple[LaceActivity, Lace]]:
+    """Activity across all the user's Laces (archived ones left out), newest
+    first, each with its Lace."""
+    query = (select(LaceActivity, Lace).join(Lace, Lace.id == LaceActivity.lace_id)
+             .where(Lace.user_id == user_id, Lace.status != "archived"))
+    if before is not None:
+        query = query.where(LaceActivity.created_at < before)
+    return [(a, lace) for a, lace in (await db.execute(query.order_by(LaceActivity.created_at.desc()).limit(limit))).all()]
