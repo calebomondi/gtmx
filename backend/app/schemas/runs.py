@@ -12,7 +12,6 @@ class RunResponse(BaseModel):
     id: uuid.UUID
     kind: str
     status: str = Field(description="pending | running | awaiting_input | completed | failed | cancelled")
-    workspace_id: uuid.UUID | None = None
     lace_id: uuid.UUID | None = None
     progress: dict | None = None
     error: str | None = None

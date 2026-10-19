@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app import supabase_admin
-from backend.app.database import models
+from backend.app.database.lace_models import LaceOutreach
 from backend.app.services import connections as connection_service
 from backend.app.services.errors import ConflictError, InvalidInputError, RateLimitedError
 from config import settings
@@ -31,16 +31,13 @@ _SENT_BY_US = ("email", "x")
 
 
 async def sends_today(db: AsyncSession, user_id: uuid.UUID) -> int:
-    """Messages sent for the user in the last day, by email or X, from a
-    workspace or a Lace: the daily cap is the user's, wherever they send from."""
+    """Messages sent for the user in the last day, by email or X, across all
+    their Laces: the daily cap is the user's, wherever they send from."""
     since = datetime.now(UTC) - timedelta(days=1)
-    total = 0
-    for model in (models.OutreachMessage, models.LaceOutreach):
-        total += int(await db.scalar(select(func.count()).select_from(model).where(
-            model.user_id == user_id, model.status == "sent", model.channel.in_(_SENT_BY_US),
-            model.sent_at >= since,
-        )) or 0)
-    return total
+    o = LaceOutreach
+    return int(await db.scalar(select(func.count()).select_from(o).where(
+        o.user_id == user_id, o.status == "sent", o.channel.in_(_SENT_BY_US), o.sent_at >= since,
+    )) or 0)
 
 
 def ensure_under_daily_cap(sent: int) -> None:
@@ -52,9 +49,8 @@ def ensure_under_daily_cap(sent: int) -> None:
 
 
 async def send_email(db: AsyncSession, message):
-    """Send one approved outbound email (a workspace OutreachMessage or a
-    LaceOutreach: they share these fields) through the user's own connected
-    Gmail. Only ever called on the user's explicit action."""
+    """Send one approved outbound email (a LaceOutreach) through the user's
+    own connected Gmail. Only ever called on the user's explicit action."""
     if message.channel != "email":
         raise ConflictError("LinkedIn messages are sent by you: copy the draft into LinkedIn.")
     if message.direction != "outbound":

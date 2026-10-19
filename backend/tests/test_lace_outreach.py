@@ -222,7 +222,7 @@ def test_linkedin_messages_are_marked_sent_by_hand(client, lace, lace_runtime, u
     assert client.post(f"{API}/laces/{lace}/outreach/{_message(lace, user.id)}/mark-sent").status_code == 409
 
 
-def test_the_daily_cap_counts_lace_and_workspace_sends(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+def test_the_daily_cap_counts_every_send(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
     _gmail(monkeypatch)
     monkeypatch.setattr(settings, "max_outreach_sends_per_day", 1)
     with psycopg.connect(settings.database_url, autocommit=True) as conn:

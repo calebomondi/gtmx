@@ -196,8 +196,6 @@ class AdminRunRow(BaseModel):
     status: str
     user_id: uuid.UUID
     user_email: str | None = None
-    workspace_id: uuid.UUID | None = None
-    workspace_name: str | None = None
     lace_id: uuid.UUID | None = None
     lace_name: str | None = None
     error: str | None = None

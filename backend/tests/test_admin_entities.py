@@ -24,8 +24,8 @@ def _supabase_user(uid, email, created, **extra):
 
 
 @pytest.fixture
-def directory(client, user, owned, monkeypatch):
-    """`user` owns the seeded workspace and a Lace; two more accounts exist in Supabase."""
+def directory(client, user, owned_runs, monkeypatch):
+    """`user` owns a Lace with two runs; two more accounts exist in Supabase."""
     people = [
         _supabase_user(user.id, "owner@example.com", "2026-10-01T00:00:00Z"),
         _supabase_user(uuid.uuid4(), "zed@example.com", "2026-10-03T00:00:00Z", banned_until="2999-01-01T00:00:00Z"),
@@ -42,9 +42,6 @@ def directory(client, user, owned, monkeypatch):
         raise NotFoundError("User not found.")
     monkeypatch.setattr(admin_service, "list_all_users", all_users)
     monkeypatch.setattr(admin_directory, "get_supabase_user", one_user)
-    with psycopg.connect(settings.database_url, autocommit=True) as conn:
-        conn.execute("INSERT INTO laces (id, user_id, name, website, status) VALUES (%s, %s, 'Owner Lace',"
-                     " 'https://owner.test', 'active')", (uuid.uuid4(), user.id))
     client.sign_in(make_user("Boss", is_admin=True))
     return people
 
@@ -62,9 +59,9 @@ def test_users_are_paginated_searchable_and_carry_activity(client, user, directo
     assert client.get(f"{API}/users/{uuid.uuid4()}").status_code == 404
 
 
-def test_run_detail_has_timeline_and_cost(client, owned, directory, monkeypatch):
+def test_run_detail_has_timeline_and_cost(client, owned_runs, directory, monkeypatch):
     monkeypatch.setattr(settings, "llm_prices", {"qwen3.7-plus": [1.0, 1.0]})
-    run_id = owned["competitor_run"]
+    run_id = owned_runs["competitor_run"]
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
         for kind in ("started", "complete"):
             conn.execute("INSERT INTO run_events (run_id, type, payload) VALUES (%s, %s, %s)",
@@ -72,9 +69,9 @@ def test_run_detail_has_timeline_and_cost(client, owned, directory, monkeypatch)
         conn.execute("INSERT INTO llm_calls (run_id, log_label, provider, model, input_tokens, output_tokens, seconds, ok)"
                      " VALUES (%s, 'x', 'qwen', 'qwen3.7-plus', 500000, 500000, 1, true)", (run_id,))
 
-    runs = client.get(f"{API}/runs", params={"kind": "competitors"}).json()
+    runs = client.get(f"{API}/runs", params={"kind": "lace_competitors"}).json()
     assert runs["total"] == 1 and runs["items"][0]["cost_usd"] == 1.0
-    assert runs["items"][0]["workspace_name"] == "Owner Workspace"
+    assert runs["items"][0]["lace_name"] == "Owner Lace"
     detail = client.get(f"{API}/runs/{run_id}").json()
     assert [e["type"] for e in detail["events"]] == ["started", "complete"]
     assert detail["llm_costs"][0]["input_tokens"] == 500000
@@ -87,9 +84,9 @@ def _ask(user_id, lace_id, text, status="completed"):
                      (uuid.uuid4(), user_id, lace_id, status, json.dumps({"text": text})))
 
 
-def test_questions_are_listed_newest_first_and_filterable(client, user, directory):
+def test_questions_are_listed_newest_first_and_filterable(client, user, owned_runs, directory):
+    lace = owned_runs["lace"]
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
-        lace = conn.execute("SELECT id FROM laces WHERE user_id = %s", (user.id,)).fetchone()[0]
         conn.execute("INSERT INTO runs (id, user_id, lace_id, kind, status) VALUES (%s, %s, %s, 'lace_onboarding',"
                      " 'completed')", (uuid.uuid4(), user.id, lace))
     _ask(user.id, lace, "Who are my top competitors?")
@@ -102,7 +99,7 @@ def test_questions_are_listed_newest_first_and_filterable(client, user, director
     mine = client.get(f"{API}/questions", params={"user_id": str(user.id)}).json()["items"]
     assert [(q["lace_name"], q["user_email"], q["status"]) for q in mine] == [
         ("Owner Lace", "owner@example.com", "running"), ("Owner Lace", "owner@example.com", "completed")]
-    assert client.get(f"{API}/questions", params={"lace_id": str(lace)}).json()["total"] == 2
+    assert client.get(f"{API}/questions", params={"lace_id": lace}).json()["total"] == 2
     # The search is a literal match: "%" is not a wildcard.
     assert [q["text"] for q in client.get(f"{API}/questions", params={"q": "100%"}).json()["items"]] == [
         "Draft a note to 100% of Kenya leads"]

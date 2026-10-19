@@ -122,57 +122,22 @@ async def _finish_runs() -> None:
 
 
 @pytest.fixture
-def seed_workspace():
-    """Insert a bare workspace row directly (workspaces are normally created
-    by a discovery run, which these tests don't drive)."""
-    def _seed(user_id: uuid.UUID, name: str) -> str:
-        with psycopg.connect(settings.database_url, autocommit=True) as conn:
-            row = conn.execute(
-                "INSERT INTO workspaces (id, user_id, name) VALUES (%s, %s, %s) RETURNING id",
-                (uuid.uuid4(), user_id, name),
-            ).fetchone()
-        return str(row[0])
-    return _seed
-
-
-@pytest.fixture
-def owned(client, user, seed_workspace):
-    """A v1 workspace, project, competitor, account and one run of each kind,
-    all owned by `user`, inserted directly (v1 has no API any more; the admin
-    views still read these tables)."""
-    workspace_id = seed_workspace(user.id, "Owner Workspace")
+def owned_runs(client, user):
+    """A Lace of `user`'s with a finished competitor hunt and account search,
+    inserted directly, for the admin views."""
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
-        project_id = conn.execute("INSERT INTO projects (id, user_id, name, name_key) VALUES"
-                                  " (%s, %s, 'owner project', 'owner project') RETURNING id",
-                                  (uuid.uuid4(), user.id)).fetchone()[0]
-        conn.execute("UPDATE workspaces SET project_id = %s WHERE id = %s", (project_id, workspace_id))
-        competitor_id = conn.execute(
-            "INSERT INTO competitors (id, workspace_id, name, website, domain_key, strengths, weaknesses, opportunities,"
-            " notable_customers, pain_signals, customer_sentiment, tracking_sources, unsourced_fields, source)"
-            " VALUES (%s, %s, 'Rival', 'https://rival.example', 'rival.example', '[]', '[]', '[]', '[]', '[]', '[]',"
-            " '[]', '[]', 'user') RETURNING id", (uuid.uuid4(), workspace_id)).fetchone()[0]
-        account_id = conn.execute(
-            "INSERT INTO accounts (id, workspace_id, name, account_type, tech_stack, recent_news, key_contacts,"
-            " pain_signals, hiring_signals, sources, source_queries, why_selected, why_reach_out)"
-            " VALUES (%s, %s, 'Acme', 'company', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '[]') RETURNING id",
-            (uuid.uuid4(), workspace_id),
-        ).fetchone()[0]
+        lace_id = conn.execute("INSERT INTO laces (id, user_id, name, website, status) VALUES"
+                               " (%s, %s, 'Owner Lace', 'https://owner.test', 'active') RETURNING id",
+                               (uuid.uuid4(), user.id)).fetchone()[0]
         competitor_run_id, account_run_id = (
             conn.execute(
-                "INSERT INTO runs (id, user_id, workspace_id, kind, status, progress)"
+                "INSERT INTO runs (id, user_id, lace_id, kind, status, progress)"
                 " VALUES (%s, %s, %s, %s, 'completed', '{\"found\": 0}') RETURNING id",
-                (uuid.uuid4(), user.id, workspace_id, kind),
+                (uuid.uuid4(), user.id, lace_id, kind),
             ).fetchone()[0]
-            for kind in ("competitors", "accounts")
+            for kind in ("lace_competitors", "lace_accounts")
         )
-    return {
-        "workspace": workspace_id,
-        "project": str(project_id),
-        "competitor": str(competitor_id),
-        "account": str(account_id),
-        "competitor_run": str(competitor_run_id),
-        "account_run": str(account_run_id),
-    }
+    return {"lace": str(lace_id), "competitor_run": str(competitor_run_id), "account_run": str(account_run_id)}
 
 
 @pytest.fixture(autouse=True)
