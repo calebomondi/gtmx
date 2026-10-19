@@ -413,3 +413,22 @@ export function listLaceContacts(laceId: string): Promise<ContactDto[]> {
 export function findLaceAccountContacts(laceId: string, accountId: string): Promise<{ run_id: string }> {
   return apiFetch(`/api/v1/laces/${laceId}/accounts/${accountId}/find-contacts`, { method: "POST" })
 }
+
+export type LaceSearchKind = "lace" | "fact" | "competitor" | "account" | "contact" | "opportunity" | "conversation"
+
+/** One thing found by a search across the founder's Laces. */
+export interface LaceSearchHitDto {
+  kind: LaceSearchKind
+  id: string
+  title: string
+  subtitle: string | null
+  lace_id: string
+  lace_name: string
+}
+
+/** Shorter queries are not searched (the server refuses them). */
+export const LACE_SEARCH_MIN_LENGTH = 2
+
+export function searchLaces(q: string, signal?: AbortSignal): Promise<LaceSearchHitDto[]> {
+  return apiFetch<LaceSearchHitDto[]>(`/api/v1/laces/search?q=${encodeURIComponent(q)}`, { signal })
+}

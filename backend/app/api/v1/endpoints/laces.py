@@ -35,6 +35,7 @@ from backend.app.schemas.laces import (
     LaceActivityItem,
     LaceCreateResponse,
     LaceListItem,
+    LaceSearchHit,
     LaceUpdate,
     LaceMessage,
     LaceMessageRequest,
@@ -45,7 +46,7 @@ from backend.app.schemas.laces import (
     OutreachResponse,
     OutreachUpdateRequest,
 )
-from backend.app.services import email, lace_accounts, lace_activity, lace_contacts, lace_channels, lace_competitors, lace_opportunities, lace_outreach
+from backend.app.services import email, lace_accounts, lace_activity, lace_contacts, lace_search, lace_channels, lace_competitors, lace_opportunities, lace_outreach
 from backend.app.services import laces as lace_service
 from agents.lace.store import JobRefused
 from backend.app.services.errors import ConflictError
@@ -63,6 +64,7 @@ MAX_OUTREACH_PER_PAGE = 100
 MAX_OPPORTUNITIES_PER_PAGE = 100
 MAX_ACTIVITY_PER_PAGE = 100
 MAX_CONTACTS_PER_PAGE = 500
+MAX_SEARCH_PER_KIND = 20
 
 
 @router.post("", response_model=LaceCreateResponse, status_code=status.HTTP_201_CREATED)
@@ -77,6 +79,16 @@ async def list_laces(user: CurrentUser, db: DbSession,
                      limit: int = Query(default=20, ge=1, le=MAX_LACES_PER_PAGE)):
     return [LaceListItem(**LaceResponse.model_validate(s.lace).model_dump(), mood=s.mood, last_active_at=s.last_active_at)
             for s in await lace_service.list_for_user(db, user.id, limit)]
+
+
+# Declared before /{lace_id}, which would otherwise take "search" as an id.
+@router.get("/search", response_model=list[LaceSearchHit])
+async def search_laces(user: CurrentUser, db: DbSession,
+                       q: str = Query(min_length=lace_search.MIN_QUERY_LEN, max_length=lace_search.MAX_QUERY_LEN),
+                       per_kind: int = Query(default=5, ge=1, le=MAX_SEARCH_PER_KIND)):
+    """Search everything in the founder's Laces: the Laces, their facts,
+    competitors, accounts, contacts, opportunities and conversations."""
+    return await lace_search.search(db, user.id, q, per_kind)
 
 
 # Declared before /{lace_id}, which would otherwise take "activity" as an id.
