@@ -15,7 +15,7 @@ import {
   useSidebar,
   SidebarTrigger
 } from "@/components/ui/sidebar"
-import { Pin, Layers, LayoutGrid, Archive, LogInIcon } from "lucide-react"
+import { Pin, Layers, LayoutGrid, LogInIcon } from "lucide-react"
 import { Link } from "react-router-dom"
 import { Lace } from "@/components/lace-mascot"
 import { getCurrentUser, type LaceListItemDto } from "@/lib/api"
@@ -65,14 +65,6 @@ const data = {
     //     />
     //   ),
     // },
-    {
-      name: "Archive",
-      url: "/archive",
-      icon: (
-        <Archive
-        />
-      ),
-    },
   ],
 }
 

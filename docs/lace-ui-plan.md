@@ -186,4 +186,7 @@ position rule follows recency too. The list response carries `mood` and
   - Not carried: drafts, v1 chat, signals.
   - The owner runs it: first the dry run, then `--apply`.
 
+- **Retiring v1, frontend:** the v1 pages, routes, stores, components and API modules are gone. The app is Home, New Lace, the Laces and connected Accounts. Search (Ctrl K) and Archive went with them, since both only covered v1 workspaces; search returns as search across Laces in its own PR.
+- **Retiring v1, backend:** the v1 API routes, run kinds and sweeps, and the agent pipelines a Lace doesn't reuse. The v1 tables stay until the pilots are moved, then are dropped in their own PR.
+
 Each PR goes into `feat/v2.0.0` and is merged on green CI. Moving pilot workspaces in I changes real data, so it waits for the owner's go-ahead.
