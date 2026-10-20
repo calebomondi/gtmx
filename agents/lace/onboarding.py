@@ -79,7 +79,7 @@ feature pages, pricing, about, customers. Prefer overview pages to individual
 case studies or integrations. Copy URLs exactly from the list."""
 
 _EXTRACT_PROMPT = """You read a startup's own website and record what it says
-about itself, for a go-to-market assistant that will work from these facts.
+about itself, for the startup assistant that will work from these facts.
 
 Record facts on these topics: company (name, location, team, stage), offer (what
 it sells, key features, how it works), pricing, customers (who buys, named
