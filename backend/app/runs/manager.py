@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
+from backend.app.database.lace_models import Lace
 from backend.app.runs import events
 from agents.lace.store import JobRefused
 from backend.app.runs import lace as lace_runs
@@ -58,8 +59,15 @@ def _spawn(run_id: uuid.UUID, user_id: uuid.UUID, segment: Coroutine, timeout_s:
     _tasks[run_id] = asyncio.create_task(guarded(), name=f"run:{run_id}")
 
 
+async def _archived(db: AsyncSession, lace_id: uuid.UUID) -> bool:
+    """An archived Lace does no work until it is restored."""
+    return await db.scalar(select(Lace.status).where(Lace.id == lace_id)) == "archived"
+
+
 async def _start_lace_run(kind: str, user_id: uuid.UUID, lace_id: uuid.UUID, params: dict | None) -> models.Run:
     async with AsyncSessionLocal() as db:
+        if await _archived(db, lace_id):
+            raise ConflictError("This Lace is archived. Restore it first.")
         await limits.ensure_can_start(db, user_id, kind)
         run = models.Run(user_id=user_id, lace_id=lace_id, kind=kind, status="running", input=params,
                          started_at=datetime.now(UTC))
@@ -111,6 +119,9 @@ async def wake_lace(user_id: uuid.UUID, lace_id: uuid.UUID) -> None:
     started, which are capped themselves."""
     try:
         async with AsyncSessionLocal() as db, db.begin():
+            # Its updates stay queued for when it is restored.
+            if await _archived(db, lace_id):
+                return
             updates = await lace_events.take_pending(db, lace_id)
             if not updates:
                 return
@@ -130,6 +141,8 @@ async def post_brief(user_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UUID
     is in a conversation run: the brief stays pending for the next sweep."""
     try:
         async with AsyncSessionLocal() as db, db.begin():
+            if await _archived(db, lace_id):
+                return False
             run = models.Run(user_id=user_id, lace_id=lace_id, kind="lace_turn", status="running",
                              input={"brief_id": str(brief_id)}, started_at=datetime.now(UTC))
             db.add(run)
@@ -168,6 +181,8 @@ async def start_lace_job(run_kind: str, user_id: uuid.UUID, lace_id: uuid.UUID, 
     when it ends (either way), wakes the Lace with whatever it queued. Raises
     JobRefused while one of the same kind is running or past the daily cap."""
     async with AsyncSessionLocal() as db:
+        if await _archived(db, lace_id):
+            raise JobRefused("This Lace is archived. Restore it first.")
         busy = await db.scalar(select(func.count()).select_from(models.Run).where(
             models.Run.lace_id == lace_id, models.Run.kind == run_kind,
             models.Run.status.not_in(TERMINAL_STATUSES)))

@@ -1,8 +1,10 @@
 import { useNavigate, useParams, useSearchParams } from "react-router-dom"
-import { AlertTriangle } from "lucide-react"
+import { useState } from "react"
+import { AlertTriangle, Loader2 } from "lucide-react"
 
 import { Lace } from "@/components/lace-mascot"
 import { Button } from "@/components/ui/button"
+import { retryLaceOnboarding } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 
 import { LaceFactReview } from "./lace-fact-review"
@@ -12,12 +14,14 @@ import { useLaceSetup } from "./use-lace-setup"
 const PRINT_PX = 128
 
 /** A new Lace being made: printed as it reads the site, then the founder
- * checks what it learned before meeting it. Keyed on the Lace id. */
+ * checks what it learned before meeting it. Keyed on the Lace and the run,
+ * so trying again starts the print over. */
 export default function LaceSetupPage() {
   // The route only renders this page with a lace_id.
   const { lace_id: laceId = "" } = useParams()
   const [params] = useSearchParams()
-  return <LaceSetup key={laceId} laceId={laceId} runId={params.get("run")} />
+  const runId = params.get("run")
+  return <LaceSetup key={`${laceId}:${runId}`} laceId={laceId} runId={runId} />
 }
 
 function LaceSetup({ laceId, runId }: { laceId: string; runId: string | null }) {
@@ -63,23 +67,7 @@ function LaceSetup({ laceId, runId }: { laceId: string; runId: string | null }) 
     )
   }
 
-  if (setup.phase === "failed") {
-    return (
-      <Shell>
-        <Card className="w-full max-w-md shadow-lg">
-          <CardHeader className="justify-items-center gap-3 text-center">
-            <AlertTriangle className="size-8 text-destructive" />
-            <CardTitle className="text-xl">{name} stopped before it finished</CardTitle>
-            <CardDescription>{setup.error}</CardDescription>
-          </CardHeader>
-          <CardFooter className="gap-2">
-            <Button variant="outline" className="flex-1" onClick={() => navigate("/new")}>Start again</Button>
-            <Button className="flex-1" onClick={meet}>Open {name}</Button>
-          </CardFooter>
-        </Card>
-      </Shell>
-    )
-  }
+  if (setup.phase === "failed") return <SetupFailed laceId={laceId} name={name} error={setup.error} onOpen={meet} />
 
   return (
     <Shell>
@@ -104,4 +92,46 @@ function LaceSetup({ laceId, runId }: { laceId: string; runId: string | null }) 
 
 function Shell({ children }: { children: React.ReactNode }) {
   return <div className="flex flex-1 items-center justify-center px-4 py-10">{children}</div>
+}
+
+
+/** Onboarding stopped: read the site again, or open the Lace as it is. */
+function SetupFailed({ laceId, name, error, onOpen }: {
+  laceId: string
+  name: string
+  error: string | null
+  onOpen: () => void
+}) {
+  const navigate = useNavigate()
+  const [retrying, setRetrying] = useState(false)
+  const [retryError, setRetryError] = useState<string | null>(null)
+  const retry = async () => {
+    setRetrying(true)
+    setRetryError(null)
+    try {
+      const { run_id } = await retryLaceOnboarding(laceId)
+      navigate(`/lace/${laceId}/setup?run=${run_id}`, { replace: true })
+    } catch (err) {
+      setRetryError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setRetrying(false)
+    }
+  }
+  return (
+    <Shell>
+      <Card className="w-full max-w-md shadow-lg">
+        <CardHeader className="justify-items-center gap-3 text-center">
+          <AlertTriangle className="size-8 text-destructive" />
+          <CardTitle className="text-xl">{name} stopped before it finished</CardTitle>
+          <CardDescription>{retryError ?? error}</CardDescription>
+        </CardHeader>
+        <CardFooter className="gap-2">
+          <Button variant="outline" className="flex-1" onClick={onOpen}>Open {name}</Button>
+          <Button className="flex-1" onClick={() => void retry()} disabled={retrying}>
+            {retrying && <Loader2 className="animate-spin" />} Try again
+          </Button>
+        </CardFooter>
+      </Card>
+    </Shell>
+  )
 }

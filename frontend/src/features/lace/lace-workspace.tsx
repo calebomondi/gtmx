@@ -11,6 +11,7 @@ import { LaceMessaging } from "./lace-messaging"
 import { LaceRail, LaceTabBar } from "./lace-rail"
 import { chatMascot, LACE_TABS, type LaceTab } from "./lace-tabs"
 import { LaceSettings } from "./lace-settings"
+import { LaceStatusBanner } from "./lace-status-banner"
 import { useLaceActivity } from "./use-lace-activity"
 import { useLaceChat } from "./use-lace-chat"
 
@@ -80,6 +81,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
           <Settings2 />
         </Button>
       </header>
+      <LaceStatusBanner lace={chat.lace} working={chat.working} onChanged={() => void chat.reload()} />
       <div className="relative flex min-h-0 flex-1">
         <LaceRail {...nav} className="absolute top-6 left-4 z-10 hidden md:flex" />
         <main className={tab === "chat" ? "flex min-h-0 min-w-0 flex-1 flex-col md:pl-20" : "min-h-0 min-w-0 flex-1 overflow-y-auto md:pl-20"}>
@@ -89,7 +91,8 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
         </main>
       </div>
       <LaceTabBar {...nav} className="md:hidden" />
-      <LaceSettings laceId={laceId} name={name} facts={chat.facts} open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <LaceSettings laceId={laceId} name={name} status={chat.lace?.status ?? "active"} facts={chat.facts}
+                    open={settingsOpen} onOpenChange={setSettingsOpen} onChanged={() => void chat.reload()} />
     </div>
   )
 }

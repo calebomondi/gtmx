@@ -93,6 +93,30 @@ export function updateLace(laceId: string, changes: { pinned?: boolean }): Promi
   return apiFetch(`/api/v1/laces/${laceId}`, { method: "PATCH", body: JSON.stringify(changes) })
 }
 
+/** Archived Laces: out of the sidebar's crew and doing no work until restored. */
+export function listArchivedLaces(): Promise<LaceDto[]> {
+  return apiFetch<LaceDto[]>("/api/v1/laces/archived")
+}
+
+/** 409 while the Lace is working. */
+export function archiveLace(laceId: string): Promise<LaceDto> {
+  return apiFetch(`/api/v1/laces/${laceId}/archive`, { method: "POST" })
+}
+
+export function restoreLace(laceId: string): Promise<LaceDto> {
+  return apiFetch(`/api/v1/laces/${laceId}/restore`, { method: "POST" })
+}
+
+/** For good, with everything it found and wrote. 409 while the Lace is working. */
+export function deleteLace(laceId: string): Promise<void> {
+  return apiFetch(`/api/v1/laces/${laceId}`, { method: "DELETE" })
+}
+
+/** Read the site again after an onboarding that failed. */
+export function retryLaceOnboarding(laceId: string): Promise<{ run_id: string }> {
+  return apiFetch(`/api/v1/laces/${laceId}/onboarding`, { method: "POST" })
+}
+
 export function getLace(laceId: string): Promise<LaceDto> {
   return apiFetch<LaceDto>(`/api/v1/laces/${laceId}`)
 }
