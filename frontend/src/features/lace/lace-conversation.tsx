@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react"
-import { AlertTriangle, FileText } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { AnimatePresence, motion } from "motion/react"
+import { AlertTriangle, ArrowDown, FileText } from "lucide-react"
 
 import { PromptInputWithActions } from "@/components/chat-input"
 import { Markdown } from "@/components/ui/markdown"
@@ -63,8 +64,12 @@ function Message({ message, children }: { message: LaceMessageDto; children?: Re
   )
 }
 
+// Within this distance of the end counts as reading the latest.
+const LATEST_SLACK_PX = 120
+
 /** The founder's conversation with their Lace: the messages, what it is
- * doing now, the reply as it streams in, and the input. */
+ * doing now, the reply as it streams in, and the input. Scrolled back, a
+ * button returns to the latest and counts what arrived meanwhile. */
 export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill }: {
   chat: LaceChat
   name: string
@@ -76,14 +81,43 @@ export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill }:
 }) {
   const end = useRef<HTMLDivElement>(null)
   const lastIndex = chat.messages.length - 1
+  // Whether the founder is reading the latest, and how many messages there
+  // were when they scrolled up: what arrived since is "new".
+  const [atLatest, setAtLatest] = useState(true)
+  const [countWhenLeft, setCountWhenLeft] = useState(0)
+  const unseen = atLatest ? 0 : Math.max(0, chat.messages.length - countWhenLeft)
+  const lastIsFounder = chat.messages[lastIndex]?.role === "founder"
+  const toLatest = () => end.current?.scrollIntoView({ behavior: "smooth", block: "end" })
 
+  // Follow the conversation while they are at the latest, and always when
+  // they have just sent something; never pull them down while they read back.
   useEffect(() => {
-    end.current?.scrollIntoView({ behavior: "smooth", block: "end" })
-  }, [chat.messages.length, chat.steps.length, chat.draft])
+    if (atLatest || lastIsFounder) end.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+  }, [chat.messages.length, chat.steps.length, chat.draft, atLatest, lastIsFounder])
+
+  const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < LATEST_SLACK_PX
+    if (near !== atLatest) {
+      setAtLatest(near)
+      if (!near) setCountWhenLeft(chat.messages.length)
+    }
+  }
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="relative flex min-h-0 flex-1 flex-col">
+      <AnimatePresence>
+        {!atLatest && (
+          <motion.button type="button" onClick={toLatest} aria-label={unseen ? `${unseen} new messages, go to latest` : "Go to latest"}
+                         initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
+                         className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-full border bg-background/90 px-3 py-1.5 text-xs shadow-md backdrop-blur hover:border-theme/50">
+            <ArrowDown className="size-3.5" />
+            {unseen > 0 ? <><span className="font-medium">{unseen} new</span> · Latest</> : "Latest"}
+          </motion.button>
+        )}
+      </AnimatePresence>
+      <div className="min-h-0 flex-1 overflow-y-auto" onScroll={onScroll}>
         <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6">
           {chat.loading && (
             <div className="flex flex-col gap-3">
@@ -113,6 +147,7 @@ export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill }:
           )}
           <div ref={end} />
         </div>
+      </div>
       </div>
       <div className="flex min-w-0 flex-col items-center gap-2 px-4 py-3">
         {dock}

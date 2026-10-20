@@ -8,7 +8,7 @@ import { accountItem, competitorItem, opportunityItem } from "./feed-review"
 import { LaceAccounts } from "./lace-accounts"
 import { LaceFunnel } from "./lace-funnel"
 import { LaceCompetitors } from "./lace-competitors"
-import { discussMove, discussOpportunity } from "./discuss"
+import { discussAccount, discussCompetitor, discussMove, discussOpportunity } from "./discuss"
 import { useLaceMoves } from "./use-lace-moves"
 import { useSeenAt } from "./viewer-memory"
 import { LaceOpportunities } from "./lace-opportunities"
@@ -109,7 +109,8 @@ export function LaceFeed({ laceId, name, chat, activity, opps, onOpen, onDiscuss
           <LaceReview items={chat.suggestedAccounts.map(accountItem)} onSave={(id) => void chat.saveAccount(id)}
                       onDismiss={(id) => void chat.dismissAccount(id)} />
           <LaceAccounts accounts={chat.accounts} finding={chat.findingAccounts}
-                        onDismiss={(id) => void chat.dismissAccount(id)} />
+                        onDismiss={(id) => void chat.dismissAccount(id)} name={name}
+                        onDiscuss={(a) => onDiscuss(discussAccount(a))} />
         </>
       ),
     },
@@ -124,7 +125,8 @@ export function LaceFeed({ laceId, name, chat, activity, opps, onOpen, onDiscuss
           <LaceCompetitors competitors={chat.competitors} searching={chat.searching}
                            onDismiss={(id) => void chat.dismissCompetitor(id)} moves={moves}
                            movesSeenAt={movesSeenAt} onMovesSeen={markMovesSeen} name={name}
-                           onDiscussMove={(m) => onDiscuss(discussMove(m.competitor_name, m.title, m.detected_at, m.sources))} />
+                           onDiscussMove={(m) => onDiscuss(discussMove(m.competitor_name, m.title, m.detected_at, m.sources))}
+                           onDiscuss={(c) => onDiscuss(discussCompetitor(c))} />
         </>
       ),
     },

@@ -1,4 +1,4 @@
-import { ExternalLink, Loader2, X } from "lucide-react"
+import { ExternalLink, Loader2, MessageCircle, X } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -18,7 +18,8 @@ function host(url: string): string {
 /** The companies the Lace tracks as competitors, each with the moves it made
  * (opened by themselves when some are new). Dismissing one stops tracking
  * it, and a later search won't bring it back. */
-export function LaceCompetitors({ competitors, searching, onDismiss, moves, movesSeenAt, onMovesSeen, name, onDiscussMove }: {
+export function LaceCompetitors({ competitors, searching, onDismiss, moves, movesSeenAt, onMovesSeen, name, onDiscussMove,
+                                  onDiscuss }: {
   competitors: LaceCompetitorDto[]
   searching: boolean
   onDismiss: (id: string) => void
@@ -27,6 +28,7 @@ export function LaceCompetitors({ competitors, searching, onDismiss, moves, move
   onMovesSeen: (competitorId: string) => void
   name: string
   onDiscussMove: (move: LaceMoveDto) => void
+  onDiscuss: (competitor: LaceCompetitorDto) => void
 }) {
   return (
     <div className="flex flex-col gap-4">
@@ -51,6 +53,10 @@ export function LaceCompetitors({ competitors, searching, onDismiss, moves, move
                 {host(c.website)} <ExternalLink className="size-3" />
               </a>
               {c.summary && <p className="mt-1 line-clamp-3 text-sm leading-snug">{c.summary}</p>}
+              <Button size="sm" variant="outline" className="mt-2 w-fit rounded-full border-theme/40 hover:bg-theme/10"
+                      onClick={() => onDiscuss(c)}>
+                <MessageCircle /> Discuss with {name}
+              </Button>
               <LaceCompetitorMoves moves={moves.get(c.id) ?? []} seenAt={movesSeenAt(c.id)}
                                    onSeen={() => onMovesSeen(c.id)} name={name} onDiscuss={onDiscussMove} />
             </div>
