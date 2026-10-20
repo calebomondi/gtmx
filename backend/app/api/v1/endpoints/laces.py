@@ -11,6 +11,10 @@ from backend.app.api.deps import CurrentUser, DbSession, OwnedLace
 from backend.app.runs import lace as lace_runs
 from backend.app.runs import manager
 from backend.app.schemas.laces import (
+    SavedAcrossLaces,
+    TaggedAccount,
+    TaggedCompetitor,
+    TaggedOpportunity,
     ContactDraftRequest,
     MoveResponse,
     DocumentResponse,
@@ -50,6 +54,7 @@ from backend.app.schemas.laces import (
     OutreachUpdateRequest,
 )
 from backend.app.services import email, lace_accounts, lace_documents, lace_activity, lace_contacts, lace_search, lace_channels, lace_competitors, lace_opportunities, lace_outreach
+from backend.app.services import lace_overview
 from backend.app.services import laces as lace_service
 from agents.lace.store import JobRefused
 from backend.app.services.errors import ConflictError
@@ -70,6 +75,7 @@ MAX_CONTACTS_PER_PAGE = 500
 MAX_SEARCH_PER_KIND = 20
 MAX_DOCUMENTS_PER_PAGE = 100
 MAX_MOVES_PER_PAGE = 300
+MAX_SAVED_PER_LACE = 50
 
 
 @router.post("", response_model=LaceCreateResponse, status_code=status.HTTP_201_CREATED)
@@ -101,6 +107,26 @@ async def search_laces(user: CurrentUser, db: DbSession,
     """Search everything in the founder's Laces: the Laces, their facts,
     competitors, accounts, contacts, opportunities and conversations."""
     return await lace_search.search(db, user.id, q, per_kind)
+
+
+# Declared before /{lace_id}, which would otherwise take "saved" as an id.
+@router.get("/saved", response_model=SavedAcrossLaces)
+async def saved_across_laces(user: CurrentUser, db: DbSession,
+                             per_lace: int = Query(default=20, ge=1, le=MAX_SAVED_PER_LACE)):
+    """Home's tabs: every live Lace's open opportunities, target customers and
+    tracked competitors, each with its Lace, and what waits for review."""
+    found = await lace_overview.saved(db, user.id, per_lace)
+
+    def tag(lace, fields: dict) -> dict:
+        return {**fields, "lace_id": lace.id, "lace_name": lace.name}
+    return SavedAcrossLaces(
+        opportunities=[TaggedOpportunity(**tag(lace, OpportunityResponse.model_validate(r).model_dump()))
+                       for lace, r in found.opportunities],
+        accounts=[TaggedAccount(**tag(lace, lace_accounts.response(r))) for lace, r in found.accounts],
+        competitors=[TaggedCompetitor(**tag(lace, CompetitorResponse.model_validate(r).model_dump()))
+                     for lace, r in found.competitors],
+        to_review=found.to_review,
+    )
 
 
 # Declared before /{lace_id}, which would otherwise take "activity" as an id.
