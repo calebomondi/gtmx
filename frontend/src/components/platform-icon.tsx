@@ -1,8 +1,7 @@
 import { cn } from "@/lib/utils"
-import { PLATFORM_ICON, type Platform } from "./accounts-type"
+import { PLATFORM_ICON, type Platform } from "@/lib/platforms"
 
-/** Platform glyph used by both the /accounts board and the agent
- *  connections dialog. Falls back to a glyph badge when no icon asset
+/** A platform's glyph, on the /accounts board and in a Lace's Messaging. Falls back to a glyph badge when no icon asset
  *  exists for the platform. */
 export function PlatformIcon({
   platform,
