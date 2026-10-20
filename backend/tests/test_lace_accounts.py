@@ -7,6 +7,7 @@ import psycopg
 from langchain_core.messages import AIMessage
 
 from agents.schemas.accounts import AccountFit, AccountRecord, TriggerEvent
+from agents.schemas.icp import ICP
 from backend.app.runs import lace_jobs
 from backend.app.runs import manager
 from backend.tests.helpers import make_user
@@ -64,12 +65,32 @@ def test_search_saves_accounts_and_the_lace_reports_back(client, lace, lace_runt
     assert client.patch(f"{API}/laces/{lace}/accounts/{top['id']}", json={"status": "suggested"}).status_code == 422
 
 
-def test_no_icp_means_the_search_fails_and_says_so(client, lace, lace_runtime, user):  # noqa: F811
-    lace_runtime.append(AIMessage(content="I need to define your ICP first."))  # the wake follows at once
+def test_no_icp_means_the_search_works_one_out_first(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    seen = {}
+    monkeypatch.setattr(lace_jobs.lace_icp, "define_icp",
+                        lambda profile, facts, rivals, guidance: ICP(buyer_type="b2b", industries=["Clinics"]))
+
+    def fake(profile, facts, icp, exclude, country):
+        seen["industries"] = icp.industries
+        return [_found("Alpha", "strong")]
+    monkeypatch.setattr(lace_jobs, "find_accounts", fake)
+    lace_runtime.append(AIMessage(content="I found Alpha."))  # the wake follows at once
     run = client.portal.call(manager.start_lace_job, "lace_accounts", user.id, uuid.UUID(lace), {})
-    client.portal.call(_wait_for_status, run.id, {"failed"})
+    client.portal.call(_wait_for_status, run.id, {"completed"})
+    assert seen["industries"] == ["Clinics"]
+    with psycopg.connect(settings.database_url) as conn:
+        assert conn.execute("SELECT icp->'industries' FROM laces WHERE id = %s", (lace,)).fetchone()[0] == ["Clinics"]
+
+
+def test_the_icp_job_saves_it_and_tells_the_lace(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(lace_jobs.lace_icp, "define_icp",
+                        lambda profile, facts, rivals, guidance: ICP(buyer_type="b2b", industries=[guidance]))
+    lace_runtime.append(AIMessage(content="I worked out who to sell to: clinics."))
+    run = client.portal.call(manager.start_lace_job, "lace_icp", user.id, uuid.UUID(lace), {"guidance": "Clinics"})
+    client.portal.call(_wait_for_status, run.id, {"completed"})
     turns = client.portal.call(_wait_for_turns, lace, 1)
-    assert "no ideal customer profile" in turns[-1].input["updates"][0]
+    assert "ideal customer profile is saved" in turns[-1].input["updates"][0]
+    assert "Industries: Clinics" in turns[-1].input["updates"][0]
 
 
 def test_a_dismissed_account_stays_dismissed(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811

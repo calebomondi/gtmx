@@ -9,7 +9,7 @@ from agents.lace.prompts import render_brief, render_icp, system_prompt
 from agents.lace.tools import build_tools
 from agents.schemas.icp import ICP
 from agents.schemas.lace import CompetitorSummary, Fact, LaceProfile
-from lace_fakes import MemoryStore, make_fact
+from lace_fakes import MemoryStore, RecordingJobs, make_fact
 
 PROFILE = LaceProfile(name="Ada", website="https://acme.test", startup_name="Acme")
 ICP_OUT = ICP(buyer_type="b2b", industries=["Private clinics"], company_sizes=["10-50"], geo=["Kenya"],
@@ -42,14 +42,14 @@ def test_define_icp_sees_facts_competitors_and_guidance():
     assert "focus on Nairobi" in seen["prompt"]
 
 
-async def test_tool_saves_the_icp(settings, monkeypatch):
-    from agents.lace import icp as lace_icp
-    monkeypatch.setattr(lace_icp, "define_icp", lambda profile, facts, rivals, guidance: ICP_OUT)
-    store = MemoryStore()
-    tool = {t.name: t for t in build_tools(store, settings)}["define_icp"]
+async def test_the_tool_works_it_out_in_the_background(settings):
+    jobs = RecordingJobs()
+    tool = {t.name: t for t in build_tools(MemoryStore(), settings, jobs)}["define_icp"]
     out = json.loads(await tool.ainvoke({"guidance": "clinics"}))
-    assert out["ok"] and out["data"]["industries"] == ["Private clinics"]
-    assert store.saved_icp == ICP_OUT
+    assert out["ok"] and "few minutes" in out["summary"]
+    assert jobs.started == [("define_icp", {"guidance": "clinics"})]
+    # Without a way to run jobs there is no tool to start one.
+    assert "define_icp" not in {t.name for t in build_tools(MemoryStore(), settings)}
 
 
 def test_the_prompt_carries_the_icp_or_says_there_is_none():
@@ -58,3 +58,15 @@ def test_the_prompt_carries_the_icp_or_says_there_is_none():
     assert "- Industries: Private clinics" in gist and "- Start with: Multi-site clinics in Nairobi" in gist
     assert "- Not: Hospitals" in gist
     assert "Multi-site clinics in Nairobi" in system_prompt(PROFILE, [], ICP_OUT)
+
+
+def test_the_prompt_says_what_is_on_file_and_to_speak_as_itself():
+    from agents.lace.prompts import render_on_file
+    from agents.schemas.lace import Suggestions
+    rivals = [CompetitorSummary(id=f"c{i}", name=f"Rival {i}", website="https://r.test", origin="found", status="tracked")
+              for i in range(10)]
+    on_file = render_on_file(rivals, [], [], Suggestions())
+    assert "- Competitors you track: Rival 0, Rival 1" in on_file and "(+2 more)" in on_file
+    assert "- Target accounts saved: none yet" in on_file
+    prompt = system_prompt(PROFILE, [], on_file=on_file)
+    assert "Rival 7" in prompt and "first person" in prompt and "Never claim an absence" in prompt

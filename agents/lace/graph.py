@@ -28,7 +28,7 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
 from agents.context_budget import count_tokens
-from agents.lace.prompts import DOCUMENTS_LISTED, system_prompt
+from agents.lace.prompts import DOCUMENTS_LISTED, render_on_file, system_prompt
 from agents.lace.store import LaceJobs, LaceStore
 from agents.lace.tools import build_tools
 from agents.llm.main import TokenSink, invoke_with_tools
@@ -39,6 +39,8 @@ from config import Settings, get_settings
 ModelStep = Callable[[Sequence[AnyMessage], Sequence[BaseTool], TokenSink], AnyMessage]
 
 BRIEF_FACTS = 80
+# Saved items read for the prompt's "on file" lines: enough to count and name a few.
+ON_FILE_SCAN = 50
 
 _OUT_OF_TOOL_CALLS = (
     "You have used this turn's tool calls. Answer the founder now with what you "
@@ -128,10 +130,14 @@ def build_lace_graph(
     tools = build_tools(store, settings, jobs)
 
     async def agent(state: LaceState) -> dict:
-        profile, facts, icp, documents = await asyncio.gather(
-            store.profile(), store.facts(None, BRIEF_FACTS), store.icp(), store.documents(DOCUMENTS_LISTED + 1))
+        profile, facts, icp, documents, rivals, accounts, opportunities, suggestions = await asyncio.gather(
+            store.profile(), store.facts(None, BRIEF_FACTS), store.icp(), store.documents(DOCUMENTS_LISTED + 1),
+            store.competitors(ON_FILE_SCAN), store.accounts(ON_FILE_SCAN), store.opportunities(ON_FILE_SCAN),
+            store.suggestions(ON_FILE_SCAN))
+        on_file = render_on_file(rivals, accounts, opportunities, suggestions)
         messages = state["messages"]
-        prompt: list[AnyMessage] = [SystemMessage(content=system_prompt(profile, facts, icp, documents=documents))]
+        prompt: list[AnyMessage] = [SystemMessage(content=system_prompt(profile, facts, icp, documents=documents,
+                                                                        on_file=on_file))]
         prompt += close_dangling_tool_calls(history_window(messages, settings.lace_history_token_budget))
         allowed = tools
         if tool_calls_this_turn(messages) >= settings.lace_max_tool_calls_per_turn:

@@ -57,14 +57,11 @@ def test_record_brief_carries_the_trigger():
     assert "Trigger event: Opened 3 new sites (source: https://news.test/1)" in brief
 
 
-async def test_find_accounts_needs_an_icp(settings):
+async def test_find_accounts_starts_without_an_icp(settings):
+    """The search works out an ICP itself when there is none, in the
+    background, so the turn never waits minutes on it."""
     jobs = RecordingJobs()
-    store = MemoryStore()
-    tool = {t.name: t for t in build_tools(store, settings, jobs)}["find_accounts"]
-    refused = json.loads(await tool.ainvoke({"country": "Kenya"}))
-    assert not refused["ok"] and "define_icp" in refused["error"] and jobs.started == []
-
-    store.saved_icp = ICP_IN
+    tool = {t.name: t for t in build_tools(MemoryStore(), settings, jobs)}["find_accounts"]
     assert json.loads(await tool.ainvoke({"country": "Kenya"}))["ok"]
     assert jobs.started == [("find_accounts", {"country": "Kenya"})]
 
