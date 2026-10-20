@@ -19,9 +19,11 @@ export function listConnections(): Promise<{ channels: ChannelDto[]; connections
   return apiFetch("/api/v1/connections")
 }
 
-/** A Composio Connect Link; the user comes back to /accounts?connected=<platform>. */
-export function startConnection(platform: string): Promise<{ redirect_url: string }> {
-  return apiFetch(`/api/v1/connections/${platform}`, { method: "POST" })
+/** A Composio Connect Link; the user comes back to `returnTo` (an app path,
+ * /accounts by default) with ?connected=<platform>. */
+export function startConnection(platform: string, returnTo?: string): Promise<{ redirect_url: string }> {
+  const query = returnTo ? `?return_to=${encodeURIComponent(returnTo)}` : ""
+  return apiFetch(`/api/v1/connections/${platform}${query}`, { method: "POST" })
 }
 
 export function deleteConnection(connectionId: string): Promise<void> {

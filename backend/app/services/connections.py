@@ -8,6 +8,7 @@ Composio's SDK is synchronous; every call runs in a worker thread.
 """
 
 import asyncio
+import re
 import uuid
 from dataclasses import dataclass
 from urllib.parse import urlsplit
@@ -19,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import models
-from backend.app.services.errors import ConflictError, NotFoundError
+from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError
 from config import settings
 from utils.log import logger
 
@@ -216,10 +217,28 @@ def return_base(origin: str | None) -> str:
     return settings.frontend_base_url.rstrip("/")
 
 
-async def start(user_id: uuid.UUID, platform: str, origin: str | None = None) -> str:
+# Where a connection may return the user: an app path, never another site.
+_RETURN_PATH = re.compile(r"^/(?!/)[A-Za-z0-9_\-./]{0,200}$")
+_DEFAULT_RETURN = "/accounts"
+
+
+def return_path(path: str | None) -> str:
+    """`path` when it is a plain path within the app (e.g. a Lace's
+    Messaging), else the accounts page. InvalidInputError for anything that
+    could leave the app."""
+    if not path:
+        return _DEFAULT_RETURN
+    if not _RETURN_PATH.match(path) or ".." in path:
+        raise InvalidInputError("That isn't a page in the app.")
+    return path
+
+
+async def start(user_id: uuid.UUID, platform: str, origin: str | None = None, return_to: str | None = None) -> str:
     """Begin connecting `platform` for the user; returns the Connect Link URL.
-    Composio redirects back to the accounts page, which then re-lists from
-    Composio -- the callback's query parameters are never trusted."""
+    Composio redirects back to `return_to` (an app path; the accounts page by
+    default) with ?connected=<platform>, and that page re-lists from Composio
+    -- the callback's query parameters are never trusted."""
+    path = return_path(return_to)
     if platform not in TOOLKITS:
         raise NotFoundError("Unknown channel")
     if not available(platform):
@@ -242,7 +261,7 @@ async def start(user_id: uuid.UUID, platform: str, origin: str | None = None) ->
             user_id=str(user_id), manage_connections=False, auth_configs=_auth_configs(),
         )
         request = session.authorize(
-            TOOLKITS[platform], callback_url=f"{base}/accounts?connected={platform}",
+            TOOLKITS[platform], callback_url=f"{base}{path}?connected={platform}",
         )
         return request.redirect_url
     return await asyncio.to_thread(authorize)

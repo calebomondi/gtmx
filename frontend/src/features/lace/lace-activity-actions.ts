@@ -7,8 +7,8 @@ export type FeedSection = "activity" | "opportunities" | "accounts" | "competito
 export const FEED_SECTIONS: readonly FeedSection[] = ["activity", "opportunities", "accounts", "competitors"]
 
 /** Messaging's sub-tabs. */
-export type MessagingSection = "conversations" | "people" | "inboxes"
-export const MESSAGING_SECTIONS: readonly MessagingSection[] = ["conversations", "people", "inboxes"]
+export type MessagingSection = "conversations" | "drafts" | "sent" | "contacts"
+export const MESSAGING_SECTIONS: readonly MessagingSection[] = ["conversations", "drafts", "sent", "contacts"]
 
 export type LaceSection = FeedSection | MessagingSection
 
@@ -24,7 +24,7 @@ export const ACTIVITY_ACTIONS: Record<ActivityKind, { label: string; target: Fee
   competitor_moves: { label: "See competitors", target: { tab: "feed", section: "competitors" } },
   accounts_found: { label: "See accounts", target: { tab: "feed", section: "accounts" } },
   contacts_found: { label: "See accounts", target: { tab: "feed", section: "accounts" } },
-  drafts_ready: { label: "Review drafts", target: { tab: "messaging", section: "conversations" } },
+  drafts_ready: { label: "Review drafts", target: { tab: "messaging", section: "drafts" } },
   reply_received: { label: "Read the reply", target: { tab: "messaging", section: "conversations" } },
   opportunities_found: { label: "See opportunities", target: { tab: "feed", section: "opportunities" } },
   job_failed: { label: "Talk it through", target: { tab: "chat" } },
@@ -45,7 +45,7 @@ export function needsYou(waiting: number, failedSearches: ActivityDto[],
   const items: NeedsYouItem[] = []
   if (toApprove > 0) {
     items.push({ label: `${toApprove} ${toApprove === 1 ? "person" : "people"} to approve for outreach`,
-                 target: { tab: "messaging", section: "people" } })
+                 target: { tab: "messaging", section: "contacts" } })
   }
   const toReview = Object.values(suggestions).reduce((sum, n) => sum + (n ?? 0), 0)
   const first = FEED_SECTIONS.find((section) => suggestions[section])

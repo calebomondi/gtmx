@@ -153,6 +153,14 @@ def test_connect_returns_to_the_origin_the_user_started_from(client, composio, m
         assert composio.authorized[-1][2] == f"{expected}/accounts?connected=linkedin"
 
 
+def test_connect_returns_to_an_app_page_only(client, composio, monkeypatch):
+    monkeypatch.setattr(settings, "frontend_base_url", "http://localhost:5173")
+    client.post(f"{API}/linkedin", params={"return_to": "/lace/abc/messaging"})
+    assert composio.authorized[-1][2] == "http://localhost:5173/lace/abc/messaging?connected=linkedin"
+    for bad in ["//evil.example/x", "https://evil.example", "/lace/../admin", "lace/x", "/x?y=1"]:
+        assert client.post(f"{API}/linkedin", params={"return_to": bad}).status_code == 422, bad
+
+
 def test_one_connection_per_app(client, composio):
     """Tools can't choose between two connections of the same app, so a second is refused."""
     refused = client.post(f"{API}/gmail")

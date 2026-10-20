@@ -1,9 +1,8 @@
 // Connection model for the /accounts channel board, backed by the server's
 // Composio-held connections (/api/v1/connections).
 
-import { deleteConnection, listConnections, startConnection, type ConnectionDto } from '@/lib/api'
-
-export type Platform = 'gmail' | 'googlecalendar' | 'linkedin' | 'instagram' | 'facebook' | 'tiktok' | 'x'
+import { deleteConnection, listConnections, type ConnectionDto } from '@/lib/api'
+import { PLATFORM_LABEL, type Platform } from '@/lib/platforms'
 
 export type ConnectionStatus = 'live' | 'pending' | 'needs_attention'
 
@@ -21,30 +20,6 @@ export interface Connection {
   /** Outreach runs that used this channel. */
   usageCount: number
 }
-
-export const PLATFORM_LABEL: Record<Platform, string> = {
-  gmail: 'Gmail',
-  googlecalendar: 'Google Calendar',
-  linkedin: 'LinkedIn',
-  instagram: 'Instagram',
-  facebook: 'Facebook',
-  tiktok: 'TikTok',
-  x: 'X',
-}
-
-/** Empty string means "no icon asset" — the tile renders a glyph instead. */
-export const PLATFORM_ICON: Record<Platform, string> = {
-  gmail: '/gmail.svg',
-  googlecalendar: '/google-calendar.svg',
-  linkedin: '/linkedin.svg',
-  instagram: '/instagram.svg',
-  facebook: '/facebook.svg',
-  tiktok: '/tiktok.svg',
-  x: '',
-}
-
-/** Every channel the app can connect, in display order. */
-export const ALL_PLATFORMS: Platform[] = ['gmail', 'googlecalendar', 'linkedin', 'instagram', 'facebook', 'tiktok', 'x']
 
 /** What the agents do through each channel, as each provider allows it.
  *  Sending always needs the user's explicit click; agents draft, never send. */
@@ -122,12 +97,6 @@ export async function fetchConnectionState(): Promise<ConnectionState> {
 
 export async function fetchConnections(): Promise<Connection[]> {
   return (await fetchConnectionState()).connections
-}
-
-/** Sends the browser to the platform's sign-in (via Composio). */
-export async function beginConnection(platform: Platform): Promise<void> {
-  const { redirect_url } = await startConnection(platform)
-  window.location.assign(redirect_url)
 }
 
 export async function disconnectConnection(connectionId: string): Promise<void> {

@@ -16,7 +16,7 @@ const SECTIONS: Partial<Record<LaceSearchKind, LaceSection>> = {
   competitor: "competitors",
   account: "accounts",
   opportunity: "opportunities",
-  contact: "people",
+  contact: "contacts",
   conversation: "conversations",
 }
 

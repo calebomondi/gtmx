@@ -20,18 +20,15 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
+import { PlatformIcon } from "@/components/platform-icon"
+import { ALL_PLATFORMS, PLATFORM_LABEL, beginConnection, type Platform } from "@/lib/platforms"
 import {
-  ALL_PLATFORMS,
-  PLATFORM_LABEL,
   REPLY_ONLY_NOTE,
   capabilitiesFor,
-  beginConnection,
   disconnectConnection,
   fetchConnectionState,
   type Connection,
-  type Platform,
 } from "./accounts-type"
-import { PlatformIcon } from "./platform-icon"
 
 // ---------------------------------------------------------------------------
 // Helpers

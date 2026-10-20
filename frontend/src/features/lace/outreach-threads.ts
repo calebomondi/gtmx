@@ -67,24 +67,19 @@ export function preview(thread: OutreachThread): string {
   return prefix + last.body.replace(/\s+/g, " ").trim()
 }
 
-/** The inbox's folders. */
-export type ThreadFolder = "all" | "needs_you" | "drafts" | "sent" | "replies"
+/** Messaging's folders: conversations someone answered, drafts waiting to
+ * go, and what was sent and has had no answer yet. */
+export type ThreadFolder = "replies" | "drafts" | "awaiting"
 
-export const THREAD_FOLDERS: { value: ThreadFolder; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "needs_you", label: "Needs you" },
-  { value: "drafts", label: "Drafts" },
-  { value: "sent", label: "Sent" },
-  { value: "replies", label: "Replies" },
-]
+function hasReply(thread: OutreachThread): boolean {
+  return thread.messages.some((m) => m.direction === "inbound")
+}
 
 export function inFolder(thread: OutreachThread, folder: ThreadFolder): boolean {
   switch (folder) {
-    case "all": return true
-    case "needs_you": return thread.needsYou
+    case "replies": return hasReply(thread)
     case "drafts": return thread.messages.some((m) => m.direction === "outbound" && m.status === "draft")
-    case "sent": return thread.messages.some((m) => m.status === "sent")
-    case "replies": return thread.messages.some((m) => m.direction === "inbound")
+    case "awaiting": return !hasReply(thread) && thread.messages.some((m) => m.status === "sent" || m.status === "bounced")
   }
 }
 

@@ -11,7 +11,6 @@ import { cn } from "@/lib/utils"
 import { DraftCard } from "./lace-draft"
 import {
   CHANNEL_LABELS,
-  THREAD_FOLDERS,
   groupThreads,
   inFolder,
   initials,
@@ -132,36 +131,36 @@ function ThreadRow({ thread, selected, onSelect }: { thread: OutreachThread; sel
   )
 }
 
-/** Every conversation the Lace has drafted, sent or received, on every
- * channel, as an inbox: folders and search over a list (the ones that need
- * the founder first), and the open conversation beside it. On phones, one at
- * a time. */
-export function LaceThreads({ outreach, drafting, actions }: {
+/** One folder of the Lace's conversations as an inbox: search over a list
+ * (the ones that need the founder first), and the open conversation beside
+ * it. On phones, one at a time. `empty` says what the folder holds when it
+ * holds nothing. */
+export function LaceThreads({ outreach, folder, drafting, actions, empty }: {
   outreach: LaceOutreachDto[]
+  folder: ThreadFolder
   drafting: boolean
   actions: ThreadActions
+  empty: { title: string; body: string }
 }) {
-  const threads = groupThreads(outreach)
-  const [folder, setFolder] = useState<ThreadFolder>("all")
+  const threads = groupThreads(outreach).filter((t) => inFolder(t, folder))
   const [query, setQuery] = useState("")
   const [openKey, setOpenKey] = useState<string | null>(null)
-  const shownThreads = threads.filter((t) => inFolder(t, folder) && matchesQuery(t, query))
+  const shownThreads = threads.filter((t) => matchesQuery(t, query))
   // Phones show the list until a conversation is picked; wider screens
   // always show one, the first by default.
   const open = threads.find((t) => t.key === openKey) ?? null
   const shown = open ?? shownThreads[0] ?? null
 
   if (threads.length === 0) {
+    const busy = drafting && folder === "drafts"
     return (
       <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed px-6 py-12 text-center">
         <span className="grid size-12 place-items-center rounded-full bg-theme/15 text-theme">
-          {drafting ? <Loader2 className="size-5 animate-spin" /> : <Inbox className="size-5" />}
+          {busy ? <Loader2 className="size-5 animate-spin" /> : <Inbox className="size-5" />}
         </span>
-        <p className="font-medium">{drafting ? "Drafting messages" : "No conversations yet"}</p>
+        <p className="font-medium">{busy ? "Drafting messages" : empty.title}</p>
         <p className="max-w-sm text-sm text-muted-foreground" aria-live="polite">
-          {drafting
-            ? "This takes a few minutes. Each draft waits here for you to edit and send."
-            : "Approve people under People, then ask your Lace to draft outreach to them."}
+          {busy ? "This takes a few minutes. Each draft waits here for you to edit and send." : empty.body}
         </p>
       </div>
     )
@@ -169,20 +168,12 @@ export function LaceThreads({ outreach, drafting, actions }: {
   return (
     <div className="grid h-[min(72svh,46rem)] overflow-hidden rounded-2xl border bg-card md:grid-cols-[19rem_1fr]">
       <div className={cn("flex min-h-0 flex-col md:border-r", open && "hidden md:flex")}>
-        <div className="flex flex-col gap-2 border-b p-3">
+        <div className="border-b p-3">
           <InputGroup>
             <InputGroupAddon><Search /></InputGroupAddon>
-            <InputGroupInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search conversations"
+            <InputGroupInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by person, company or words"
                              aria-label="Search conversations" />
           </InputGroup>
-          <div className="flex gap-1 overflow-x-auto [scrollbar-width:none]" role="group" aria-label="Folders">
-            {THREAD_FOLDERS.map((f) => (
-              <Button key={f.value} size="xs" variant={folder === f.value ? "secondary" : "ghost"}
-                      className="shrink-0 rounded-full" aria-pressed={folder === f.value} onClick={() => setFolder(f.value)}>
-                {f.label}
-              </Button>
-            ))}
-          </div>
         </div>
         <ul className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-2" aria-label="Conversations">
           {shownThreads.map((thread) => (
@@ -193,7 +184,7 @@ export function LaceThreads({ outreach, drafting, actions }: {
           {shownThreads.length === 0 && (
             <li className="px-3 py-6 text-center text-sm text-muted-foreground">Nothing here.</li>
           )}
-          {drafting && (
+          {drafting && folder === "drafts" && (
             <li className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground" aria-live="polite">
               <Loader2 className="size-3 animate-spin" /> Drafting more…
             </li>
