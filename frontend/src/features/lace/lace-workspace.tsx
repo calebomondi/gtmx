@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Navigate, useNavigate, useParams } from "react-router-dom"
-import { Settings2 } from "lucide-react"
+import { RotateCcw, Settings2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 
@@ -66,6 +66,13 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
         </Button>
       </header>
       <LaceStatusBanner lace={chat.lace} working={chat.working} onChanged={() => void chat.reload()} />
+      {/* The chat shows its own errors in line; elsewhere they sit up here. */}
+      {tab !== "chat" && chat.error && (
+        <div role="alert" className="flex items-center justify-between gap-2 border-b bg-destructive/10 px-4 py-2 text-sm text-destructive">
+          <span>Couldn't load everything: {chat.error}</span>
+          <Button size="sm" variant="outline" onClick={() => void chat.reload()}><RotateCcw /> Retry</Button>
+        </div>
+      )}
       <div className="flex min-h-0 flex-1">
         {/* Its own column beside the content, centred top to bottom. */}
         <aside className="hidden w-[4.5rem] shrink-0 items-center justify-center border-r md:flex">

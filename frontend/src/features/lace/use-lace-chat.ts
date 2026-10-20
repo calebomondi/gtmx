@@ -77,7 +77,8 @@ export interface LaceChat {
   draft: string
   /** Send a message, uploading `files` first and attaching them. */
   send: (text: string, files?: File[]) => Promise<void>
-  /** Load the Lace again, e.g. after it was archived or restored. */
+  /** Load the Lace again (after it was archived or restored, or to retry a
+   * failed load); a failure becomes `error`. */
   reload: () => Promise<void>
   dismissCompetitor: (competitorId: string) => Promise<void>
   dismissAccount: (accountId: string) => Promise<void>
@@ -132,22 +133,31 @@ export function useLaceChat(laceId: string): LaceChat {
   // Mirrors `working` for callbacks; written only from them, never in render.
   const busy = useRef(false)
 
+  // Each part is kept as it loads: one list failing (a refused request, the
+  // server restarting) must not cost the page the Lace's name or what it knows.
+  // The first failure is rethrown for the caller to show.
   const refresh = useCallback(async () => {
     const [nextLace, nextMessages, nextFacts, nextCompetitors, nextSuggestedCompetitors, nextAccounts,
-      nextSuggestedAccounts, nextOutreach, nextContacts] = await Promise.all([
+      nextSuggestedAccounts, nextOutreach, nextContacts] = await Promise.allSettled([
       getLace(laceId), listLaceMessages(laceId), listLaceFacts(laceId), listLaceCompetitors(laceId, "tracked"),
       listLaceCompetitors(laceId, "suggested"), listLaceAccounts(laceId, "target"),
       listLaceAccounts(laceId, "suggested"), listLaceOutreach(laceId), listLaceContacts(laceId),
     ])
-    setLace(nextLace)
-    setMessages(nextMessages)
-    setFacts(nextFacts)
-    setCompetitors(nextCompetitors)
-    setSuggestedCompetitors(nextSuggestedCompetitors)
-    setAccounts(nextAccounts)
-    setSuggestedAccounts(nextSuggestedAccounts)
-    setOutreach(nextOutreach)
-    setContacts(nextContacts)
+    const keep = <T,>(result: PromiseSettledResult<T>, set: (value: T) => void) => {
+      if (result.status === "fulfilled") set(result.value)
+    }
+    keep(nextLace, setLace)
+    keep(nextMessages, setMessages)
+    keep(nextFacts, setFacts)
+    keep(nextCompetitors, setCompetitors)
+    keep(nextSuggestedCompetitors, setSuggestedCompetitors)
+    keep(nextAccounts, setAccounts)
+    keep(nextSuggestedAccounts, setSuggestedAccounts)
+    keep(nextOutreach, setOutreach)
+    keep(nextContacts, setContacts)
+    const failed = [nextLace, nextMessages, nextFacts, nextCompetitors, nextSuggestedCompetitors, nextAccounts,
+      nextSuggestedAccounts, nextOutreach, nextContacts].find((result) => result.status === "rejected")
+    if (failed) throw failed.reason
   }, [laceId])
 
   const follow = useCallback(async (runId: string) => {
@@ -371,12 +381,21 @@ export function useLaceChat(laceId: string): LaceChat {
     }
   }, [laceId, follow, refresh])
 
+  const reload = useCallback(async () => {
+    setError(null)
+    try {
+      await refresh()
+    } catch (err) {
+      setError(message(err))
+    }
+  }, [refresh])
+
   const waiting = outreach.filter(waitsOnFounder).length
 
   return {
     lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, waiting, drafting, findingOpportunities,
     loading, error,
-    working, step, draft, send, reload: refresh, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, sendingSoon,
+    working, step, draft, send, reload, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, sendingSoon,
     undoSend, markSent, findContacts, contacts, approveContact, approveAccountContacts, saveCompetitor, saveAccount, decideOpportunity, suggestedCompetitors,
     suggestedAccounts,
   }
