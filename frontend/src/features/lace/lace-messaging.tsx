@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { Inbox, PenLine, Reply, Send, Users, type LucideIcon } from "lucide-react"
 
@@ -5,6 +6,7 @@ import type { OutreachChannel } from "@/lib/api"
 
 import { MESSAGING_SECTIONS, type MessagingSection } from "./lace-activity-actions"
 import { LaceAccountSwitcher } from "./lace-account-switcher"
+import { LaceContactDialog } from "./lace-contact-dialog"
 import { LaceContacts } from "./lace-contacts"
 import { LacePanelTabs, PanelIntro, type PanelTab } from "./lace-panel-tabs"
 import { LaceThreads, type ThreadActions } from "./lace-threads"
@@ -32,6 +34,9 @@ function Stat({ icon: Icon, value, label }: { icon: LucideIcon; value: number; l
 export function LaceMessaging({ laceId, name, chat }: { laceId: string; name: string; chat: LaceChat }) {
   const [section, setSection] = useSection<MessagingSection>(MESSAGING_SECTIONS)
   const [params, setParams] = useSearchParams()
+  // The person open in a dialog (by id, so it follows the list as it updates).
+  const [person, setPerson] = useState<{ id: string; channel: "email" | "linkedin" | null } | null>(null)
+  const opened = person ? chat.contacts.find((c) => c.id === person.id) : undefined
   const connections = useConnections()
   const accounts = messagingAccounts(connections.connections, chat.outreach)
   const requested = params.get("account")
@@ -95,7 +100,12 @@ export function LaceMessaging({ laceId, name, chat }: { laceId: string; name: st
         <>
           <PanelIntro>The people {name} found at your saved accounts, in the chat or its searches. It drafts only to people you approve.</PanelIntro>
           <LaceContacts contacts={chat.contacts} onApprove={(id, approved) => void chat.approveContact(id, approved)}
-                        onApproveAccount={(id) => void chat.approveAccountContacts(id)} />
+                        onApproveAccount={(id) => void chat.approveAccountContacts(id)}
+                        onOpen={(c, channel) => setPerson({ id: c.id, channel })} />
+          {opened && (
+            <LaceContactDialog key={opened.id} contact={opened} channel={person?.channel ?? null} name={name} chat={chat}
+                               onClose={() => setPerson(null)} />
+          )}
         </>
       ),
     },

@@ -20,6 +20,7 @@ import {
   markLaceOutreachSent,
   sendLaceMessage,
   uploadLaceDocument,
+  draftToLaceContact,
   sendLaceOutreach,
   setLaceAccountStatus,
   setLaceCompetitorStatus,
@@ -97,6 +98,9 @@ export interface LaceChat {
   markSent: (messageId: string) => Promise<void>
   /** Look for who to contact at one account, in the background. */
   findContacts: (accountId: string) => Promise<void>
+  /** Ask the Lace to draft to one person, on email or LinkedIn, with a note.
+   * Resolves false (with `error` set) when it could not start. */
+  draftToContact: (contactId: string, channel: "email" | "linkedin", note: string) => Promise<boolean>
   /** Clear one person for outreach, or take it back. */
   approveContact: (contactId: string, approved: boolean) => Promise<void>
   /** Clear everyone at one account for outreach. */
@@ -365,6 +369,20 @@ export function useLaceChat(laceId: string): LaceChat {
     }
   }, [laceId, checkRuns])
 
+  const draftToContact = useCallback(async (contactId: string, channel: "email" | "linkedin", note: string) => {
+    try {
+      await draftToLaceContact(laceId, contactId, channel, note)
+      // Asking cleared them for outreach.
+      setContacts((prev) => prev.map((c) => (c.id === contactId && !c.approved_at
+        ? { ...c, approved_at: new Date().toISOString() } : c)))
+      await checkRuns()
+      return true
+    } catch (err) {
+      setError(message(err))
+      return false
+    }
+  }, [laceId, checkRuns])
+
   const send = useCallback(async (text: string, files: File[] = []) => {
     setError(null)
     setMessages((prev) => [...prev, {
@@ -410,7 +428,7 @@ export function useLaceChat(laceId: string): LaceChat {
     lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, waiting, drafting, findingOpportunities,
     loading, error,
     working, step, steps, jobs, draft, send, reload, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, sendingSoon,
-    undoSend, markSent, findContacts, contacts, approveContact, approveAccountContacts, saveCompetitor, saveAccount, decideOpportunity, suggestedCompetitors,
+    undoSend, markSent, findContacts, draftToContact, contacts, approveContact, approveAccountContacts, saveCompetitor, saveAccount, decideOpportunity, suggestedCompetitors,
     suggestedAccounts,
   }
 }

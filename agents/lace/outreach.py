@@ -77,12 +77,16 @@ def research_by_domain(facts: list[Fact], competitors: list[CompetitorSummary]) 
 
 def draft_first_touch(profile: LaceProfile, facts: list[Fact], competitors: list[CompetitorSummary],
                       record: AccountRecord, recipient: Recipient, sender_name: str,
-                      write: Write = gtm_specialist.write_first_touch) -> OutreachDraft:
+                      write: Write = gtm_specialist.write_first_touch, note: str | None = None) -> OutreachDraft:
+    """One first message to `recipient`. `note` is what the founder asked for
+    this message ("mention our Twiga pilot"); the writer reads it with the
+    account, so it shapes the plan and the words."""
     seller = profile.startup_name or profile.website
     offer_facts = [f for f in facts if f.topic in _DOMAIN_TOPICS["product"]]
     brief = gtm_specialist.OutreachBrief(
         channel=recipient.channel, sender_name=sender_name, offer=render_brief(offer_facts),
-        account=record_brief(record), contact_name=recipient.name, contact_title=recipient.title,
+        account=record_brief(record) + (f"\n\nThe founder's note for this message: {note.strip()}" if note else ""),
+        contact_name=recipient.name, contact_title=recipient.title,
         website=record.website, trigger_source=record.trigger_event.source if record.trigger_event else None,
         seller=seller, account_type=record.account_type, research=research_by_domain(facts, competitors),
     )

@@ -17,7 +17,7 @@ from agents.lace.competitors import change_fact, find_competitors, material, off
 from agents.lace.contacts import complete_contacts, contact_status
 from agents.lace.accounts import record_brief
 from agents.lace.opportunities import find_opportunities
-from agents.lace.outreach import draft_first_touch, recipient_for, research_by_domain
+from agents.lace.outreach import Recipient, draft_first_touch, recipient_for, research_by_domain
 from agents.lace.prompts import render_brief, render_icp
 from agents.pipelines.outreach import gtm_replies
 from agents.lace.store import JobBlocked
@@ -258,12 +258,22 @@ async def drafts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> Non
                     for a in await lace_outreach.accounts_to_draft(db, lace_id, ids or None, DRAFTS_BATCH)]
         cleared = await lace_contacts.approved_keys(db, [account_id for account_id, _, _ in accounts])
     sender = await outreach_service.sender_for_user(user_id)
-    # Only people the founder approved are written to. An account whose people
-    # all wait for approval waits too, rather than falling back to its pages.
-    awaiting = [name for account_id, name, record in accounts
-                if record.key_contacts and not cleared.get(account_id)]
-    targets = [(account_id, name, record, recipient_for(approved_only(record, cleared.get(account_id, set()))))
-               for account_id, name, record in accounts if name not in awaiting]
+    person, note = params.get("person"), params.get("note")
+    if person:
+        # The founder asked for this one person, on this channel (and approved
+        # them in asking).
+        awaiting: list[str] = []
+        targets = [(account_id, name, record,
+                    Recipient(person["channel"], person.get("name"), person.get("title"), person["address"]))
+                   for account_id, name, record in accounts]
+    else:
+        # Only people the founder approved are written to. An account whose
+        # people all wait for approval waits too, rather than falling back to
+        # its pages.
+        awaiting = [name for account_id, name, record in accounts
+                    if record.key_contacts and not cleared.get(account_id)]
+        targets = [(account_id, name, record, recipient_for(approved_only(record, cleared.get(account_id, set()))))
+                   for account_id, name, record in accounts if name not in awaiting]
     unreachable = [name for _, name, _, recipient in targets if recipient is None]
     failed: list[str] = []
     slots = asyncio.Semaphore(DRAFTS_CONCURRENCY)
@@ -271,7 +281,8 @@ async def drafts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> Non
     async def draft(account_id, name, record, recipient) -> LaceOutreach | None:
         async with slots:
             try:
-                written = await asyncio.to_thread(draft_first_touch, profile, facts, rivals, record, recipient, sender)
+                written = await asyncio.to_thread(draft_first_touch, profile, facts, rivals, record, recipient, sender,
+                                                  note=note)
             except Exception:  # noqa: BLE001 -- one account failing must not lose the other drafts
                 logger.exception("Drafting to %s failed", name)
                 failed.append(name)
