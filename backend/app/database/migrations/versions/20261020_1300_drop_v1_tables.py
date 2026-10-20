@@ -5,7 +5,7 @@ accounts, chat_messages, outreach_messages, signals and workspace_activity.
 Destructive: run only after the pilots are moved into Laces.
 
 Revision ID: 8838b256ea3d
-Revises: f0ed7a4d313e
+Revises: d48d67751da3
 Create Date: 2026-10-19 16:06:44.011060+00:00
 
 """
@@ -17,7 +17,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = '8838b256ea3d'
-down_revision: Union[str, Sequence[str], None] = 'f0ed7a4d313e'
+down_revision: Union[str, Sequence[str], None] = 'd48d67751da3'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
