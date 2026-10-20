@@ -46,10 +46,12 @@ function Message({ message, children }: { message: LaceMessageDto; children?: Re
 
 /** The founder's conversation with their Lace: the messages, what it is
  * doing now, the reply as it streams in, and the input. */
-export function LaceConversation({ chat, name, onOpenMessaging }: {
+export function LaceConversation({ chat, name, onOpenMessaging, dock }: {
   chat: LaceChat
   name: string
   onOpenMessaging: () => void
+  /** Shown above the input: what the Lace has found so far. */
+  dock?: React.ReactNode
 }) {
   const end = useRef<HTMLDivElement>(null)
   const lastIndex = chat.messages.length - 1
@@ -98,6 +100,7 @@ export function LaceConversation({ chat, name, onOpenMessaging }: {
         </div>
       </div>
       <div className="flex min-w-0 flex-col items-center gap-2 px-4 py-3">
+        {dock}
         {!chat.working && !chat.loading && (
           // One row that scrolls sideways on narrow screens, so it never crowds the chat.
           <div className="flex w-full max-w-3xl gap-2 overflow-x-auto [scrollbar-width:none]" aria-label="Suggestions">
