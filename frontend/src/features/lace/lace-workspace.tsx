@@ -1,10 +1,11 @@
 import { useState } from "react"
-import { Navigate, useNavigate, useParams } from "react-router-dom"
+import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom"
 import { RotateCcw, Settings2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 
 import { JOB_INFO } from "./background-jobs"
+import type { DiscussState } from "./discuss"
 import { sectionHash, type FeedTarget } from "./lace-activity-actions"
 import { LaceBackgroundWork } from "./lace-background-work"
 import { LaceConversation } from "./lace-conversation"
@@ -51,6 +52,12 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
   // The sub-tab rides in the hash, which Feed and Messaging read.
   const open = ({ tab: next, section }: FeedTarget) =>
     navigate(`/lace/${laceId}/${next}${section ? sectionHash(section) : ""}`)
+  // "Discuss with…": into the chat with the topic waiting in the input.
+  const discuss = (prompt: string) =>
+    navigate(`/lace/${laceId}/chat`, { state: { prefill: prompt } satisfies DiscussState })
+  const location = useLocation()
+  const discussing = (location.state as DiscussState | null)?.prefill
+  const prefill = discussing ? { key: location.key, text: discussing } : undefined
   const nav = {
     tab,
     onSelect: select,
@@ -91,7 +98,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
         </aside>
         <main className={tab === "chat" ? "flex min-h-0 min-w-0 flex-1 flex-col" : "min-h-0 min-w-0 flex-1 overflow-y-auto"}>
           {tab === "chat" && (
-            <LaceConversation chat={chat} name={name} onOpenMessaging={() => select("messaging")} dock={
+            <LaceConversation chat={chat} name={name} onOpenMessaging={() => select("messaging")} prefill={prefill} dock={
               <>
                 <LaceBackgroundWork name={name} jobs={chat.jobs} />
                 <LaceFindsDock name={name} sections={found} seenAt={seenAt} onSeen={markSeen} busy={chat.working} searching={searching}
@@ -99,7 +106,9 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
               </>
             } />
           )}
-          {tab === "feed" && <LaceFeed laceId={laceId} name={name} chat={chat} activity={activity} opps={opps} onOpen={open} />}
+          {tab === "feed" && (
+            <LaceFeed laceId={laceId} name={name} chat={chat} activity={activity} opps={opps} onOpen={open} onDiscuss={discuss} />
+          )}
           {tab === "messaging" && <LaceMessaging laceId={laceId} name={name} chat={chat} />}
         </main>
       </div>

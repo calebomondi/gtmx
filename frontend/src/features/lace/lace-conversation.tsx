@@ -8,7 +8,9 @@ import { DOCUMENT_ACCEPT, type LaceMessageDto } from "@/lib/api"
 
 import { LaceAvatar } from "./lace-avatar"
 import { ChatBlocks } from "./lace-chat-blocks"
+import { LaceReplySources } from "./lace-reply-sources"
 import { LaceWorkTrail } from "./lace-work-trail"
+import { splitSources } from "./reply-sources"
 import type { LaceChat } from "./use-lace-chat"
 import { useTypewriter } from "./use-typewriter"
 
@@ -19,7 +21,8 @@ function Streaming({ text }: { text: string }) {
     <div className="flex gap-3">
       <LaceAvatar state="thinking" />
       <div className="min-w-0 flex-1">
-        <Markdown className="prose prose-sm dark:prose-invert min-w-0 max-w-none">{shown}</Markdown>
+        {/* The sources list is folded under the finished reply, so it never streams in. */}
+        <Markdown className="prose prose-sm dark:prose-invert min-w-0 max-w-none">{splitSources(shown).body}</Markdown>
         <span aria-hidden className="ml-0.5 inline-block h-4 w-1.5 animate-pulse rounded-sm bg-theme align-middle" />
       </div>
     </div>
@@ -45,14 +48,16 @@ function Message({ message, children }: { message: LaceMessageDto; children?: Re
       </div>
     )
   }
+  const { body, sources } = splitSources(message.content)
   return (
     <div className="flex gap-3">
       <LaceAvatar animated={false} />
       <div className="flex min-w-0 flex-1 flex-col gap-3">
-        {message.content.trim() && (
-          <Markdown className="prose prose-sm dark:prose-invert min-w-0 max-w-none">{message.content}</Markdown>
+        {body.trim() && (
+          <Markdown className="prose prose-sm dark:prose-invert min-w-0 max-w-none">{body}</Markdown>
         )}
         {children}
+        <LaceReplySources sources={sources} />
       </div>
     </div>
   )
@@ -60,12 +65,14 @@ function Message({ message, children }: { message: LaceMessageDto; children?: Re
 
 /** The founder's conversation with their Lace: the messages, what it is
  * doing now, the reply as it streams in, and the input. */
-export function LaceConversation({ chat, name, onOpenMessaging, dock }: {
+export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill }: {
   chat: LaceChat
   name: string
   onOpenMessaging: () => void
   /** Shown above the input: what the Lace has found so far. */
   dock?: React.ReactNode
+  /** A message waiting in the input ("Discuss with…"), for the founder to edit or send. */
+  prefill?: { key: string; text: string }
 }) {
   const end = useRef<HTMLDivElement>(null)
   const lastIndex = chat.messages.length - 1
@@ -110,6 +117,9 @@ export function LaceConversation({ chat, name, onOpenMessaging, dock }: {
       <div className="flex min-w-0 flex-col items-center gap-2 px-4 py-3">
         {dock}
         <PromptInputWithActions
+          // A new topic remounts the input with its text in place.
+          key={prefill?.key ?? "chat"}
+          defaultValue={prefill?.text}
           onSubmit={(text, files) => void chat.send(text, files)}
           accept={DOCUMENT_ACCEPT}
           isLoading={chat.working}

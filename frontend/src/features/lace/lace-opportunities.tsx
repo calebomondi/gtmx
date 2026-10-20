@@ -1,9 +1,9 @@
-import { ExternalLink, Loader2, X } from "lucide-react"
+import { ExternalLink, Loader2, MessageCircle, X } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { OpportunityKind } from "@/lib/api"
+import type { LaceOpportunityDto, OpportunityKind } from "@/lib/api"
 
 import type { LaceOpportunities as Opportunities } from "./use-lace-opportunities"
 import { ITEM_CARD } from "./feed-styles"
@@ -22,8 +22,14 @@ function when(deadline: string | null, eventDate: string | null): string | null 
 }
 
 /** Events to showcase at, tenders and buyers to sell to, partners: the saved
- * ones still open, the soonest first. Dismissing one drops it for good. */
-export function LaceOpportunities({ opps, searching }: { opps: Opportunities; searching: boolean }) {
+ * ones still open, the soonest first, each with a way to talk it through
+ * with the Lace. Dismissing one drops it for good. */
+export function LaceOpportunities({ opps, searching, name, onDiscuss }: {
+  opps: Opportunities
+  searching: boolean
+  name: string
+  onDiscuss: (opportunity: LaceOpportunityDto) => void
+}) {
   const { opportunities, loading, error, dismiss } = opps
   if (loading) return <Skeleton className="h-24 w-full" />
   return (
@@ -60,6 +66,10 @@ export function LaceOpportunities({ opps, searching }: { opps: Opportunities; se
                       </div>
                       <p className="text-sm">{o.why_it_fits}</p>
                       <p className="text-sm text-muted-foreground">Next: {o.how_to_act}</p>
+                      <Button size="sm" variant="outline" className="mt-1 w-fit rounded-full border-theme/40 hover:bg-theme/10"
+                              onClick={() => onDiscuss(o)}>
+                        <MessageCircle /> Discuss with {name}
+                      </Button>
                     </div>
                     <Button variant="ghost" size="icon" aria-label={`Dismiss ${o.title}`} title="Not for us"
                             onClick={() => void dismiss(o.id)}>

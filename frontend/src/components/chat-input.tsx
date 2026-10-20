@@ -24,6 +24,8 @@ export interface ChatInputProps {
   tabs?: ChatTab[]
   /** File kinds the picker offers, e.g. ".pdf,.docx". */
   accept?: string
+  /** Text already in the input when it mounts. */
+  defaultValue?: string
 }
 
 export function PromptInputWithActions({
@@ -37,8 +39,9 @@ export function PromptInputWithActions({
   onOpenCanvas,
   tabs = [],
   accept,
+  defaultValue = "",
 }: ChatInputProps) {
-  const [input, setInput] = useState("")
+  const [input, setInput] = useState(defaultValue)
   const [files, setFiles] = useState<File[]>([])
   const uploadInputRef = useRef<HTMLInputElement>(null)
 
