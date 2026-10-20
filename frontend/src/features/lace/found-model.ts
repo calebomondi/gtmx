@@ -1,4 +1,3 @@
-import { useState } from "react"
 import { Building2, Sparkles, Swords, Users, type LucideIcon } from "lucide-react"
 
 import type { FeedTarget } from "./lace-activity-actions"
@@ -78,12 +77,6 @@ export function foundSections(chat: LaceChat, opps: LaceOpportunities, open: (ta
       }))),
     },
   ]
-}
-
-/** When the Lace was opened: finds after it count as new. */
-export function useOpenedAt(): number {
-  const [openedAt] = useState(() => Date.now())
-  return openedAt
 }
 
 export function isNewSince(item: FoundItem, since: number): boolean {

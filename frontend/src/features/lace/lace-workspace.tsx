@@ -8,7 +8,8 @@ import { JOB_INFO } from "./background-jobs"
 import { sectionHash, type FeedTarget } from "./lace-activity-actions"
 import { LaceBackgroundWork } from "./lace-background-work"
 import { LaceConversation } from "./lace-conversation"
-import { foundSections, useOpenedAt } from "./found-model"
+import { foundSections, type FoundSection } from "./found-model"
+import { useSeenAt } from "./viewer-memory"
 import { LaceFeed } from "./lace-feed"
 import { LaceFindsDock } from "./lace-finds-dock"
 import { LaceMessaging } from "./lace-messaging"
@@ -43,7 +44,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
   // Refetched as new activity arrives (an opportunity search finished).
   const opps = useLaceOpportunities(laceId, activity.items[0]?.id ?? "")
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const openedAt = useOpenedAt()
+  const [seenAt, markSeen] = useSeenAt<FoundSection["key"]>(laceId)
   const name = chat.lace?.name ?? "Lace"
   const subtitle = chat.lace?.startup_name ?? chat.lace?.website
   const select = (next: LaceTab) => navigate(`/lace/${laceId}/${next}`)
@@ -93,7 +94,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
             <LaceConversation chat={chat} name={name} onOpenMessaging={() => select("messaging")} dock={
               <>
                 <LaceBackgroundWork name={name} jobs={chat.jobs} />
-                <LaceFindsDock name={name} sections={found} since={openedAt} busy={chat.working} searching={searching}
+                <LaceFindsDock name={name} sections={found} seenAt={seenAt} onSeen={markSeen} busy={chat.working} searching={searching}
                                onAsk={(prompt) => void chat.send(prompt)} />
               </>
             } />

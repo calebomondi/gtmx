@@ -13,6 +13,7 @@ import { sectionHash, type FeedTarget } from "./lace-activity-actions"
 import { ActivityRow } from "./lace-activity"
 import { LaceSection } from "./lace-section"
 import { useActivityPages } from "./use-activity-pages"
+import { useOpenedItems } from "./viewer-memory"
 
 const MASCOT_PX = 16
 
@@ -28,6 +29,7 @@ export default function LaceHomeFeed() {
   const fetchPage = useCallback((before?: string) => listAllLaceActivity(before), [])
   const feed = useActivityPages<LaceActivityItemDto>(fetchPage)
   const waiting = laces.filter((lace) => lace.mood === "alert")
+  const [opened, markOpened] = useOpenedItems("activity")
 
   useEffect(() => ensureLacesLoaded(), [])
 
@@ -72,7 +74,11 @@ export default function LaceHomeFeed() {
                 key={item.id}
                 item={item}
                 fresh={item.read_at === null}
-                onOpen={(target) => navigate(href(item.lace_id, target))}
+                opened={opened.has(item.id)}
+                onOpen={(target) => {
+                  markOpened(item.id)
+                  navigate(href(item.lace_id, target))
+                }}
                 lace={
                   <Link to={`/lace/${item.lace_id}`} className="mb-0.5 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
                     <Lace state="idle" size={MASCOT_PX} animated={false} decorative /> {item.lace_name}
