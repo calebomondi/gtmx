@@ -14,7 +14,6 @@ from typing import Literal
 from langchain_core.tools import BaseTool, tool
 
 from agents.context_budget import _truncate_to_tokens, count_tokens
-from agents.lace import icp as lace_icp
 from agents.lace.cards import cards
 from agents.lace.store import JobRefused, LaceJobs, LaceStore
 from agents.schemas.opportunities import OPPORTUNITY_KINDS, OpportunityKind
@@ -42,8 +41,6 @@ DOCUMENTS_PER_READ = 50
 # One read_document call returns this much of a document (about 3k tokens),
 # so a long deck is read a part at a time.
 DOCUMENT_PART_CHARS = 12_000
-# Facts the ICP is drawn from.
-ICP_FACTS = 150
 # What one reply can put in front of the founder.
 MAX_CARDS = 6
 MIN_CHOICES, MAX_CHOICES = 2, 5
@@ -217,20 +214,6 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
 
     @tool(parse_docstring=True)
     @_guarded
-    async def define_icp(guidance: str | None = None) -> ToolResult:
-        """Work out (or rework) who the startup should sell to: its ideal customer profile, from everything you know. Do this before looking for customers, and again when the founder corrects who their buyers are (record their correction with record_fact first).
-
-        Args:
-            guidance: Optional direction from the founder, e.g. "focus on clinics in Nairobi".
-        """
-        profile, facts, rivals = await asyncio.gather(
-            store.profile(), store.facts(None, ICP_FACTS), store.competitors(COMPETITORS_PER_READ))
-        icp = await asyncio.to_thread(lace_icp.define_icp, profile, facts, rivals, guidance)
-        await store.save_icp(icp)
-        return ToolResult.success("Saved the ideal customer profile.", icp.model_dump(exclude_defaults=True))
-
-    @tool(parse_docstring=True)
-    @_guarded
     async def list_accounts() -> ToolResult:
         """The target accounts the founder saved: who they are, the trigger that makes them worth contacting now, and the case for them. New finds wait in list_suggestions."""
         rows = await store.accounts(ACCOUNTS_PER_READ)
@@ -324,7 +307,7 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
         return ToolResult.success(f"{summary.filename}, part {part} of {parts}.{more}{cut}",
                                   {"filename": summary.filename, "part": part, "parts": parts, "text": chunk})
 
-    tools = [search_web, map_site, read_page, read_pages, get_facts, record_fact, list_competitors, define_icp,
+    tools = [search_web, map_site, read_page, read_pages, get_facts, record_fact, list_competitors,
              list_accounts, list_opportunities, list_suggestions, ask_choice, show, list_documents, read_document]
     if jobs is None:
         return tools
@@ -358,19 +341,32 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
     @tool(parse_docstring=True)
     @_guarded
     async def find_accounts(country: str | None = None) -> ToolResult:
-        """Start a search for target accounts that match the ideal customer profile and have a current reason to buy (a hire, a funding round, a launch...), each verified and with the case for it. Needs an ideal customer profile first (define_icp). Takes several minutes in the background; you get an update when it is done.
+        """Start a search for target accounts that match the ideal customer profile and have a current reason to buy (a hire, a funding round, a launch...), each verified and with the case for it. When there is no ideal customer profile yet, the search works one out first. Takes several minutes in the background; you get an update when it is done.
 
         Args:
             country: Search one country only, e.g. "Kenya". Otherwise the profile's countries are searched one by one.
         """
-        if await store.icp() is None:
-            return ToolResult.failure("There is no ideal customer profile yet. Use define_icp first.")
         try:
             await jobs.start("find_accounts", {"country": country})
         except JobRefused as exc:
             return ToolResult.failure(str(exc))
         return ToolResult.success("Started looking for target accounts. It takes several minutes; "
                                   "you will get an update here when it finishes.")
+
+    @tool(parse_docstring=True)
+    @_guarded
+    async def define_icp(guidance: str | None = None) -> ToolResult:
+        """Work out (or rework) who the startup should sell to: its ideal customer profile, from everything you know. Use it when the founder asks for it or corrects who their buyers are (record their correction with record_fact first); find_accounts works one out on its own when there is none. Takes a few minutes in the background; you get an update when it is done.
+
+        Args:
+            guidance: Optional direction from the founder, e.g. "focus on clinics in Nairobi".
+        """
+        try:
+            await jobs.start("define_icp", {"guidance": guidance})
+        except JobRefused as exc:
+            return ToolResult.failure(str(exc))
+        return ToolResult.success("Started working out the ideal customer profile. It takes a few minutes; "
+                                  "you will get an update here when it is done.")
 
     @tool(parse_docstring=True)
     @_guarded
@@ -414,5 +410,5 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
             return ToolResult.failure(str(exc))
         return ToolResult.success("Started looking for opportunities. You will get an update here when it finishes.")
 
-    return [*tools, find_competitors, check_competitors, find_accounts, find_contacts, draft_outreach,
+    return [*tools, find_competitors, check_competitors, find_accounts, define_icp, find_contacts, draft_outreach,
             find_opportunities]

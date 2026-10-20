@@ -10,6 +10,7 @@ import asyncio
 import uuid
 from datetime import UTC, datetime
 
+from agents.lace import icp as lace_icp
 from agents.lace.accounts import find_accounts
 from agents.lace.graph import BRIEF_FACTS
 from agents.lace.competitors import change_fact, find_competitors, material, offer_for_monitor
@@ -17,7 +18,7 @@ from agents.lace.contacts import complete_contacts, contact_status
 from agents.lace.accounts import record_brief
 from agents.lace.opportunities import find_opportunities
 from agents.lace.outreach import draft_first_touch, recipient_for, research_by_domain
-from agents.lace.prompts import render_brief
+from agents.lace.prompts import render_brief, render_icp
 from agents.pipelines.outreach import gtm_replies
 from agents.lace.store import JobBlocked
 from agents.pipelines.monitor import check_competitor
@@ -137,19 +138,53 @@ async def monitor_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> No
     await events.publish(run_id, "complete", {"checked": len(due), "changes": len(moves)})
 
 
+# Facts and competitors an ideal customer profile is drawn from.
+ICP_FACTS = 150
+ICP_COMPETITORS = 50
+
+
+async def _define_icp(store: DbLaceStore, guidance: str | None):
+    """Work out the ideal customer profile and save it. A long structured
+    call (minutes on a large model), so it only ever runs in a job."""
+    report("Working out who your ideal customers are")
+    profile, facts, rivals = await asyncio.gather(
+        store.profile(), store.facts(None, ICP_FACTS), store.competitors(ICP_COMPETITORS))
+    icp = await asyncio.to_thread(lace_icp.define_icp, profile, facts, rivals, guidance)
+    await store.save_icp(icp)
+    return icp
+
+
+async def icp_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
+    """Work out (or rework) the ideal customer profile and queue an update
+    with its gist."""
+    store = DbLaceStore(AsyncSessionLocal, lace_id)
+    try:
+        with events.reporting_steps(run_id):
+            icp = await _define_icp(store, params.get("guidance"))
+    except Exception as exc:
+        await _report_failure(lace_id, "work out the ideal customer profile", exc)
+        raise
+    async with AsyncSessionLocal() as db, db.begin():
+        await lace_events.add(db, lace_id, "The ideal customer profile is saved. Its gist:\n" + render_icp(icp)
+                              + "\nTell the founder who it says to sell to, briefly, and offer to look for those customers.")
+    await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC))
+    await events.publish(run_id, "complete", {})
+
+
 async def accounts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
-    """Search for target accounts on the Lace's ICP, save them with their fit
-    cases, and queue an update, in one transaction. The startup's own site and
-    every competitor on file (tracked or dismissed) are never targets. A failed
-    search queues an update too."""
+    """Search for target accounts on the Lace's ICP (working one out first
+    when there is none), save them with their fit cases, and queue an update,
+    in one transaction. The startup's own site and every competitor on file
+    (tracked or dismissed) are never targets. A failed search queues an
+    update too."""
     store = DbLaceStore(AsyncSessionLocal, lace_id)
     profile, facts, icp = await asyncio.gather(store.profile(), store.facts(None, BRIEF_FACTS), store.icp())
     try:
-        if icp is None:
-            raise JobBlocked("There is no ideal customer profile to search on yet.")
         async with AsyncSessionLocal() as db:
             exclude = [domain_key(profile.website), *await lace_competitors.all_domains(db, lace_id)]
         with events.reporting_steps(run_id):
+            if icp is None:
+                icp = await _define_icp(store, None)
             found = await asyncio.to_thread(find_accounts, profile, facts, icp, exclude, params.get("country"))
     except Exception as exc:
         await _report_failure(lace_id, "search for target accounts", exc)
