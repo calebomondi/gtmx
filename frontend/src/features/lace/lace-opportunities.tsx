@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import type { OpportunityKind } from "@/lib/api"
 
 import type { LaceOpportunities as Opportunities } from "./use-lace-opportunities"
+import { ITEM_CARD } from "./feed-styles"
 
 const KINDS: { id: OpportunityKind; label: string }[] = [
   { id: "sell", label: "Sell" },
@@ -43,11 +44,11 @@ export function LaceOpportunities({ opps, searching }: { opps: Opportunities; se
         return (
           <section key={kind.id} className="flex flex-col gap-3">
             <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{kind.label}</h3>
-            <ul className="flex flex-col gap-4">
+            <ul className="flex flex-col gap-3">
               {items.map((o) => {
                 const date = when(o.deadline, o.event_date)
                 return (
-                  <li key={o.id} className="flex items-start justify-between gap-3">
+                  <li key={o.id} className={`${ITEM_CARD} flex items-start justify-between gap-3`}>
                     <div className="flex min-w-0 flex-col gap-1">
                       <a href={o.url} target="_blank" rel="noreferrer" className="inline-flex items-start gap-1 font-medium hover:underline">
                         {o.title} <ExternalLink className="mt-1 size-3 shrink-0" />

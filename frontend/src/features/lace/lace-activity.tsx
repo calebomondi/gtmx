@@ -61,7 +61,32 @@ export function ActivityRow({ item, fresh, onOpen, lace }: {
   )
 }
 
-/** What the Lace did or found, newest first, each with a way to act on it. */
+const DAY_MS = 86_400_000
+
+/** "Today", "Yesterday", "This week" or "Earlier", by the founder's clock. */
+function dayGroup(iso: string, now = new Date()): string {
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const at = Date.parse(iso)
+  if (at >= startOfToday) return "Today"
+  if (at >= startOfToday - DAY_MS) return "Yesterday"
+  if (at >= startOfToday - 6 * DAY_MS) return "This week"
+  return "Earlier"
+}
+
+/** Consecutive items under one day label; items arrive newest first. */
+function byDay(items: ActivityDto[]): { label: string; items: ActivityDto[] }[] {
+  const groups: { label: string; items: ActivityDto[] }[] = []
+  for (const item of items) {
+    const label = dayGroup(item.created_at)
+    const last = groups[groups.length - 1]
+    if (last?.label === label) last.items.push(item)
+    else groups.push({ label, items: [item] })
+  }
+  return groups
+}
+
+/** What the Lace did or found, newest first and grouped by day, each with a
+ * way to act on it. */
 export function LaceActivityList({ activity, name, onOpen }: {
   activity: LaceActivity
   name: string
@@ -79,11 +104,18 @@ export function LaceActivityList({ activity, name, onOpen }: {
   }
   return (
     <div className="flex flex-col">
-      <ul className="divide-y">
-        {activity.items.map((item) => (
-          <ActivityRow key={item.id} item={item} fresh={activity.isNew(item)} onOpen={onOpen} />
-        ))}
-      </ul>
+      {byDay(activity.items).map((group) => (
+        <section key={group.label} aria-label={group.label} className="mb-3">
+          <h3 className="sticky top-12 z-[5] bg-background/90 py-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase backdrop-blur">
+            {group.label}
+          </h3>
+          <ul className="divide-y rounded-xl border bg-card px-4">
+            {group.items.map((item) => (
+              <ActivityRow key={item.id} item={item} fresh={activity.isNew(item)} onOpen={onOpen} />
+            ))}
+          </ul>
+        </section>
+      ))}
       {activity.hasMore && (
         <Button variant="ghost" size="sm" className="mt-2 self-center" onClick={() => void activity.loadMore()}>
           <FileText /> Older activity

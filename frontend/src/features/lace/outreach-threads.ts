@@ -66,3 +66,47 @@ export function preview(thread: OutreachThread): string {
   const prefix = last.status === "draft" ? "Draft: " : last.direction === "outbound" ? "You: " : ""
   return prefix + last.body.replace(/\s+/g, " ").trim()
 }
+
+/** The inbox's folders. */
+export type ThreadFolder = "all" | "needs_you" | "drafts" | "sent" | "replies"
+
+export const THREAD_FOLDERS: { value: ThreadFolder; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "needs_you", label: "Needs you" },
+  { value: "drafts", label: "Drafts" },
+  { value: "sent", label: "Sent" },
+  { value: "replies", label: "Replies" },
+]
+
+export function inFolder(thread: OutreachThread, folder: ThreadFolder): boolean {
+  switch (folder) {
+    case "all": return true
+    case "needs_you": return thread.needsYou
+    case "drafts": return thread.messages.some((m) => m.direction === "outbound" && m.status === "draft")
+    case "sent": return thread.messages.some((m) => m.status === "sent")
+    case "replies": return thread.messages.some((m) => m.direction === "inbound")
+  }
+}
+
+/** Threads whose person, company or messages mention `query`. */
+export function matchesQuery(thread: OutreachThread, query: string): boolean {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return true
+  return [thread.who, thread.company, ...thread.messages.map((m) => `${m.subject ?? ""} ${m.body}`)]
+    .some((text) => text.toLowerCase().includes(needle))
+}
+
+/** Up to two letters for a person's avatar. */
+export function initials(name: string): string {
+  const words = name.replace(/[^\p{L}\p{N} ]/gu, " ").trim().split(/\s+/).filter(Boolean)
+  return (words.length > 1 ? words[0][0] + words[words.length - 1][0] : (words[0] ?? "?").slice(0, 2)).toUpperCase()
+}
+
+/** Counts for Messaging's header: drafts to send, replies, and messages sent. */
+export function outreachTally(outreach: LaceOutreachDto[]): { drafts: number; replies: number; sent: number } {
+  return {
+    drafts: outreach.filter((m) => m.direction === "outbound" && m.status === "draft").length,
+    replies: outreach.filter((m) => m.direction === "inbound").length,
+    sent: outreach.filter((m) => m.status === "sent").length,
+  }
+}

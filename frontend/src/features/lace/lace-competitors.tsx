@@ -3,6 +3,7 @@ import { ExternalLink, Loader2, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import type { LaceCompetitorDto } from "@/lib/api"
+import { ITEM_CARD } from "./feed-styles"
 
 function host(url: string): string {
   try {
@@ -29,9 +30,9 @@ export function LaceCompetitors({ competitors, searching, onDismiss }: {
       {competitors.length === 0 && !searching && (
         <p className="text-sm text-muted-foreground">None yet. Ask your Lace to find your competitors.</p>
       )}
-      <ul className="flex flex-col gap-4">
+      <ul className="flex flex-col gap-3">
         {competitors.map((c) => (
-          <li key={c.id} className="flex items-start justify-between gap-3">
+          <li key={c.id} className={`${ITEM_CARD} flex items-start justify-between gap-3`}>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-medium">{c.name}</span>

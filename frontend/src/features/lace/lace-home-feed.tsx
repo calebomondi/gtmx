@@ -9,7 +9,7 @@ import { listAllLaceActivity, type LaceActivityItemDto } from "@/lib/api"
 import { ensureLacesLoaded, useLaces } from "@/lib/laces-store"
 import { cn } from "@/lib/utils"
 
-import { sectionId, type FeedTarget } from "./lace-activity-actions"
+import { sectionHash, type FeedTarget } from "./lace-activity-actions"
 import { ActivityRow } from "./lace-activity"
 import { LaceSection } from "./lace-section"
 import { useActivityPages } from "./use-activity-pages"
@@ -17,7 +17,7 @@ import { useActivityPages } from "./use-activity-pages"
 const MASCOT_PX = 16
 
 function href(laceId: string, { tab, section }: FeedTarget): string {
-  return `/lace/${laceId}/${tab}${section ? `#${sectionId(section)}` : ""}`
+  return `/lace/${laceId}/${tab}${section ? sectionHash(section) : ""}`
 }
 
 /** Home: what every Lace did and found, newest first, and which of them

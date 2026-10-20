@@ -3,6 +3,7 @@ import { ExternalLink, Loader2, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import type { LaceAccountDto } from "@/lib/api"
+import { ITEM_CARD } from "./feed-styles"
 
 const STRENGTH_VARIANT = { strong: "default", moderate: "secondary", weak: "outline" } as const
 const CHANNEL_LABELS: Record<string, string> = {
@@ -57,9 +58,9 @@ export function LaceAccounts({ accounts, finding, onDismiss }: {
       {accounts.length === 0 && !finding && (
         <p className="text-sm text-muted-foreground">None yet. Ask your Lace to find customers.</p>
       )}
-      <ul className="flex flex-col gap-5">
+      <ul className="flex flex-col gap-3">
         {accounts.map((a) => (
-          <li key={a.id} className="flex items-start justify-between gap-3">
+          <li key={a.id} className={`${ITEM_CARD} flex items-start justify-between gap-3`}>
             <div className="flex min-w-0 flex-col gap-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-medium">{a.name}</span>

@@ -1,6 +1,6 @@
 import type { LaceSearchHitDto, LaceSearchKind } from "@/lib/api"
 
-import { sectionId, type FeedSection } from "./lace-activity-actions"
+import { sectionHash, type LaceSection } from "./lace-activity-actions"
 
 export const SEARCH_KIND_LABELS: Record<LaceSearchKind, string> = {
   lace: "Laces",
@@ -12,16 +12,18 @@ export const SEARCH_KIND_LABELS: Record<LaceSearchKind, string> = {
   conversation: "Conversations",
 }
 
-const FEED_SECTIONS: Partial<Record<LaceSearchKind, FeedSection>> = {
+const SECTIONS: Partial<Record<LaceSearchKind, LaceSection>> = {
   competitor: "competitors",
   account: "accounts",
   opportunity: "opportunities",
+  contact: "people",
+  conversation: "conversations",
 }
 
-/** Where a hit opens: its Lace, on the tab (and Feed section) that holds it. */
+/** Where a hit opens: its Lace, on the tab and sub-tab that holds it. */
 export function hitPath(hit: LaceSearchHitDto): string {
   const base = `/lace/${hit.lace_id}`
-  if (hit.kind === "contact" || hit.kind === "conversation") return `${base}/messaging`
-  const section = FEED_SECTIONS[hit.kind]
-  return section ? `${base}/feed#${sectionId(section)}` : `${base}/feed`
+  const section = SECTIONS[hit.kind]
+  const tab = hit.kind === "contact" || hit.kind === "conversation" ? "messaging" : "feed"
+  return section ? `${base}/${tab}${sectionHash(section)}` : `${base}/feed`
 }
