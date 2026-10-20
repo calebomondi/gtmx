@@ -59,15 +59,20 @@ function Card({ section, since, name }: { section: FoundSection; since: number; 
   )
 }
 
-function Chip({ section, since, name, busy, searching, onAsk }: {
+function Chip({ section, since, onSeen, name, busy, searching, onAsk }: {
   section: FoundSection
+  /** When the founder last opened this chip: later finds glow. */
   since: number
+  onSeen: () => void
   name: string
   busy: boolean
   /** A background job is filling this kind right now. */
   searching: boolean
   onAsk: (prompt: string) => void
 }) {
+  // What counted as new when the card opened, so it still marks those while
+  // open, though opening it marks them seen.
+  const [cardSince, setCardSince] = useState(since)
   const count = section.items.length
   const fresh = section.items.filter((i) => isNewSince(i, since)).length
   const waiting = section.items.filter((i) => i.waiting).length
@@ -88,7 +93,11 @@ function Chip({ section, since, name, busy, searching, onAsk }: {
     )
   }
   return (
-    <Popover>
+    <Popover onOpenChange={(open) => {
+      if (!open) return
+      setCardSince(since)
+      onSeen()
+    }}>
       <PopoverTrigger render={
         <button type="button" aria-label={`${section.title}: ${count}${waiting ? `, ${waiting} ${section.waitingLabel}` : ""}${fresh ? `, ${fresh} new` : ""}`}
                 className={cn("relative flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 text-xs transition-all hover:border-theme/60",
@@ -116,7 +125,7 @@ function Chip({ section, since, name, busy, searching, onAsk }: {
         </AnimatePresence>
       </PopoverTrigger>
       <PopoverContent side="top" sideOffset={10} className="w-80">
-        <Card section={section} since={since} name={name} />
+        <Card section={section} since={cardSince} name={name} />
       </PopoverContent>
     </Popover>
   )
@@ -145,11 +154,13 @@ function writeOpen(open: boolean): void {
  * kind. A chip pops and glows as finds arrive, spins while a search fills it,
  * and opens a card of the newest, where suggestions are saved or dismissed
  * and people approved in place. A kind with nothing yet offers to ask the
- * Lace for it. "Found" folds the chips away (and back), remembered. */
-export function LaceFindsDock({ name, sections, since, busy, searching, onAsk }: {
+ * Lace for it. "Found" folds the chips away (and back), remembered. A chip
+ * glows for finds since the founder last opened it, and stops once opened. */
+export function LaceFindsDock({ name, sections, seenAt, onSeen, busy, searching, onAsk }: {
   name: string
   sections: FoundSection[]
-  since: number
+  seenAt: (kind: FoundSection["key"]) => number
+  onSeen: (kind: FoundSection["key"]) => void
   busy: boolean
   searching: ReadonlySet<FoundSection["key"]>
   onAsk: (prompt: string) => void
@@ -160,7 +171,7 @@ export function LaceFindsDock({ name, sections, since, busy, searching, onAsk }:
     return !was
   })
   const total = sections.reduce((n, s) => n + s.items.length, 0)
-  const fresh = sections.reduce((n, s) => n + s.items.filter((i) => isNewSince(i, since)).length, 0)
+  const fresh = sections.reduce((n, s) => n + s.items.filter((i) => isNewSince(i, seenAt(s.key))).length, 0)
   return (
     <div role="toolbar" aria-label={`What ${name} has found`}
          className="flex w-full max-w-3xl flex-wrap items-center gap-1.5 pt-2">
@@ -176,7 +187,8 @@ export function LaceFindsDock({ name, sections, since, busy, searching, onAsk }:
         {open && sections.map((section, i) => (
           <motion.div key={section.key} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -6 }} transition={{ delay: i * 0.03 }}>
-            <Chip section={section} since={since} name={name} busy={busy} searching={searching.has(section.key)} onAsk={onAsk} />
+            <Chip section={section} since={seenAt(section.key)} onSeen={() => onSeen(section.key)} name={name} busy={busy}
+                  searching={searching.has(section.key)} onAsk={onAsk} />
           </motion.div>
         ))}
       </AnimatePresence>

@@ -1,61 +1,45 @@
 import type { ReactNode } from "react"
-import {
-  AlertTriangle, Building2, FileText, Inbox, Newspaper, PenLine, Sparkles, Swords, Users,
-  type LucideIcon,
-} from "lucide-react"
+import { ArrowRight, CheckCheck, FileText } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { ActivityDto, ActivityKind } from "@/lib/api"
+import type { ActivityDto } from "@/lib/api"
 import { formatRelativeTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 import { ACTIVITY_ACTIONS, type FeedTarget } from "./lace-activity-actions"
 import type { LaceActivity } from "./use-lace-activity"
-
-const ICONS: Record<ActivityKind, LucideIcon> = {
-  brief: Newspaper,
-  competitors_found: Swords,
-  competitor_moves: Swords,
-  accounts_found: Building2,
-  contacts_found: Users,
-  drafts_ready: PenLine,
-  reply_received: Inbox,
-  opportunities_found: Sparkles,
-  job_failed: AlertTriangle,
-}
+import { useOpenedItems } from "./viewer-memory"
 
 /** One thing a Lace did or found, with the button that acts on it. `lace`
- * names which Lace, in the feed across all of them. */
-export function ActivityRow({ item, fresh, onOpen, lace }: {
+ * names which Lace, in the feed across all of them. Once the founder has
+ * followed it (`opened`) it quiets down and says so. */
+export function ActivityRow({ item, fresh, opened = false, onOpen, lace }: {
   item: ActivityDto
   fresh: boolean
+  opened?: boolean
   onOpen: (target: FeedTarget) => void
   lace?: ReactNode
 }) {
-  const Icon = ICONS[item.kind]
   const action = ACTIVITY_ACTIONS[item.kind]
   return (
-    <li className="flex items-start gap-3 py-3">
-      <span className={cn("mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-muted",
-                          item.kind === "job_failed" ? "text-destructive" : "text-theme")}>
-        <Icon className="size-4" />
-      </span>
-      <div className="min-w-0 flex-1">
-        {lace}
-        <p className="flex items-baseline gap-2 text-sm font-medium">
-          {fresh && <span className="size-2 shrink-0 translate-y-[-1px] rounded-full bg-theme" aria-label="New" />}
-          <span className="min-w-0 break-words">{item.title}</span>
-        </p>
-        {item.summary && (
-          <p className="mt-0.5 line-clamp-3 text-sm whitespace-pre-line text-muted-foreground">{item.summary}</p>
-        )}
-        <div className="mt-1 flex items-center justify-between gap-2">
-          <span className="text-xs text-muted-foreground">{formatRelativeTime(Date.parse(item.created_at))}</span>
-          <Button size="sm" variant="ghost" className="-my-1" onClick={() => onOpen(action.target)}>
-            {action.label}
-          </Button>
-        </div>
+    <li className={cn("relative py-3 pl-3", opened && "opacity-70")}>
+      {/* A thin rail on the left: the theme colour while new, red for a failure. */}
+      <span aria-hidden className={cn("absolute top-3.5 bottom-3.5 left-0 w-0.5 rounded-full",
+                                      item.kind === "job_failed" ? "bg-destructive" : fresh ? "bg-theme" : "bg-border")} />
+      {lace}
+      <p className={cn("text-sm break-words", opened ? "font-normal" : "font-medium")}>{item.title}</p>
+      {item.summary && (
+        <p className="mt-0.5 line-clamp-3 text-sm whitespace-pre-line text-muted-foreground">{item.summary}</p>
+      )}
+      <div className="mt-1 flex items-center justify-between gap-2">
+        <span className="flex items-center gap-2 text-xs text-muted-foreground">
+          {formatRelativeTime(Date.parse(item.created_at))}
+          {opened && <span className="flex items-center gap-1"><CheckCheck className="size-3.5" /> Opened</span>}
+        </span>
+        <Button size="sm" variant={opened ? "ghost" : "outline"} className="-my-1" onClick={() => onOpen(action.target)}>
+          {action.label} <ArrowRight />
+        </Button>
       </div>
     </li>
   )
@@ -86,12 +70,14 @@ function byDay(items: ActivityDto[]): { label: string; items: ActivityDto[] }[] 
 }
 
 /** What the Lace did or found, newest first and grouped by day, each with a
- * way to act on it. */
+ * way to act on it; the ones already followed are marked. */
 export function LaceActivityList({ activity, name, onOpen }: {
   activity: LaceActivity
   name: string
   onOpen: (target: FeedTarget) => void
 }) {
+  // One set across every Lace, so Home and each Feed agree.
+  const [opened, markOpened] = useOpenedItems("activity")
   if (activity.loading) {
     return <div className="flex flex-col gap-3"><Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" /></div>
   }
@@ -111,7 +97,11 @@ export function LaceActivityList({ activity, name, onOpen }: {
           </h3>
           <ul className="divide-y rounded-xl border bg-card px-4">
             {group.items.map((item) => (
-              <ActivityRow key={item.id} item={item} fresh={activity.isNew(item)} onOpen={onOpen} />
+              <ActivityRow key={item.id} item={item} fresh={activity.isNew(item)} opened={opened.has(item.id)}
+                           onOpen={(target) => {
+                             markOpened(item.id)
+                             onOpen(target)
+                           }} />
             ))}
           </ul>
         </section>
