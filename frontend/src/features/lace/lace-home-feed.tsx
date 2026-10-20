@@ -10,10 +10,9 @@ import { ensureLacesLoaded, useLaces } from "@/lib/laces-store"
 import { cn } from "@/lib/utils"
 
 import { sectionHash, type FeedTarget } from "./lace-activity-actions"
-import { ActivityRow } from "./lace-activity"
+import { ActivityStepper } from "./lace-activity"
 import { LaceSection } from "./lace-section"
 import { useActivityPages } from "./use-activity-pages"
-import { useOpenedItems } from "./viewer-memory"
 
 const MASCOT_PX = 16
 
@@ -29,7 +28,6 @@ export default function LaceHomeFeed() {
   const fetchPage = useCallback((before?: string) => listAllLaceActivity(before), [])
   const feed = useActivityPages<LaceActivityItemDto>(fetchPage)
   const waiting = laces.filter((lace) => lace.mood === "alert")
-  const [opened, markOpened] = useOpenedItems("activity")
 
   useEffect(() => ensureLacesLoaded(), [])
 
@@ -68,25 +66,16 @@ export default function LaceHomeFeed() {
         ) : feed.items.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nothing yet. As your Laces search, draft and hear back, it shows here.</p>
         ) : (
-          <ul className="divide-y">
-            {feed.items.map((item) => (
-              <ActivityRow
-                key={item.id}
-                item={item}
-                fresh={item.read_at === null}
-                opened={opened.has(item.id)}
-                onOpen={(target) => {
-                  markOpened(item.id)
-                  navigate(href(item.lace_id, target))
-                }}
-                lace={
-                  <Link to={`/lace/${item.lace_id}`} className="mb-0.5 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
-                    <Lace state="idle" size={MASCOT_PX} animated={false} decorative /> {item.lace_name}
-                  </Link>
-                }
-              />
-            ))}
-          </ul>
+          <ActivityStepper
+            items={feed.items}
+            isFresh={(item) => item.read_at === null}
+            onOpen={(item, target) => navigate(href(item.lace_id, target))}
+            tag={(item) => (
+              <Link to={`/lace/${item.lace_id}`} className="mb-0.5 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+                <Lace state="idle" size={MASCOT_PX} animated={false} decorative /> {item.lace_name}
+              </Link>
+            )}
+          />
         )}
         {feed.hasMore && feed.items.length > 0 && (
           <Button variant="ghost" size="sm" className="mt-2 w-full" onClick={() => void feed.loadMore()}>
