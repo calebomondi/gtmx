@@ -41,9 +41,11 @@ async def test_show_draws_cards_from_saved_items_only(store, settings):
 
 def test_cards_say_what_the_item_says():
     account = AccountSummary(id="a1", name="SunCulture", account_type="company", website="https://sunculture.test",
-                             geo="Kenya", trigger="Raised a Series B", need="Fleet tracking", fit_strength="strong")
+                             geo="Kenya", trigger="Raised a Series B", need="Fleet tracking", fit_strength="strong",
+                             capability="Live fuel telemetry", payoff="8% lower fuel spend")
     card = account_card(account)
-    assert (card.subtitle, card.body) == ("Kenya · strong fit", "Raised a Series B. Need: Fleet tracking")
+    assert (card.subtitle, card.body) == ("Kenya · strong fit", "Why now: Raised a Series B. Their need: Fleet tracking. "
+                                          "How we help: Live fuel telemetry. Payoff: 8% lower fuel spend")
     draft = draft_card(DraftSummary(id="d1", channel="email", recipient="Amina", company="SunCulture",
                                     subject="Fleet costs", body="Hi " + "x" * 400))
     assert draft.title == "To Amina at SunCulture" and draft.subtitle == "email · Fleet costs"
