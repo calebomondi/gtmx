@@ -2,7 +2,9 @@ import { ExternalLink, Loader2, X } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import type { LaceCompetitorDto } from "@/lib/api"
+import type { LaceCompetitorDto, LaceMoveDto } from "@/lib/api"
+
+import { LaceCompetitorMoves } from "./lace-competitor-moves"
 import { ITEM_CARD } from "./feed-styles"
 
 function host(url: string): string {
@@ -13,12 +15,18 @@ function host(url: string): string {
   }
 }
 
-/** The companies the Lace tracks as competitors. Dismissing one stops
- * tracking it, and a later search won't bring it back. */
-export function LaceCompetitors({ competitors, searching, onDismiss }: {
+/** The companies the Lace tracks as competitors, each with the moves it made
+ * (opened by themselves when some are new). Dismissing one stops tracking
+ * it, and a later search won't bring it back. */
+export function LaceCompetitors({ competitors, searching, onDismiss, moves, movesSeenAt, onMovesSeen, name, onDiscussMove }: {
   competitors: LaceCompetitorDto[]
   searching: boolean
   onDismiss: (id: string) => void
+  moves: ReadonlyMap<string, LaceMoveDto[]>
+  movesSeenAt: (competitorId: string) => number
+  onMovesSeen: (competitorId: string) => void
+  name: string
+  onDiscussMove: (move: LaceMoveDto) => void
 }) {
   return (
     <div className="flex flex-col gap-4">
@@ -43,6 +51,8 @@ export function LaceCompetitors({ competitors, searching, onDismiss }: {
                 {host(c.website)} <ExternalLink className="size-3" />
               </a>
               {c.summary && <p className="mt-1 line-clamp-3 text-sm leading-snug">{c.summary}</p>}
+              <LaceCompetitorMoves moves={moves.get(c.id) ?? []} seenAt={movesSeenAt(c.id)}
+                                   onSeen={() => onMovesSeen(c.id)} name={name} onDiscuss={onDiscussMove} />
             </div>
             <Button variant="ghost" size="icon" aria-label={`Stop tracking ${c.name}`} title="Not a competitor"
                     onClick={() => onDismiss(c.id)}>

@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from agents.schemas.lace_ui import UiBlock
+from agents.schemas.monitor import MoveImportance, MoveKind
 from agents.schemas.opportunities import OpportunityKind, OpportunityStatus
 from agents.schemas.lace import AccountStatus, ActivityKind, ActivityRef, ContactSource, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
 
@@ -126,6 +127,21 @@ class JobStartedResponse(BaseModel):
 
 class LaceTurnResponse(BaseModel):
     run_id: uuid.UUID = Field(description="The turn: follow it at /runs/{run_id}/events")
+
+
+class MoveResponse(BaseModel):
+    """A material move a tracked competitor made, as the monitor found it."""
+    id: uuid.UUID
+    competitor_id: uuid.UUID
+    competitor_name: str
+    kind: MoveKind
+    importance: MoveImportance
+    title: str
+    summary: str
+    implication: str | None = Field(default=None, description="What it means for the startup")
+    counter_move: str | None = Field(default=None, description="The move to make in response")
+    sources: list[str]
+    detected_at: datetime
 
 
 class CompetitorResponse(BaseModel):

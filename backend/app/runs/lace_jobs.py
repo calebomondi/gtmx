@@ -115,9 +115,11 @@ async def monitor_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> No
         async with slots:
             state, changes = await asyncio.to_thread(check_competitor.check, name, website, previous, our_offer,
                                                      None, offer_detail)
+        moves = material(changes)
         async with AsyncSessionLocal() as db, db.begin():
             await lace_competitors.save_check(db, competitor_id, state)
-        return name, material(changes)
+            await lace_competitors.add_moves(db, lace_id, competitor_id, run_id, moves)
+        return name, moves
 
     with events.reporting_steps(run_id):
         report(f"Checking {len(due)} competitors for changes")

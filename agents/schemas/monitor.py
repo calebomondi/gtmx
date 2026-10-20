@@ -8,10 +8,16 @@ from pydantic import Field
 from agents.schemas.coercion import LenientModel
 
 
+MoveKind = Literal[
+    "pricing", "product", "positioning", "funding", "leadership", "partnership", "event", "social", "news", "client",
+]
+MOVE_KINDS: tuple[str, ...] = MoveKind.__args__
+MoveImportance = Literal["high", "medium", "low"]
+MOVE_IMPORTANCES: tuple[str, ...] = MoveImportance.__args__
+
+
 class CompetitorChange(LenientModel):
-    kind: Literal[
-        "pricing", "product", "positioning", "funding", "leadership", "partnership", "event", "social", "news", "client",
-    ]
+    kind: MoveKind
     title: str = Field(description="Under 10 words, e.g. 'Cut Pro plan price to $8/seat'")
     summary: str = Field(description="What changed and why it matters to us, two sentences max")
     implication: str = Field(
@@ -29,7 +35,7 @@ class CompetitorChange(LenientModel):
     )
     client_country: str = Field(default="", description="kind=client only: where that client operates, if stated")
     source_url: str = ""
-    importance: Literal["high", "medium", "low"]
+    importance: MoveImportance
 
 
 class ChangeReport(LenientModel):

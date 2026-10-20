@@ -69,6 +69,13 @@ def test_material_changes_reach_the_founder(client, lace, lace_runtime, checks, 
     assert facts == [("Rival: Cut Pro to $8. Undercuts our Basic plan.", "monitor", "https://rival.test/pricing")]
     assert client.get(f"{API}/laces/{lace}/messages").json()[-1]["content"] == "Rival cut its Pro plan to $8."
 
+    # Each material move is kept for the founder to open under its competitor.
+    [move] = client.get(f"{API}/laces/{lace}/moves").json()
+    assert (move["competitor_name"], move["kind"], move["importance"], move["title"]) == (
+        "Rival", "pricing", "high", "Cut Pro to $8")
+    assert move["implication"] == "Price-led deals get harder." and move["counter_move"] == "Lead with migration help."
+    assert move["sources"] == ["https://rival.test/pricing"]
+
 
 def test_nothing_material_means_nothing_said(client, lace, lace_runtime, checks, user):  # noqa: F811
     _competitor(lace, "Rival")

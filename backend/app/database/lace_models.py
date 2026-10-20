@@ -13,6 +13,7 @@ from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, Integer,
 from sqlalchemy.dialects.postgresql import JSONB as JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
+from agents.schemas.monitor import MOVE_IMPORTANCES, MOVE_KINDS
 from agents.schemas.opportunities import OPPORTUNITY_KINDS, OPPORTUNITY_STATUSES
 from agents.schemas.lace import ACCOUNT_STATUSES, ACTIVITY_KINDS, ACTIVITY_REFS, CONTACT_SOURCES, BRIEF_FREQUENCIES, CONTACT_STATUSES, INBOX_PLATFORMS, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, FACT_ORIGINS, FACT_TOPICS
 from backend.app.database.connect import Base
@@ -163,6 +164,37 @@ class LaceCompetitor(Base):
     # the first check, which is how a never-checked firm is found.
     monitor_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+
+
+class LaceCompetitorMove(Base):
+    """A material move a tracked competitor made (a price cut, a launch, a
+    raise), as the monitor found it: what changed, what it means for the
+    startup, the move to make in response, and its sources."""
+
+    __tablename__ = "lace_competitor_moves"
+    __table_args__ = (
+        CheckConstraint(_one_of("kind", MOVE_KINDS), name="kind"),
+        CheckConstraint(_one_of("importance", MOVE_IMPORTANCES), name="importance"),
+        Index("ix_lace_competitor_moves_lace_id_detected_at", "lace_id", "detected_at"),
+        Index("ix_lace_competitor_moves_competitor_id_detected_at", "competitor_id", "detected_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Both indexed by the detected_at indexes, which lead with them.
+    lace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("laces.id", ondelete="CASCADE"), nullable=False)
+    competitor_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("lace_competitors.id", ondelete="CASCADE"),
+                                                     nullable=False)
+    run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    importance: Mapped[str] = mapped_column(String(8), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    implication: Mapped[str | None] = mapped_column(Text, nullable=True)
+    counter_move: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The pages the move was read from, shown to the founder as they are.
+    sources: Mapped[list] = mapped_column(JSON, nullable=False, default=list, server_default=text("'[]'::jsonb"))
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
+                                                  default=_now, server_default=func.now())
 
 
 class LaceActivity(Base):
