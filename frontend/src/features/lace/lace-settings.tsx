@@ -1,3 +1,6 @@
+import { ChevronRight } from "lucide-react"
+
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Separator } from "@/components/ui/separator"
 import type { FactDto, LaceStatus } from "@/lib/api"
@@ -32,11 +35,17 @@ export function LaceSettings({ laceId, name, status, facts, open, onOpenChange, 
             <LaceBrief laceId={laceId} />
           </section>
           <Separator />
-          <section className="flex flex-col gap-3">
-            <h3 className="text-sm font-medium">What {name} knows ({facts.length})</h3>
+          {/* Closed by default: a long list would push Manage out of sight. */}
+          <Collapsible render={<section className="group/knows flex flex-col gap-3" />}>
+            <CollapsibleTrigger className="flex cursor-pointer items-center justify-between gap-2 text-left text-sm font-medium">
+              What {name} knows ({facts.length})
+              <ChevronRight className="size-4 text-muted-foreground transition-transform group-data-open/knows:rotate-90" />
+            </CollapsibleTrigger>
             <p className="text-xs text-muted-foreground">Learned from your site, its research and you. Each fact keeps its source.</p>
-            <LaceFacts facts={facts} />
-          </section>
+            <CollapsibleContent>
+              <LaceFacts facts={facts} />
+            </CollapsibleContent>
+          </Collapsible>
           <Separator />
           <section className="flex flex-col gap-3">
             <h3 className="text-sm font-medium">Manage</h3>

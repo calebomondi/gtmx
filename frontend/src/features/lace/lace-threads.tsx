@@ -1,14 +1,25 @@
 import { useState } from "react"
-import { ArrowLeft, Loader2 } from "lucide-react"
+import { ArrowLeft, Inbox, Loader2, Mail, Search } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import type { LaceOutreachChanges, LaceOutreachDto } from "@/lib/api"
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
+import type { LaceOutreachChanges, LaceOutreachDto, OutreachChannel } from "@/lib/api"
 import { formatRelativeTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 import { DraftCard } from "./lace-draft"
-import { CHANNEL_LABELS, groupThreads, preview, type OutreachThread } from "./outreach-threads"
+import {
+  CHANNEL_LABELS,
+  THREAD_FOLDERS,
+  groupThreads,
+  inFolder,
+  initials,
+  matchesQuery,
+  preview,
+  type OutreachThread,
+  type ThreadFolder,
+} from "./outreach-threads"
 
 const INTENT_LABELS: Record<string, string> = {
   interested: "Interested", question: "Asked a question", objection: "Raised an objection",
@@ -18,6 +29,10 @@ const INTENT_LABELS: Record<string, string> = {
 const PROBLEMS: Partial<Record<LaceOutreachDto["status"], string>> = {
   sending: "Sending…", bounced: "Bounced: it never arrived.",
 }
+// lucide has no brand marks for most networks: a short wordmark instead.
+const CHANNEL_MARKS: Record<Exclude<OutreachChannel, "email">, string> = {
+  linkedin: "in", x: "X", instagram: "IG", facebook: "f", tiktok: "TT",
+}
 
 export interface ThreadActions {
   sendingSoon: ReadonlySet<string>
@@ -26,6 +41,20 @@ export interface ThreadActions {
   onSend: (id: string) => void
   onUndo: (id: string) => void
   onMarkSent: (id: string) => void
+}
+
+/** The person's initials, with their channel's mark in the corner. */
+function Avatar({ thread, size = "md" }: { thread: OutreachThread; size?: "md" | "lg" }) {
+  return (
+    <span className={cn("relative grid shrink-0 place-items-center rounded-full bg-theme/15 font-medium text-theme",
+                        size === "lg" ? "size-10 text-sm" : "size-9 text-xs")}>
+      {initials(thread.who)}
+      <span className="absolute -right-1 -bottom-1 grid size-4 place-items-center rounded-full border bg-background text-[9px] font-semibold text-muted-foreground"
+            title={CHANNEL_LABELS[thread.channel]}>
+        {thread.channel === "email" ? <Mail className="size-2.5" /> : CHANNEL_MARKS[thread.channel]}
+      </span>
+    </span>
+  )
 }
 
 function Bubble({ message }: { message: LaceOutreachDto }) {
@@ -54,77 +83,129 @@ function ThreadView({ thread, actions, onBack }: { thread: OutreachThread; actio
   const drafts = thread.messages.filter((m) => m.direction === "outbound" && (m.status === "draft" || m.status === "failed"))
   const said = thread.messages.filter((m) => !drafts.includes(m))
   return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <div className="flex items-center gap-2">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <header className="flex items-center gap-3 border-b px-4 py-3">
         <Button size="icon-sm" variant="ghost" className="md:hidden" onClick={onBack} aria-label="All conversations">
           <ArrowLeft />
         </Button>
+        <Avatar thread={thread} size="lg" />
         <div className="min-w-0">
           <p className="truncate font-medium">{thread.who}</p>
-          <p className="truncate text-xs text-muted-foreground">{thread.company} · {CHANNEL_LABELS[thread.channel]}</p>
+          <p className="truncate text-xs text-muted-foreground">
+            {thread.company && thread.company !== thread.who ? `${thread.company} · ` : ""}{CHANNEL_LABELS[thread.channel]}
+          </p>
         </div>
+      </header>
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+        {said.length > 0 && <div className="flex flex-col gap-3">{said.map((m) => <Bubble key={m.id} message={m} />)}</div>}
+        {drafts.map((m) => (
+          <DraftCard key={m.id} message={m} sendingSoon={actions.sendingSoon.has(m.id)}
+                     onSave={(changes) => actions.onSave(m.id, changes)} onDiscard={() => actions.onDiscard(m.id)}
+                     onSend={() => actions.onSend(m.id)} onUndo={() => actions.onUndo(m.id)}
+                     onMarkSent={() => actions.onMarkSent(m.id)} />
+        ))}
       </div>
-      {said.length > 0 && <div className="flex flex-col gap-3">{said.map((m) => <Bubble key={m.id} message={m} />)}</div>}
-      {drafts.map((m) => (
-        <DraftCard key={m.id} message={m} sendingSoon={actions.sendingSoon.has(m.id)}
-                   onSave={(changes) => actions.onSave(m.id, changes)} onDiscard={() => actions.onDiscard(m.id)}
-                   onSend={() => actions.onSend(m.id)} onUndo={() => actions.onUndo(m.id)}
-                   onMarkSent={() => actions.onMarkSent(m.id)} />
-      ))}
     </div>
   )
 }
 
+function ThreadRow({ thread, selected, onSelect }: { thread: OutreachThread; selected: boolean; onSelect: () => void }) {
+  return (
+    <button type="button" onClick={onSelect} aria-current={selected ? "true" : undefined}
+            className={cn("flex w-full cursor-pointer items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-muted/70",
+                          selected && "md:bg-muted")}>
+      <Avatar thread={thread} />
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="flex items-center gap-2">
+          <span className={cn("truncate text-sm", thread.needsYou ? "font-semibold" : "font-medium")}>{thread.who}</span>
+          <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{formatRelativeTime(Date.parse(thread.updatedAt))}</span>
+        </span>
+        {thread.company && thread.company !== thread.who && (
+          <span className="truncate text-xs text-muted-foreground">{thread.company}</span>
+        )}
+        <span className="flex items-center gap-2">
+          <span className="line-clamp-1 flex-1 text-xs text-muted-foreground">{preview(thread)}</span>
+          {thread.needsYou && <span className="size-2 shrink-0 rounded-full bg-theme" aria-label="Needs you" />}
+        </span>
+      </span>
+    </button>
+  )
+}
+
 /** Every conversation the Lace has drafted, sent or received, on every
- * channel: a list (the ones that need the founder first) and the one open.
- * On phones, one at a time. */
+ * channel, as an inbox: folders and search over a list (the ones that need
+ * the founder first), and the open conversation beside it. On phones, one at
+ * a time. */
 export function LaceThreads({ outreach, drafting, actions }: {
   outreach: LaceOutreachDto[]
   drafting: boolean
   actions: ThreadActions
 }) {
   const threads = groupThreads(outreach)
+  const [folder, setFolder] = useState<ThreadFolder>("all")
+  const [query, setQuery] = useState("")
   const [openKey, setOpenKey] = useState<string | null>(null)
+  const shownThreads = threads.filter((t) => inFolder(t, folder) && matchesQuery(t, query))
   // Phones show the list until a conversation is picked; wider screens
   // always show one, the first by default.
   const open = threads.find((t) => t.key === openKey) ?? null
-  const shown = open ?? threads[0]
+  const shown = open ?? shownThreads[0] ?? null
 
   if (threads.length === 0) {
-    return drafting ? (
-      <p className="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">
-        <Loader2 className="size-4 animate-spin" /> Drafting messages. This takes a few minutes.
-      </p>
-    ) : (
-      <p className="text-sm text-muted-foreground">No conversations yet. Ask your Lace to draft outreach to your accounts.</p>
+    return (
+      <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed px-6 py-12 text-center">
+        <span className="grid size-12 place-items-center rounded-full bg-theme/15 text-theme">
+          {drafting ? <Loader2 className="size-5 animate-spin" /> : <Inbox className="size-5" />}
+        </span>
+        <p className="font-medium">{drafting ? "Drafting messages" : "No conversations yet"}</p>
+        <p className="max-w-sm text-sm text-muted-foreground" aria-live="polite">
+          {drafting
+            ? "This takes a few minutes. Each draft waits here for you to edit and send."
+            : "Approve people under People, then ask your Lace to draft outreach to them."}
+        </p>
+      </div>
     )
   }
   return (
-    <div className="grid gap-4 md:grid-cols-[16rem_1fr]">
-      <ul className={cn("flex flex-col gap-1 md:border-r md:pr-3", open && "hidden md:flex")} aria-label="Conversations">
-        {threads.map((thread) => (
-          <li key={thread.key}>
-            <button type="button" onClick={() => setOpenKey(thread.key)} aria-current={thread === shown ? "true" : undefined}
-                    className={cn("flex w-full cursor-pointer flex-col gap-0.5 rounded-lg px-3 py-2 text-left hover:bg-muted",
-                                  thread === shown && "md:bg-muted")}>
-              <span className="flex items-center gap-2">
-                {thread.needsYou && <span className="size-2 shrink-0 rounded-full bg-theme" aria-label="Needs you" />}
-                <span className="truncate text-sm font-medium">{thread.who}</span>
-                <span className="ml-auto shrink-0 text-xs text-muted-foreground">{formatRelativeTime(Date.parse(thread.updatedAt))}</span>
-              </span>
-              <span className="truncate text-xs text-muted-foreground">{thread.company} · {CHANNEL_LABELS[thread.channel]}</span>
-              <span className="line-clamp-1 text-xs text-muted-foreground">{preview(thread)}</span>
-            </button>
-          </li>
-        ))}
-        {drafting && (
-          <li className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground" aria-live="polite">
-            <Loader2 className="size-3 animate-spin" /> Drafting more…
-          </li>
+    <div className="grid h-[min(72svh,46rem)] overflow-hidden rounded-2xl border bg-card md:grid-cols-[19rem_1fr]">
+      <div className={cn("flex min-h-0 flex-col md:border-r", open && "hidden md:flex")}>
+        <div className="flex flex-col gap-2 border-b p-3">
+          <InputGroup>
+            <InputGroupAddon><Search /></InputGroupAddon>
+            <InputGroupInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search conversations"
+                             aria-label="Search conversations" />
+          </InputGroup>
+          <div className="flex gap-1 overflow-x-auto [scrollbar-width:none]" role="group" aria-label="Folders">
+            {THREAD_FOLDERS.map((f) => (
+              <Button key={f.value} size="xs" variant={folder === f.value ? "secondary" : "ghost"}
+                      className="shrink-0 rounded-full" aria-pressed={folder === f.value} onClick={() => setFolder(f.value)}>
+                {f.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+        <ul className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-2" aria-label="Conversations">
+          {shownThreads.map((thread) => (
+            <li key={thread.key}>
+              <ThreadRow thread={thread} selected={thread === shown} onSelect={() => setOpenKey(thread.key)} />
+            </li>
+          ))}
+          {shownThreads.length === 0 && (
+            <li className="px-3 py-6 text-center text-sm text-muted-foreground">Nothing here.</li>
+          )}
+          {drafting && (
+            <li className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground" aria-live="polite">
+              <Loader2 className="size-3 animate-spin" /> Drafting more…
+            </li>
+          )}
+        </ul>
+      </div>
+      <div className={cn("min-h-0 min-w-0 flex-col", open ? "flex" : "hidden md:flex")}>
+        {shown ? (
+          <ThreadView thread={shown} actions={actions} onBack={() => setOpenKey(null)} />
+        ) : (
+          <p className="m-auto text-sm text-muted-foreground">Pick a conversation.</p>
         )}
-      </ul>
-      <div className={cn(!open && "hidden md:block")}>
-        <ThreadView thread={shown} actions={actions} onBack={() => setOpenKey(null)} />
       </div>
     </div>
   )

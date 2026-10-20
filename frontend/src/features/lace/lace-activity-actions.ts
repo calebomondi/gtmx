@@ -2,12 +2,19 @@ import type { ActivityDto, ActivityKind } from "@/lib/api"
 
 import type { LaceTab } from "./lace-tabs"
 
-/** A block of the Feed an activity can point at. */
-export type FeedSection = "opportunities" | "accounts" | "competitors"
+/** The Feed's sub-tabs. */
+export type FeedSection = "activity" | "opportunities" | "accounts" | "competitors"
+export const FEED_SECTIONS: readonly FeedSection[] = ["activity", "opportunities", "accounts", "competitors"]
+
+/** Messaging's sub-tabs. */
+export type MessagingSection = "conversations" | "people" | "inboxes"
+export const MESSAGING_SECTIONS: readonly MessagingSection[] = ["conversations", "people", "inboxes"]
+
+export type LaceSection = FeedSection | MessagingSection
 
 export interface FeedTarget {
   tab: LaceTab
-  section?: FeedSection
+  section?: LaceSection
 }
 
 /** Where each kind of activity takes the founder, and what the button says. */
@@ -17,8 +24,8 @@ export const ACTIVITY_ACTIONS: Record<ActivityKind, { label: string; target: Fee
   competitor_moves: { label: "See competitors", target: { tab: "feed", section: "competitors" } },
   accounts_found: { label: "See accounts", target: { tab: "feed", section: "accounts" } },
   contacts_found: { label: "See accounts", target: { tab: "feed", section: "accounts" } },
-  drafts_ready: { label: "Review drafts", target: { tab: "messaging" } },
-  reply_received: { label: "Open Messaging", target: { tab: "messaging" } },
+  drafts_ready: { label: "Review drafts", target: { tab: "messaging", section: "conversations" } },
+  reply_received: { label: "Read the reply", target: { tab: "messaging", section: "conversations" } },
   opportunities_found: { label: "See opportunities", target: { tab: "feed", section: "opportunities" } },
   job_failed: { label: "Talk it through", target: { tab: "chat" } },
 }
@@ -38,16 +45,17 @@ export function needsYou(waiting: number, failedSearches: ActivityDto[],
   const items: NeedsYouItem[] = []
   if (toApprove > 0) {
     items.push({ label: `${toApprove} ${toApprove === 1 ? "person" : "people"} to approve for outreach`,
-                 target: { tab: "messaging" } })
+                 target: { tab: "messaging", section: "people" } })
   }
   const toReview = Object.values(suggestions).reduce((sum, n) => sum + (n ?? 0), 0)
-  const first = (Object.keys(suggestions) as FeedSection[]).find((section) => suggestions[section])
+  const first = FEED_SECTIONS.find((section) => suggestions[section])
   if (toReview > 0 && first) {
     items.push({ label: `${toReview} ${toReview === 1 ? "suggestion" : "suggestions"} to review`,
                  target: { tab: "feed", section: first } })
   }
   if (waiting > 0) {
-    items.push({ label: `${waiting} ${waiting === 1 ? "message waits" : "messages wait"} on you`, target: { tab: "messaging" } })
+    items.push({ label: `${waiting} ${waiting === 1 ? "message waits" : "messages wait"} on you`,
+                 target: { tab: "messaging", section: "conversations" } })
   }
   if (failedSearches.length > 0) {
     const n = failedSearches.length
@@ -56,6 +64,13 @@ export function needsYou(waiting: number, failedSearches: ActivityDto[],
   return items
 }
 
-export function sectionId(section: FeedSection): string {
-  return `lace-feed-${section}`
+/** The URL hash that opens a sub-tab, e.g. /lace/:id/feed#accounts. */
+export function sectionHash(section: LaceSection): string {
+  return `#${section}`
+}
+
+/** The sub-tab a URL hash opens, if it names one of `sections`. */
+export function sectionFromHash<S extends LaceSection>(hash: string, sections: readonly S[]): S | null {
+  const name = hash.replace(/^#/, "")
+  return (sections as readonly string[]).includes(name) ? (name as S) : null
 }

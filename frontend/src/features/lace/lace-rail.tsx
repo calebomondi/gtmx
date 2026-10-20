@@ -38,7 +38,7 @@ function RoundButton({ active, label, onClick, children, count = 0, busy = false
       aria-current={active ? "page" : undefined}
       title={label}
       className={cn(
-        "relative grid size-12 shrink-0 cursor-pointer place-items-center rounded-full border transition-colors",
+        "relative grid size-10 shrink-0 cursor-pointer place-items-center rounded-full border transition-colors",
         active
           ? "border-theme bg-theme/15 text-theme shadow-sm"
           : "border-border bg-background text-muted-foreground hover:border-theme/50 hover:text-foreground",
@@ -47,12 +47,12 @@ function RoundButton({ active, label, onClick, children, count = 0, busy = false
     >
       {children}
       {count > 0 && (
-        <span className="absolute -top-1 -right-1 grid h-5 min-w-5 place-items-center rounded-full bg-theme px-1 text-[11px] font-medium text-neutral-900 tabular-nums">
+        <span className="absolute -top-1 -right-1 grid h-4 min-w-4 place-items-center rounded-full bg-theme px-1 text-[10px] font-medium text-neutral-900 tabular-nums">
           {count > 99 ? "99+" : count}
         </span>
       )}
       {busy && count === 0 && (
-        <span aria-hidden className="absolute top-0 right-0 size-2.5 animate-pulse rounded-full bg-theme" />
+        <span aria-hidden className="absolute top-0 right-0 size-2 animate-pulse rounded-full bg-theme" />
       )}
     </button>
   )
@@ -64,24 +64,24 @@ function Buttons({ tab, onSelect, name, mascot, waiting, unread, feedBusy, messa
       <RoundButton active={tab === "chat"} label={`Chat with ${name}`} onClick={() => onSelect("chat")}
                    className="overflow-hidden p-0">
         {/* The mascot fills the button: it is the Lace you talk to. */}
-        <Lace state={mascot} size={46} decorative className="rounded-full" />
+        <Lace state={mascot} size={38} decorative className="rounded-full" />
       </RoundButton>
       <RoundButton active={tab === "feed"} label="Feed" count={unread} busy={feedBusy} onClick={() => onSelect("feed")}>
-        <Newspaper className="size-5" />
+        <Newspaper className="size-4" />
       </RoundButton>
       <RoundButton active={tab === "messaging"} label="Messaging" count={waiting} busy={messagingBusy}
                    onClick={() => onSelect("messaging")}>
-        <MessagesSquare className="size-5" />
+        <MessagesSquare className="size-4" />
       </RoundButton>
     </>
   )
 }
 
-/** Tablet and up: a floating column of the three buttons at the left. */
+/** Tablet and up: a slim pill of the three buttons, beside the content. */
 export function LaceRail(props: RailProps) {
   return (
     <nav aria-label={`${props.name}'s places`}
-         className={cn("flex flex-col items-center gap-3 rounded-full border bg-muted/60 p-2 shadow-sm backdrop-blur", props.className)}>
+         className={cn("flex flex-col items-center gap-2 rounded-full border bg-muted/60 p-1.5 shadow-sm backdrop-blur", props.className)}>
       <Buttons {...props} />
     </nav>
   )
