@@ -1,5 +1,6 @@
+import { useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
-import { ArrowRight, Plus, Radar, X } from "lucide-react"
+import { ArrowRight, ChevronRight, Loader2, Plus, Radar, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -58,16 +59,25 @@ function Card({ section, since, name }: { section: FoundSection; since: number; 
   )
 }
 
-function Chip({ section, since, name, busy, onAsk }: {
+function Chip({ section, since, name, busy, searching, onAsk }: {
   section: FoundSection
   since: number
   name: string
   busy: boolean
+  /** A background job is filling this kind right now. */
+  searching: boolean
   onAsk: (prompt: string) => void
 }) {
   const count = section.items.length
   const fresh = section.items.filter((i) => isNewSince(i, since)).length
   const waiting = section.items.filter((i) => i.waiting).length
+  if (count === 0 && searching) {
+    return (
+      <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-dashed border-theme/50 px-2.5 py-1 text-xs">
+        <Loader2 className="size-3 animate-spin text-theme" /> {section.title}…
+      </span>
+    )
+  }
   if (count === 0) {
     // Nothing yet: the chip offers to start on it.
     return (
@@ -84,7 +94,9 @@ function Chip({ section, since, name, busy, onAsk }: {
                 className={cn("relative flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 text-xs transition-all hover:border-theme/60",
                               fresh > 0 && "border-theme/60 shadow-[0_0_14px_-2px] shadow-theme/60")} />
       }>
-        <section.icon className={cn("size-3.5", fresh > 0 || waiting > 0 ? "text-theme" : "text-muted-foreground")} />
+        {searching
+          ? <Loader2 className="size-3.5 animate-spin text-theme" aria-label="Searching" />
+          : <section.icon className={cn("size-3.5", fresh > 0 || waiting > 0 ? "text-theme" : "text-muted-foreground")} />}
         <span>{section.title}</span>
         {/* Remounts when the count changes, so a new find pops in. */}
         <motion.span key={count} initial={{ scale: 1.6 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 400, damping: 15 }}
@@ -110,26 +122,64 @@ function Chip({ section, since, name, busy, onAsk }: {
   )
 }
 
+// Whether the dock is open, kept per browser as a convenience.
+const OPEN_KEY = "lace.finds-dock.open"
+
+function readOpen(): boolean {
+  try {
+    return localStorage.getItem(OPEN_KEY) !== "closed"
+  } catch {
+    return true // storage blocked (private window): open, as by default
+  }
+}
+
+function writeOpen(open: boolean): void {
+  try {
+    localStorage.setItem(OPEN_KEY, open ? "open" : "closed")
+  } catch {
+    // Storage blocked: the choice lasts for this visit only.
+  }
+}
+
 /** Above the chat's input: what the Lace has found as you talk, one chip per
- * kind. A chip pops and glows as finds arrive; it opens a card of the newest,
- * where suggestions are saved or dismissed and people approved in place. A
- * kind with nothing yet offers to ask the Lace for it. */
-export function LaceFindsDock({ name, sections, since, busy, onAsk }: {
+ * kind. A chip pops and glows as finds arrive, spins while a search fills it,
+ * and opens a card of the newest, where suggestions are saved or dismissed
+ * and people approved in place. A kind with nothing yet offers to ask the
+ * Lace for it. "Found" folds the chips away (and back), remembered. */
+export function LaceFindsDock({ name, sections, since, busy, searching, onAsk }: {
   name: string
   sections: FoundSection[]
   since: number
   busy: boolean
+  searching: ReadonlySet<FoundSection["key"]>
   onAsk: (prompt: string) => void
 }) {
+  const [open, setOpen] = useState(readOpen)
+  const toggle = () => setOpen((was) => {
+    writeOpen(!was)
+    return !was
+  })
+  const total = sections.reduce((n, s) => n + s.items.length, 0)
+  const fresh = sections.reduce((n, s) => n + s.items.filter((i) => isNewSince(i, since)).length, 0)
   return (
     <div role="toolbar" aria-label={`What ${name} has found`}
          className="flex w-full max-w-3xl flex-wrap items-center gap-1.5 pt-2">
-      <span className="flex shrink-0 items-center gap-1 pr-1 text-xs text-muted-foreground">
-        <Radar className="size-3.5" /> Found
-      </span>
-      {sections.map((section) => (
-        <Chip key={section.key} section={section} since={since} name={name} busy={busy} onAsk={onAsk} />
-      ))}
+      <button type="button" onClick={toggle} aria-expanded={open} title={open ? "Hide what was found" : "Show what was found"}
+              className="flex shrink-0 cursor-pointer items-center gap-1 rounded-full px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground">
+        {searching.size > 0 ? <Loader2 className="size-3.5 animate-spin text-theme" /> : <Radar className="size-3.5" />}
+        Found
+        {!open && <span className="tabular-nums">{total}</span>}
+        {!open && fresh > 0 && <span className="rounded-full bg-theme px-1.5 text-[10px] font-medium text-neutral-900">{fresh} new</span>}
+        <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />
+      </button>
+      <AnimatePresence initial={false}>
+        {open && sections.map((section, i) => (
+          <motion.div key={section.key} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -6 }} transition={{ delay: i * 0.03 }}>
+            <Chip section={section} since={since} name={name} busy={busy} searching={searching.has(section.key)} onAsk={onAsk} />
+          </motion.div>
+        ))}
+      </AnimatePresence>
     </div>
   )
 }

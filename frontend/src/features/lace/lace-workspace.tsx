@@ -4,7 +4,9 @@ import { RotateCcw, Settings2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 
+import { JOB_INFO } from "./background-jobs"
 import { sectionHash, type FeedTarget } from "./lace-activity-actions"
+import { LaceBackgroundWork } from "./lace-background-work"
 import { LaceConversation } from "./lace-conversation"
 import { foundSections, useOpenedAt } from "./found-model"
 import { LaceFeed } from "./lace-feed"
@@ -59,6 +61,8 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
     messagingBusy: chat.drafting,
   }
   const found = foundSections(chat, opps, open)
+  // Kinds of find a background job is filling now: their chips spin.
+  const searching = new Set(chat.jobs.flatMap((job) => JOB_INFO[job.kind]?.fills ?? []))
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex items-center justify-between gap-3 border-b px-4 py-3">
@@ -87,7 +91,11 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
         <main className={tab === "chat" ? "flex min-h-0 min-w-0 flex-1 flex-col" : "min-h-0 min-w-0 flex-1 overflow-y-auto"}>
           {tab === "chat" && (
             <LaceConversation chat={chat} name={name} onOpenMessaging={() => select("messaging")} dock={
-              <LaceFindsDock name={name} sections={found} since={openedAt} busy={chat.working} onAsk={(prompt) => void chat.send(prompt)} />
+              <>
+                <LaceBackgroundWork name={name} jobs={chat.jobs} />
+                <LaceFindsDock name={name} sections={found} since={openedAt} busy={chat.working} searching={searching}
+                               onAsk={(prompt) => void chat.send(prompt)} />
+              </>
             } />
           )}
           {tab === "feed" && <LaceFeed laceId={laceId} name={name} chat={chat} activity={activity} opps={opps} onOpen={open} />}

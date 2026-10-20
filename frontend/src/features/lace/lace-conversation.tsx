@@ -1,16 +1,30 @@
 import { useEffect, useRef } from "react"
-import { AlertTriangle, FileText, Loader2 } from "lucide-react"
+import { AlertTriangle, FileText } from "lucide-react"
 
 import { PromptInputWithActions } from "@/components/chat-input"
-import { Button } from "@/components/ui/button"
 import { Markdown } from "@/components/ui/markdown"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DOCUMENT_ACCEPT, type LaceMessageDto } from "@/lib/api"
 
-import { suggestions } from "./chat-suggestions"
 import { LaceAvatar } from "./lace-avatar"
 import { ChatBlocks } from "./lace-chat-blocks"
+import { LaceWorkTrail } from "./lace-work-trail"
 import type { LaceChat } from "./use-lace-chat"
+import { useTypewriter } from "./use-typewriter"
+
+/** The reply as it streams in, revealed smoothly with a caret. */
+function Streaming({ text }: { text: string }) {
+  const shown = useTypewriter(text)
+  return (
+    <div className="flex gap-3">
+      <LaceAvatar state="thinking" />
+      <div className="min-w-0 flex-1">
+        <Markdown className="prose prose-sm dark:prose-invert min-w-0 max-w-none">{shown}</Markdown>
+        <span aria-hidden className="ml-0.5 inline-block h-4 w-1.5 animate-pulse rounded-sm bg-theme align-middle" />
+      </div>
+    </div>
+  )
+}
 
 function Message({ message, children }: { message: LaceMessageDto; children?: React.ReactNode }) {
   if (message.role === "founder") {
@@ -55,14 +69,10 @@ export function LaceConversation({ chat, name, onOpenMessaging, dock }: {
 }) {
   const end = useRef<HTMLDivElement>(null)
   const lastIndex = chat.messages.length - 1
-  const ideas = suggestions({
-    accounts: chat.accounts, competitors: chat.competitors, outreach: chat.outreach,
-    busy: chat.searching || chat.findingAccounts || chat.drafting || chat.findingOpportunities,
-  })
 
   useEffect(() => {
     end.current?.scrollIntoView({ behavior: "smooth", block: "end" })
-  }, [chat.messages.length, chat.step, chat.draft])
+  }, [chat.messages.length, chat.steps.length, chat.draft])
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -84,12 +94,10 @@ export function LaceConversation({ chat, name, onOpenMessaging, dock }: {
               )}
             </Message>
           ))}
-          {chat.draft && <Message message={{ role: "lace", content: chat.draft }} />}
+          {chat.draft && <Streaming text={chat.draft} />}
           {chat.working && !chat.draft && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">
-              <Loader2 className="size-4 animate-spin" />
-              {chat.step ?? (chat.lace?.status === "onboarding" ? "Getting to know your startup" : "Thinking")}
-            </div>
+            <LaceWorkTrail steps={chat.steps}
+                           fallback={chat.lace?.status === "onboarding" ? "Getting to know your startup" : "Thinking"} />
           )}
           {chat.error && (
             <div className="flex items-center gap-2 text-sm text-destructive" role="alert">
@@ -101,16 +109,6 @@ export function LaceConversation({ chat, name, onOpenMessaging, dock }: {
       </div>
       <div className="flex min-w-0 flex-col items-center gap-2 px-4 py-3">
         {dock}
-        {!chat.working && !chat.loading && (
-          // One row that scrolls sideways on narrow screens, so it never crowds the chat.
-          <div className="flex w-full max-w-3xl gap-2 overflow-x-auto [scrollbar-width:none]" aria-label="Suggestions">
-            {ideas.map((idea) => (
-              <Button key={idea} size="sm" variant="outline" className="shrink-0 rounded-full" onClick={() => void chat.send(idea)}>
-                {idea}
-              </Button>
-            ))}
-          </div>
-        )}
         <PromptInputWithActions
           onSubmit={(text, files) => void chat.send(text, files)}
           accept={DOCUMENT_ACCEPT}
