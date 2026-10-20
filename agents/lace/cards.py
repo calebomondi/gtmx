@@ -27,7 +27,10 @@ def competitor_card(c: CompetitorSummary) -> CardBlock:
 
 
 def account_card(a: AccountSummary) -> CardBlock:
-    body = _joined(a.trigger, a.need and f"Need: {a.need}", sep=". ")
+    """Why the account fits, as its fit case says: the trigger, their need,
+    how we meet it and what it gets them."""
+    body = _joined(a.trigger and f"Why now: {a.trigger}", a.need and f"Their need: {a.need}",
+                   a.capability and f"How we help: {a.capability}", a.payoff and f"Payoff: {a.payoff}", sep=". ")
     return CardBlock(kind="account", id=a.id, title=a.name, subtitle=_joined(a.geo, a.fit_strength and f"{a.fit_strength} fit"),
                      body=_clip(body), url=a.website)
 

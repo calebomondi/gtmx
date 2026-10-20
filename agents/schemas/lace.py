@@ -152,6 +152,8 @@ class AccountSummary(BaseModel):
     geo: str | None = None
     trigger: str | None = None
     need: str | None = None
+    capability: str | None = Field(default=None, description="How we meet their need")
+    payoff: str | None = Field(default=None, description="What it gets them")
     angle: str | None = None
     fit_strength: str | None = None
     contact_status: str | None = Field(default=None, description="person | organisation | none; unset until contacts were looked for")

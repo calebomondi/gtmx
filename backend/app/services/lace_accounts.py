@@ -34,7 +34,8 @@ def summary(row: LaceAccount) -> AccountSummary:
     trigger = record.get("trigger_event") or {}
     fit = row.fit or {}
     return AccountSummary(id=str(row.id), name=row.name, account_type=row.account_type, website=row.website,
-                          geo=row.geo, trigger=trigger.get("event"), need=fit.get("need"), angle=fit.get("angle"),
+                          geo=row.geo, trigger=trigger.get("event"), need=fit.get("need"),
+                          capability=fit.get("capability"), payoff=fit.get("payoff"), angle=fit.get("angle"),
                           fit_strength=row.fit_strength, contact_status=row.contact_status,
                           contacts=_people(record), channels=record.get("socials") or {})
 
