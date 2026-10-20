@@ -1,11 +1,11 @@
 import { useEffect, useRef } from "react"
-import { AlertTriangle, Loader2 } from "lucide-react"
+import { AlertTriangle, FileText, Loader2 } from "lucide-react"
 
 import { PromptInputWithActions } from "@/components/chat-input"
 import { Button } from "@/components/ui/button"
 import { Markdown } from "@/components/ui/markdown"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { LaceMessageDto } from "@/lib/api"
+import { DOCUMENT_ACCEPT, type LaceMessageDto } from "@/lib/api"
 
 import { suggestions } from "./chat-suggestions"
 import { LaceAvatar } from "./lace-avatar"
@@ -15,8 +15,19 @@ import type { LaceChat } from "./use-lace-chat"
 function Message({ message, children }: { message: LaceMessageDto; children?: React.ReactNode }) {
   if (message.role === "founder") {
     return (
-      <div className="flex justify-end">
-        <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl bg-muted px-4 py-2 text-sm">{message.content}</div>
+      <div className="flex flex-col items-end gap-1.5">
+        {message.documents && message.documents.length > 0 && (
+          <ul className="flex max-w-[85%] flex-wrap justify-end gap-1.5" aria-label="Attached">
+            {message.documents.map((doc) => (
+              <li key={doc.id} className="flex items-center gap-1.5 rounded-lg border bg-card px-2.5 py-1.5 text-xs">
+                <FileText className="size-3.5 text-theme" /> <span className="max-w-48 truncate">{doc.filename}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {message.content && (
+          <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl bg-muted px-4 py-2 text-sm">{message.content}</div>
+        )}
       </div>
     )
   }
@@ -98,7 +109,8 @@ export function LaceConversation({ chat, name, onOpenMessaging }: {
           </div>
         )}
         <PromptInputWithActions
-          onSubmit={(text) => void chat.send(text)}
+          onSubmit={(text, files) => void chat.send(text, files)}
+          accept={DOCUMENT_ACCEPT}
           isLoading={chat.working}
           disabled={chat.loading}
           placeholder={`Message ${name}`}

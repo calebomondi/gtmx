@@ -86,14 +86,38 @@ class FactCorrection(BaseModel):
     claim: str = Field(min_length=1, max_length=500, description="The fact as it should read")
 
 
+class Attachment(BaseModel):
+    id: uuid.UUID
+    filename: str
+
+
 class LaceMessage(BaseModel):
     role: Literal["founder", "lace"]
     content: str
     ui: list[UiBlock] | None = Field(default=None, description="Cards and choices shown under a Lace reply")
+    documents: list[Attachment] | None = Field(default=None, description="What the founder attached to the message")
 
 
 class LaceMessageRequest(BaseModel):
-    text: str = Field(min_length=1, max_length=8000)
+    text: str = Field(default="", max_length=8000)
+    document_ids: list[uuid.UUID] = Field(default_factory=list, description="Documents uploaded to the Lace first")
+
+    @model_validator(mode="after")
+    def _says_something(self) -> "LaceMessageRequest":
+        if not self.text.strip() and not self.document_ids:
+            raise ValueError("Write a message or attach a document.")
+        return self
+
+
+class DocumentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    filename: str
+    content_type: str
+    size_bytes: int
+    truncated: bool = Field(description="Only the start of a very long document was kept")
+    created_at: datetime
 
 
 class JobStartedResponse(BaseModel):

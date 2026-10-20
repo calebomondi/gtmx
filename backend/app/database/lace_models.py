@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, SmallInteger, ForeignKey, Index, String, Text, UUID, UniqueConstraint, false, func, text
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, Integer, SmallInteger, ForeignKey, Index, String, Text, UUID, UniqueConstraint, false, func, text
 from sqlalchemy.dialects.postgresql import JSONB as JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -421,3 +421,24 @@ class LaceBrief(Base):
                                                  default=_now, server_default=func.now())
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     emailed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+
+
+class LaceDocument(Base):
+    """A document the founder shared with the Lace (a deck, a one-pager, a
+    customer list), kept as the text extracted from it. The file itself is
+    not kept: the Lace only ever reads the text."""
+
+    __tablename__ = "lace_documents"
+    __table_args__ = (Index("ix_lace_documents_lace_id_created_at", "lace_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Indexed by the created_at index, which leads with it.
+    lace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("laces.id", ondelete="CASCADE"), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(127), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    # The text was cut to settings.lace_document_max_chars.
+    truncated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
+                                                 default=_now, server_default=func.now())

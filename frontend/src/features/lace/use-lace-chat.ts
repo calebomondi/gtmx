@@ -19,6 +19,7 @@ import {
   listLaceOutreach,
   markLaceOutreachSent,
   sendLaceMessage,
+  uploadLaceDocument,
   sendLaceOutreach,
   setLaceAccountStatus,
   setLaceCompetitorStatus,
@@ -74,7 +75,8 @@ export interface LaceChat {
   step: string | null
   /** The reply as it is being written; empty when nothing is streaming. */
   draft: string
-  send: (text: string) => Promise<void>
+  /** Send a message, uploading `files` first and attaching them. */
+  send: (text: string, files?: File[]) => Promise<void>
   /** Load the Lace again, e.g. after it was archived or restored. */
   reload: () => Promise<void>
   dismissCompetitor: (competitorId: string) => Promise<void>
@@ -339,11 +341,29 @@ export function useLaceChat(laceId: string): LaceChat {
     }
   }, [laceId, checkRuns])
 
-  const send = useCallback(async (text: string) => {
+  const send = useCallback(async (text: string, files: File[] = []) => {
     setError(null)
-    setMessages((prev) => [...prev, { role: "founder", content: text }])
+    setMessages((prev) => [...prev, {
+      role: "founder", content: text,
+      ...(files.length ? { documents: files.map((f) => ({ id: f.name, filename: f.name })) } : {}),
+    }])
+    const documentIds: string[] = []
     try {
-      const { run_id } = await sendLaceMessage(laceId, text)
+      for (const file of files) {
+        setWorking(true)
+        setStep(`Reading ${file.name}`)
+        documentIds.push((await uploadLaceDocument(laceId, file)).id)
+      }
+    } catch (err) {
+      // Nothing was sent: say why the file was refused (too large, unreadable).
+      setWorking(false)
+      setStep(null)
+      setError(message(err))
+      await refresh().catch(() => undefined)
+      return
+    }
+    try {
+      const { run_id } = await sendLaceMessage(laceId, text, documentIds)
       await follow(run_id)
     } catch (err) {
       setError(err instanceof ApiError && err.status === 409 ? "Your Lace is still working on the last message." : message(err))

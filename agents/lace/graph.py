@@ -28,7 +28,7 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
 from agents.context_budget import count_tokens
-from agents.lace.prompts import system_prompt
+from agents.lace.prompts import DOCUMENTS_LISTED, system_prompt
 from agents.lace.store import LaceJobs, LaceStore
 from agents.lace.tools import build_tools
 from agents.llm.main import TokenSink, invoke_with_tools
@@ -128,9 +128,10 @@ def build_lace_graph(
     tools = build_tools(store, settings, jobs)
 
     async def agent(state: LaceState) -> dict:
-        profile, facts, icp = await asyncio.gather(store.profile(), store.facts(None, BRIEF_FACTS), store.icp())
+        profile, facts, icp, documents = await asyncio.gather(
+            store.profile(), store.facts(None, BRIEF_FACTS), store.icp(), store.documents(DOCUMENTS_LISTED + 1))
         messages = state["messages"]
-        prompt: list[AnyMessage] = [SystemMessage(content=system_prompt(profile, facts, icp))]
+        prompt: list[AnyMessage] = [SystemMessage(content=system_prompt(profile, facts, icp, documents=documents))]
         prompt += close_dangling_tool_calls(history_window(messages, settings.lace_history_token_budget))
         allowed = tools
         if tool_calls_this_turn(messages) >= settings.lace_max_tool_calls_per_turn:

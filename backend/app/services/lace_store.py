@@ -16,9 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agents.schemas.icp import ICP
 from agents.schemas.opportunities import OpportunitySummary
-from agents.schemas.lace import AccountSummary, CompetitorSummary, DraftSummary, Fact, Suggestions, FactTopic, LaceProfile, NewFact, SourcePage
+from agents.schemas.lace import AccountSummary, CompetitorSummary, DocumentSummary, DraftSummary, Fact, Suggestions, FactTopic, LaceProfile, NewFact, SourcePage
 from backend.app.database.lace_models import Lace, LaceCompetitor, LaceFact, LaceSource
-from backend.app.services import lace_accounts, lace_competitors, lace_opportunities, lace_outreach
+from backend.app.services import lace_accounts, lace_competitors, lace_documents, lace_opportunities, lace_outreach
 from backend.app.services.errors import NotFoundError
 from backend.app.services.laces import current_facts_query
 
@@ -136,3 +136,19 @@ class DbLaceStore:
         return [DraftSummary(id=str(r.id), channel=r.channel, company=r.recipient_company, subject=r.subject,
                              recipient=r.recipient_name or r.recipient_address or r.recipient_company, body=r.body)
                 for r in rows]
+
+    async def documents(self, limit: int = 50) -> list[DocumentSummary]:
+        async with self._sessions() as session:
+            rows = await lace_documents.list_for_lace(session, self._lace_id, limit)
+        return [lace_documents.summary(r) for r in rows]
+
+    async def document_text(self, document_id: str) -> tuple[DocumentSummary, str] | None:
+        doc_id = _parse_id(document_id)
+        if doc_id is None:
+            return None
+        async with self._sessions() as session:
+            try:
+                row = await lace_documents.get_in_lace(session, self._lace_id, doc_id)
+            except NotFoundError:
+                return None
+        return lace_documents.summary(row), row.text
