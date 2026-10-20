@@ -8,6 +8,7 @@ import { accountItem, competitorItem, opportunityItem } from "./feed-review"
 import { LaceAccounts } from "./lace-accounts"
 import { LaceFunnel } from "./lace-funnel"
 import { LaceCompetitors } from "./lace-competitors"
+import { discussOpportunity } from "./discuss"
 import { LaceOpportunities } from "./lace-opportunities"
 import { LacePanelTabs, PanelIntro, type PanelTab } from "./lace-panel-tabs"
 import { LaceReview } from "./lace-review"
@@ -55,13 +56,15 @@ function Pulse({ laceId, name, chat, activity, needs, onOpen }: {
  * things stand: its activity, the opportunities it turned up, the customers
  * worth reaching, and the competitors it tracks. Each holds what waits for
  * the founder's review above what was saved. */
-export function LaceFeed({ laceId, name, chat, activity, opps, onOpen }: {
+export function LaceFeed({ laceId, name, chat, activity, opps, onOpen, onDiscuss }: {
   laceId: string
   name: string
   chat: LaceChat
   activity: LaceActivity
   opps: Opportunities
   onOpen: (target: FeedTarget) => void
+  /** Open the chat with a message about something here, ready to send. */
+  onDiscuss: (prompt: string) => void
 }) {
   const [section, setSection] = useSection<FeedSection>(FEED_SECTIONS)
   const needs = needsYou(chat.waiting, activity.items.filter((a) => a.kind === "job_failed" && activity.isNew(a)), {
@@ -87,7 +90,8 @@ export function LaceFeed({ laceId, name, chat, activity, opps, onOpen }: {
           <PanelIntro>Events to showcase at, tenders and buyers to sell to, and partners: sourced, and still open.</PanelIntro>
           <LaceReview items={opps.suggested.map(opportunityItem)} onSave={(id) => void opps.save(id)}
                       onDismiss={(id) => void opps.dismiss(id)} />
-          <LaceOpportunities opps={opps} searching={chat.findingOpportunities} />
+          <LaceOpportunities opps={opps} searching={chat.findingOpportunities} name={name}
+                             onDiscuss={(o) => onDiscuss(discussOpportunity(o))} />
         </>
       ),
     },
