@@ -80,10 +80,6 @@ cd frontend && bun run build && bun run lint
 cd admin_dashboard && bun run build && bun run typecheck && bun run lint
 ```
 
-`uv run python -m scripts.load_test --runs 10 --cleanup` runs real concurrent
-discovery runs (spends LLM and search credit) and reports timings, event-loop
-lag, DB pool use and LLM failures.
-
 ## Admins
 
 The admin console only lets in accounts whose Supabase `app_metadata.role`

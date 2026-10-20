@@ -12,7 +12,6 @@ export interface RunDto {
   id: string
   kind: string
   status: RunStatus
-  workspace_id: string | null
   lace_id: string | null
   progress: Record<string, unknown> | null
   error: string | null

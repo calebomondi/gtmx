@@ -54,7 +54,7 @@ def laces(user, directory, monkeypatch):  # noqa: F811
 
 def test_laces_list_with_counts_and_cost(client, laces):
     page = client.get(f"{API}/laces").json()
-    assert page["total"] == 3  # with the directory's own "Owner Lace"
+    assert page["total"] == 3  # with owned_runs' "Owner Lace"
     rows = {r["name"]: r for r in page["items"]}
     ada = rows["Ada"]
     assert (ada["facts"], ada["competitors"], ada["accounts"], ada["contacts"], ada["sent"], ada["runs"]) == (1, 1, 1, 1, 1, 2)

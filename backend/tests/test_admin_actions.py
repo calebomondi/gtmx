@@ -55,13 +55,13 @@ def test_last_admin_cannot_be_removed(client, user, boss, fake):
     assert client.delete(f"{API}/users/{user.id}/admin").status_code == 409  # the last one stays
 
 
-def test_suspend_stops_runs_and_blocks_tokens(client, user, boss, owned, fake):
+def test_suspend_stops_runs_and_blocks_tokens(client, user, boss, owned_runs, fake):
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
-        conn.execute("UPDATE runs SET status = 'running' WHERE id = %s", (owned["competitor_run"],))
+        conn.execute("UPDATE runs SET status = 'running' WHERE id = %s", (owned_runs["competitor_run"],))
     assert client.post(f"{API}/users/{boss.id}/suspend", json={"reason": "test"}).status_code == 409
     suspended = client.post(f"{API}/users/{user.id}/suspend", json={"reason": "abuse"}).json()
     assert suspended["suspended"] is True
-    run = client.get(f"{API}/runs/{owned['competitor_run']}").json()
+    run = client.get(f"{API}/runs/{owned_runs['competitor_run']}").json()
     assert run["status"] == "cancelled"
     assert supabase_admin.is_suspended(fake.users[str(user.id)].banned_until)
 
@@ -83,11 +83,11 @@ async def test_banned_token_is_refused(monkeypatch, user):
     assert await deps.user_from_token("token") is None
 
 
-def test_cancel_run_is_audited_and_terminal_runs_conflict(client, owned, fake):
+def test_cancel_run_is_audited_and_terminal_runs_conflict(client, owned_runs, fake):
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
-        conn.execute("UPDATE runs SET status = 'running' WHERE id = %s", (owned["account_run"],))
-    assert client.post(f"{API}/runs/{owned['account_run']}/cancel").json()["status"] == "cancelled"
-    assert client.post(f"{API}/runs/{owned['account_run']}/cancel").status_code == 409
+        conn.execute("UPDATE runs SET status = 'running' WHERE id = %s", (owned_runs["account_run"],))
+    assert client.post(f"{API}/runs/{owned_runs['account_run']}/cancel").json()["status"] == "cancelled"
+    assert client.post(f"{API}/runs/{owned_runs['account_run']}/cancel").status_code == 409
     audit = client.get(f"{API}/audit-log", params={"action": "run.cancel"}).json()
     assert audit["total"] == 1 and audit["items"][0]["before"] == {"status": "running"}
 

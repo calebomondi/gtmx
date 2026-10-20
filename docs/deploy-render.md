@@ -93,7 +93,7 @@ It asks for `VITE_API_ORIGIN` (the API URL), `VITE_SUPABASE_URL` and
 ## 6. Check it works
 
 - [ ] `https://gtmx-api.onrender.com/health` returns `{"status":"ok",...}`.
-- [ ] Sign in on the app, create a workspace, and let discovery run end to end.
+- [ ] Sign in on the app, create a Lace, and let its onboarding run end to end.
 - [ ] Join the waitlist on the waitlist page. The signup appears in the admin console.
 - [ ] Sign in to the admin console with an `ADMIN_BOOTSTRAP_EMAILS` account.
 

@@ -52,11 +52,10 @@ async def get_lace(lace_id: uuid.UUID, db: DbSession):
 @router.get("/runs", response_model=Page[AdminRunRow])
 async def list_runs(
     db: DbSession, page: int = PageNo, per_page: int = PerPage, status: str | None = None,
-    kind: str | None = None, user_id: uuid.UUID | None = None, workspace_id: uuid.UUID | None = None,
-    lace_id: uuid.UUID | None = None,
+    kind: str | None = None, user_id: uuid.UUID | None = None, lace_id: uuid.UUID | None = None,
 ):
     return await admin_runs.list_runs(db, page, per_page, status=status, kind=kind,
-                                      user_id=user_id, workspace_id=workspace_id, lace_id=lace_id)
+                                      user_id=user_id, lace_id=lace_id)
 
 
 @router.get("/runs/{run_id}", response_model=AdminRunDetail)
