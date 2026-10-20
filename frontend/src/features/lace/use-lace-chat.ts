@@ -31,6 +31,7 @@ import {
   type LaceMessageDto,
   type LaceOutreachDto,
   type LaceOutreachChanges,
+  type RunDto,
   type RunFrame,
 } from "@/lib/api"
 
@@ -73,6 +74,10 @@ export interface LaceChat {
   working: boolean
   /** What the Lace is doing right now, e.g. "Reading https://…/pricing". */
   step: string | null
+  /** Everything it has done this turn, oldest first; the last is `step`. */
+  steps: string[]
+  /** Its background jobs running now (searches, drafting), oldest first. */
+  jobs: RunDto[]
   /** The reply as it is being written; empty when nothing is streaming. */
   draft: string
   /** Send a message, uploading `files` first and attaching them. */
@@ -128,6 +133,8 @@ export function useLaceChat(laceId: string): LaceChat {
   const [error, setError] = useState<string | null>(null)
   const [working, setWorking] = useState(false)
   const [step, setStep] = useState<string | null>(null)
+  const [steps, setSteps] = useState<string[]>([])
+  const [jobs, setJobs] = useState<RunDto[]>([])
   const [draft, setDraft] = useState("")
   const abort = useRef<AbortController | null>(null)
   // Mirrors `working` for callbacks; written only from them, never in render.
@@ -167,11 +174,14 @@ export function useLaceChat(laceId: string): LaceChat {
     busy.current = true
     setWorking(true)
     setStep(null)
+    setSteps([])
     const onFrame = (frame: RunFrame) => {
       if (frame.type === "token" && frame.text) setDraft((prev) => prev + frame.text)
       if (frame.type === "token_reset") setDraft("")
       if (frame.type === "step" && frame.text) {
-        setStep(frame.text)
+        const text = frame.text
+        setStep(text)
+        setSteps((prev) => (prev[prev.length - 1] === text ? prev : [...prev, text]))
         setDraft("")
       }
       if (frame.type === "error" || frame.type === "cancelled") setError(frame.message ?? "The run stopped.")
@@ -193,16 +203,19 @@ export function useLaceChat(laceId: string): LaceChat {
     busy.current = false
     setDraft("")
     setStep(null)
+    setSteps([])
     setWorking(false)
   }, [refresh])
 
   const checkRuns = useCallback(async () => {
     const mine = (await listActiveRuns()).filter((run) => run.lace_id === laceId)
     setSearching(mine.some((run) => run.kind === "lace_competitors"))
-    setFindingAccounts(mine.some((run) => run.kind === "lace_accounts" || run.kind === "lace_contacts"))
+    setFindingAccounts(mine.some((run) => ["lace_accounts", "lace_contacts", "lace_icp"].includes(run.kind)))
     setDrafting(mine.some((run) => run.kind === "lace_drafts"))
     setFindingOpportunities(mine.some((run) => run.kind === "lace_opportunities"))
-    const turn = mine.find((run) => run.kind === "lace_turn" || run.kind === "lace_onboarding")
+    const isTurn = (run: RunDto) => run.kind === "lace_turn" || run.kind === "lace_onboarding"
+    setJobs(mine.filter((run) => !isTurn(run)).reverse())
+    const turn = mine.find(isTurn)
     if (turn && !busy.current) void follow(turn.id)
   }, [laceId, follow])
 
@@ -217,10 +230,11 @@ export function useLaceChat(laceId: string): LaceChat {
     }
   }, [refresh])
 
-  // Whenever the Lace is idle: look now (a run may have just ended and the
-  // Lace gone straight on to pass along an update), then every so often.
+  // Look now whenever a turn starts or ends (one may have just ended and the
+  // Lace gone straight on to pass along an update), then every so often, so
+  // background jobs show while a turn runs too. A running turn is never
+  // followed twice: checkRuns leaves it to the follow already under way.
   useEffect(() => {
-    if (working) return
     // A missed check is retried on the next tick.
     const check = () => void checkRuns().catch(() => undefined)
     check()
@@ -395,7 +409,7 @@ export function useLaceChat(laceId: string): LaceChat {
   return {
     lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, waiting, drafting, findingOpportunities,
     loading, error,
-    working, step, draft, send, reload, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, sendingSoon,
+    working, step, steps, jobs, draft, send, reload, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, sendingSoon,
     undoSend, markSent, findContacts, contacts, approveContact, approveAccountContacts, saveCompetitor, saveAccount, decideOpportunity, suggestedCompetitors,
     suggestedAccounts,
   }
