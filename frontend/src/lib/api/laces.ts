@@ -199,6 +199,32 @@ export function listLaceCompetitors(laceId: string, status: CompetitorStatus = "
   return apiFetch<LaceCompetitorDto[]>(`/api/v1/laces/${laceId}/competitors?status=${status}`)
 }
 
+export type MoveKind =
+  | "pricing" | "product" | "positioning" | "funding" | "leadership" | "partnership" | "event" | "social" | "news"
+  | "client"
+
+/** A material move a tracked competitor made. Mirrors MoveResponse. */
+export interface LaceMoveDto {
+  id: string
+  competitor_id: string
+  competitor_name: string
+  kind: MoveKind
+  importance: "high" | "medium" | "low"
+  title: string
+  summary: string
+  /** What it means for the startup. */
+  implication: string | null
+  /** The move to make in response. */
+  counter_move: string | null
+  sources: string[]
+  detected_at: string
+}
+
+/** What the tracked competitors did, newest first. */
+export function listLaceMoves(laceId: string): Promise<LaceMoveDto[]> {
+  return apiFetch<LaceMoveDto[]>(`/api/v1/laces/${laceId}/moves`)
+}
+
 export function setLaceCompetitorStatus(laceId: string, competitorId: string, status: Exclude<CompetitorStatus, "suggested">): Promise<LaceCompetitorDto> {
   return apiFetch(`/api/v1/laces/${laceId}/competitors/${competitorId}`, {
     method: "PATCH",

@@ -8,11 +8,14 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.schemas.competition import CompetitorProfile
+from agents.schemas.monitor import CompetitorChange
 from backend.app.database import models
-from backend.app.database.lace_models import Lace, LaceCompetitor
+from backend.app.database.lace_models import Lace, LaceCompetitor, LaceCompetitorMove
 from backend.app.services.competitors import domain_key, normalize_website
 from backend.app.services.errors import NotFoundError
 from backend.app.services.runs import TERMINAL_STATUSES
+
+MOVE_TITLE_CHARS = 200
 
 
 async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, status: str, limit: int) -> list[LaceCompetitor]:
@@ -81,6 +84,26 @@ async def due_for_check(db: AsyncSession, lace_id: uuid.UUID, limit: int) -> lis
         .order_by(LaceCompetitor.last_checked_at.asc().nulls_first()).limit(limit)
     )
     return list(rows.all())
+
+
+async def add_moves(db: AsyncSession, lace_id: uuid.UUID, competitor_id: uuid.UUID, run_id: uuid.UUID | None,
+                    changes: list[CompetitorChange]) -> None:
+    """Keep each material move the monitor found, with its source."""
+    db.add_all(LaceCompetitorMove(
+        lace_id=lace_id, competitor_id=competitor_id, run_id=run_id, kind=c.kind, importance=c.importance,
+        title=c.title[:MOVE_TITLE_CHARS], summary=c.summary, implication=c.implication or None,
+        counter_move=c.counter_move or None, sources=[c.source_url] if c.source_url else [],
+    ) for c in changes)
+
+
+async def list_moves(db: AsyncSession, lace_id: uuid.UUID, limit: int) -> list[tuple[LaceCompetitorMove, str]]:
+    """The Lace's competitor moves with each competitor's name, newest first."""
+    rows = await db.execute(
+        select(LaceCompetitorMove, LaceCompetitor.name)
+        .join(LaceCompetitor, LaceCompetitor.id == LaceCompetitorMove.competitor_id)
+        .where(LaceCompetitorMove.lace_id == lace_id)
+        .order_by(LaceCompetitorMove.detected_at.desc()).limit(limit))
+    return [(move, name) for move, name in rows.all()]
 
 
 async def save_check(db: AsyncSession, competitor_id: uuid.UUID, state: dict) -> None:

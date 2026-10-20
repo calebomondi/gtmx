@@ -11,6 +11,7 @@ from backend.app.api.deps import CurrentUser, DbSession, OwnedLace
 from backend.app.runs import lace as lace_runs
 from backend.app.runs import manager
 from backend.app.schemas.laces import (
+    MoveResponse,
     DocumentResponse,
     ActivityReadResponse,
     ActivityResponse,
@@ -67,6 +68,7 @@ MAX_ACTIVITY_PER_PAGE = 100
 MAX_CONTACTS_PER_PAGE = 500
 MAX_SEARCH_PER_KIND = 20
 MAX_DOCUMENTS_PER_PAGE = 100
+MAX_MOVES_PER_PAGE = 300
 
 
 @router.post("", response_model=LaceCreateResponse, status_code=status.HTTP_201_CREATED)
@@ -258,6 +260,14 @@ async def list_competitors(lace: OwnedLace, db: DbSession,
                            shown: CompetitorStatus = Query(default="tracked", alias="status"),
                            limit: int = Query(default=50, ge=1, le=MAX_COMPETITORS_PER_PAGE)):
     return await lace_competitors.list_for_lace(db, lace.id, shown, limit)
+
+
+@router.get("/{lace_id}/moves", response_model=list[MoveResponse])
+async def list_moves(lace: OwnedLace, db: DbSession, limit: int = Query(default=100, ge=1, le=MAX_MOVES_PER_PAGE)):
+    """What the tracked competitors did, newest first, each with its sources."""
+    return [MoveResponse(**{c.name: getattr(move, c.name) for c in move.__table__.columns
+                            if c.name in MoveResponse.model_fields}, competitor_name=name)
+            for move, name in await lace_competitors.list_moves(db, lace.id, limit)]
 
 
 @router.patch("/{lace_id}/competitors/{competitor_id}", response_model=CompetitorResponse)

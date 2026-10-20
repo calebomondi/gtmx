@@ -8,7 +8,9 @@ import { accountItem, competitorItem, opportunityItem } from "./feed-review"
 import { LaceAccounts } from "./lace-accounts"
 import { LaceFunnel } from "./lace-funnel"
 import { LaceCompetitors } from "./lace-competitors"
-import { discussOpportunity } from "./discuss"
+import { discussMove, discussOpportunity } from "./discuss"
+import { useLaceMoves } from "./use-lace-moves"
+import { useSeenAt } from "./viewer-memory"
 import { LaceOpportunities } from "./lace-opportunities"
 import { LacePanelTabs, PanelIntro, type PanelTab } from "./lace-panel-tabs"
 import { LaceReview } from "./lace-review"
@@ -67,6 +69,9 @@ export function LaceFeed({ laceId, name, chat, activity, opps, onOpen, onDiscuss
   onDiscuss: (prompt: string) => void
 }) {
   const [section, setSection] = useSection<FeedSection>(FEED_SECTIONS)
+  // Refetched as new activity arrives (a competitor check finished).
+  const moves = useLaceMoves(laceId, activity.items[0]?.id ?? "")
+  const [movesSeenAt, markMovesSeen] = useSeenAt<string>(`${laceId}.moves`)
   const needs = needsYou(chat.waiting, activity.items.filter((a) => a.kind === "job_failed" && activity.isNew(a)), {
     opportunities: opps.suggested.length, accounts: chat.suggestedAccounts.length,
     competitors: chat.suggestedCompetitors.length,
@@ -117,7 +122,9 @@ export function LaceFeed({ laceId, name, chat, activity, opps, onOpen, onDiscuss
           <LaceReview items={chat.suggestedCompetitors.map(competitorItem)} saveLabel="Track"
                       onSave={(id) => void chat.saveCompetitor(id)} onDismiss={(id) => void chat.dismissCompetitor(id)} />
           <LaceCompetitors competitors={chat.competitors} searching={chat.searching}
-                           onDismiss={(id) => void chat.dismissCompetitor(id)} />
+                           onDismiss={(id) => void chat.dismissCompetitor(id)} moves={moves}
+                           movesSeenAt={movesSeenAt} onMovesSeen={markMovesSeen} name={name}
+                           onDiscussMove={(m) => onDiscuss(discussMove(m.competitor_name, m.title, m.detected_at, m.sources))} />
         </>
       ),
     },
