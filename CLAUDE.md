@@ -2,9 +2,10 @@
 
 GTMX (Thalace) gives each startup a Lace: one agent, created from a name and the
 startup's website, that learns what the startup sells and works as the founder's
-go-to-market assistant. It finds and watches competitors, works out the ideal
-customer, finds target accounts and the people there, spots opportunities
-(events, tenders, partners), drafts outreach and answers replies. The founder
+startup assistant. It spots opportunities (events, tenders, partners), works out
+the ideal customer, finds target accounts and the people there and gets the
+founder in touch with them, finds and watches competitors, drafts outreach and
+answers replies. The founder
 works with it in a chat, and sees what it did in a Feed and Messaging.
 
 - **Agents**: the Lace (a ReAct agent) in `agents/lace/`, and the LangGraph pipelines it reuses as skills in `agents/pipelines/`. They are pure: web search, scraping and LLM calls only; a Lace reaches the database only through its store protocol, which the backend implements.
