@@ -68,11 +68,46 @@ export interface CardBlockDto {
 
 export type UiBlockDto = ChoicesBlockDto | CardBlockDto
 
+export interface AttachmentDto {
+  id: string
+  filename: string
+}
+
 export interface LaceMessageDto {
   role: "founder" | "lace"
   content: string
   /** Cards and choices under a Lace reply. */
   ui?: UiBlockDto[]
+  /** What the founder attached to their message. */
+  documents?: AttachmentDto[]
+}
+
+/** A document shared with a Lace, kept as its text. Mirrors DocumentResponse. */
+export interface LaceDocumentDto {
+  id: string
+  filename: string
+  content_type: string
+  size_bytes: number
+  /** Only the start of a very long document was kept. */
+  truncated: boolean
+  created_at: string
+}
+
+/** File kinds a Lace can read, for the file picker. */
+export const DOCUMENT_ACCEPT = ".pdf,.docx,.pptx,.txt,.md,.markdown,.csv,.tsv,.json"
+
+export function uploadLaceDocument(laceId: string, file: File): Promise<LaceDocumentDto> {
+  const body = new FormData()
+  body.append("file", file)
+  return apiFetch(`/api/v1/laces/${laceId}/documents`, { method: "POST", body })
+}
+
+export function listLaceDocuments(laceId: string): Promise<LaceDocumentDto[]> {
+  return apiFetch<LaceDocumentDto[]>(`/api/v1/laces/${laceId}/documents`)
+}
+
+export function deleteLaceDocument(laceId: string, documentId: string): Promise<void> {
+  return apiFetch(`/api/v1/laces/${laceId}/documents/${documentId}`, { method: "DELETE" })
 }
 
 /** The browser's IANA timezone, e.g. "Africa/Nairobi": when the founder's day starts. */
@@ -139,8 +174,11 @@ export function listLaceMessages(laceId: string): Promise<LaceMessageDto[]> {
 }
 
 /** Starts a turn; follow its run for the reply. */
-export function sendLaceMessage(laceId: string, text: string): Promise<{ run_id: string }> {
-  return apiFetch(`/api/v1/laces/${laceId}/messages`, { method: "POST", body: JSON.stringify({ text }) })
+/** A message to the Lace; `documentIds` are documents uploaded to it first. */
+export function sendLaceMessage(laceId: string, text: string, documentIds: string[] = []): Promise<{ run_id: string }> {
+  return apiFetch(`/api/v1/laces/${laceId}/messages`, {
+    method: "POST", body: JSON.stringify({ text, document_ids: documentIds }),
+  })
 }
 
 /** suggested: a search found it and it waits for the founder to save (tracked) or dismiss. */

@@ -169,6 +169,14 @@ class Suggestions(BaseModel):
         return not (self.competitors or self.accounts or self.opportunities)
 
 
+class DocumentSummary(BaseModel):
+    """A document the founder shared with the Lace; its text is read with read_document."""
+    id: str
+    filename: str
+    chars: int = Field(description="Length of its extracted text")
+    truncated: bool = Field(default=False, description="Only the start of a very long document was kept")
+
+
 class DraftSummary(BaseModel):
     """A message the Lace drafted that waits for the founder to send."""
     id: str

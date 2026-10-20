@@ -5,12 +5,13 @@ Work happens in runs; follow them at /runs/{run_id}/events."""
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, File, Query, UploadFile, status
 
 from backend.app.api.deps import CurrentUser, DbSession, OwnedLace
 from backend.app.runs import lace as lace_runs
 from backend.app.runs import manager
 from backend.app.schemas.laces import (
+    DocumentResponse,
     ActivityReadResponse,
     ActivityResponse,
     AccountResponse,
@@ -46,7 +47,7 @@ from backend.app.schemas.laces import (
     OutreachResponse,
     OutreachUpdateRequest,
 )
-from backend.app.services import email, lace_accounts, lace_activity, lace_contacts, lace_search, lace_channels, lace_competitors, lace_opportunities, lace_outreach
+from backend.app.services import email, lace_accounts, lace_documents, lace_activity, lace_contacts, lace_search, lace_channels, lace_competitors, lace_opportunities, lace_outreach
 from backend.app.services import laces as lace_service
 from agents.lace.store import JobRefused
 from backend.app.services.errors import ConflictError
@@ -65,6 +66,7 @@ MAX_OPPORTUNITIES_PER_PAGE = 100
 MAX_ACTIVITY_PER_PAGE = 100
 MAX_CONTACTS_PER_PAGE = 500
 MAX_SEARCH_PER_KIND = 20
+MAX_DOCUMENTS_PER_PAGE = 100
 
 
 @router.post("", response_model=LaceCreateResponse, status_code=status.HTTP_201_CREATED)
@@ -223,9 +225,32 @@ async def list_messages(lace: OwnedLace, limit: int = Query(default=100, ge=1, l
 
 
 @router.post("/{lace_id}/messages", response_model=LaceTurnResponse, status_code=status.HTTP_202_ACCEPTED)
-async def send_message(lace: OwnedLace, payload: LaceMessageRequest, user: CurrentUser):
-    run = await manager.start_lace_turn(user.id, lace.id, payload.text)
+async def send_message(lace: OwnedLace, payload: LaceMessageRequest, user: CurrentUser, db: DbSession):
+    """A message to the Lace, with documents uploaded to it first attached."""
+    docs = await lace_documents.attachments(db, lace.id, payload.document_ids)
+    attached = [{"id": str(d.id), "filename": d.filename} for d in docs]
+    run = await manager.start_lace_turn(user.id, lace.id, payload.text, attached)
     return LaceTurnResponse(run_id=run.id)
+
+
+@router.post("/{lace_id}/documents", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
+async def upload_document(lace: OwnedLace, db: DbSession, file: UploadFile = File(...)):
+    """Share a document with the Lace: its text is extracted and kept (PDF,
+    Word, PowerPoint, text, Markdown, CSV, JSON)."""
+    # One byte over the cap is enough to refuse it without reading the rest.
+    data = await file.read(lace_documents.max_bytes() + 1)
+    return await lace_documents.add(db, lace.id, file.filename or "document", file.content_type, data)
+
+
+@router.get("/{lace_id}/documents", response_model=list[DocumentResponse])
+async def list_documents(lace: OwnedLace, db: DbSession,
+                         limit: int = Query(default=50, ge=1, le=MAX_DOCUMENTS_PER_PAGE)):
+    return await lace_documents.list_for_lace(db, lace.id, limit)
+
+
+@router.delete("/{lace_id}/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_document(lace: OwnedLace, document_id: uuid.UUID, db: DbSession):
+    await lace_documents.delete(db, lace.id, document_id)
 
 
 @router.get("/{lace_id}/competitors", response_model=list[CompetitorResponse])

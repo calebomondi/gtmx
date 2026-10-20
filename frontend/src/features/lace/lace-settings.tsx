@@ -6,6 +6,7 @@ import { Separator } from "@/components/ui/separator"
 import type { FactDto, LaceStatus } from "@/lib/api"
 
 import { LaceBrief } from "./lace-brief"
+import { LaceDocuments } from "./lace-documents"
 import { LaceFacts } from "./lace-facts"
 import { LaceManage } from "./lace-manage"
 
@@ -46,6 +47,12 @@ export function LaceSettings({ laceId, name, status, facts, open, onOpenChange, 
               <LaceFacts facts={facts} />
             </CollapsibleContent>
           </Collapsible>
+          <Separator />
+          <section className="flex flex-col gap-3">
+            <h3 className="text-sm font-medium">Documents</h3>
+            <p className="text-xs text-muted-foreground">What you shared with {name} in the chat. It reads them when they matter.</p>
+            <LaceDocuments laceId={laceId} name={name} />
+          </section>
           <Separator />
           <section className="flex flex-col gap-3">
             <h3 className="text-sm font-medium">Manage</h3>

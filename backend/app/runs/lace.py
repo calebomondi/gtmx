@@ -62,6 +62,10 @@ _STEP_TEXT = {
 
 # Marks a message on the thread as an update for the Lace, not the founder's words.
 EVENT_FLAG = "lace_event"
+# On a founder's message: what they attached ([{id, filename}]), and their own
+# words, which the founder sees without the note the model gets.
+ATTACHMENTS_KEY = "documents"
+FOUNDER_TEXT_KEY = "founder_text"
 
 
 def thread_config(lace_id: uuid.UUID) -> dict:
@@ -159,8 +163,15 @@ class _TokenRelay:
         events.broadcast(self._run_id, "token_reset")
 
 
-def founder_message(text: str) -> HumanMessage:
-    return HumanMessage(content=text)
+def founder_message(text: str, attachments: list[dict] | None = None) -> HumanMessage:
+    """The founder's words; with attachments, a note naming them so the Lace
+    knows to read them."""
+    if not attachments:
+        return HumanMessage(content=text)
+    names = ", ".join(f"{a['filename']} (document id {a['id']})" for a in attachments)
+    note = f"[The founder attached: {names}. Read them with read_document.]"
+    return HumanMessage(content=f"{text}\n\n{note}" if text else note,
+                        additional_kwargs={ATTACHMENTS_KEY: attachments, FOUNDER_TEXT_KEY: text})
 
 
 def event_message(updates: list[str]) -> HumanMessage:
@@ -268,7 +279,9 @@ def visible_messages(messages: list[AnyMessage]) -> list[dict]:
     out = []
     for m in messages:
         if isinstance(m, HumanMessage) and not m.additional_kwargs.get(EVENT_FLAG):
-            out.append({"role": "founder", "content": str(m.content)})
+            attached = m.additional_kwargs.get(ATTACHMENTS_KEY)
+            content = m.additional_kwargs.get(FOUNDER_TEXT_KEY, str(m.content))
+            out.append({"role": "founder", "content": content, **({"documents": attached} if attached else {})})
         elif isinstance(m, AIMessage) and not m.tool_calls:
             ui = m.additional_kwargs.get(UI_KEY)
             if str(m.content).strip() or ui:

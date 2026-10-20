@@ -10,7 +10,7 @@ from typing import Literal, Protocol
 
 from agents.schemas.icp import ICP
 from agents.schemas.opportunities import OpportunitySummary
-from agents.schemas.lace import AccountSummary, CompetitorSummary, DraftSummary, Suggestions, Fact, FactTopic, LaceProfile, NewFact, SourcePage
+from agents.schemas.lace import AccountSummary, CompetitorSummary, DocumentSummary, DraftSummary, Suggestions, Fact, FactTopic, LaceProfile, NewFact, SourcePage
 
 
 class LaceStore(Protocol):
@@ -56,6 +56,14 @@ class LaceStore(Protocol):
 
     async def drafts(self, limit: int = 50) -> list[DraftSummary]:
         """Messages drafted and not yet sent, newest first."""
+        ...
+
+    async def documents(self, limit: int = 50) -> list[DocumentSummary]:
+        """Documents the founder shared, newest first."""
+        ...
+
+    async def document_text(self, document_id: str) -> tuple[DocumentSummary, str] | None:
+        """One shared document and its text; None when it is not this Lace's."""
         ...
 
 

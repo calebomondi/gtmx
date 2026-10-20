@@ -22,6 +22,8 @@ export interface ChatInputProps {
   folderLabel?: string
   onOpenCanvas?: () => void
   tabs?: ChatTab[]
+  /** File kinds the picker offers, e.g. ".pdf,.docx". */
+  accept?: string
 }
 
 export function PromptInputWithActions({
@@ -34,6 +36,7 @@ export function PromptInputWithActions({
   folderLabel = "View Canva",
   onOpenCanvas,
   tabs = [],
+  accept,
 }: ChatInputProps) {
   const [input, setInput] = useState("")
   const [files, setFiles] = useState<File[]>([])
@@ -136,7 +139,7 @@ export function PromptInputWithActions({
           disabled={disabled || isLoading}
         />
         <PromptInputActions className="flex items-center justify-between gap-2 pt-2">
-          <PromptInputAction tooltip="Attach files">
+          <PromptInputAction tooltip="Attach documents">
             <label
               htmlFor="file-upload"
               className="hover:bg-secondary-foreground/10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-2xl"
@@ -144,6 +147,7 @@ export function PromptInputWithActions({
               <input
                 type="file"
                 multiple
+                accept={accept}
                 onChange={handleFileChange}
                 className="hidden"
                 id="file-upload"
