@@ -12,7 +12,7 @@ import { LaceOpportunities } from "./lace-opportunities"
 import { LacePanelTabs, PanelIntro, type PanelTab } from "./lace-panel-tabs"
 import { LaceReview } from "./lace-review"
 import type { LaceActivity } from "./use-lace-activity"
-import { useLaceOpportunities } from "./use-lace-opportunities"
+import type { LaceOpportunities as Opportunities } from "./use-lace-opportunities"
 import type { LaceChat } from "./use-lace-chat"
 import { useSection } from "./use-lace-section"
 
@@ -55,16 +55,15 @@ function Pulse({ laceId, name, chat, activity, needs, onOpen }: {
  * things stand: its activity, the opportunities it turned up, the customers
  * worth reaching, and the competitors it tracks. Each holds what waits for
  * the founder's review above what was saved. */
-export function LaceFeed({ laceId, name, chat, activity, onOpen }: {
+export function LaceFeed({ laceId, name, chat, activity, opps, onOpen }: {
   laceId: string
   name: string
   chat: LaceChat
   activity: LaceActivity
+  opps: Opportunities
   onOpen: (target: FeedTarget) => void
 }) {
   const [section, setSection] = useSection<FeedSection>(FEED_SECTIONS)
-  // Refetched as new activity arrives (an opportunity search finished).
-  const opps = useLaceOpportunities(laceId, activity.items[0]?.id ?? "")
   const needs = needsYou(chat.waiting, activity.items.filter((a) => a.kind === "job_failed" && activity.isNew(a)), {
     opportunities: opps.suggested.length, accounts: chat.suggestedAccounts.length,
     competitors: chat.suggestedCompetitors.length,

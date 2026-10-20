@@ -30,7 +30,7 @@ export function LaceFunnel({ laceId, refreshKey }: { laceId: string; refreshKey:
   }, [laceId, refreshKey])
 
   if (failed) return null
-  if (!funnel) return <Skeleton className="h-[4.5rem] w-full rounded-xl" />
+  if (!funnel) return <Skeleton className="h-11 w-full rounded-lg" />
   const top = Math.max(funnel.accounts, 1)
   return (
     <ol aria-label="Pipeline" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -38,12 +38,13 @@ export function LaceFunnel({ laceId, refreshKey }: { laceId: string; refreshKey:
         const value = funnel[step.key]
         const ofPrevious = i > 0 ? share(value, funnel[STEPS[i - 1].key]) : null
         return (
-          <li key={step.key} className="flex flex-col gap-1.5 rounded-xl border bg-background/60 px-3 py-2.5">
-            <span className="flex items-baseline justify-between gap-2">
-              <span className="text-xl font-semibold tabular-nums">{value}</span>
-              {ofPrevious && <span className="text-[11px] text-muted-foreground tabular-nums">{ofPrevious}</span>}
+          <li key={step.key} className="flex flex-col gap-1 rounded-lg border bg-background/60 px-2.5 py-1.5">
+            {/* One line: the number, its stage, and its share of the stage before. */}
+            <span className="flex items-baseline gap-1.5">
+              <span className="text-base font-semibold tabular-nums">{value}</span>
+              <span className="truncate text-xs text-muted-foreground">{step.label}</span>
+              {ofPrevious && <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">{ofPrevious}</span>}
             </span>
-            <span className="text-xs text-muted-foreground">{step.label}</span>
             {/* The bar's length is data, so it is the one inline style. */}
             <span aria-hidden className="h-1 overflow-hidden rounded-full bg-muted">
               <span className="block h-full rounded-full bg-theme transition-[width] duration-500"
