@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agents.schemas.accounts import ContactRecord
 from agents.schemas.lace import ContactSource
 from backend.app.database.lace_models import LaceAccount, LaceContact
-from backend.app.services.errors import NotFoundError
+from backend.app.services.errors import InvalidInputError, NotFoundError
 
 
 def _clean(value: str | None) -> str:
@@ -67,6 +67,22 @@ async def set_approved(db: AsyncSession, lace_id: uuid.UUID, contact_id: uuid.UU
     contact.approved_at = datetime.now(UTC) if approved else None
     await db.commit()
     return contact
+
+
+async def person_to_draft(db: AsyncSession, lace_id: uuid.UUID, contact_id: uuid.UUID, channel: str) -> tuple[uuid.UUID, dict]:
+    """The account and the person to write to on `channel`, approving them:
+    asking for a draft to someone is clearing them for it. NotFoundError for
+    another Lace's contact; InvalidInputError when they can't be reached there."""
+    contact = await db.scalar(select(LaceContact).where(LaceContact.id == contact_id, LaceContact.lace_id == lace_id))
+    if contact is None:
+        raise NotFoundError("Contact not found")
+    address = contact.email if channel == "email" else contact.linkedin
+    if not address:
+        raise InvalidInputError(f"There's no {'email address' if channel == 'email' else 'LinkedIn profile'} for this person.")
+    if contact.approved_at is None:
+        contact.approved_at = datetime.now(UTC)
+        await db.commit()
+    return contact.account_id, {"channel": channel, "name": contact.name, "title": contact.title, "address": address}
 
 
 async def approve_account(db: AsyncSession, lace_id: uuid.UUID, account_id: uuid.UUID) -> int:

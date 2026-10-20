@@ -355,6 +355,11 @@ class ContactResponse(BaseModel):
     first_seen_at: datetime
 
 
+class ContactDraftRequest(BaseModel):
+    channel: Literal["email", "linkedin"] = Field(description="Write to their email, or a LinkedIn message")
+    note: str | None = Field(default=None, max_length=500, description="What the founder wants the message to say")
+
+
 class ContactApproval(BaseModel):
     approved: bool = Field(description="Clear this person for outreach, or take it back")
 

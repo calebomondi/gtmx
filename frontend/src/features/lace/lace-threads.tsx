@@ -56,7 +56,7 @@ function Avatar({ thread, size = "md" }: { thread: OutreachThread; size?: "md" |
   )
 }
 
-function Bubble({ message }: { message: LaceOutreachDto }) {
+export function Bubble({ message }: { message: LaceOutreachDto }) {
   const theirs = message.direction === "inbound"
   return (
     <div className={cn("flex flex-col gap-1", theirs ? "items-start" : "items-end")}>

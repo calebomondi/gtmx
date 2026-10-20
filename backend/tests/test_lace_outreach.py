@@ -42,10 +42,10 @@ def _account(lace_id, name, contacts, status="person", strength="strong", approv
 def _stub_writer(monkeypatch, fail_for=()):
     written = []
 
-    def draft(profile, facts, rivals, record, recipient, sender):
+    def draft(profile, facts, rivals, record, recipient, sender, note=None):
         if record.name in fail_for:
             raise RuntimeError("provider down")
-        written.append((record.name, recipient.address, sender))
+        written.append((record.name, recipient.address, sender) + ((note,) if note else ()))
         return OutreachDraft(subject=f"About {record.name}", body=f"Hi {recipient.name or 'there'}, ... {sender}")
 
     async def sender(user_id):
@@ -303,3 +303,32 @@ def test_x_sends_count_toward_the_daily_cap(client, lace, lace_runtime, user, mo
         conn.execute("UPDATE lace_outreach SET status = 'sent', sent_at = now() WHERE id = %s",
                      (_message(lace, user.id, channel="x", address="https://x.com/a"),))
     assert client.post(f"{API}/laces/{lace}/outreach/{_message(lace, user.id)}/send").status_code == 429
+
+
+def test_a_draft_to_one_person_uses_their_channel_and_the_founders_note(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    written = _stub_writer(monkeypatch)
+    _account(lace, "Twiga", [ContactRecord(name="Amina", email="amina@twiga.test", linkedin="https://linkedin.com/in/amina"),
+                             ContactRecord(name="Peter", email="peter@twiga.test")], approved=False)
+    with psycopg.connect(settings.database_url) as conn:
+        amina = str(conn.execute("SELECT id FROM lace_contacts WHERE name = 'Amina'").fetchone()[0])
+    lace_runtime.append(AIMessage(content="I drafted a LinkedIn note to Amina."))
+
+    started = client.post(f"{API}/laces/{lace}/contacts/{amina}/draft",
+                          json={"channel": "linkedin", "note": "Mention our Twiga pilot"})
+    assert started.status_code == 202
+    client.portal.call(_wait_for_status, uuid.UUID(started.json()["run_id"]), {"completed"})
+    assert written == [("Twiga", "https://linkedin.com/in/amina", "Caleb", "Mention our Twiga pilot")]
+    with psycopg.connect(settings.database_url) as conn:
+        assert conn.execute("SELECT channel, recipient_name FROM lace_outreach").fetchall() == [("linkedin", "Amina")]
+        # Asking for the draft cleared her; Peter still waits.
+        assert conn.execute("SELECT name FROM lace_contacts WHERE approved_at IS NOT NULL").fetchall() == [("Amina",)]
+
+
+def test_a_draft_needs_a_way_to_reach_them_and_a_contact_of_this_lace(client, lace, lace_runtime, user):  # noqa: F811
+    _account(lace, "Twiga", [ContactRecord(name="Peter", email="peter@twiga.test")])
+    with psycopg.connect(settings.database_url) as conn:
+        peter = str(conn.execute("SELECT id FROM lace_contacts WHERE name = 'Peter'").fetchone()[0])
+    missing = client.post(f"{API}/laces/{lace}/contacts/{peter}/draft", json={"channel": "linkedin"})
+    assert missing.status_code == 422 and "LinkedIn" in missing.json()["detail"]
+    client.sign_in(make_user("Intruder"))
+    assert client.post(f"{API}/laces/{lace}/contacts/{peter}/draft", json={"channel": "email"}).status_code == 404

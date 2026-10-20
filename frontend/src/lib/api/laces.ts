@@ -488,6 +488,15 @@ export function setLaceContactApproved(laceId: string, contactId: string, approv
   return apiFetch(`/api/v1/laces/${laceId}/contacts/${contactId}`, { method: "PATCH", body: JSON.stringify({ approved }) })
 }
 
+/** Ask the Lace to draft a first message to one person (approving them),
+ * with the founder's note. The draft lands in Messaging. */
+export function draftToLaceContact(laceId: string, contactId: string, channel: "email" | "linkedin",
+                                   note: string): Promise<{ run_id: string }> {
+  return apiFetch(`/api/v1/laces/${laceId}/contacts/${contactId}/draft`, {
+    method: "POST", body: JSON.stringify({ channel, note: note.trim() || null }),
+  })
+}
+
 /** Clear everyone found at one account for outreach. */
 export function approveLaceAccountContacts(laceId: string, accountId: string): Promise<{ approved: number }> {
   return apiFetch(`/api/v1/laces/${laceId}/accounts/${accountId}/contacts/approve`, { method: "POST" })

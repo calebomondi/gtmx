@@ -11,6 +11,7 @@ from backend.app.api.deps import CurrentUser, DbSession, OwnedLace
 from backend.app.runs import lace as lace_runs
 from backend.app.runs import manager
 from backend.app.schemas.laces import (
+    ContactDraftRequest,
     MoveResponse,
     DocumentResponse,
     ActivityReadResponse,
@@ -212,6 +213,22 @@ async def approve_contact(lace: OwnedLace, contact_id: uuid.UUID, payload: Conta
     contact = await lace_contacts.set_approved(db, lace.id, contact_id, payload.approved)
     account = await lace_accounts.get_in_lace(db, lace.id, contact.account_id)
     return _contact(contact, account.name)
+
+
+@router.post("/{lace_id}/contacts/{contact_id}/draft", response_model=JobStartedResponse,
+             status_code=status.HTTP_202_ACCEPTED)
+async def draft_to_contact(lace: OwnedLace, contact_id: uuid.UUID, payload: ContactDraftRequest, user: CurrentUser,
+                           db: DbSession):
+    """Ask the Lace to draft a first message to one person, on email or
+    LinkedIn, with the founder's note. Approves them. The draft lands in
+    Messaging for the founder to edit and send."""
+    account_id, person = await lace_contacts.person_to_draft(db, lace.id, contact_id, payload.channel)
+    try:
+        run = await manager.start_lace_job("lace_drafts", user.id, lace.id, {
+            "account_ids": [str(account_id)], "person": person, "note": payload.note})
+    except JobRefused as exc:
+        raise ConflictError(str(exc)) from None
+    return JobStartedResponse(run_id=run.id)
 
 
 @router.post("/{lace_id}/accounts/{account_id}/contacts/approve", response_model=AccountApprovalResponse)

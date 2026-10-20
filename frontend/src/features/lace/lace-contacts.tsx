@@ -8,15 +8,17 @@ import type { ContactDto } from "@/lib/api"
 
 import { byAccount, filterContacts } from "./contacts-model"
 
-const LINK = "grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+const LINK = "grid size-8 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
 
 /** The people the Lace found at saved accounts, by account, with how to reach
- * each. Nothing is drafted to anyone until the founder approves them: one by
- * one, or everyone at an account at once. */
-export function LaceContacts({ contacts, onApprove, onApproveAccount }: {
+ * each. A person (or their email or LinkedIn) opens them: their messages and
+ * a way to have the Lace write to them. Nothing is drafted to anyone until
+ * the founder approves them: one by one, or everyone at an account at once. */
+export function LaceContacts({ contacts, onApprove, onApproveAccount, onOpen }: {
   contacts: ContactDto[]
   onApprove: (contactId: string, approved: boolean) => void
   onApproveAccount: (accountId: string) => void
+  onOpen: (contact: ContactDto, channel: "email" | "linkedin" | null) => void
 }) {
   const [query, setQuery] = useState("")
   const groups = byAccount(filterContacts(contacts, query))
@@ -55,21 +57,26 @@ export function LaceContacts({ contacts, onApprove, onApproveAccount }: {
               {group.people.map((c) => (
                 <TableRow key={c.id}>
                   <TableCell className="max-w-56 whitespace-normal">
-                    <p className="font-medium">{c.name ?? c.email ?? "Unnamed"}</p>
+                    <button type="button" onClick={() => onOpen(c, null)}
+                            className="cursor-pointer text-left font-medium underline-offset-4 hover:underline">
+                      {c.name ?? c.email ?? "Unnamed"}
+                    </button>
                     {c.title && <p className="text-xs text-muted-foreground">{c.title}</p>}
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
                       {c.email && (
-                        <a href={`mailto:${c.email}`} title={c.email} aria-label={`Email ${c.name ?? c.email}`} className={LINK}>
+                        <button type="button" title={`Write to ${c.email}`} aria-label={`Email ${c.name ?? c.email}`}
+                                className={LINK} onClick={() => onOpen(c, "email")}>
                           <Mail className="size-4" />
-                        </a>
+                        </button>
                       )}
                       {c.linkedin && (
-                        <a href={c.linkedin} target="_blank" rel="noreferrer" aria-label={`${c.name ?? "Contact"} on LinkedIn`} className={LINK}>
+                        <button type="button" title="Message on LinkedIn" aria-label={`${c.name ?? "Contact"} on LinkedIn`}
+                                className={LINK} onClick={() => onOpen(c, "linkedin")}>
                           {/* lucide ships no brand marks: LinkedIn's "in", set in type. */}
                           <span aria-hidden className="text-xs font-bold">in</span>
-                        </a>
+                        </button>
                       )}
                     </div>
                   </TableCell>
