@@ -1,11 +1,21 @@
 import { useSyncExternalStore } from "react"
 
 import type { LaceState } from "@/components/lace-mascot"
-import { listLaces, updateLace, type LaceListItemDto } from "@/lib/api"
+import {
+  archiveLace as archiveLaceApi,
+  deleteLace as deleteLaceApi,
+  listArchivedLaces,
+  listLaces,
+  restoreLace as restoreLaceApi,
+  updateLace,
+  type LaceDto,
+  type LaceListItemDto,
+} from "@/lib/api"
 import { supabase } from "@/lib/supabase"
 
 export interface LacesState {
   laces: LaceListItemDto[]
+  archived: LaceDto[]
   loading: boolean
   /** True once a fetch has finished, so an empty list means "no Laces". */
   loaded: boolean
@@ -16,7 +26,7 @@ type Listener = () => void
 
 const listeners = new Set<Listener>()
 
-let state: LacesState = { laces: [], loading: false, loaded: false, error: null }
+let state: LacesState = { laces: [], archived: [], loading: false, loaded: false, error: null }
 
 function setState(patch: Partial<LacesState>): void {
   state = { ...state, ...patch }
@@ -40,8 +50,8 @@ export async function refetchLaces(): Promise<void> {
   setState({ loading: true, error: null })
   try {
     const { data } = await supabase.auth.getSession()
-    const laces = data.session ? await listLaces() : []
-    setState({ laces, loading: false, loaded: true })
+    const [laces, archived] = data.session ? await Promise.all([listLaces(), listArchivedLaces()]) : [[], []]
+    setState({ laces, archived, loading: false, loaded: true })
   } catch (err) {
     setState({ loading: false, error: err instanceof Error ? err.message : String(err) })
   }
@@ -67,6 +77,25 @@ export async function toggleLacePin(laceId: string): Promise<void> {
     setState({ error: err instanceof Error ? err.message : String(err) })
     throw err
   }
+}
+
+/** Archive, restore or delete a Lace, then reload both lists (a restored
+ * Lace comes back with its mood). Errors are the caller's to show. */
+export async function archiveLace(laceId: string): Promise<LaceDto> {
+  const lace = await archiveLaceApi(laceId)
+  await refetchLaces()
+  return lace
+}
+
+export async function restoreLace(laceId: string): Promise<LaceDto> {
+  const lace = await restoreLaceApi(laceId)
+  await refetchLaces()
+  return lace
+}
+
+export async function deleteLace(laceId: string): Promise<void> {
+  await deleteLaceApi(laceId)
+  await refetchLaces()
 }
 
 /** The mascot a Lace shows in the sidebar. Its mood when something is going

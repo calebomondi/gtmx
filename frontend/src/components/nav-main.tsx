@@ -22,7 +22,8 @@ export interface NavLaceItem {
   id: string
   title: string
   url: string
-  pinned: boolean
+  /** Absent for Laces that can't be pinned (archived ones). */
+  pinned?: boolean
   /** Shown before the title: the Lace's mascot. */
   icon: React.ReactNode
 }
@@ -74,7 +75,7 @@ export function NavMain({
                     >
                       {subItem.icon}
                       <span className="truncate">{subItem.title}</span>
-                      {onTogglePin && (
+                      {onTogglePin && subItem.pinned !== undefined && (
                         <button
                           type="button"
                           aria-label={

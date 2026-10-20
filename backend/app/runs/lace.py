@@ -68,6 +68,11 @@ def thread_config(lace_id: uuid.UUID) -> dict:
     return {"configurable": {"thread_id": f"lace:{lace_id}"}}
 
 
+async def forget_thread(lace_id: uuid.UUID) -> None:
+    """Drop the Lace's conversation from the checkpointer."""
+    await get_checkpointer().adelete_thread(thread_config(lace_id)["configurable"]["thread_id"])
+
+
 def _graph(lace_id: uuid.UUID, jobs: LaceJobs | None = None):
     store = DbLaceStore(AsyncSessionLocal, lace_id)
     return build_lace_graph(store, checkpointer=get_checkpointer(), jobs=jobs), store

@@ -81,6 +81,13 @@ async def list_laces(user: CurrentUser, db: DbSession,
             for s in await lace_service.list_for_user(db, user.id, limit)]
 
 
+# Declared before /{lace_id}, which would otherwise take "archived" as an id.
+@router.get("/archived", response_model=list[LaceResponse])
+async def list_archived_laces(user: CurrentUser, db: DbSession,
+                              limit: int = Query(default=20, ge=1, le=MAX_LACES_PER_PAGE)):
+    return await lace_service.list_archived(db, user.id, limit)
+
+
 # Declared before /{lace_id}, which would otherwise take "search" as an id.
 @router.get("/search", response_model=list[LaceSearchHit])
 async def search_laces(user: CurrentUser, db: DbSession,
@@ -111,6 +118,37 @@ async def update_lace(lace: OwnedLace, payload: LaceUpdate, db: DbSession):
     if payload.pinned is not None:
         lace = await lace_service.set_pinned(db, lace, payload.pinned)
     return lace
+
+
+@router.post("/{lace_id}/archive", response_model=LaceResponse)
+async def archive_lace(lace: OwnedLace, db: DbSession):
+    """Out of the sidebar and the scheduled work, kept whole. 409 while it is working."""
+    return await lace_service.archive(db, lace)
+
+
+@router.post("/{lace_id}/restore", response_model=LaceResponse)
+async def restore_lace(lace: OwnedLace, user: CurrentUser, db: DbSession):
+    lace = await lace_service.restore(db, lace)
+    # Updates that came in while it was archived.
+    await manager.wake_lace(user.id, lace.id)
+    return lace
+
+
+@router.delete("/{lace_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_lace(lace: OwnedLace, db: DbSession):
+    """The Lace and everything it found or wrote, for good. 409 while it is working."""
+    lace_id = lace.id
+    await lace_service.delete_lace(db, lace)
+    await lace_runs.forget_thread(lace_id)
+
+
+@router.post("/{lace_id}/onboarding", response_model=LaceTurnResponse, status_code=status.HTTP_202_ACCEPTED)
+async def retry_onboarding(lace: OwnedLace, user: CurrentUser, db: DbSession):
+    """Read the site again after an onboarding that failed."""
+    await lace_service.prepare_onboarding_retry(db, lace)
+    await lace_runs.forget_thread(lace.id)
+    run = await manager.start_lace_onboarding(user.id, lace.id)
+    return LaceTurnResponse(run_id=run.id)
 
 
 @router.get("/{lace_id}/facts", response_model=list[FactResponse])

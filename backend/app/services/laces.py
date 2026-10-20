@@ -1,10 +1,11 @@
-"""Laces: create one, find the user's own, and read what it knows."""
+"""Laces: create one, find the user's own, archive, restore or delete one,
+and read what it knows."""
 
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import Select, and_, exists, func, or_, select
+from sqlalchemy import Select, and_, delete, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database.lace_models import (
@@ -32,16 +33,66 @@ async def create(db: AsyncSession, user_id: uuid.UUID, name: str, website: str,
         raise InvalidInputError("Give your Lace a name.")
     if "." not in domain_key(website):
         raise InvalidInputError("That doesn't look like a website address.")
-    owned = await db.scalar(select(func.count()).select_from(Lace).where(
-        Lace.user_id == user_id, Lace.status != "archived"))
-    if owned >= settings.max_laces_per_user:
-        raise ConflictError(f"You can have up to {settings.max_laces_per_user} Laces.")
+    await _ensure_room(db, user_id)
     # Checked before the insert, so a refused onboarding leaves no Lace behind.
     await limits.ensure_can_start(db, user_id, "lace_onboarding")
     lace = Lace(user_id=user_id, name=name, website=website, timezone=timezone or "UTC")
     db.add(lace)
     await db.commit()
     return lace
+
+
+async def _ensure_room(db: AsyncSession, user_id: uuid.UUID) -> None:
+    """Archived Laces don't count towards the cap."""
+    live = await db.scalar(select(func.count()).select_from(Lace).where(
+        Lace.user_id == user_id, Lace.status != "archived"))
+    if live >= settings.max_laces_per_user:
+        raise ConflictError(f"You can have up to {settings.max_laces_per_user} Laces.")
+
+
+async def _ensure_idle(db: AsyncSession, lace: Lace) -> None:
+    """Refuses while any run of the Lace's is unfinished: a run would keep
+    writing to a Lace that was archived or deleted under it."""
+    if await db.scalar(select(exists().where(Run.lace_id == lace.id, Run.status.not_in(TERMINAL_STATUSES)))):
+        raise ConflictError(f"{lace.name} is still working. Try again when it has finished.")
+
+
+async def archive(db: AsyncSession, lace: Lace) -> Lace:
+    """Out of the sidebar, the Feed and the scheduled work; kept whole."""
+    await _ensure_idle(db, lace)
+    lace.status = "archived"
+    await db.commit()
+    return lace
+
+
+async def restore(db: AsyncSession, lace: Lace) -> Lace:
+    """Back as it was: active if it finished onboarding, else still onboarding."""
+    if lace.status != "archived":
+        return lace
+    await _ensure_room(db, lace.user_id)
+    onboarded = await db.scalar(select(exists().where(
+        Run.lace_id == lace.id, Run.kind == "lace_onboarding", Run.status == "completed")))
+    lace.status = "active" if onboarded else "onboarding"
+    await db.commit()
+    return lace
+
+
+async def delete_lace(db: AsyncSession, lace: Lace) -> None:
+    """Gone with everything under it. Its runs stay, unlinked, as the record
+    of what they cost."""
+    await _ensure_idle(db, lace)
+    await db.delete(lace)
+    await db.commit()
+
+
+async def prepare_onboarding_retry(db: AsyncSession, lace: Lace) -> None:
+    """Clears what a failed onboarding saved, so reading the site again
+    doesn't record its facts twice. Only for a Lace that never finished."""
+    if lace.status != "onboarding":
+        raise ConflictError(f"{lace.name} has already read your site.")
+    await _ensure_idle(db, lace)
+    await db.execute(delete(LaceFact).where(LaceFact.lace_id == lace.id, LaceFact.origin == "crawl"))
+    await db.commit()
 
 
 @dataclass(frozen=True)
@@ -75,6 +126,12 @@ async def list_for_user(db: AsyncSession, user_id: uuid.UUID, limit: int) -> lis
     )
     return [LaceSummary(lace, "thinking" if busy else "alert" if needs else None, active)
             for lace, busy, needs, active in rows.all()]
+
+
+async def list_archived(db: AsyncSession, user_id: uuid.UUID, limit: int) -> list[Lace]:
+    """The user's archived Laces, most recently changed first."""
+    return list((await db.scalars(select(Lace).where(Lace.user_id == user_id, Lace.status == "archived")
+                                  .order_by(Lace.updated_at.desc()).limit(limit))).all())
 
 
 async def set_pinned(db: AsyncSession, lace: Lace, pinned: bool) -> Lace:

@@ -75,6 +75,8 @@ export interface LaceChat {
   /** The reply as it is being written; empty when nothing is streaming. */
   draft: string
   send: (text: string) => Promise<void>
+  /** Load the Lace again, e.g. after it was archived or restored. */
+  reload: () => Promise<void>
   dismissCompetitor: (competitorId: string) => Promise<void>
   dismissAccount: (accountId: string) => Promise<void>
   saveDraft: (messageId: string, changes: LaceOutreachChanges) => Promise<void>
@@ -354,7 +356,7 @@ export function useLaceChat(laceId: string): LaceChat {
   return {
     lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, waiting, drafting, findingOpportunities,
     loading, error,
-    working, step, draft, send, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, sendingSoon,
+    working, step, draft, send, reload: refresh, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, sendingSoon,
     undoSend, markSent, findContacts, contacts, approveContact, approveAccountContacts, saveCompetitor, saveAccount, decideOpportunity, suggestedCompetitors,
     suggestedAccounts,
   }

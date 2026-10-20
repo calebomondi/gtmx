@@ -15,7 +15,7 @@ import {
   useSidebar,
   SidebarTrigger
 } from "@/components/ui/sidebar"
-import { Pin, Layers, LayoutGrid, LogInIcon } from "lucide-react"
+import { Pin, Archive, Layers, LayoutGrid, LogInIcon } from "lucide-react"
 import { Link } from "react-router-dom"
 import { Lace } from "@/components/lace-mascot"
 import { getCurrentUser, type LaceListItemDto } from "@/lib/api"
@@ -72,7 +72,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { state, toggleSidebar, isMobile } = useSidebar()
   // On phones the sidebar is a slide-over, always shown in full.
   const expanded = state === "expanded" || isMobile
-  const { laces } = useLaces()
+  const { laces, archived } = useLaces()
   const { user: authUser } = useAuth()
   const [user, setUser] = React.useState<{
     name: string
@@ -141,6 +141,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       isActive: true,
       items: laces.map(toNavItem("all")),
     },
+    // Only when there are some, and closed: they do no work.
+    ...(archived.length > 0 ? [{
+      title: "Archived",
+      url: "#",
+      icon: <Archive />,
+      isActive: false,
+      items: archived.map((lace) => ({
+        id: lace.id,
+        title: lace.name,
+        url: `/lace/${lace.id}`,
+        icon: <Lace state="sleepy" size={MASCOT_PX} decorative />,
+      })),
+    }] : []),
   ]
 
   return (
