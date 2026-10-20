@@ -4,80 +4,99 @@ import { ArrowRight, CheckCheck, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { ActivityDto } from "@/lib/api"
-import { formatRelativeTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
+import { byDay, dayLabel, timeOfDay } from "./activity-days"
 import { ACTIVITY_ACTIONS, type FeedTarget } from "./lace-activity-actions"
 import type { LaceActivity } from "./use-lace-activity"
 import { useOpenedItems } from "./viewer-memory"
 
-/** One thing a Lace did or found, with the button that acts on it. `lace`
- * names which Lace, in the feed across all of them. Once the founder has
- * followed it (`opened`) it quiets down and says so. */
-export function ActivityRow({ item, fresh, opened = false, onOpen, lace }: {
-  item: ActivityDto
+/** One step of a day: the time, a node on the rail (filled while new, hollow
+ * once followed, red for a failure), and what happened with its action. */
+function Step<T extends ActivityDto>({ item, fresh, opened, last, onOpen, tag }: {
+  item: T
   fresh: boolean
-  opened?: boolean
+  opened: boolean
+  last: boolean
   onOpen: (target: FeedTarget) => void
-  lace?: ReactNode
+  tag?: ReactNode
 }) {
   const action = ACTIVITY_ACTIONS[item.kind]
+  const failed = item.kind === "job_failed"
   return (
-    <li className={cn("relative py-3 pl-3", opened && "opacity-70")}>
-      {/* A thin rail on the left: the theme colour while new, red for a failure. */}
-      <span aria-hidden className={cn("absolute top-3.5 bottom-3.5 left-0 w-0.5 rounded-full",
-                                      item.kind === "job_failed" ? "bg-destructive" : fresh ? "bg-theme" : "bg-border")} />
-      {lace}
-      <p className={cn("text-sm break-words", opened ? "font-normal" : "font-medium")}>{item.title}</p>
-      {item.summary && (
-        <p className="mt-0.5 line-clamp-3 text-sm whitespace-pre-line text-muted-foreground">{item.summary}</p>
-      )}
-      <div className="mt-1 flex items-center justify-between gap-2">
-        <span className="flex items-center gap-2 text-xs text-muted-foreground">
-          {formatRelativeTime(Date.parse(item.created_at))}
-          {opened && <span className="flex items-center gap-1"><CheckCheck className="size-3.5" /> Opened</span>}
-        </span>
-        <Button size="sm" variant={opened ? "ghost" : "outline"} className="-my-1" onClick={() => onOpen(action.target)}>
-          {action.label} <ArrowRight />
-        </Button>
+    <li className="grid grid-cols-[4.25rem_1.25rem_1fr] gap-x-2">
+      <time dateTime={item.created_at} className="pt-0.5 text-right text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+        {timeOfDay(item.created_at)}
+      </time>
+      <div className="relative flex justify-center">
+        <span aria-hidden className={cn("relative z-[1] mt-1 size-3 rounded-full border-2",
+                                        failed ? "border-destructive bg-destructive"
+                                          : opened ? "border-muted-foreground/50 bg-background"
+                                            : fresh ? "border-theme bg-theme shadow-[0_0_10px] shadow-theme/60"
+                                              : "border-theme bg-background")} />
+        {!last && <span aria-hidden className="absolute top-4 bottom-0 w-px bg-border" />}
+      </div>
+      <div className={cn("min-w-0 pb-5", opened && "opacity-70")}>
+        {tag}
+        <p className={cn("text-sm break-words", opened ? "font-normal" : "font-medium")}>{item.title}</p>
+        {item.summary && (
+          <p className="mt-0.5 line-clamp-3 text-sm whitespace-pre-line text-muted-foreground">{item.summary}</p>
+        )}
+        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <Button size="xs" variant={opened ? "ghost" : "outline"} onClick={() => onOpen(action.target)}>
+            {action.label} <ArrowRight />
+          </Button>
+          {opened && <span className="flex items-center gap-1 text-xs text-muted-foreground"><CheckCheck className="size-3.5" /> Opened</span>}
+        </div>
       </div>
     </li>
   )
 }
 
-const DAY_MS = 86_400_000
-
-/** "Today", "Yesterday", "This week" or "Earlier", by the founder's clock. */
-function dayGroup(iso: string, now = new Date()): string {
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-  const at = Date.parse(iso)
-  if (at >= startOfToday) return "Today"
-  if (at >= startOfToday - DAY_MS) return "Yesterday"
-  if (at >= startOfToday - 6 * DAY_MS) return "This week"
-  return "Earlier"
+/** Activity as one stepper per day: a card for each day, its updates as
+ * steps on a rail, newest first. Followed items are remembered (across
+ * every Lace, so Home and each Feed agree) and quiet down. `tag` labels a
+ * step, e.g. with its Lace on Home. */
+export function ActivityStepper<T extends ActivityDto>({ items, isFresh, onOpen, tag }: {
+  items: T[]
+  isFresh: (item: T) => boolean
+  onOpen: (item: T, target: FeedTarget) => void
+  tag?: (item: T) => ReactNode
+}) {
+  const [opened, markOpened] = useOpenedItems("activity")
+  return (
+    <div className="flex flex-col gap-4">
+      {byDay(items).map((group) => (
+        <section key={group.day} aria-label={dayLabel(group.day)} className="rounded-xl border bg-card">
+          <h3 className="flex items-baseline justify-between gap-2 border-b px-4 py-2.5">
+            <span className="text-sm font-medium">{dayLabel(group.day)}</span>
+            <span className="text-xs text-muted-foreground">
+              {group.items.length} {group.items.length === 1 ? "update" : "updates"}
+            </span>
+          </h3>
+          <ol className="px-2 pt-4 pr-4">
+            {group.items.map((item, i) => (
+              <Step key={item.id} item={item} fresh={isFresh(item)} opened={opened.has(item.id)}
+                    last={i === group.items.length - 1} tag={tag?.(item)}
+                    onOpen={(target) => {
+                      markOpened(item.id)
+                      onOpen(item, target)
+                    }} />
+            ))}
+          </ol>
+        </section>
+      ))}
+    </div>
+  )
 }
 
-/** Consecutive items under one day label; items arrive newest first. */
-function byDay(items: ActivityDto[]): { label: string; items: ActivityDto[] }[] {
-  const groups: { label: string; items: ActivityDto[] }[] = []
-  for (const item of items) {
-    const label = dayGroup(item.created_at)
-    const last = groups[groups.length - 1]
-    if (last?.label === label) last.items.push(item)
-    else groups.push({ label, items: [item] })
-  }
-  return groups
-}
-
-/** What the Lace did or found, newest first and grouped by day, each with a
- * way to act on it; the ones already followed are marked. */
+/** What the Lace did or found, as a stepper per day, each with a way to act
+ * on it. */
 export function LaceActivityList({ activity, name, onOpen }: {
   activity: LaceActivity
   name: string
   onOpen: (target: FeedTarget) => void
 }) {
-  // One set across every Lace, so Home and each Feed agree.
-  const [opened, markOpened] = useOpenedItems("activity")
   if (activity.loading) {
     return <div className="flex flex-col gap-3"><Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" /></div>
   }
@@ -90,22 +109,7 @@ export function LaceActivityList({ activity, name, onOpen }: {
   }
   return (
     <div className="flex flex-col">
-      {byDay(activity.items).map((group) => (
-        <section key={group.label} aria-label={group.label} className="mb-3">
-          <h3 className="sticky top-12 z-[5] bg-background/90 py-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase backdrop-blur">
-            {group.label}
-          </h3>
-          <ul className="divide-y rounded-xl border bg-card px-4">
-            {group.items.map((item) => (
-              <ActivityRow key={item.id} item={item} fresh={activity.isNew(item)} opened={opened.has(item.id)}
-                           onOpen={(target) => {
-                             markOpened(item.id)
-                             onOpen(target)
-                           }} />
-            ))}
-          </ul>
-        </section>
-      ))}
+      <ActivityStepper items={activity.items} isFresh={activity.isNew} onOpen={(_, target) => onOpen(target)} />
       {activity.hasMore && (
         <Button variant="ghost" size="sm" className="mt-2 self-center" onClick={() => void activity.loadMore()}>
           <FileText /> Older activity
