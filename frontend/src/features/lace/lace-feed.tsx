@@ -8,7 +8,9 @@ import { accountItem, competitorItem, opportunityItem } from "./feed-review"
 import { LaceAccounts } from "./lace-accounts"
 import { LaceFunnel } from "./lace-funnel"
 import { LaceCompetitors } from "./lace-competitors"
-import { discussAccount, discussCompetitor, discussMove, discussOpportunity } from "./discuss"
+import { discussAccount, discussBrief, discussCompetitor, discussMove, discussOpportunity } from "./discuss"
+import { LaceLatestBrief } from "./lace-latest-brief"
+import { useLatestBrief } from "./use-latest-brief"
 import { useLaceMoves } from "./use-lace-moves"
 import { useSeenAt } from "./viewer-memory"
 import { LaceOpportunities } from "./lace-opportunities"
@@ -71,6 +73,8 @@ export function LaceFeed({ laceId, name, chat, activity, opps, onOpen, onDiscuss
   const [section, setSection] = useSection<FeedSection>(FEED_SECTIONS)
   // Refetched as new activity arrives (a competitor check finished).
   const moves = useLaceMoves(laceId, activity.items[0]?.id ?? "")
+  // A brief's Feed item changes when the brief is written, so key on its summary too.
+  const { brief } = useLatestBrief(laceId, `${activity.items[0]?.id ?? ""}:${activity.items[0]?.summary ?? ""}`)
   const [movesSeenAt, markMovesSeen] = useSeenAt<string>(`${laceId}.moves`)
   const needs = needsYou(chat.waiting, activity.items.filter((a) => a.kind === "job_failed" && activity.isNew(a)), {
     opportunities: opps.suggested.length, accounts: chat.suggestedAccounts.length,
@@ -82,6 +86,7 @@ export function LaceFeed({ laceId, name, chat, activity, opps, onOpen, onDiscuss
       value: "activity", label: "Activity", waiting: activity.unread,
       content: (
         <>
+          <LaceLatestBrief brief={brief} name={name} onDiscuss={() => brief && onDiscuss(discussBrief(brief))} />
           <PanelIntro>What {name} did and found, newest first.</PanelIntro>
           <LaceActivityList activity={activity} name={name} onOpen={onOpen} />
         </>

@@ -19,7 +19,7 @@ export interface FeedTarget {
 
 /** Where each kind of activity takes the founder, and what the button says. */
 export const ACTIVITY_ACTIONS: Record<ActivityKind, { label: string; target: FeedTarget }> = {
-  brief: { label: "Read in chat", target: { tab: "chat" } },
+  brief: { label: "Read the brief", target: { tab: "feed", section: "activity" } },
   competitors_found: { label: "See competitors", target: { tab: "feed", section: "competitors" } },
   competitor_moves: { label: "See competitors", target: { tab: "feed", section: "competitors" } },
   accounts_found: { label: "See accounts", target: { tab: "feed", section: "accounts" } },

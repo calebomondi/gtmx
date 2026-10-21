@@ -460,6 +460,21 @@ export interface BriefSettingsDto {
 export type BriefSettingsChanges = Partial<Pick<BriefSettingsDto,
   "brief_frequency" | "brief_hour" | "timezone" | "brief_email" | "quiet_hours">>
 
+/** A Lace's latest brief, for the top of its Feed. Mirrors BriefResponse. */
+export interface LaceBriefDto {
+  id: string
+  created_at: string
+  posted_at: string | null
+  /** The Lace's brief, once written. */
+  body: string | null
+  state: "writing" | "posted" | "missed"
+}
+
+/** Null until the Lace has posted its first brief. */
+export function getLatestLaceBrief(laceId: string): Promise<LaceBriefDto | null> {
+  return apiFetch<LaceBriefDto | null>(`/api/v1/laces/${laceId}/briefs/latest`)
+}
+
 export function getLaceBrief(laceId: string): Promise<BriefSettingsDto> {
   return apiFetch<BriefSettingsDto>(`/api/v1/laces/${laceId}/brief`)
 }

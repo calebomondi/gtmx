@@ -15,13 +15,12 @@ from backend.app.database.connect import AsyncSessionLocal
 from backend.app.database.lace_models import Lace, LaceBrief
 from backend.app.runs import manager
 from backend.app.services import inbox as inbox_service
-from backend.app.services import lace_brief_email, lace_briefs, lace_competitors, lace_opportunities, social_inbox
+from backend.app.services import lace_activity, lace_brief_email, lace_briefs, lace_competitors, lace_opportunities, social_inbox
+from backend.app.services.lace_activity import BRIEF_TITLE, BRIEF_WRITING
 from config import settings
 from utils.log import logger
 
 _tasks: list[asyncio.Task] = []
-# A brief that could not be posted within this long is dropped for the next one.
-_PENDING_BRIEF_MAX_AGE = timedelta(hours=12)
 
 
 async def sweep_laces() -> int:
@@ -67,11 +66,13 @@ async def sweep_briefs(now: datetime | None = None) -> int:
                 brief = LaceBrief(lace_id=lace.id, digest=digest)
                 db.add(brief)
                 await db.flush()
+                # On the Feed straight away; filled in once the Lace has written it.
+                await lace_activity.add(db, lace.id, "brief", BRIEF_TITLE, BRIEF_WRITING, ref=("brief", brief.id))
                 to_post.append((lace.user_id, lace.id, brief.id, brief_request(digest, lace.brief_frequency,
                                                                               _since_label(since, lace))))
         # Briefs still waiting from an earlier sweep (the Lace was busy then).
         waiting = (await db.execute(select(LaceBrief, Lace).join(Lace, Lace.id == LaceBrief.lace_id).where(
-            LaceBrief.posted_at.is_(None), LaceBrief.created_at >= now - _PENDING_BRIEF_MAX_AGE))).all()
+            LaceBrief.posted_at.is_(None), LaceBrief.created_at >= now - lace_briefs.PENDING_MAX_AGE))).all()
         await db.commit()
     queued = {brief_id for _, _, brief_id, _ in to_post}
     to_post += [(lace.user_id, lace.id, brief.id, brief_request(brief.digest, lace.brief_frequency,

@@ -306,6 +306,17 @@ class BriefSettings(BaseModel):
     last_brief_at: datetime | None = None
 
 
+class BriefResponse(BaseModel):
+    """A Lace's latest brief, for the top of its Feed."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    created_at: datetime
+    posted_at: datetime | None = None
+    body: str | None = Field(default=None, description="The Lace's brief, once written")
+    state: Literal["writing", "posted", "missed"]
+
+
 class BriefSettingsUpdate(BaseModel):
     brief_frequency: BriefFrequency | None = None
     brief_hour: int | None = Field(default=None, ge=0, le=23)

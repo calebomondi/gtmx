@@ -2,7 +2,7 @@ import type { ActivityDto } from "@/lib/api"
 
 const DAY_MS = 86_400_000
 
-function startOfDay(at: Date): number {
+export function startOfDay(at: Date): number {
   return new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime()
 }
 

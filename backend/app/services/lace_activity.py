@@ -15,6 +15,9 @@ from backend.app.database.lace_models import Lace, LaceActivity
 # Names quoted in an activity's summary; the rest are counted.
 NAMES_SHOWN = 3
 TITLE_CHARS = 200
+# A brief's Feed item: its title, and its summary until the Lace has written it.
+BRIEF_TITLE = "Your brief"
+BRIEF_WRITING = "Writing it now…"
 
 
 def names(items: Sequence[str]) -> str:
@@ -37,6 +40,14 @@ async def add(db: AsyncSession, lace_id: uuid.UUID, kind: ActivityKind, title: s
     ref_type, ref_id = ref if ref else (None, None)
     db.add(LaceActivity(lace_id=lace_id, kind=kind, title=title[:TITLE_CHARS], summary=summary,
                         ref_type=ref_type, ref_id=ref_id))
+
+
+async def fill_ref(db: AsyncSession, ref_type: ActivityRef, ref_id: uuid.UUID, summary: str) -> bool:
+    """Set the summary of the item about this ref and show it as new again.
+    False when there is no such item."""
+    result = await db.execute(update(LaceActivity).where(
+        LaceActivity.ref_type == ref_type, LaceActivity.ref_id == ref_id).values(summary=summary, read_at=None))
+    return bool(result.rowcount)
 
 
 async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, limit: int,

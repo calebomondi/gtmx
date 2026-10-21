@@ -3,6 +3,7 @@ last brief, assembled from the database, so the Lace writes from facts."""
 
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import func, select
@@ -24,6 +25,10 @@ SECTION_LINES = 5
 CLOSING_SOON_DAYS = 7
 # How far back a first brief looks.
 FIRST_BRIEF_LOOKBACK = timedelta(days=1)
+# A brief that could not be posted within this long is dropped for the next one.
+PENDING_MAX_AGE = timedelta(hours=12)
+# Shown on the Feed while being written, once written, or never written in time.
+BriefState = Literal["writing", "posted", "missed"]
 
 
 def zone(name: str) -> ZoneInfo:
@@ -133,6 +138,17 @@ def since_for(lace: Lace, now: datetime) -> datetime:
 async def unposted(db: AsyncSession, lace_id: uuid.UUID) -> LaceBrief | None:
     return await db.scalar(select(LaceBrief).where(LaceBrief.lace_id == lace_id, LaceBrief.posted_at.is_(None))
                            .order_by(LaceBrief.created_at.desc()).limit(1))
+
+
+async def latest(db: AsyncSession, lace_id: uuid.UUID) -> LaceBrief | None:
+    return await db.scalar(select(LaceBrief).where(LaceBrief.lace_id == lace_id)
+                           .order_by(LaceBrief.created_at.desc()).limit(1))
+
+
+def state(brief: LaceBrief, now: datetime) -> BriefState:
+    if brief.posted_at is not None:
+        return "posted"
+    return "missed" if brief.created_at < now - PENDING_MAX_AGE else "writing"
 
 
 async def mark_posted(db: AsyncSession, brief_id: uuid.UUID, body: str) -> None:

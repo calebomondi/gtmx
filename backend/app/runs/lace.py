@@ -216,7 +216,11 @@ async def brief_segment(run_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UU
     reply = await _converse(run_id, lace_id, _brief_message(request), jobs)
     async with AsyncSessionLocal() as db, db.begin():
         await lace_briefs.mark_posted(db, brief_id, reply)
-        await lace_activity.add(db, lace_id, "brief", "Your brief", _first_line(reply), ref=("brief", brief_id))
+        # Its Feed item went up when the brief was due; one held back from an
+        # older sweep may predate that.
+        if not await lace_activity.fill_ref(db, "brief", brief_id, _first_line(reply)):
+            await lace_activity.add(db, lace_id, "brief", lace_activity.BRIEF_TITLE, _first_line(reply),
+                                    ref=("brief", brief_id))
     await lace_brief_email.email_brief(brief_id, datetime.now(UTC))
     await _finish(run_id, reply)
 
