@@ -1,5 +1,3 @@
-import type { ActivityDto } from "@/lib/api"
-
 const DAY_MS = 86_400_000
 
 export function startOfDay(at: Date): number {
@@ -23,11 +21,12 @@ export function timeOfDay(iso: string): string {
   return new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
 }
 
-/** Items (newest first) in one group per calendar day, newest day first. */
-export function byDay<T extends ActivityDto>(items: T[]): { day: number; items: T[] }[] {
+/** Items (newest first) in one group per calendar day, newest day first;
+ * `when` says when each happened. */
+export function byDay<T>(items: T[], when: (item: T) => string): { day: number; items: T[] }[] {
   const days: { day: number; items: T[] }[] = []
   for (const item of items) {
-    const day = startOfDay(new Date(item.created_at))
+    const day = startOfDay(new Date(when(item)))
     const last = days[days.length - 1]
     if (last?.day === day) last.items.push(item)
     else days.push({ day, items: [item] })

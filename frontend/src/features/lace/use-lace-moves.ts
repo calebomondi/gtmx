@@ -2,10 +2,10 @@ import { useEffect, useState } from "react"
 
 import { listLaceMoves, type LaceMoveDto } from "@/lib/api"
 
-/** A Lace's competitor moves by competitor, newest first. Refetched when
- * `refreshKey` changes (a check finished). A failure leaves them empty: the
- * competitors still show. */
-export function useLaceMoves(laceId: string, refreshKey: string): ReadonlyMap<string, LaceMoveDto[]> {
+/** A Lace's competitor moves, newest first. Refetched when `refreshKey`
+ * changes (a check finished). A failure leaves them empty: the competitors
+ * still show. */
+export function useLaceMoves(laceId: string, refreshKey: string): LaceMoveDto[] {
   const [moves, setMoves] = useState<LaceMoveDto[]>([])
 
   useEffect(() => {
@@ -16,7 +16,5 @@ export function useLaceMoves(laceId: string, refreshKey: string): ReadonlyMap<st
     return () => { cancelled = true }
   }, [laceId, refreshKey])
 
-  const byCompetitor = new Map<string, LaceMoveDto[]>()
-  for (const move of moves) byCompetitor.set(move.competitor_id, [...(byCompetitor.get(move.competitor_id) ?? []), move])
-  return byCompetitor
+  return moves
 }

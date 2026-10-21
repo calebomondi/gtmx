@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { ArrowRight } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -7,6 +8,7 @@ import { LaceActivityList } from "./lace-activity"
 import { accountItem, competitorItem, opportunityItem } from "./feed-review"
 import { LaceAccounts } from "./lace-accounts"
 import { LaceFunnel } from "./lace-funnel"
+import { CompetitorMovesStepper } from "./lace-competitor-moves"
 import { LaceCompetitors } from "./lace-competitors"
 import { discussAccount, discussBrief, discussCompetitor, discussMove, discussOpportunity } from "./discuss"
 import { LaceLatestBrief } from "./lace-latest-brief"
@@ -75,7 +77,15 @@ export function LaceFeed({ laceId, name, chat, activity, opps, onOpen, onDiscuss
   const moves = useLaceMoves(laceId, activity.items[0]?.id ?? "")
   // A brief's Feed item changes when the brief is written, so key on its summary too.
   const { brief } = useLatestBrief(laceId, `${activity.items[0]?.id ?? ""}:${activity.items[0]?.summary ?? ""}`)
-  const [movesSeenAt, markMovesSeen] = useSeenAt<string>(`${laceId}.moves`)
+  const [movesSeenAt, markMovesSeen] = useSeenAt<"all">(`${laceId}.moves`)
+  // The competitor the moves stepper shows; null for all of them.
+  const [movesOf, setMovesOf] = useState<string | null>(null)
+  const moveCounts = new Map<string, number>()
+  for (const move of moves) moveCounts.set(move.competitor_id, (moveCounts.get(move.competitor_id) ?? 0) + 1)
+  const showMoves = (competitorId: string) => {
+    setMovesOf(competitorId)
+    document.getElementById("competitor-moves")?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
   const needs = needsYou(chat.waiting, activity.items.filter((a) => a.kind === "job_failed" && activity.isNew(a)), {
     opportunities: opps.suggested.length, accounts: chat.suggestedAccounts.length,
     competitors: chat.suggestedCompetitors.length,
@@ -127,11 +137,12 @@ export function LaceFeed({ laceId, name, chat, activity, opps, onOpen, onDiscuss
           <PanelIntro>Companies your buyers could pay instead of you, profiled from sources and watched for moves.</PanelIntro>
           <LaceReview items={chat.suggestedCompetitors.map(competitorItem)} saveLabel="Track"
                       onSave={(id) => void chat.saveCompetitor(id)} onDismiss={(id) => void chat.dismissCompetitor(id)} />
+          <CompetitorMovesStepper moves={moves} competitor={movesOf} onCompetitor={setMovesOf}
+                                  seenAt={movesSeenAt("all")} onSeen={() => markMovesSeen("all")} name={name}
+                                  onDiscuss={(m) => onDiscuss(discussMove(m.competitor_name, m.title, m.detected_at, m.sources))} />
           <LaceCompetitors competitors={chat.competitors} searching={chat.searching}
-                           onDismiss={(id) => void chat.dismissCompetitor(id)} moves={moves}
-                           movesSeenAt={movesSeenAt} onMovesSeen={markMovesSeen} name={name}
-                           onDiscussMove={(m) => onDiscuss(discussMove(m.competitor_name, m.title, m.detected_at, m.sources))}
-                           onDiscuss={(c) => onDiscuss(discussCompetitor(c))} />
+                           onDismiss={(id) => void chat.dismissCompetitor(id)} moveCounts={moveCounts}
+                           onShowMoves={showMoves} name={name} onDiscuss={(c) => onDiscuss(discussCompetitor(c))} />
         </>
       ),
     },

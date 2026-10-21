@@ -66,7 +66,7 @@ export function ActivityStepper<T extends ActivityDto>({ items, isFresh, onOpen,
   const [opened, markOpened] = useOpenedItems("activity")
   return (
     <div className="flex flex-col gap-4">
-      {byDay(items).map((group) => (
+      {byDay(items, (item) => item.created_at).map((group) => (
         <section key={group.day} aria-label={dayLabel(group.day)} className="rounded-xl border bg-card">
           <h3 className="flex items-baseline justify-between gap-2 border-b px-4 py-2.5">
             <span className="text-sm font-medium">{dayLabel(group.day)}</span>
