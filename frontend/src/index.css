@@ -48,6 +48,9 @@
     --radius-2xl: calc(var(--radius) * 1.8);
     --radius-3xl: calc(var(--radius) * 2.2);
     --radius-4xl: calc(var(--radius) * 2.6);
+    --animate-thread-drift-slow: thread-drift 48s linear infinite;
+    --animate-thread-drift-slower: thread-drift 72s linear infinite;
+    --animate-thread-drift-reverse: thread-drift 60s linear infinite reverse;
 }
 
 :root {
@@ -309,3 +312,30 @@
   margin: 0 16px;
 }
 
+
+@keyframes thread-drift {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* The page backdrop (components/page-backdrop.tsx). Each layer fades out
+   down the page so long lists sit on plain background. */
+.backdrop-wash {
+  background:
+    radial-gradient(ellipse 70% 45% at 15% 0%, color-mix(in oklab, var(--theme) 14%, transparent), transparent 70%),
+    radial-gradient(ellipse 50% 35% at 90% 5%, color-mix(in oklab, var(--theme) 8%, transparent), transparent 70%);
+}
+
+.backdrop-dots {
+  background-image: radial-gradient(color-mix(in oklab, var(--foreground) 9%, transparent) 1px, transparent 1.5px);
+  background-size: 22px 22px;
+  mask-image: linear-gradient(to bottom, black, transparent 60%);
+}
+
+.backdrop-threads {
+  mask-image: linear-gradient(to bottom, black 35%, transparent);
+}

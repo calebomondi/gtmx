@@ -2,6 +2,8 @@ import { Toaster } from 'sonner'
 import { createBrowserRouter, RouterProvider, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { AppSidebar } from "@/components/app-sidebar"
 import { MobileTopBar } from "@/components/mobile-top-bar"
+import { backdropTone } from "@/components/backdrop-tone"
+import { PageBackdrop } from "@/components/page-backdrop"
 import {
   SidebarInset,
   SidebarProvider,
@@ -41,7 +43,8 @@ function AppLayout() {
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <SidebarProvider className="h-dvh" defaultOpen={sidebarOpenByDefault()}>
         <AppSidebar />
-        <SidebarInset className="flex h-dvh min-w-0 flex-col overflow-hidden">
+        <SidebarInset className="isolate flex h-dvh min-w-0 flex-col overflow-hidden">
+          <PageBackdrop tone={backdropTone(location.pathname)} />
           <MobileTopBar />
           <Outlet />
           <Toaster position="bottom-right" richColors closeButton />
