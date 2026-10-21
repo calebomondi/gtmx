@@ -51,8 +51,56 @@ export type CardKind = "competitor" | "account" | "opportunity" | "draft"
 /** Answers the founder can click instead of typing. */
 export interface ChoicesBlockDto {
   type: "choices"
+  /** Null on choices from before answers were kept; those can't be answered. */
+  id?: string | null
   question: string
   options: string[]
+}
+
+export interface ChecklistItemDto {
+  id: string
+  label: string
+  detail: string | null
+  checked: boolean
+}
+
+/** Items the founder ticks, then submits. Mirrors ChecklistBlock. */
+export interface ChecklistBlockDto {
+  type: "checklist"
+  id: string
+  question: string
+  items: ChecklistItemDto[]
+  submit: string
+}
+
+export type FormFieldKind = "text" | "long_text" | "email" | "url" | "number"
+
+export interface FormFieldDto {
+  name: string
+  label: string
+  kind: FormFieldKind
+  required: boolean
+  value: string | null
+}
+
+/** A few short fields the founder fills in. Mirrors FormBlock. */
+export interface FormBlockDto {
+  type: "form"
+  id: string
+  question: string
+  fields: FormFieldDto[]
+  submit: string
+}
+
+export type QuestionBlockDto = ChoicesBlockDto | ChecklistBlockDto | FormBlockDto
+
+/** The founder's answer to a question. Mirrors BlockAnswer. */
+export interface BlockAnswerDto {
+  block_id: string
+  /** The option picked (a choice) or the item ids ticked (a checklist). */
+  chosen: string[]
+  /** A form's answers, by field name. */
+  values: Record<string, string>
 }
 
 /** A snapshot of one saved item, as it was when the Lace showed it. */
@@ -64,9 +112,11 @@ export interface CardBlockDto {
   subtitle: string | null
   body: string | null
   url: string | null
+  /** Where the item stands now (e.g. open, dismissed); "gone" once it no longer exists. */
+  status?: string | null
 }
 
-export type UiBlockDto = ChoicesBlockDto | CardBlockDto
+export type UiBlockDto = QuestionBlockDto | CardBlockDto
 
 export interface AttachmentDto {
   id: string
@@ -80,6 +130,8 @@ export interface LaceMessageDto {
   ui?: UiBlockDto[]
   /** What the founder attached to their message. */
   documents?: AttachmentDto[]
+  /** The question this founder message answered. */
+  answer?: BlockAnswerDto
 }
 
 /** A document shared with a Lace, kept as its text. Mirrors DocumentResponse. */
@@ -175,6 +227,11 @@ export function listLaceMessages(laceId: string): Promise<LaceMessageDto[]> {
 
 /** Starts a turn; follow its run for the reply. */
 /** A message to the Lace; `documentIds` are documents uploaded to it first. */
+/** Answer a question under the Lace's latest reply; 409 once it was answered. */
+export function answerLaceQuestion(laceId: string, answer: BlockAnswerDto): Promise<{ run_id: string }> {
+  return apiFetch(`/api/v1/laces/${laceId}/messages`, { method: "POST", body: JSON.stringify({ answer }) })
+}
+
 export function sendLaceMessage(laceId: string, text: string, documentIds: string[] = []): Promise<{ run_id: string }> {
   return apiFetch(`/api/v1/laces/${laceId}/messages`, {
     method: "POST", body: JSON.stringify({ text, document_ids: documentIds }),

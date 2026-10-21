@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from agents.schemas.lace_ui import UiBlock
+from agents.schemas.lace_ui import BlockAnswer, UiBlock
 from agents.schemas.monitor import MoveImportance, MoveKind
 from agents.schemas.opportunities import OpportunityKind, OpportunityStatus
 from agents.schemas.lace import AccountStatus, ActivityKind, ActivityRef, ContactSource, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
@@ -95,16 +95,23 @@ class Attachment(BaseModel):
 class LaceMessage(BaseModel):
     role: Literal["founder", "lace"]
     content: str
-    ui: list[UiBlock] | None = Field(default=None, description="Cards and choices shown under a Lace reply")
+    ui: list[UiBlock] | None = Field(default=None, description="Cards and questions shown under a Lace reply")
     documents: list[Attachment] | None = Field(default=None, description="What the founder attached to the message")
+    answer: BlockAnswer | None = Field(default=None, description="The question this founder message answered")
 
 
 class LaceMessageRequest(BaseModel):
     text: str = Field(default="", max_length=8000)
     document_ids: list[uuid.UUID] = Field(default_factory=list, description="Documents uploaded to the Lace first")
+    answer: BlockAnswer | None = Field(default=None, description="An answer to a question under the latest reply, "
+                                                                 "sent instead of text")
 
     @model_validator(mode="after")
     def _says_something(self) -> "LaceMessageRequest":
+        if self.answer is not None:
+            if self.text.strip() or self.document_ids:
+                raise ValueError("Send an answer on its own.")
+            return self
         if not self.text.strip() and not self.document_ids:
             raise ValueError("Write a message or attach a document.")
         return self
