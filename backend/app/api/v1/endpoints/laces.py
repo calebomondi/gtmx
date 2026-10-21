@@ -3,7 +3,7 @@ list them, read what one knows, read its conversation, and send it a message.
 Work happens in runs; follow them at /runs/{run_id}/events."""
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, File, Query, UploadFile, status
 
@@ -17,6 +17,7 @@ from backend.app.schemas.laces import (
     ActivityReadResponse,
     ActivityResponse,
     AccountResponse,
+    BriefResponse,
     BriefSettings,
     BriefSettingsUpdate,
     QuietHours,
@@ -49,7 +50,7 @@ from backend.app.schemas.laces import (
     OutreachResponse,
     OutreachUpdateRequest,
 )
-from backend.app.services import email, lace_accounts, lace_cards, lace_documents, lace_activity, lace_contacts, lace_search, lace_channels, lace_competitors, lace_opportunities, lace_outreach
+from backend.app.services import email, lace_accounts, lace_briefs, lace_cards, lace_documents, lace_activity, lace_contacts, lace_search, lace_channels, lace_competitors, lace_opportunities, lace_outreach
 from backend.app.services import laces as lace_service
 from agents.lace.store import JobRefused
 from backend.app.services.errors import ConflictError
@@ -397,6 +398,17 @@ async def get_brief_settings(lace: OwnedLace):
     """When the Lace posts its brief (how often, at what local hour), whether
     it is emailed too, and the quiet hours in which nothing is emailed."""
     return _brief_settings(lace)
+
+
+@router.get("/{lace_id}/briefs/latest", response_model=BriefResponse | None)
+async def latest_brief(lace: OwnedLace, db: DbSession):
+    """The Lace's latest brief: being written, written, or missed; null when
+    it has posted none yet."""
+    brief = await lace_briefs.latest(db, lace.id)
+    if brief is None:
+        return None
+    return BriefResponse(id=brief.id, created_at=brief.created_at, posted_at=brief.posted_at, body=brief.body,
+                         state=lace_briefs.state(brief, datetime.now(UTC)))
 
 
 @router.patch("/{lace_id}/brief", response_model=BriefSettings)

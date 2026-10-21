@@ -1,5 +1,6 @@
 """The brief: due in the founder's own timezone, written by the Lace from a
-digest of what happened, posted once, skipped when there is nothing to say."""
+digest of what happened, on the Feed from the moment it is due, posted once,
+skipped when there is nothing to say."""
 
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -90,6 +91,8 @@ def test_the_lace_posts_its_brief_once(client, lace, lace_runtime, user):  # noq
     with psycopg.connect(settings.database_url) as conn:
         kind, summary, ref_type = conn.execute("SELECT kind, summary, ref_type FROM lace_activity").fetchone()
     assert (kind, ref_type) == ("brief", "brief") and summary.startswith("Good morning")
+    latest = client.get(f"{API}/laces/{lace}/briefs/latest").json()
+    assert latest["state"] == "posted" and latest["body"].startswith("Good morning")
     assert client.portal.call(scheduler.sweep_briefs) == 0  # once a day
 
 
@@ -111,10 +114,27 @@ def test_a_busy_lace_gets_its_brief_at_the_next_sweep(client, lace, lace_runtime
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
         assert conn.execute("SELECT count(*) FROM lace_briefs WHERE posted_at IS NULL").fetchone()[0] == 1
         conn.execute("UPDATE runs SET status = 'completed' WHERE id = %s", (busy,))
+    # On the Feed already, while it waits to be written.
+    [item] = client.get(f"{API}/laces/{lace}/activity").json()
+    assert (item["kind"], item["summary"]) == ("brief", "Writing it now…")
+    assert client.get(f"{API}/laces/{lace}/briefs/latest").json()["state"] == "writing"
+    client.post(f"{API}/laces/{lace}/activity/read")
+
     lace_runtime.append(AIMessage(content="Your brief."))
     assert client.portal.call(scheduler.sweep_briefs) == 1
     [brief_turn] = [r for r in client.portal.call(_runs, lace, "lace_turn") if (r.input or {}).get("brief_id")]
     client.portal.call(_wait_for_status, brief_turn.id, {"completed"})
+    # The same item, filled in and new again.
+    [item] = client.get(f"{API}/laces/{lace}/activity").json()
+    assert (item["summary"], item["read_at"]) == ("Your brief.", None)
+
+
+def test_a_brief_never_written_in_time_is_missed(client, lace, lace_runtime):  # noqa: F811
+    assert client.get(f"{API}/laces/{lace}/briefs/latest").json() is None
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        conn.execute("INSERT INTO lace_briefs (id, lace_id, digest, created_at) VALUES (%s, %s, 'x', %s)",
+                     (uuid.uuid4(), lace, datetime.now(UTC) - lace_briefs.PENDING_MAX_AGE - timedelta(minutes=1)))
+    assert client.get(f"{API}/laces/{lace}/briefs/latest").json()["state"] == "missed"
 
 
 def test_brief_settings(client, lace, lace_runtime):  # noqa: F811
