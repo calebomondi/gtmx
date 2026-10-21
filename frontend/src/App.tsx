@@ -2,13 +2,14 @@ import { Toaster } from 'sonner'
 import { createBrowserRouter, RouterProvider, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { AppSidebar } from "@/components/app-sidebar"
 import { MobileTopBar } from "@/components/mobile-top-bar"
-import { backdropTone } from "@/components/backdrop-tone"
+import { backdropMood, backdropTone } from "@/components/backdrop-tone"
 import { PageBackdrop } from "@/components/page-backdrop"
 import {
   SidebarInset,
   SidebarProvider,
 } from "@/components/ui/sidebar"
 import { useAuth } from "@/lib/auth"
+import { useLaces } from "@/lib/laces-store"
 import { useActivityHeartbeat } from "@/lib/use-activity-heartbeat"
 
 import { ThemeProvider } from "@/components/theme-provider"
@@ -30,6 +31,7 @@ const sidebarOpenByDefault = () => typeof window === 'undefined' || window.inner
 
 function AppLayout() {
   const { user } = useAuth()
+  const { laces } = useLaces()
   const location = useLocation()
   useActivityHeartbeat(Boolean(user))
 
@@ -44,7 +46,7 @@ function AppLayout() {
       <SidebarProvider className="h-dvh" defaultOpen={sidebarOpenByDefault()}>
         <AppSidebar />
         <SidebarInset className="isolate flex h-dvh min-w-0 flex-col overflow-hidden">
-          <PageBackdrop tone={backdropTone(location.pathname)} />
+          <PageBackdrop tone={backdropTone(location.pathname)} mood={backdropMood(location.pathname, laces)} />
           <MobileTopBar />
           <Outlet />
           <Toaster position="bottom-right" richColors closeButton />
