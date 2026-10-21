@@ -189,6 +189,45 @@ class DraftSummary(BaseModel):
     body: str
 
 
+# What the Lace can save or remove for the founder.
+SavedKind = Literal["competitor", "account", "opportunity"]
+SAVED_KINDS: tuple[str, ...] = SavedKind.__args__
+SavedVerdict = Literal["save", "remove"]
+
+
+class NamedItem(BaseModel):
+    id: str
+    name: str
+
+
+class ItemsChanged(BaseModel):
+    """What a change touched, and the ids that matched nothing of the Lace's."""
+    changed: list[NamedItem] = Field(default_factory=list)
+    missing: list[str] = Field(default_factory=list)
+
+
+class ContactSummary(BaseModel):
+    """A person at one of the Lace's target accounts."""
+    id: str
+    name: str | None = None
+    title: str | None = None
+    email: str | None = None
+    linkedin: str | None = None
+    company: str
+    account_id: str
+    approved: bool
+
+
+class NewContact(BaseModel):
+    """A person the founder asked the Lace to add, at a company by name."""
+    company: str = Field(min_length=1, max_length=255)
+    name: str = Field(min_length=1, max_length=200)
+    email: str | None = Field(default=None, max_length=320)
+    title: str | None = Field(default=None, max_length=200)
+    linkedin: str | None = Field(default=None, max_length=500)
+    website: str | None = Field(default=None, max_length=500)
+
+
 ContactStatus = Literal["person", "organisation", "none"]
 CONTACT_STATUSES: tuple[str, ...] = ContactStatus.__args__
 
@@ -203,7 +242,7 @@ BriefFrequency = Literal["off", "daily", "weekly"]
 BRIEF_FREQUENCIES: tuple[str, ...] = BriefFrequency.__args__
 
 # Where a contact came from: the account search's own sources, or a contact search.
-ContactSource = Literal["discovery", "contact_search"]
+ContactSource = Literal["discovery", "contact_search", "founder"]
 CONTACT_SOURCES: tuple[str, ...] = ContactSource.__args__
 
 # What a Lace's Feed shows the founder it did (docs/lace-ui-plan.md, Feed).

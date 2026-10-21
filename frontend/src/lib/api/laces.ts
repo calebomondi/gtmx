@@ -535,7 +535,7 @@ export interface ContactDto {
   title: string | null
   email: string | null
   linkedin: string | null
-  source: "discovery" | "contact_search"
+  source: "discovery" | "contact_search" | "founder"
   /** When the founder cleared them for outreach: drafts go only to approved people. */
   approved_at: string | null
   first_seen_at: string

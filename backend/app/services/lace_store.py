@@ -16,10 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agents.schemas.icp import ICP
 from agents.schemas.opportunities import OpportunitySummary
-from agents.schemas.lace import AccountSummary, CompetitorSummary, DocumentSummary, DraftSummary, Fact, Suggestions, FactTopic, LaceProfile, NewFact, SourcePage
-from backend.app.database.lace_models import Lace, LaceCompetitor, LaceFact, LaceSource
-from backend.app.services import lace_accounts, lace_competitors, lace_documents, lace_opportunities, lace_outreach
-from backend.app.services.errors import NotFoundError
+from agents.schemas.lace import AccountSummary, CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Fact, ItemsChanged, NamedItem, NewContact, SavedKind, SavedVerdict, Suggestions, FactTopic, LaceProfile, NewFact, SourcePage
+from backend.app.database.lace_models import Lace, LaceAccount, LaceCompetitor, LaceContact, LaceFact, LaceOutreach, LaceSource
+from backend.app.services import lace_accounts, lace_competitors, lace_contacts, lace_documents, lace_opportunities, lace_outreach
+from backend.app.services import laces as lace_service
+from backend.app.services.errors import ConflictError, NotFoundError
 from backend.app.services.laces import current_facts_query
 
 
@@ -38,6 +39,29 @@ def _parse_id(value: str) -> uuid.UUID | None:
         return uuid.UUID(value)
     except ValueError:
         return None
+
+
+# Status a saved item gets, per kind; removing sets every kind to dismissed.
+_SAVED_STATUS = {"competitor": "tracked", "account": "target", "opportunity": "open"}
+_SET_STATUS = {"competitor": lace_competitors.set_status, "account": lace_accounts.set_status,
+               "opportunity": lace_opportunities.set_status}
+_LIST = {"competitor": lace_competitors.list_for_lace, "account": lace_accounts.list_for_lace,
+         "opportunity": lace_opportunities.list_for_lace}
+
+
+def _name(row) -> str:
+    return getattr(row, "title", None) or row.name
+
+
+def _contact(contact: LaceContact, account: LaceAccount) -> ContactSummary:
+    return ContactSummary(id=str(contact.id), name=contact.name, title=contact.title, email=contact.email,
+                          linkedin=contact.linkedin, company=account.name, account_id=str(account.id),
+                          approved=contact.approved_at is not None)
+
+
+def _draft(r: LaceOutreach) -> DraftSummary:
+    return DraftSummary(id=str(r.id), channel=r.channel, company=r.recipient_company, subject=r.subject,
+                        recipient=r.recipient_name or r.recipient_address or r.recipient_company, body=r.body)
 
 
 class DbLaceStore:
@@ -133,9 +157,7 @@ class DbLaceStore:
     async def drafts(self, limit: int = 50) -> list[DraftSummary]:
         async with self._sessions() as session:
             rows = await lace_outreach.drafts(session, self._lace_id, limit)
-        return [DraftSummary(id=str(r.id), channel=r.channel, company=r.recipient_company, subject=r.subject,
-                             recipient=r.recipient_name or r.recipient_address or r.recipient_company, body=r.body)
-                for r in rows]
+        return [_draft(r) for r in rows]
 
     async def documents(self, limit: int = 50) -> list[DocumentSummary]:
         async with self._sessions() as session:
@@ -152,3 +174,89 @@ class DbLaceStore:
             except NotFoundError:
                 return None
         return lace_documents.summary(row), row.text
+
+    async def set_saved(self, kind: SavedKind, ids: list[str], verdict: SavedVerdict) -> ItemsChanged:
+        status = _SAVED_STATUS[kind] if verdict == "save" else "dismissed"
+        result = ItemsChanged()
+        async with self._sessions() as session:
+            for raw in ids:
+                item_id = _parse_id(raw)
+                try:
+                    if item_id is None:
+                        raise NotFoundError(raw)
+                    row = await _SET_STATUS[kind](session, self._lace_id, item_id, status)
+                except NotFoundError:
+                    result.missing.append(raw)
+                    continue
+                result.changed.append(NamedItem(id=raw, name=_name(row)))
+        return result
+
+    async def removed(self, kind: SavedKind, limit: int = 50) -> list[NamedItem]:
+        async with self._sessions() as session:
+            rows = await _LIST[kind](session, self._lace_id, "dismissed", limit)
+        return [NamedItem(id=str(r.id), name=_name(r)) for r in rows]
+
+    async def retract_facts(self, ids: list[str]) -> ItemsChanged:
+        result = ItemsChanged()
+        async with self._sessions() as session:
+            for raw in ids:
+                fact_id = _parse_id(raw)
+                try:
+                    if fact_id is None:
+                        raise NotFoundError(raw)
+                    fact = await lace_service.review_fact(session, self._lace_id, fact_id, "retracted")
+                except NotFoundError:
+                    result.missing.append(raw)
+                    continue
+                result.changed.append(NamedItem(id=raw, name=fact.claim))
+        return result
+
+    async def contacts(self, limit: int = 100) -> list[ContactSummary]:
+        async with self._sessions() as session:
+            rows = await lace_contacts.list_for_lace(session, self._lace_id, limit)
+        return [_contact(contact, account) for contact, account in rows]
+
+    async def add_contact(self, contact: NewContact) -> ContactSummary:
+        async with self._sessions() as session:
+            account = await lace_accounts.founder_account(session, self._lace_id, contact.company, contact.website)
+            row = await lace_contacts.add_named(session, self._lace_id, account, contact)
+            return _contact(row, account)
+
+    async def remove_contacts(self, ids: list[str]) -> ItemsChanged:
+        parsed = {raw: _parse_id(raw) for raw in ids}
+        async with self._sessions() as session:
+            removed = await lace_contacts.remove(session, self._lace_id, [i for i in parsed.values() if i])
+        gone = {str(contact_id): name for contact_id, name in removed}
+        return ItemsChanged(changed=[NamedItem(id=raw, name=gone[str(i)]) for raw, i in parsed.items() if str(i) in gone],
+                            missing=[raw for raw, i in parsed.items() if str(i) not in gone])
+
+    async def edit_draft(self, draft_id: str, subject: str | None, body: str | None) -> DraftSummary:
+        message_id = _parse_id(draft_id)
+        changes = {k: v for k, v in (("subject", subject), ("body", body)) if v is not None}
+        async with self._sessions() as session:
+            try:
+                if message_id is None:
+                    raise NotFoundError(draft_id)
+                message = await lace_outreach.get_in_lace(session, self._lace_id, message_id)
+                return _draft(await lace_outreach.update(session, message, changes))
+            except NotFoundError as exc:
+                raise KeyError(draft_id) from exc
+            except ConflictError as exc:
+                raise ValueError(str(exc)) from exc
+
+    async def discard_drafts(self, ids: list[str]) -> ItemsChanged:
+        result = ItemsChanged()
+        async with self._sessions() as session:
+            for raw in ids:
+                message_id = _parse_id(raw)
+                try:
+                    if message_id is None:
+                        raise NotFoundError(raw)
+                    message = await lace_outreach.get_in_lace(session, self._lace_id, message_id)
+                    name = _draft(message).recipient
+                    await lace_outreach.delete(session, message)
+                except (NotFoundError, ConflictError):
+                    result.missing.append(raw)
+                    continue
+                result.changed.append(NamedItem(id=raw, name=name))
+        return result

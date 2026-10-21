@@ -6,12 +6,12 @@ import uuid
 from collections.abc import Iterable
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.schemas.accounts import ContactRecord
-from agents.schemas.lace import ContactSource
+from agents.schemas.lace import ContactSource, NewContact
 from backend.app.database.lace_models import LaceAccount, LaceContact
 from backend.app.services.errors import InvalidInputError, NotFoundError
 
@@ -103,3 +103,42 @@ async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, limit: int) -> lis
         .order_by(LaceAccount.name, LaceContact.name.nulls_last()).limit(limit)
     )
     return [(contact, account) for contact, account in rows.all()]
+
+
+async def add_named(db: AsyncSession, lace_id: uuid.UUID, account: LaceAccount, person: NewContact) -> LaceContact:
+    """Add a person the founder named at `account`, approved for outreach,
+    and keep them on the account's record too. A person already on file is
+    updated and moved there."""
+    found = ContactRecord(name=person.name, title=person.title, email=person.email, linkedin=person.linkedin)
+    key = contact_key(found)
+    record = dict(account.record or {})
+    people = [c for c in record.get("key_contacts") or [] if contact_key(ContactRecord.model_validate(c)) != key]
+    account.record = {**record, "key_contacts": [*people, found.model_dump(mode="json", exclude_none=True)]}
+    await sync(db, lace_id, account.id, [found], "founder")
+    contact = await db.scalar(select(LaceContact).where(LaceContact.lace_id == lace_id, LaceContact.key == key))
+    contact.approved_at = datetime.now(UTC)
+    await db.commit()
+    return contact
+
+
+async def remove(db: AsyncSession, lace_id: uuid.UUID, ids: Iterable[uuid.UUID]) -> list[tuple[uuid.UUID, str]]:
+    """Delete these people (only this Lace's), and drop them from their
+    account's record. Returns (id, name) of each one removed."""
+    rows = (await db.execute(delete(LaceContact).where(LaceContact.lace_id == lace_id, LaceContact.id.in_(list(ids)))
+                             .returning(LaceContact.id, LaceContact.key, LaceContact.name, LaceContact.account_id))).all()
+    for account_id, keys in _keys_by_account(rows).items():
+        account = await db.get(LaceAccount, account_id)
+        if account is not None:
+            record = dict(account.record or {})
+            record["key_contacts"] = [c for c in record.get("key_contacts") or []
+                                      if contact_key(ContactRecord.model_validate(c)) not in keys]
+            account.record = record
+    await db.commit()
+    return [(row.id, row.name or row.key) for row in rows]
+
+
+def _keys_by_account(rows) -> dict[uuid.UUID, set[str]]:
+    keys: dict[uuid.UUID, set[str]] = {}
+    for row in rows:
+        keys.setdefault(row.account_id, set()).add(row.key)
+    return keys

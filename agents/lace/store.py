@@ -10,7 +10,7 @@ from typing import Literal, Protocol
 
 from agents.schemas.icp import ICP
 from agents.schemas.opportunities import OpportunitySummary
-from agents.schemas.lace import AccountSummary, CompetitorSummary, DocumentSummary, DraftSummary, Suggestions, Fact, FactTopic, LaceProfile, NewFact, SourcePage
+from agents.schemas.lace import AccountSummary, CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Suggestions, Fact, FactTopic, ItemsChanged, LaceProfile, NamedItem, NewContact, NewFact, SavedKind, SavedVerdict, SourcePage
 
 
 class LaceStore(Protocol):
@@ -64,6 +64,44 @@ class LaceStore(Protocol):
 
     async def document_text(self, document_id: str) -> tuple[DocumentSummary, str] | None:
         """One shared document and its text; None when it is not this Lace's."""
+        ...
+
+    # Changes the founder asked for. Ids that are not this Lace's are reported
+    # as missing, never touched.
+
+    async def set_saved(self, kind: SavedKind, ids: list[str], verdict: SavedVerdict) -> ItemsChanged:
+        """Save items (track a competitor, target an account, keep an
+        opportunity open) or remove them: removed ones leave every list and
+        are not suggested again, until saved back."""
+        ...
+
+    async def removed(self, kind: SavedKind, limit: int = 50) -> list[NamedItem]:
+        """Items the founder removed, newest first, so they can be saved back."""
+        ...
+
+    async def retract_facts(self, ids: list[str]) -> ItemsChanged:
+        """Facts that are wrong: they leave what the Lace knows."""
+        ...
+
+    async def contacts(self, limit: int = 100) -> list[ContactSummary]:
+        """The people at the Lace's target accounts."""
+        ...
+
+    async def add_contact(self, contact: NewContact) -> ContactSummary:
+        """Add a person the founder named, approved for outreach, at the target
+        account with that company's name (or website); a new target account
+        when there is none."""
+        ...
+
+    async def remove_contacts(self, ids: list[str]) -> ItemsChanged: ...
+
+    async def edit_draft(self, draft_id: str, subject: str | None, body: str | None) -> DraftSummary:
+        """Rewrite an unsent draft. Raises KeyError when it is not this Lace's
+        draft, ValueError when it was already sent."""
+        ...
+
+    async def discard_drafts(self, ids: list[str]) -> ItemsChanged:
+        """Delete unsent drafts; sent messages are never touched."""
         ...
 
 
