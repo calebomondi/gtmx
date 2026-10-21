@@ -1,4 +1,4 @@
-import { Activity, ArrowRight, Building2, Sparkles, Swords } from "lucide-react"
+import { ArrowRight } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 
@@ -79,7 +79,7 @@ export function LaceFeed({ laceId, name, chat, activity, opps, onOpen, onDiscuss
 
   const tabs: PanelTab<FeedSection>[] = [
     {
-      value: "activity", label: "Activity", icon: Activity, waiting: activity.unread,
+      value: "activity", label: "Activity", waiting: activity.unread,
       content: (
         <>
           <PanelIntro>What {name} did and found, newest first.</PanelIntro>
@@ -88,7 +88,7 @@ export function LaceFeed({ laceId, name, chat, activity, opps, onOpen, onDiscuss
       ),
     },
     {
-      value: "opportunities", label: "Opportunities", icon: Sparkles, count: opps.opportunities.length,
+      value: "opportunities", label: "Opportunities", count: opps.opportunities.length,
       waiting: opps.suggested.length, busy: chat.findingOpportunities,
       content: (
         <>
@@ -101,7 +101,7 @@ export function LaceFeed({ laceId, name, chat, activity, opps, onOpen, onDiscuss
       ),
     },
     {
-      value: "accounts", label: "Customers", icon: Building2, count: chat.accounts.length,
+      value: "accounts", label: "Customers", count: chat.accounts.length,
       waiting: chat.suggestedAccounts.length, busy: chat.findingAccounts,
       content: (
         <>
@@ -115,7 +115,7 @@ export function LaceFeed({ laceId, name, chat, activity, opps, onOpen, onDiscuss
       ),
     },
     {
-      value: "competitors", label: "Competitors", icon: Swords, count: chat.competitors.length,
+      value: "competitors", label: "Competitors", count: chat.competitors.length,
       waiting: chat.suggestedCompetitors.length, busy: chat.searching,
       content: (
         <>

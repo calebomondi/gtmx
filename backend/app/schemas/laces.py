@@ -379,28 +379,3 @@ class LaceSearchHit(BaseModel):
     subtitle: str | None = None
     lace_id: uuid.UUID
     lace_name: str
-
-
-class LaceTag(BaseModel):
-    lace_id: uuid.UUID
-    lace_name: str
-
-
-class TaggedOpportunity(OpportunityResponse, LaceTag):
-    pass
-
-
-class TaggedAccount(AccountResponse, LaceTag):
-    pass
-
-
-class TaggedCompetitor(CompetitorResponse, LaceTag):
-    pass
-
-
-class SavedAcrossLaces(BaseModel):
-    """What every live Lace has saved, for Home."""
-    opportunities: list[TaggedOpportunity]
-    accounts: list[TaggedAccount]
-    competitors: list[TaggedCompetitor]
-    to_review: dict[str, int] = Field(description="Finds waiting for review, by kind, across the Laces")
