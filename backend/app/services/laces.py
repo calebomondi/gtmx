@@ -5,7 +5,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import Select, and_, delete, exists, func, or_, select
+from sqlalchemy import Select, and_, delete, exists, func, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database.lace_models import (
@@ -162,10 +162,15 @@ async def list_facts(db: AsyncSession, lace_id: uuid.UUID, topic: str | None, li
     return list((await db.scalars(current_facts_query(lace_id, topic, limit))).all())
 
 
+def watch_interval():
+    """Each Lace's watch interval as an SQL interval, for queries over Laces."""
+    return Lace.watch_every_h * literal_column("interval '1 hour'")
+
+
 async def update_brief_settings(db: AsyncSession, lace: Lace, changes: dict) -> Lace:
     """Apply the fields present in `changes`. A None setting is ignored, except
     `quiet_hours`, where None removes them."""
-    for field in ("brief_frequency", "brief_hour", "timezone", "brief_email"):
+    for field in ("brief_frequency", "brief_hour", "timezone", "brief_email", "watch_every_h"):
         if changes.get(field) is not None:
             setattr(lace, field, changes[field])
     if "quiet_hours" in changes:

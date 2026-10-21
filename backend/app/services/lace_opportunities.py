@@ -2,7 +2,7 @@
 
 import re
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert
@@ -12,6 +12,7 @@ from agents.schemas.opportunities import Opportunity, OpportunitySummary
 from backend.app.database import models
 from backend.app.database.lace_models import Lace, LaceOpportunity
 from backend.app.services.errors import NotFoundError
+from backend.app.services.laces import watch_interval
 from backend.app.services.runs import TERMINAL_STATUSES
 
 _SCHEME = re.compile(r"^https?://(www\.)?", re.I)
@@ -86,12 +87,13 @@ async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
     return len(set(keys)) - refreshed, refreshed
 
 
-async def laces_due_for_scan(db: AsyncSession, every: timedelta) -> list[tuple[uuid.UUID, uuid.UUID]]:
+async def laces_due_for_scan(db: AsyncSession) -> list[tuple[uuid.UUID, uuid.UUID]]:
     """(lace_id, user_id) of active Laces with an ICP whose last opportunity
-    search is older than `every` (or never ran) and none is running."""
-    recent = select(models.Run.lace_id).where(
-        models.Run.kind == "lace_opportunities", models.Run.lace_id.is_not(None),
-        or_(models.Run.status.not_in(TERMINAL_STATUSES), models.Run.created_at >= datetime.now(UTC) - every))
+    search is older than the Lace's watch interval (or never ran) and none is
+    running."""
+    recent = select(models.Run.id).where(
+        models.Run.kind == "lace_opportunities", models.Run.lace_id == Lace.id,
+        or_(models.Run.status.not_in(TERMINAL_STATUSES), models.Run.created_at >= func.now() - watch_interval()))
     rows = await db.execute(select(Lace.id, Lace.user_id).where(
-        Lace.status == "active", Lace.icp.is_not(None), Lace.id.not_in(recent)))
+        Lace.status == "active", Lace.icp.is_not(None), ~recent.exists()))
     return [(lace_id, user_id) for lace_id, user_id in rows.all()]

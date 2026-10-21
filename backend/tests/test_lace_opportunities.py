@@ -82,7 +82,7 @@ def test_a_scheduled_search_with_nothing_new_stays_quiet(client, lace, lace_runt
     assert client.portal.call(_runs, lace, "lace_turn") == []
 
 
-def test_the_weekly_scan_picks_due_laces_with_an_icp(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+def test_the_scan_picks_laces_due_by_their_watch_interval(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
     _stub(monkeypatch, [])
     assert client.portal.call(scheduler.sweep_lace_opportunities) == 0  # no ICP yet
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
@@ -90,10 +90,14 @@ def test_the_weekly_scan_picks_due_laces_with_an_icp(client, lace, lace_runtime,
     assert client.portal.call(scheduler.sweep_lace_opportunities) == 1
     [run] = client.portal.call(_runs, lace, "lace_opportunities")
     client.portal.call(_wait_for_status, run.id, {"completed"})
-    assert client.portal.call(scheduler.sweep_lace_opportunities) == 0  # searched this week
+    assert client.portal.call(scheduler.sweep_lace_opportunities) == 0  # just searched
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
         conn.execute("UPDATE runs SET created_at = %s WHERE id = %s",
-                     (datetime.now(UTC) - timedelta(days=settings.lace_opportunity_scan_days + 1), run.id))
+                     (datetime.now(UTC) - timedelta(hours=7), run.id))
+        conn.execute("UPDATE laces SET watch_every_h = 12 WHERE id = %s", (lace,))
+    assert client.portal.call(scheduler.sweep_lace_opportunities) == 0  # within its 12 hours
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        conn.execute("UPDATE laces SET watch_every_h = 6 WHERE id = %s", (lace,))
     assert client.portal.call(scheduler.sweep_lace_opportunities) == 1
     for r in client.portal.call(_runs, lace, "lace_opportunities"):
         client.portal.call(_wait_for_status, r.id, {"completed"})

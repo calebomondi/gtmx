@@ -240,6 +240,10 @@ INBOX_PLATFORMS: tuple[str, ...] = InboxPlatform.__args__
 
 BriefFrequency = Literal["off", "daily", "weekly"]
 BRIEF_FREQUENCIES: tuple[str, ...] = BriefFrequency.__args__
+# How often a Lace looks for new opportunities and competitor moves, in hours.
+WatchEvery = Literal[6, 12, 24, 168]
+WATCH_EVERY_H: tuple[int, ...] = WatchEvery.__args__
+DEFAULT_WATCH_EVERY_H = 6
 
 # Where a contact came from: the account search's own sources, or a contact search.
 ContactSource = Literal["discovery", "contact_search", "founder"]

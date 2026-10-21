@@ -455,10 +455,16 @@ export interface BriefSettingsDto {
   /** Whether this server can send email at all. */
   email_available: boolean
   last_brief_at: string | null
+  /** How often it looks for new opportunities and competitor moves, in hours. */
+  watch_every_h: WatchEvery
+  /** How often replies to sent messages are checked; 0 when they are not. */
+  reply_check_minutes: number
 }
 
+export type WatchEvery = 6 | 12 | 24 | 168
+
 export type BriefSettingsChanges = Partial<Pick<BriefSettingsDto,
-  "brief_frequency" | "brief_hour" | "timezone" | "brief_email" | "quiet_hours">>
+  "brief_frequency" | "brief_hour" | "timezone" | "brief_email" | "quiet_hours" | "watch_every_h">>
 
 /** A Lace's latest brief, for the top of its Feed. Mirrors BriefResponse. */
 export interface LaceBriefDto {
