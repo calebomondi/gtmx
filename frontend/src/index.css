@@ -48,16 +48,12 @@
     --radius-2xl: calc(var(--radius) * 1.8);
     --radius-3xl: calc(var(--radius) * 2.2);
     --radius-4xl: calc(var(--radius) * 2.6);
-    --animate-thread-drift-slow: thread-drift 48s linear infinite;
-    --animate-thread-drift-slower: thread-drift 72s linear infinite;
-    --animate-thread-drift-reverse: thread-drift 60s linear infinite reverse;
-    --animate-glow-float: glow-float 44s ease-in-out infinite alternate;
 }
 
 :root {
     --theme: #FEA853;
-    /* The page backdrop's second glow, warm against the theme. */
-    --glow-rose: oklch(0.78 0.12 25);
+    /* The backdrop's mood line while a Lace is working. */
+    --mood-working: oklch(0.62 0.13 250);
     --background: #FCFCFB;
     --foreground: oklch(0.145 0 0);
     --card: oklch(1 0 0);
@@ -93,7 +89,7 @@
 }
 
 .dark {
-    --glow-rose: oklch(0.62 0.16 25);
+    --mood-working: oklch(0.74 0.11 250);
     --background: oklch(0.145 0 0);
     --foreground: oklch(0.985 0 0);
     --card: oklch(0.205 0 0);
@@ -317,99 +313,43 @@
 }
 
 
-@keyframes thread-drift {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
+/* The page backdrop (components/page-backdrop.tsx). */
+.backdrop-mood {
+  --mood: color-mix(in oklab, var(--foreground) 22%, transparent);
 }
 
-@keyframes glow-float {
-  0% {
-    transform: translate(0, 0) scale(1);
-  }
-  50% {
-    transform: translate(6%, 4%) scale(1.08);
-  }
-  100% {
-    transform: translate(-4%, 7%) scale(0.95);
-  }
+.backdrop-mood[data-mood="alert"] {
+  --mood: var(--theme);
 }
 
-/* The page backdrop (components/page-backdrop.tsx). Glows and threads cover
-   the whole page; the dots and lacing keep to the edges, away from the text. */
-.backdrop-glow {
-  position: absolute;
-  border-radius: 9999px;
+.backdrop-mood[data-mood="thinking"] {
+  --mood: var(--mood-working);
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .backdrop-glow {
-    animation: var(--animate-glow-float);
-    will-change: transform;
-  }
+/* A woven texture you notice only if you look, warm in the middle, a touch
+   darker towards the edges. */
+.backdrop-linen {
+  background-image:
+    radial-gradient(ellipse 80% 70% at 50% 30%, color-mix(in oklab, var(--theme) 4%, transparent), transparent 70%),
+    radial-gradient(ellipse 90% 90% at 50% 50%, transparent 60%, color-mix(in oklab, var(--foreground) 4%, transparent) 100%),
+    repeating-linear-gradient(0deg, color-mix(in oklab, var(--foreground) 2.5%, transparent) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(90deg, color-mix(in oklab, var(--foreground) 2%, transparent) 0 1px, transparent 1px 5px);
 }
 
-.backdrop-glow-theme {
-  top: -22%;
-  left: -12%;
-  width: 62vmax;
-  height: 62vmax;
-  background: radial-gradient(closest-side, color-mix(in oklab, var(--theme) 26%, transparent), transparent);
+.dark .backdrop-linen {
+  background-image:
+    radial-gradient(ellipse 80% 70% at 50% 30%, color-mix(in oklab, var(--theme) 5%, transparent), transparent 70%),
+    radial-gradient(ellipse 90% 90% at 50% 50%, transparent 55%, rgb(0 0 0 / 0.4) 100%),
+    repeating-linear-gradient(0deg, color-mix(in oklab, var(--foreground) 2.8%, transparent) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(90deg, color-mix(in oklab, var(--foreground) 2.2%, transparent) 0 1px, transparent 1px 5px);
 }
 
-.backdrop-glow-rose {
-  right: -18%;
-  bottom: -28%;
-  width: 58vmax;
-  height: 58vmax;
-  background: radial-gradient(closest-side, color-mix(in oklab, var(--glow-rose) 22%, transparent), transparent);
+.backdrop-horizon {
+  background: radial-gradient(ellipse 70% 100% at 50% 0%, color-mix(in oklab, var(--mood) 14%, transparent), transparent 75%);
+  transition: background 600ms ease;
 }
 
-.backdrop-glow-amber {
-  top: 30%;
-  left: 45%;
-  width: 40vmax;
-  height: 40vmax;
-  background: radial-gradient(closest-side, color-mix(in oklab, var(--theme) 12%, transparent), transparent);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .backdrop-glow-rose {
-    animation-duration: 56s;
-    animation-direction: alternate-reverse;
-  }
-
-  .backdrop-glow-amber {
-    animation-duration: 64s;
-  }
-}
-
-.backdrop-dots {
-  background-image: radial-gradient(color-mix(in oklab, var(--foreground) 10%, transparent) 1px, transparent 1.5px);
-  background-size: 22px 22px;
-  mask-image: radial-gradient(ellipse 55% 60% at 50% 45%, transparent 20%, black 100%);
-}
-
-/* Rings 6px into each of 8 equal steps, so 9 rows line up with the laces. */
-.backdrop-eyelets {
-  background-image: radial-gradient(circle at 50% 6px, transparent 2.5px,
-    color-mix(in oklab, var(--theme) 40%, transparent) 2.5px 4px, transparent 4.5px);
-  background-size: 100% calc((100% - 12px) / 8);
-  background-repeat: repeat-y;
-}
-
-.backdrop-lacing {
-  mask-image: linear-gradient(to right, black, transparent 30%, transparent 70%, black);
-}
-
-.backdrop-grain {
-  opacity: 0.05;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-}
-
-.dark .backdrop-grain {
-  opacity: 0.08;
+.backdrop-mood-line {
+  background: linear-gradient(90deg, transparent, var(--mood) 30%, var(--mood) 70%, transparent);
+  transition: background 600ms ease;
 }
