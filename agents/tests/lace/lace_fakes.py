@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from langchain_core.messages import AIMessage
 
 from agents.lace.store import JobRefused
-from agents.schemas.lace import CompetitorSummary, DocumentSummary, DraftSummary, Fact, Suggestions, LaceProfile, NewFact, SourcePage
+from agents.schemas.lace import CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Fact, ItemsChanged, NamedItem, Suggestions, LaceProfile, NewFact, SourcePage
 
 
 class MemoryStore:
@@ -73,6 +73,44 @@ class MemoryStore:
 
     async def competitors(self, limit=50) -> list[CompetitorSummary]:
         return self.tracked[:limit]
+
+    # Changes: saved and removed items by id, as (kind, name).
+    async def set_saved(self, kind, ids, verdict) -> ItemsChanged:
+        self.saved_changes = getattr(self, "saved_changes", []) + [(kind, list(ids), verdict)]
+        return ItemsChanged(changed=[NamedItem(id=i, name=f"{kind} {i}") for i in ids if not i.startswith("x")],
+                            missing=[i for i in ids if i.startswith("x")])
+
+    async def removed(self, kind, limit=50):
+        return []
+
+    async def retract_facts(self, ids) -> ItemsChanged:
+        self.superseded.update(ids)
+        return ItemsChanged(changed=[NamedItem(id=i, name=i) for i in ids])
+
+    async def contacts(self, limit=100):
+        return getattr(self, "people", [])[:limit]
+
+    async def add_contact(self, contact) -> ContactSummary:
+        added = ContactSummary(id=f"p{next(self._ids)}", name=contact.name, email=contact.email,
+                               company=contact.company, account_id="a-new", approved=True)
+        self.people = [*getattr(self, "people", []), added]
+        return added
+
+    async def remove_contacts(self, ids) -> ItemsChanged:
+        return ItemsChanged(changed=[NamedItem(id=i, name=i) for i in ids])
+
+    async def edit_draft(self, draft_id, subject, body) -> DraftSummary:
+        for i, draft in enumerate(self.drafted):
+            if draft.id == draft_id:
+                self.drafted[i] = draft.model_copy(update={k: v for k, v in (("subject", subject), ("body", body)) if v})
+                return self.drafted[i]
+        raise KeyError(draft_id)
+
+    async def discard_drafts(self, ids) -> ItemsChanged:
+        gone = [d for d in self.drafted if d.id in ids]
+        self.drafted = [d for d in self.drafted if d.id not in ids]
+        return ItemsChanged(changed=[NamedItem(id=d.id, name=d.recipient) for d in gone],
+                            missing=[i for i in ids if i not in {d.id for d in gone}])
 
 
 class RecordingJobs:

@@ -37,7 +37,9 @@ class TriggerEvent(LenientModel):
         "product_listing",
         "funding_round",
         "event_upcoming",
-    ] = Field(description="Which trigger signal type this event matches")
+        "founder_added",
+    ] = Field(description="Which trigger signal type this event matches (founder_added is set by the app for "
+                          "accounts the founder named, never by a search)")
     source: str = Field(description="URL/where the trigger was observed")
 
 

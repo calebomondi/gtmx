@@ -3,11 +3,11 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import case, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agents.schemas.accounts import AccountFit, AccountRecord
+from agents.schemas.accounts import AccountFit, AccountRecord, TriggerEvent
 from agents.lace.contacts import contact_status
 from agents.schemas.lace import AccountSummary
 from backend.app.database.lace_models import LaceAccount
@@ -133,3 +133,25 @@ async def save_contacts(db: AsyncSession, account_id: uuid.UUID, record: Account
         row.contact_status = contact_status(record)
         row.contacts_checked_at = datetime.now(UTC)
         await lace_contacts.sync(db, row.lace_id, account_id, record.key_contacts, "contact_search")
+
+
+async def founder_account(db: AsyncSession, lace_id: uuid.UUID, company: str, website: str | None) -> LaceAccount:
+    """The target account for a company the founder named: the one on file
+    with that website or name (saved back if it was dismissed or only
+    suggested), else a new one. Not committed."""
+    key = (domain_key(website) if website else company.strip().lower())[:255]
+    row = await db.scalar(select(LaceAccount).where(
+        LaceAccount.lace_id == lace_id,
+        or_(LaceAccount.key == key, func.lower(LaceAccount.name) == company.strip().lower())).limit(1))
+    if row is not None:
+        row.status = "target"
+        return row
+    record = AccountRecord(name=company.strip(), account_type="company", website=website,
+                           domain=domain_key(website) if website else None, summary="Added by the founder.",
+                           trigger_event=TriggerEvent(event="The founder added them", signal_type="founder_added",
+                                                      source="founder"))
+    row = LaceAccount(lace_id=lace_id, key=key, name=record.name[:255], account_type="company", website=website,
+                      status="target", contact_status=contact_status(record), record=record.model_dump(mode="json"))
+    db.add(row)
+    await db.flush()
+    return row
