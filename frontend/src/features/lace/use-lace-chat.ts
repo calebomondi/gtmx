@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 
 import {
   ApiError,
+  answerLaceQuestion,
   followRunEvents,
   findLaceAccountContacts,
   getLace,
@@ -25,6 +26,7 @@ import {
   setLaceAccountStatus,
   setLaceCompetitorStatus,
   updateLaceOutreach,
+  type BlockAnswerDto,
   type FactDto,
   type LaceAccountDto,
   type LaceCompetitorDto,
@@ -32,11 +34,13 @@ import {
   type LaceMessageDto,
   type LaceOutreachDto,
   type LaceOutreachChanges,
+  type QuestionBlockDto,
   type RunDto,
   type RunFrame,
 } from "@/lib/api"
 
 import { waitsOnFounder } from "./outreach-threads"
+import { answerLine } from "./questions"
 
 const TERMINAL = new Set(["complete", "error", "cancelled"])
 // How long the founder has to undo a send before the message goes out.
@@ -83,6 +87,8 @@ export interface LaceChat {
   draft: string
   /** Send a message, uploading `files` first and attaching them. */
   send: (text: string, files?: File[]) => Promise<void>
+  /** Answer a question under the latest reply: a choice, checklist or form. */
+  answer: (block: QuestionBlockDto, answer: BlockAnswerDto) => Promise<void>
   /** Load the Lace again (after it was archived or restored, or to retry a
    * failed load); a failure becomes `error`. */
   reload: () => Promise<void>
@@ -413,6 +419,18 @@ export function useLaceChat(laceId: string): LaceChat {
     }
   }, [laceId, follow, refresh])
 
+  const answer = useCallback(async (block: QuestionBlockDto, given: BlockAnswerDto) => {
+    setError(null)
+    setMessages((prev) => [...prev, { role: "founder", content: answerLine(block, given), answer: given }])
+    try {
+      const { run_id } = await answerLaceQuestion(laceId, given)
+      await follow(run_id)
+    } catch (err) {
+      setError(err instanceof ApiError && err.status === 409 ? "That question was already answered." : message(err))
+      await refresh().catch(() => undefined)  // the error is already shown
+    }
+  }, [laceId, follow, refresh])
+
   const reload = useCallback(async () => {
     setError(null)
     try {
@@ -427,7 +445,7 @@ export function useLaceChat(laceId: string): LaceChat {
   return {
     lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, waiting, drafting, findingOpportunities,
     loading, error,
-    working, step, steps, jobs, draft, send, reload, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, sendingSoon,
+    working, step, steps, jobs, draft, send, answer, reload, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, sendingSoon,
     undoSend, markSent, findContacts, draftToContact, contacts, approveContact, approveAccountContacts, saveCompetitor, saveAccount, decideOpportunity, suggestedCompetitors,
     suggestedAccounts,
   }

@@ -49,7 +49,7 @@ from backend.app.schemas.laces import (
     OutreachResponse,
     OutreachUpdateRequest,
 )
-from backend.app.services import email, lace_accounts, lace_documents, lace_activity, lace_contacts, lace_search, lace_channels, lace_competitors, lace_opportunities, lace_outreach
+from backend.app.services import email, lace_accounts, lace_cards, lace_documents, lace_activity, lace_contacts, lace_search, lace_channels, lace_competitors, lace_opportunities, lace_outreach
 from backend.app.services import laces as lace_service
 from agents.lace.store import JobRefused
 from backend.app.services.errors import ConflictError
@@ -239,13 +239,18 @@ async def approve_account_contacts(lace: OwnedLace, account_id: uuid.UUID, db: D
 
 
 @router.get("/{lace_id}/messages", response_model=list[LaceMessage], response_model_exclude_none=True)
-async def list_messages(lace: OwnedLace, limit: int = Query(default=100, ge=1, le=MAX_MESSAGES_PER_PAGE)):
-    return await lace_runs.history(lace.id, limit)
+async def list_messages(lace: OwnedLace, db: DbSession,
+                        limit: int = Query(default=100, ge=1, le=MAX_MESSAGES_PER_PAGE)):
+    """The conversation, each card marked with its item's status now."""
+    return await lace_cards.with_status(db, lace.id, await lace_runs.history(lace.id, limit))
 
 
 @router.post("/{lace_id}/messages", response_model=LaceTurnResponse, status_code=status.HTTP_202_ACCEPTED)
 async def send_message(lace: OwnedLace, payload: LaceMessageRequest, user: CurrentUser, db: DbSession):
-    """A message to the Lace, with documents uploaded to it first attached."""
+    """A message to the Lace, with documents uploaded to it first attached;
+    or the founder's answer to a question under its latest reply."""
+    if payload.answer is not None:
+        return LaceTurnResponse(run_id=(await manager.start_lace_answer(user.id, lace.id, payload.answer)).id)
     docs = await lace_documents.attachments(db, lace.id, payload.document_ids)
     attached = [{"id": str(d.id), "filename": d.filename} for d in docs]
     run = await manager.start_lace_turn(user.id, lace.id, payload.text, attached)

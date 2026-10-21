@@ -19,17 +19,21 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
+from pydantic import TypeAdapter
 
+from agents.lace.answers import AnswerError, describe
 from agents.lace.graph import BRIEF_FACTS, build_lace_graph
 from agents.lace.onboarding import Progress, onboard, opening_message
 from agents.lace.store import LaceJobs
 from agents.lace.prompts import system_prompt
+from agents.schemas.lace_ui import BlockAnswer, UiBlock
 from backend.app.agents_runtime import get_checkpointer
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.database.lace_models import Lace
 from backend.app.runs import events
 from backend.app.services import lace_activity, lace_brief_email, lace_briefs
+from backend.app.services.errors import ConflictError, InvalidInputError
 from backend.app.services.lace_store import DbLaceStore
 from backend.app.services.runs import set_run_fields
 from config import settings
@@ -66,6 +70,9 @@ EVENT_FLAG = "lace_event"
 # words, which the founder sees without the note the model gets.
 ATTACHMENTS_KEY = "documents"
 FOUNDER_TEXT_KEY = "founder_text"
+# On a founder message that answers a question: the answer, so the question
+# shows as answered.
+ANSWER_KEY = "answer"
 
 
 def thread_config(lace_id: uuid.UUID) -> dict:
@@ -249,7 +256,10 @@ async def _converse(run_id: uuid.UUID, lace_id: uuid.UUID, message: HumanMessage
 # Where a reply keeps the cards and choices shown under it.
 UI_KEY = "ui"
 # The tools whose results put something under the reply.
-_UI_TOOLS = frozenset({"ask_choice", "show"})
+_UI_TOOLS = frozenset({"ask_choice", "ask_checklist", "ask_form", "show"})
+# The blocks the founder answers.
+_QUESTION_TYPES = frozenset({"choices", "checklist", "form"})
+_UI_BLOCK = TypeAdapter(UiBlock)
 
 
 def _ui_blocks(message: ToolMessage) -> list[dict]:
@@ -281,7 +291,9 @@ def visible_messages(messages: list[AnyMessage]) -> list[dict]:
         if isinstance(m, HumanMessage) and not m.additional_kwargs.get(EVENT_FLAG):
             attached = m.additional_kwargs.get(ATTACHMENTS_KEY)
             content = m.additional_kwargs.get(FOUNDER_TEXT_KEY, str(m.content))
-            out.append({"role": "founder", "content": content, **({"documents": attached} if attached else {})})
+            answer = m.additional_kwargs.get(ANSWER_KEY)
+            out.append({"role": "founder", "content": content, **({"documents": attached} if attached else {}),
+                        **({"answer": answer} if answer else {})})
         elif isinstance(m, AIMessage) and not m.tool_calls:
             ui = m.additional_kwargs.get(UI_KEY)
             if str(m.content).strip() or ui:
@@ -289,8 +301,38 @@ def visible_messages(messages: list[AnyMessage]) -> list[dict]:
     return out
 
 
-async def history(lace_id: uuid.UUID, limit: int) -> list[dict]:
+async def _thread(lace_id: uuid.UUID) -> list[AnyMessage]:
     graph, _ = _graph(lace_id)
     state = await graph.aget_state(thread_config(lace_id))
-    messages = (state.values or {}).get("messages", []) if state else []
-    return visible_messages(messages)[-limit:]
+    return (state.values or {}).get("messages", []) if state else []
+
+
+async def history(lace_id: uuid.UUID, limit: int) -> list[dict]:
+    return visible_messages(await _thread(lace_id))[-limit:]
+
+
+def open_question(messages: list[AnyMessage], block_id: str):
+    """The question with this id, if it is under the latest reply and nobody
+    has answered since; else None."""
+    shown = visible_messages(messages)
+    if not shown or shown[-1]["role"] != "lace":
+        return None
+    for block in shown[-1].get("ui") or []:
+        if block.get("type") in _QUESTION_TYPES and block.get("id") == block_id:
+            return _UI_BLOCK.validate_python(block)
+    return None
+
+
+async def answer_message(lace_id: uuid.UUID, answer: BlockAnswer) -> HumanMessage:
+    """The founder's answer to a question under the Lace's latest reply, as
+    their next message. Raises ConflictError when that question is no longer
+    open, InvalidInputError when the answer does not fit it."""
+    question = open_question(await _thread(lace_id), answer.block_id)
+    if question is None:
+        raise ConflictError("That question was already answered, or the conversation has moved on.")
+    try:
+        for_lace, for_founder = describe(question, answer)
+    except AnswerError as exc:
+        raise InvalidInputError(str(exc)) from exc
+    return HumanMessage(content=for_lace, additional_kwargs={FOUNDER_TEXT_KEY: for_founder,
+                                                             ANSWER_KEY: answer.model_dump()})

@@ -11,6 +11,7 @@ import { LaceAvatar } from "./lace-avatar"
 import { ChatBlocks } from "./lace-chat-blocks"
 import { LaceReplySources } from "./lace-reply-sources"
 import { LaceWorkTrail } from "./lace-work-trail"
+import { answersByBlock } from "./questions"
 import { splitSources } from "./reply-sources"
 import type { LaceChat } from "./use-lace-chat"
 import { useTypewriter } from "./use-typewriter"
@@ -81,6 +82,7 @@ export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill }:
 }) {
   const end = useRef<HTMLDivElement>(null)
   const lastIndex = chat.messages.length - 1
+  const answers = answersByBlock(chat.messages)
   // Whether the founder is reading the latest, and how many messages there
   // were when they scrolled up: what arrived since is "new".
   const [atLatest, setAtLatest] = useState(true)
@@ -131,7 +133,7 @@ export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill }:
           {chat.messages.map((message, i) => (
             <Message key={i} message={message}>
               {message.ui && message.ui.length > 0 && (
-                <ChatBlocks blocks={message.ui} chat={chat} live={i === lastIndex} onReview={onOpenMessaging} />
+                <ChatBlocks blocks={message.ui} chat={chat} live={i === lastIndex} answers={answers} onReview={onOpenMessaging} />
               )}
             </Message>
           ))}

@@ -4,26 +4,13 @@ import { Bookmark, Check, CheckCheck, ExternalLink, Loader2, Search, Send, Undo2
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import type { CardBlockDto, ChoicesBlockDto, UiBlockDto } from "@/lib/api"
+import type { BlockAnswerDto, CardBlockDto, UiBlockDto } from "@/lib/api"
 
 import { cardState, contactsLine, type CardState } from "./chat-cards"
+import { ChatQuestion } from "./lace-chat-questions"
+import { isQuestion } from "./questions"
 import { waitingAt } from "./contacts-model"
 import type { LaceChat } from "./use-lace-chat"
-
-function Choices({ block, live, onChoose }: { block: ChoicesBlockDto; live: boolean; onChoose: (option: string) => void }) {
-  return (
-    <div className="flex flex-col gap-2">
-      <p className="text-sm font-medium">{block.question}</p>
-      <div className="flex flex-wrap gap-2">
-        {block.options.map((option) => (
-          <Button key={option} size="sm" variant="outline" disabled={!live} onClick={() => onChoose(option)}>
-            {option}
-          </Button>
-        ))}
-      </div>
-    </div>
-  )
-}
 
 function OpenLink({ url }: { url: string | null }) {
   if (!url) return null
@@ -87,7 +74,11 @@ function Actions({ card, state, chat, onReview }: {
     case "opportunity": {
       const decide = (status: "open" | "dismissed") =>
         void chat.decideOpportunity(card.id, status).then((done) => done && setDecided(status))
-      if (decided) return <Badge variant="secondary">{decided === "open" ? <><Check /> Saved</> : "Not for us"}</Badge>
+      // What was decided here, else where it stood when the chat was loaded.
+      const standing = decided ?? card.status
+      if (standing === "open") return <Badge variant="secondary"><Check /> Saved</Badge>
+      if (standing === "dismissed") return <Badge variant="secondary">Not for us</Badge>
+      if (standing === "gone") return <Badge variant="secondary">Removed</Badge>
       return (
         <>
           <Button size="sm" onClick={() => decide("open")}><Bookmark /> Save</Button>
@@ -146,12 +137,15 @@ function LaceCard({ card, chat, ids, onReview }: {
   )
 }
 
-/** The cards and choices under one Lace reply. Choices answer only while
- * this is the latest reply and the Lace is free. */
-export function ChatBlocks({ blocks, chat, live, onReview }: {
+/** The cards and questions under one Lace reply. A question can be answered
+ * only while this is the latest reply and the Lace is free; once answered it
+ * shows the answer. */
+export function ChatBlocks({ blocks, chat, live, answers, onReview }: {
   blocks: UiBlockDto[]
   chat: LaceChat
   live: boolean
+  /** The conversation's answers, by question id. */
+  answers: ReadonlyMap<string, BlockAnswerDto>
   onReview: () => void
 }) {
   const ids = {
@@ -159,7 +153,7 @@ export function ChatBlocks({ blocks, chat, live, onReview }: {
     suggested: new Set(chat.suggestedCompetitors.map((c) => c.id)),
   }
   const cards = blocks.filter((b): b is CardBlockDto => b.type === "card")
-  const choices = blocks.filter((b): b is ChoicesBlockDto => b.type === "choices")
+  const questions = blocks.filter(isQuestion)
   return (
     <div className="flex flex-col gap-3">
       {cards.length > 0 && (
@@ -169,8 +163,9 @@ export function ChatBlocks({ blocks, chat, live, onReview }: {
           ))}
         </div>
       )}
-      {choices.map((block) => (
-        <Choices key={block.question} block={block} live={live && !chat.working} onChoose={(option) => void chat.send(option)} />
+      {questions.map((block) => (
+        <ChatQuestion key={block.id ?? block.question} block={block} answer={block.id ? answers.get(block.id) : undefined}
+                      live={live && !chat.working} onAnswer={(answer) => void chat.answer(block, answer)} />
       ))}
     </div>
   )

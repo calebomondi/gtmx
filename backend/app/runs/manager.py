@@ -21,6 +21,7 @@ from backend.app.database.connect import AsyncSessionLocal
 from backend.app.database.lace_models import Lace
 from backend.app.runs import events
 from agents.lace.store import JobRefused
+from agents.schemas.lace_ui import BlockAnswer
 from backend.app.runs import lace as lace_runs
 from backend.app.runs import lace_jobs
 from backend.app.runs.errors import user_facing_error
@@ -99,6 +100,15 @@ async def start_lace_turn(user_id: uuid.UUID, lace_id: uuid.UUID, text: str,
     params = {"text": text, **({"documents": attachments} if attachments else {})}
     run = await _start_lace_run("lace_turn", user_id, lace_id, params)
     _spawn_turn(run.id, user_id, lace_id, lace_runs.founder_message(text, attachments))
+    return run
+
+
+async def start_lace_answer(user_id: uuid.UUID, lace_id: uuid.UUID, answer: BlockAnswer) -> models.Run:
+    """The founder's answer to a question under the Lace's latest reply (a
+    choice, checklist or form), and the Lace's work on it."""
+    message = await lace_runs.answer_message(lace_id, answer)
+    run = await _start_lace_run("lace_turn", user_id, lace_id, {"answer": answer.model_dump()})
+    _spawn_turn(run.id, user_id, lace_id, message)
     return run
 
 
