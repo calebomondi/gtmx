@@ -451,25 +451,6 @@ export interface LaceActivityItemDto extends ActivityDto {
   lace_name: string
 }
 
-/** Which Lace an item on Home belongs to. */
-export interface LaceTagDto {
-  lace_id: string
-  lace_name: string
-}
-
-/** What every live Lace has saved, for Home's tabs. Mirrors SavedAcrossLaces. */
-export interface SavedAcrossLacesDto {
-  opportunities: (LaceOpportunityDto & LaceTagDto)[]
-  accounts: (LaceAccountDto & LaceTagDto)[]
-  competitors: (LaceCompetitorDto & LaceTagDto)[]
-  /** Finds waiting for review, by kind, across the Laces. */
-  to_review: { opportunities: number; accounts: number; competitors: number }
-}
-
-export function getSavedAcrossLaces(): Promise<SavedAcrossLacesDto> {
-  return apiFetch<SavedAcrossLacesDto>("/api/v1/laces/saved")
-}
-
 /** Newest first across every Lace; `before` (an item's created_at) pages back. */
 export function listAllLaceActivity(before?: string): Promise<LaceActivityItemDto[]> {
   const query = before ? `?before=${encodeURIComponent(before)}` : ""

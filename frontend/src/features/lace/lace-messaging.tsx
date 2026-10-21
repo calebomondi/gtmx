@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useSearchParams } from "react-router-dom"
-import { Inbox, PenLine, Reply, Send, Users, type LucideIcon } from "lucide-react"
+import { PenLine, Reply, Send, type LucideIcon } from "lucide-react"
 
 import type { OutreachChannel } from "@/lib/api"
 
@@ -67,7 +67,7 @@ export function LaceMessaging({ laceId, name, chat }: { laceId: string; name: st
 
   const tabs: PanelTab<MessagingSection>[] = [
     {
-      value: "conversations", label: "Conversations", icon: Inbox, count: count("replies"), waiting: unreadReplies,
+      value: "conversations", label: "Conversations", count: count("replies"), waiting: unreadReplies,
       content: (
         <>
           <PanelIntro>Everyone who answered, newest first: read their reply and the draft {name} wrote back.</PanelIntro>
@@ -76,7 +76,7 @@ export function LaceMessaging({ laceId, name, chat }: { laceId: string; name: st
       ),
     },
     {
-      value: "drafts", label: "Drafts", icon: PenLine, waiting: tally.drafts, busy: chat.drafting,
+      value: "drafts", label: "Drafts", waiting: tally.drafts, busy: chat.drafting,
       content: (
         <>
           <PanelIntro>Messages {name} wrote for you. Edit any of them; nothing goes out until you send it.</PanelIntro>
@@ -85,7 +85,7 @@ export function LaceMessaging({ laceId, name, chat }: { laceId: string; name: st
       ),
     },
     {
-      value: "sent", label: "Sent", icon: Send, count: count("awaiting"),
+      value: "sent", label: "Sent", count: count("awaiting"),
       content: (
         <>
           <PanelIntro>Sent and waiting for an answer. Once someone replies, they move to Conversations.</PanelIntro>
@@ -94,7 +94,7 @@ export function LaceMessaging({ laceId, name, chat }: { laceId: string; name: st
       ),
     },
     {
-      value: "contacts", label: "Contacts", icon: Users, count: chat.contacts.length, waiting: toApprove,
+      value: "contacts", label: "Contacts", count: chat.contacts.length, waiting: toApprove,
       busy: chat.findingAccounts,
       content: (
         <>
