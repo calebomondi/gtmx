@@ -1,9 +1,9 @@
 """A Lace's competitors: the firms its hunts found, kept one per host."""
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
-from sqlalchemy import literal_column, or_, select
+from sqlalchemy import func, literal_column, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +13,7 @@ from backend.app.database import models
 from backend.app.database.lace_models import Lace, LaceCompetitor, LaceCompetitorMove
 from backend.app.services.competitors import domain_key, normalize_website
 from backend.app.services.errors import NotFoundError
+from backend.app.services.laces import watch_interval
 from backend.app.services.runs import TERMINAL_STATUSES
 
 MOVE_TITLE_CHARS = 200
@@ -113,12 +114,13 @@ async def save_check(db: AsyncSession, competitor_id: uuid.UUID, state: dict) ->
         row.last_checked_at = datetime.now(UTC)
 
 
-async def laces_due_for_monitoring(db: AsyncSession, max_age: timedelta) -> list[tuple[uuid.UUID, uuid.UUID]]:
+async def laces_due_for_monitoring(db: AsyncSession) -> list[tuple[uuid.UUID, uuid.UUID]]:
     """(lace_id, user_id) of active Laces with a tracked competitor that was
-    never checked or is older than `max_age`, and no check already running."""
+    never checked or not within the Lace's watch interval, and no check
+    already running."""
     in_flight = select(models.Run.lace_id).where(
         models.Run.kind == "lace_monitor", models.Run.status.not_in(TERMINAL_STATUSES), models.Run.lace_id.is_not(None))
-    cutoff = datetime.now(UTC) - max_age
+    cutoff = func.now() - watch_interval()
     rows = await db.execute(
         select(Lace.id, Lace.user_id).distinct()
         .join(LaceCompetitor, LaceCompetitor.lace_id == Lace.id)

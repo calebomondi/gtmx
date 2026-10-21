@@ -50,7 +50,7 @@ from backend.app.schemas.laces import (
     OutreachResponse,
     OutreachUpdateRequest,
 )
-from backend.app.services import email, lace_accounts, lace_briefs, lace_cards, lace_documents, lace_activity, lace_contacts, lace_search, lace_channels, lace_competitors, lace_opportunities, lace_outreach
+from backend.app.services import email, inbox, lace_accounts, lace_briefs, lace_cards, lace_documents, lace_activity, lace_contacts, lace_search, lace_channels, lace_competitors, lace_opportunities, lace_outreach
 from backend.app.services import laces as lace_service
 from agents.lace.store import JobRefused
 from backend.app.services.errors import ConflictError
@@ -389,14 +389,16 @@ async def update_opportunity(lace: OwnedLace, opportunity_id: uuid.UUID, payload
 
 def _brief_settings(lace) -> BriefSettings:
     quiet = None if lace.quiet_start is None else QuietHours(start=lace.quiet_start, end=lace.quiet_end)
-    return BriefSettings.model_validate(lace).model_copy(update={"quiet_hours": quiet,
-                                                                  "email_available": email.configured()})
+    return BriefSettings.model_validate(lace).model_copy(update={
+        "quiet_hours": quiet, "email_available": email.configured(),
+        "reply_check_minutes": inbox.check_minutes()})
 
 
 @router.get("/{lace_id}/brief", response_model=BriefSettings)
 async def get_brief_settings(lace: OwnedLace):
-    """When the Lace posts its brief (how often, at what local hour), whether
-    it is emailed too, and the quiet hours in which nothing is emailed."""
+    """The Lace's schedule: when it posts its brief (how often, at what local
+    hour), whether it is emailed too, the quiet hours in which nothing is
+    emailed, and how often it keeps watch."""
     return _brief_settings(lace)
 
 

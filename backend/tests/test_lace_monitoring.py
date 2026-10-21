@@ -94,13 +94,14 @@ def test_the_previous_baseline_is_passed_back(client, lace, lace_runtime, checks
     assert checks[0]["Rival"] == {"site_hash": "old"}
 
 
-def test_scheduler_checks_laces_with_stale_competitors(client, lace, lace_runtime, checks, user):  # noqa: F811
-    fresh = datetime.now(UTC) - timedelta(hours=1)
-    stale = datetime.now(UTC) - timedelta(hours=settings.monitor_max_age_h + 1)
-    rival = _competitor(lace, "Rival", checked=fresh)
-    assert client.portal.call(scheduler.sweep_laces) == 0  # checked recently
+def test_scheduler_checks_laces_by_their_own_watch_interval(client, lace, lace_runtime, checks, user):  # noqa: F811
+    seven_hours_ago = datetime.now(UTC) - timedelta(hours=7)
+    _competitor(lace, "Rival", checked=seven_hours_ago)
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
-        conn.execute("UPDATE lace_competitors SET last_checked_at = %s WHERE id = %s", (stale, rival))
+        conn.execute("UPDATE laces SET watch_every_h = 12 WHERE id = %s", (lace,))
+    assert client.portal.call(scheduler.sweep_laces) == 0  # checked within its 12 hours
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        conn.execute("UPDATE laces SET watch_every_h = 6 WHERE id = %s", (lace,))
     assert client.portal.call(scheduler.sweep_laces) == 1
     # One already in flight: the next sweep leaves it alone.
     assert client.portal.call(scheduler.sweep_laces) == 0

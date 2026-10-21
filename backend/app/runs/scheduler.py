@@ -5,7 +5,7 @@ by design for launch (one backend process); a multi-instance deployment needs
 a leader lock or an external scheduler."""
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 
@@ -24,9 +24,10 @@ _tasks: list[asyncio.Task] = []
 
 
 async def sweep_laces() -> int:
-    """Start a competitor check for each Lace with stale competitors."""
+    """Start a competitor check for each Lace whose competitors were not
+    checked within its watch interval."""
     async with AsyncSessionLocal() as db:
-        due = await lace_competitors.laces_due_for_monitoring(db, timedelta(hours=settings.monitor_max_age_h))
+        due = await lace_competitors.laces_due_for_monitoring(db)
     started = 0
     for lace_id, user_id in due:
         try:
@@ -38,9 +39,9 @@ async def sweep_laces() -> int:
 
 
 async def sweep_lace_opportunities() -> int:
-    """Start the weekly opportunity search for each Lace that is due."""
+    """Start an opportunity search for each Lace due one by its watch interval."""
     async with AsyncSessionLocal() as db:
-        due = await lace_opportunities.laces_due_for_scan(db, timedelta(days=settings.lace_opportunity_scan_days))
+        due = await lace_opportunities.laces_due_for_scan(db)
     started = 0
     for lace_id, user_id in due:
         try:

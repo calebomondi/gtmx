@@ -103,8 +103,6 @@ class Settings(BaseSettings):
     # A Lace reading its site for the first time, and one founder turn.
     lace_onboarding_timeout_s: float = 600.0
     lace_turn_timeout_s: float = 300.0
-    # How often each Lace looks for new opportunities on its own.
-    lace_opportunity_scan_days: int = 7
 
     # -- Usage limits (per user) --
     max_discovery_runs_per_day: int = 10
@@ -194,7 +192,6 @@ class Settings(BaseSettings):
     # Grace period after boot before the first sweep, so a restart (or a local
     # dev reload) doesn't immediately fan out paid monitoring runs.
     monitor_initial_delay_s: float = 120.0
-    monitor_max_age_h: float = 24.0
 
     # -- Agent tuning --
     # How far back (days) research may look for sources. Kept short so the

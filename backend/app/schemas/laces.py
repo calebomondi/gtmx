@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from agents.schemas.lace_ui import BlockAnswer, UiBlock
 from agents.schemas.monitor import MoveImportance, MoveKind
 from agents.schemas.opportunities import OpportunityKind, OpportunityStatus
-from agents.schemas.lace import AccountStatus, ActivityKind, ActivityRef, ContactSource, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
+from agents.schemas.lace import WatchEvery, AccountStatus, ActivityKind, ActivityRef, ContactSource, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
 
 
 def known_zone(value: str | None) -> str | None:
@@ -304,6 +304,9 @@ class BriefSettings(BaseModel):
     quiet_hours: QuietHours | None = Field(default=None, description="Local hours in which nothing is emailed")
     email_available: bool = Field(default=False, description="Whether this server can send email at all")
     last_brief_at: datetime | None = None
+    watch_every_h: WatchEvery = Field(description="How often it looks for new opportunities and competitor moves")
+    reply_check_minutes: int = Field(default=0, description="How often replies to sent messages are checked; "
+                                                            "0 when they are not")
 
 
 class BriefResponse(BaseModel):
@@ -323,6 +326,7 @@ class BriefSettingsUpdate(BaseModel):
     timezone: str | None = Field(default=None, max_length=64)
     brief_email: bool | None = None
     quiet_hours: QuietHours | None = Field(default=None, description="Quiet hours; null removes them")
+    watch_every_h: WatchEvery | None = None
 
     @field_validator("timezone")
     @classmethod

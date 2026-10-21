@@ -85,6 +85,11 @@ def _fetch_recent(user_id: uuid.UUID, connection_id: str, days: int) -> list[dic
     return messages
 
 
+def check_minutes() -> int:
+    """How often replies to sent messages are looked for; 0 when never."""
+    return round(settings.inbox_sync_interval_s / 60) if settings.inbox_sync_enabled else 0
+
+
 async def _sent_threads(db: AsyncSession, user_id: uuid.UUID, since: datetime) -> dict[str, Outreach]:
     """thread_id -> the latest email the user sent in it, within the window."""
     threads: dict[str, Outreach] = {}

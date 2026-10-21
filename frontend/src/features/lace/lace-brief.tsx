@@ -3,7 +3,7 @@ import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { localTimeZone, type BriefFrequency, type QuietHoursDto } from "@/lib/api"
 
-import { useLaceBrief } from "./use-lace-brief"
+import type { LaceSchedule } from "./use-lace-brief"
 
 const FREQUENCIES: { id: BriefFrequency; label: string }[] = [
   { id: "daily", label: "Daily" },
@@ -27,7 +27,7 @@ function HourSelect({ id, value, onChange }: { id: string; value: number; onChan
   )
 }
 
-function Choice({ active, onClick, children }: { active: boolean; onClick: () => void; children: string }) {
+export function Choice({ active, onClick, children }: { active: boolean; onClick: () => void; children: string }) {
   return (
     <Button size="sm" variant={active ? "default" : "outline"} aria-pressed={active} onClick={onClick}>
       {children}
@@ -35,10 +35,10 @@ function Choice({ active, onClick, children }: { active: boolean; onClick: () =>
   )
 }
 
-/** How often the Lace posts its brief in the chat, at what local hour,
- * whether it is emailed too, and the quiet hours in which nothing is emailed. */
-export function LaceBrief({ laceId }: { laceId: string }) {
-  const { settings, loading, error, update } = useLaceBrief(laceId)
+/** How often the Lace posts its brief, at what local hour, whether it is
+ * emailed too, and the quiet hours in which nothing is emailed. */
+export function LaceBrief({ schedule }: { schedule: LaceSchedule }) {
+  const { settings, loading, error, update } = schedule
   if (loading) return <Skeleton className="h-16 w-full" />
   if (!settings) return <p className="text-sm text-destructive" role="alert">{error ?? "Couldn't load the brief settings."}</p>
   const here = localTimeZone()

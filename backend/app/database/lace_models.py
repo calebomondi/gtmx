@@ -15,7 +15,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from agents.schemas.monitor import MOVE_IMPORTANCES, MOVE_KINDS
 from agents.schemas.opportunities import OPPORTUNITY_KINDS, OPPORTUNITY_STATUSES
-from agents.schemas.lace import ACCOUNT_STATUSES, ACTIVITY_KINDS, ACTIVITY_REFS, CONTACT_SOURCES, BRIEF_FREQUENCIES, CONTACT_STATUSES, INBOX_PLATFORMS, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, FACT_ORIGINS, FACT_TOPICS
+from agents.schemas.lace import ACCOUNT_STATUSES, ACTIVITY_KINDS, ACTIVITY_REFS, CONTACT_SOURCES, BRIEF_FREQUENCIES, CONTACT_STATUSES, INBOX_PLATFORMS, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, DEFAULT_WATCH_EVERY_H, FACT_ORIGINS, FACT_TOPICS, WATCH_EVERY_H
 from backend.app.database.connect import Base
 
 LACE_STATUSES = ("onboarding", "active", "archived")
@@ -37,6 +37,7 @@ class Lace(Base):
         CheckConstraint(_one_of("status", LACE_STATUSES), name="status"),
         CheckConstraint(_one_of("brief_frequency", BRIEF_FREQUENCIES), name="brief_frequency"),
         CheckConstraint("brief_hour BETWEEN 0 AND 23", name="brief_hour"),
+        CheckConstraint(f"watch_every_h IN ({', '.join(map(str, WATCH_EVERY_H))})", name="watch_every_h"),
         # Quiet hours are a window, so both ends or neither, and not empty.
         CheckConstraint("(quiet_start IS NULL) = (quiet_end IS NULL)", name="quiet_hours_paired"),
         CheckConstraint("quiet_start BETWEEN 0 AND 23 AND quiet_end BETWEEN 0 AND 23 AND quiet_start <> quiet_end",
@@ -66,6 +67,9 @@ class Lace(Base):
     # Local hours [start, end) in which nothing is emailed; may wrap midnight.
     quiet_start: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     quiet_end: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    # How often it looks for new opportunities and competitor moves, in hours.
+    watch_every_h: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=DEFAULT_WATCH_EVERY_H,
+                                               server_default=str(DEFAULT_WATCH_EVERY_H))
     # When the last brief was due, whether or not there was news for it.
     last_brief_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,

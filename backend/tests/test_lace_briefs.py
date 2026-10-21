@@ -144,6 +144,10 @@ def test_brief_settings(client, lace, lace_runtime):  # noqa: F811
     assert (updated["brief_frequency"], updated["brief_hour"], updated["timezone"]) == ("weekly", 7, "Africa/Nairobi")
     assert client.patch(f"{API}/laces/{lace}/brief", json={"timezone": "Mars/Olympus"}).status_code == 422
     assert client.patch(f"{API}/laces/{lace}/brief", json={"brief_hour": 24}).status_code == 422
+    schedule = client.get(f"{API}/laces/{lace}/brief").json()
+    assert schedule["watch_every_h"] == 6 and "reply_check_minutes" in schedule
+    assert client.patch(f"{API}/laces/{lace}/brief", json={"watch_every_h": 24}).json()["watch_every_h"] == 24
+    assert client.patch(f"{API}/laces/{lace}/brief", json={"watch_every_h": 5}).status_code == 422
     client.sign_in(make_user("Intruder"))
     assert client.get(f"{API}/laces/{lace}/brief").status_code == 404
 

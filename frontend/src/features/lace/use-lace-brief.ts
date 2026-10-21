@@ -6,7 +6,9 @@ function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
-/** When a Lace posts its brief, and changing it. */
+export type LaceSchedule = ReturnType<typeof useLaceBrief>
+
+/** A Lace's schedule (its brief, and how often it keeps watch), and changing it. */
 export function useLaceBrief(laceId: string) {
   const [settings, setSettings] = useState<BriefSettingsDto | null>(null)
   const [loading, setLoading] = useState(true)
