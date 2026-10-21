@@ -41,7 +41,7 @@ export function LaceOpportunities({ opps, searching, name, onDiscuss }: {
       )}
       {opportunities.length === 0 && !searching && (
         <p className="text-sm text-muted-foreground">
-          None saved yet. Ask your Lace to look for opportunities; it also looks every week.
+          None saved yet. Ask your Lace to look for opportunities; it also looks on its own, as often as its settings say.
         </p>
       )}
       {KINDS.map((kind) => {
