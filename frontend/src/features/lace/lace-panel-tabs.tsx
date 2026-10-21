@@ -45,10 +45,10 @@ export function LacePanelTabs<S extends LaceSection>({ label, tabs, value, onCha
   return (
     <Tabs value={value} onValueChange={(next) => onChange(next as S)} className="gap-0">
       {header && <div className="mx-auto w-full max-w-4xl px-4 pt-6">{header}</div>}
-      <div className="sticky top-0 z-10 bg-background/85 py-3 backdrop-blur">
+      <div className="sticky top-0 z-10 py-3">
         <div className="mx-auto w-full max-w-4xl px-4">
           <TabsList aria-label={label}
-                    className="relative max-w-full justify-start group-data-horizontal/tabs:h-auto gap-0.5 overflow-x-auto rounded-full border bg-muted/50 p-1 [scrollbar-width:none]">
+                    className="relative max-w-full justify-start group-data-horizontal/tabs:h-auto gap-0.5 overflow-x-auto rounded-full border bg-muted/70 p-1 backdrop-blur-md [scrollbar-width:none]">
             <TabsIndicator className={cn("top-(--active-tab-top) left-(--active-tab-left) h-(--active-tab-height) w-(--active-tab-width)",
                                          "rounded-full bg-background shadow-sm ring-1 ring-theme/40 transition-all duration-300 ease-out")} />
             {tabs.map((tab) => (
