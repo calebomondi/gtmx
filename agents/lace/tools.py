@@ -294,7 +294,7 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
     @tool(parse_docstring=True)
     @guarded
     async def check_competitors() -> ToolResult:
-        """Check the tracked competitors now for moves that matter (pricing, product, positioning, funding, events, news) since the last check. Runs in the background; you get an update if anything material changed. They are also checked daily on their own."""
+        """Check the tracked competitors now for moves that matter (pricing, product, positioning, funding, events, news) since the last check. Runs in the background; you get an update if anything material changed. They are also checked on their own, as often as the founder set in this Lace's settings."""
         try:
             await jobs.start("check_competitors", {})
         except JobRefused as exc:
@@ -363,7 +363,7 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
     @tool(parse_docstring=True)
     @guarded
     async def find_opportunities(kinds: list[OpportunityKind] | None = None) -> ToolResult:
-        """Search for current opportunities: showcase (events, conferences, awards, press), sell (open tenders, RFPs, buyers looking) and partner (complementary companies, integrations, resellers). Keeps only sourced ones that are still open. Runs in the background; you get an update when it is done. It also runs weekly on its own.
+        """Search for current opportunities: showcase (events, conferences, awards, press), sell (open tenders, RFPs, buyers looking) and partner (complementary companies, integrations, resellers). Keeps only sourced ones that are still open. Runs in the background; you get an update when it is done. It also runs on its own, as often as the founder set in this Lace's settings.
 
         Args:
             kinds: Which kinds to look for; all three when omitted.
