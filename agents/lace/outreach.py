@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from agents.lace.accounts import record_brief
 from agents.lace.prompts import render_brief
 from agents.pipelines.outreach import gtm_specialist
-from agents.schemas.accounts import AccountRecord
+from agents.schemas.accounts import PERSON_SOCIALS, AccountRecord
 from agents.schemas.lace import CompetitorSummary, Fact, LaceProfile
 from agents.schemas.outreach import OutreachDraft
 
@@ -47,16 +47,14 @@ class Recipient:
 
 def recipient_for(record: AccountRecord) -> Recipient | None:
     """Who the first message goes to: a named person with an email, else a
-    named person on LinkedIn, else the organisation's own email, else its own
-    account on X, Instagram, Facebook or TikTok. None when there is nothing to
-    reach them on."""
+    named person on LinkedIn, then on their own X, Instagram, Facebook or
+    TikTok, else the organisation's own email, else its own account on those.
+    None when there is nothing to reach them on."""
     people = [c for c in record.key_contacts if c.name]
-    for c in people:
-        if c.email:
-            return Recipient("email", c.name, c.title, c.email)
-    for c in people:
-        if c.linkedin:
-            return Recipient("linkedin", c.name, c.title, c.linkedin)
+    for channel in ("email", "linkedin", *PERSON_SOCIALS):
+        for c in people:
+            if address := c.addresses().get(channel):
+                return Recipient(channel, c.name, c.title, address)
     for c in record.key_contacts:
         if c.email:
             return Recipient("email", None, None, c.email)

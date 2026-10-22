@@ -55,8 +55,9 @@ def _name(row) -> str:
 
 def _contact(contact: LaceContact, account: LaceAccount) -> ContactSummary:
     return ContactSummary(id=str(contact.id), name=contact.name, title=contact.title, email=contact.email,
-                          linkedin=contact.linkedin, company=account.name, account_id=str(account.id),
-                          approved=contact.approved_at is not None)
+                          linkedin=contact.linkedin, x=contact.x, instagram=contact.instagram,
+                          facebook=contact.facebook, tiktok=contact.tiktok, company=account.name,
+                          account_id=str(account.id), approved=contact.approved_at is not None)
 
 
 def _draft(r: LaceOutreach) -> DraftSummary:

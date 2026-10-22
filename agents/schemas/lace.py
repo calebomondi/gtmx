@@ -213,6 +213,10 @@ class ContactSummary(BaseModel):
     title: str | None = None
     email: str | None = None
     linkedin: str | None = None
+    x: str | None = None
+    instagram: str | None = None
+    facebook: str | None = None
+    tiktok: str | None = None
     company: str
     account_id: str
     approved: bool
@@ -225,6 +229,10 @@ class NewContact(BaseModel):
     email: str | None = Field(default=None, max_length=320)
     title: str | None = Field(default=None, max_length=200)
     linkedin: str | None = Field(default=None, max_length=500)
+    x: str | None = Field(default=None, max_length=500)
+    instagram: str | None = Field(default=None, max_length=500)
+    facebook: str | None = Field(default=None, max_length=500)
+    tiktok: str | None = Field(default=None, max_length=500)
     website: str | None = Field(default=None, max_length=500)
 
 

@@ -35,7 +35,7 @@ export function LaceMessaging({ laceId, name, chat }: { laceId: string; name: st
   const [section, setSection] = useSection<MessagingSection>(MESSAGING_SECTIONS)
   const [params, setParams] = useSearchParams()
   // The person open in a dialog (by id, so it follows the list as it updates).
-  const [person, setPerson] = useState<{ id: string; channel: "email" | "linkedin" | null } | null>(null)
+  const [person, setPerson] = useState<{ id: string; channel: OutreachChannel | null } | null>(null)
   const opened = person ? chat.contacts.find((c) => c.id === person.id) : undefined
   const connections = useConnections()
   const accounts = messagingAccounts(connections.connections, chat.outreach)

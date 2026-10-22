@@ -204,7 +204,8 @@ async def list_contacts(lace: OwnedLace, db: DbSession,
 
 def _contact(c, account_name: str) -> ContactResponse:
     return ContactResponse(id=c.id, account_id=c.account_id, account_name=account_name, name=c.name, title=c.title,
-                           email=c.email, linkedin=c.linkedin, source=c.source, approved_at=c.approved_at,
+                           email=c.email, linkedin=c.linkedin, x=c.x, instagram=c.instagram, facebook=c.facebook,
+                           tiktok=c.tiktok, source=c.source, approved_at=c.approved_at,
                            first_seen_at=c.first_seen_at)
 
 
@@ -220,8 +221,8 @@ async def approve_contact(lace: OwnedLace, contact_id: uuid.UUID, payload: Conta
              status_code=status.HTTP_202_ACCEPTED)
 async def draft_to_contact(lace: OwnedLace, contact_id: uuid.UUID, payload: ContactDraftRequest, user: CurrentUser,
                            db: DbSession):
-    """Ask the Lace to draft a first message to one person, on email or
-    LinkedIn, with the founder's note. Approves them. The draft lands in
+    """Ask the Lace to draft a first message to one person, by email or on
+    one of their social accounts, with the founder's note. Approves them. The draft lands in
     Messaging for the founder to edit and send."""
     account_id, person = await lace_contacts.person_to_draft(db, lace.id, contact_id, payload.channel)
     try:

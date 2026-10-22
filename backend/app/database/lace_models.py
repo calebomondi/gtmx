@@ -322,6 +322,11 @@ class LaceContact(Base):
     title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     linkedin: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Their own accounts (profile URLs), shown as ways to reach them.
+    x: Mapped[str | None] = mapped_column(Text, nullable=True)
+    instagram: Mapped[str | None] = mapped_column(Text, nullable=True)
+    facebook: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tiktok: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[str] = mapped_column(String(16), nullable=False)
     # The founder cleared this person for outreach: nothing is drafted to
     # anyone until then.

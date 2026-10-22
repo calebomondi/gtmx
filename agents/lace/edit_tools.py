@@ -88,7 +88,9 @@ def build_edit_tools(store: LaceStore) -> list[BaseTool]:
     @tool(parse_docstring=True)
     @guarded
     async def add_contact(company: str, name: str, email: str | None = None, title: str | None = None,
-                          linkedin: str | None = None, website: str | None = None) -> ToolResult:
+                          linkedin: str | None = None, x: str | None = None, instagram: str | None = None,
+                          facebook: str | None = None, tiktok: str | None = None,
+                          website: str | None = None) -> ToolResult:
         """Add a person the founder names, approved for outreach, at a company. The company becomes a saved account if it is not one yet. If you lack their name or company, ask with ask_form first.
 
         Args:
@@ -97,15 +99,20 @@ def build_edit_tools(store: LaceStore) -> list[BaseTool]:
             email: Their email address, if known.
             title: Their role, if known.
             linkedin: Their LinkedIn profile URL, if known.
+            x: Their own X profile URL or handle, if known.
+            instagram: Their own Instagram profile URL or handle, if known.
+            facebook: Their own Facebook profile URL, if known.
+            tiktok: Their own TikTok profile URL or handle, if known.
             website: The company's website, if known.
         """
         try:
             person = NewContact(company=company.strip(), name=name.strip(), email=email and email.strip() or None,
-                                title=title, linkedin=linkedin, website=website)
+                                title=title, linkedin=linkedin, x=x, instagram=instagram, facebook=facebook,
+                                tiktok=tiktok, website=website)
         except ValidationError:
             return ToolResult.failure("Give at least a company and a name, each within normal length.")
-        if not (person.email or person.linkedin):
-            note = " They have no email or LinkedIn yet, so nothing can be drafted to them until you add one."
+        if not (person.email or person.linkedin or person.x or person.instagram or person.facebook or person.tiktok):
+            note = " They have no email or social account yet, so nothing can be drafted to them until you add one."
         else:
             note = ""
         saved = await store.add_contact(person)
