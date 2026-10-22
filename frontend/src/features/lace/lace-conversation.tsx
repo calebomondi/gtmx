@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
-import { AlertTriangle, ArrowDown, FileText } from "lucide-react"
+import { AlertTriangle, ArrowDown, ChevronRight, FileText, PenLine } from "lucide-react"
 
 import { PromptInputWithActions } from "@/components/chat-input"
 import { Markdown } from "@/components/ui/markdown"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DOCUMENT_ACCEPT, type LaceMessageDto } from "@/lib/api"
+import { cn } from "@/lib/utils"
 
 import { LaceAvatar } from "./lace-avatar"
 import { ChatBlocks } from "./lace-chat-blocks"
 import { LaceReplySources } from "./lace-reply-sources"
 import { LaceWorkTrail } from "./lace-work-trail"
+import { foldDraftExchanges } from "./draft-exchanges"
 import { answersByBlock } from "./questions"
 import { splitSources } from "./reply-sources"
 import type { LaceChat } from "./use-lace-chat"
@@ -27,6 +29,22 @@ function Streaming({ text }: { text: string }) {
         <Markdown className="prose prose-sm dark:prose-invert min-w-0 max-w-none">{splitSources(shown).body}</Markdown>
         <span aria-hidden className="ml-0.5 inline-block h-4 w-1.5 animate-pulse rounded-sm bg-theme align-middle" />
       </div>
+    </div>
+  )
+}
+
+/** A brainstorm about one draft, which happened beside the draft: one line
+ * here, opening to the exchange. */
+function DraftExchange({ messages, to }: { messages: LaceMessageDto[]; to: string | null }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="flex flex-col gap-3">
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}
+              className="flex cursor-pointer items-center gap-2 self-center rounded-full border border-dashed px-3 py-1 text-xs text-muted-foreground hover:border-theme/50 hover:text-foreground">
+        <PenLine className="size-3.5" /> Worked on the draft{to ? ` to ${to}` : ""} · {messages.length} messages
+        <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />
+      </button>
+      {open && messages.map((m, i) => <Message key={i} message={m} />)}
     </div>
   )
 }
@@ -130,10 +148,14 @@ export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill }:
           {!chat.loading && chat.messages.length === 0 && !chat.working && (
             <p className="text-sm text-muted-foreground">No messages yet. Say hello to {name}.</p>
           )}
-          {chat.messages.map((message, i) => (
-            <Message key={i} message={message}>
-              {message.ui && message.ui.length > 0 && (
-                <ChatBlocks blocks={message.ui} chat={chat} live={i === lastIndex} answers={answers} onReview={onOpenMessaging} />
+          {foldDraftExchanges(chat.messages).map((item, i) => item.kind === "draft" ? (
+            <DraftExchange key={`draft:${i}`} messages={item.messages}
+                           to={chat.outreach.find((m) => m.id === item.draftId)?.recipient_name ?? null} />
+          ) : (
+            <Message key={item.index} message={item.message}>
+              {item.message.ui && item.message.ui.length > 0 && (
+                <ChatBlocks blocks={item.message.ui} chat={chat} live={item.index === lastIndex} answers={answers}
+                            onReview={onOpenMessaging} />
               )}
             </Message>
           ))}

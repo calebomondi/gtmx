@@ -89,7 +89,8 @@ export interface LaceChat {
   /** The reply as it is being written; empty when nothing is streaming. */
   draft: string
   /** Send a message, uploading `files` first and attaching them. */
-  send: (text: string, files?: File[]) => Promise<void>
+  /** With `draftId`, the message is about that unsent draft. */
+  send: (text: string, files?: File[], draftId?: string) => Promise<void>
   /** Answer a question under the latest reply: a choice, checklist or form. */
   answer: (block: QuestionBlockDto, answer: BlockAnswerDto) => Promise<void>
   /** Load the Lace again (after it was archived or restored, or to retry a
@@ -424,11 +425,12 @@ export function useLaceChat(laceId: string): LaceChat {
     }
   }, [laceId, checkRuns])
 
-  const send = useCallback(async (text: string, files: File[] = []) => {
+  const send = useCallback(async (text: string, files: File[] = [], draftId?: string) => {
     setError(null)
     setMessages((prev) => [...prev, {
       role: "founder", content: text,
       ...(files.length ? { documents: files.map((f) => ({ id: f.name, filename: f.name })) } : {}),
+      ...(draftId ? { draft_id: draftId } : {}),
     }])
     const documentIds: string[] = []
     try {
@@ -446,7 +448,7 @@ export function useLaceChat(laceId: string): LaceChat {
       return
     }
     try {
-      const { run_id } = await sendLaceMessage(laceId, text, documentIds)
+      const { run_id } = await sendLaceMessage(laceId, text, documentIds, draftId)
       await follow(run_id)
     } catch (err) {
       setError(err instanceof ApiError && err.status === 409 ? "Your Lace is still working on the last message." : message(err))

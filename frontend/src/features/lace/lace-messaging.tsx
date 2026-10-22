@@ -7,6 +7,7 @@ import type { OutreachChannel } from "@/lib/api"
 import { MESSAGING_SECTIONS, type MessagingSection } from "./lace-activity-actions"
 import { LaceAccountSwitcher } from "./lace-account-switcher"
 import { LaceContactDialog } from "./lace-contact-dialog"
+import { DraftBrainstorm } from "./draft-brainstorm"
 import { LaceContacts } from "./lace-contacts"
 import { LacePanelTabs, PanelIntro, type PanelTab } from "./lace-panel-tabs"
 import { LaceThreads, type ThreadActions } from "./lace-threads"
@@ -61,6 +62,7 @@ export function LaceMessaging({ laceId, name, chat }: { laceId: string; name: st
     onUndo: chat.undoSend,
     onMarkSent: (id) => void chat.markSent(id),
     onRead: chat.markRead,
+    brainstorm: (draft) => <DraftBrainstorm draft={draft} chat={chat} name={name} />,
   }
   const inbox = (folder: "replies" | "drafts" | "awaiting", empty: { title: string; body: string }) => (
     <LaceThreads outreach={outreach} folder={folder} drafting={chat.drafting} actions={actions} empty={empty} />

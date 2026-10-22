@@ -80,6 +80,9 @@ FOUNDER_TEXT_KEY = "founder_text"
 # On a founder message that answers a question: the answer, so the question
 # shows as answered.
 ANSWER_KEY = "answer"
+# On a founder message about one draft: its id. The Lace's replies to it carry
+# the id too, so the draft's own panel can show that exchange.
+DRAFT_KEY = "draft_id"
 
 
 def thread_config(lace_id: uuid.UUID) -> dict:
@@ -183,15 +186,27 @@ class _TokenRelay:
         events.broadcast(self._run_id, "token_reset")
 
 
-def founder_message(text: str, attachments: list[dict] | None = None) -> HumanMessage:
+def founder_message(text: str, attachments: list[dict] | None = None, draft: dict | None = None) -> HumanMessage:
     """The founder's words; with attachments, a note naming them so the Lace
-    knows to read them."""
-    if not attachments:
+    knows to read them; about a draft, its text as it stands and how to
+    change it."""
+    notes: list[str] = []
+    meta: dict = {}
+    if attachments:
+        names = ", ".join(f"{a['filename']} (document id {a['id']})" for a in attachments)
+        notes.append(f"[The founder attached: {names}. Read them with read_document.]")
+        meta[ATTACHMENTS_KEY] = attachments
+    if draft:
+        subject = f"Subject: {draft['subject']}\n" if draft.get("subject") else ""
+        notes.append(f"[This is about the draft {draft['id']} to {draft['recipient']} at {draft['company']} by "
+                     f"{draft['channel']}, which reads now:\n{subject}{draft['body']}\n"
+                     "Work on it with the founder: answer briefly, and when they want it changed, rewrite it with "
+                     f"edit_draft (draft_id {draft['id']}) and say in a line what you changed.]")
+        meta[DRAFT_KEY] = draft["id"]
+    if not notes:
         return HumanMessage(content=text)
-    names = ", ".join(f"{a['filename']} (document id {a['id']})" for a in attachments)
-    note = f"[The founder attached: {names}. Read them with read_document.]"
-    return HumanMessage(content=f"{text}\n\n{note}" if text else note,
-                        additional_kwargs={ATTACHMENTS_KEY: attachments, FOUNDER_TEXT_KEY: text})
+    note = "\n\n".join(notes)
+    return HumanMessage(content=f"{text}\n\n{note}" if text else note, additional_kwargs={**meta, FOUNDER_TEXT_KEY: text})
 
 
 def event_message(updates: list[str]) -> HumanMessage:
@@ -310,17 +325,22 @@ def visible_messages(messages: list[AnyMessage]) -> list[dict]:
     """The conversation as the founder sees it: their messages and the Lace's
     replies (with any cards or choices), without tool calls, results or updates."""
     out = []
+    about = None  # the draft the founder's latest message was about
     for m in messages:
-        if isinstance(m, HumanMessage) and not m.additional_kwargs.get(EVENT_FLAG):
+        if isinstance(m, HumanMessage) and m.additional_kwargs.get(EVENT_FLAG):
+            about = None  # the Lace answers an update, not the founder
+        elif isinstance(m, HumanMessage):
             attached = m.additional_kwargs.get(ATTACHMENTS_KEY)
             content = m.additional_kwargs.get(FOUNDER_TEXT_KEY, str(m.content))
             answer = m.additional_kwargs.get(ANSWER_KEY)
+            about = m.additional_kwargs.get(DRAFT_KEY)
             out.append({"role": "founder", "content": content, **({"documents": attached} if attached else {}),
-                        **({"answer": answer} if answer else {})})
+                        **({"answer": answer} if answer else {}), **({"draft_id": about} if about else {})})
         elif isinstance(m, AIMessage) and not m.tool_calls:
             ui = m.additional_kwargs.get(UI_KEY)
             if str(m.content).strip() or ui:
-                out.append({"role": "lace", "content": str(m.content), **({"ui": ui} if ui else {})})
+                out.append({"role": "lace", "content": str(m.content), **({"ui": ui} if ui else {}),
+                            **({"draft_id": about} if about else {})})
     return out
 
 
