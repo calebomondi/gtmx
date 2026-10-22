@@ -211,3 +211,19 @@ def test_a_seller_known_by_its_website_is_named_however_it_is_spaced(body):
     brief.seller = "shangalabs.com"
     assert gs._names_offer(body, brief, "Hardware Integration")
     assert not gs._names_offer("We connect your scales", brief, "Hardware Integration")
+
+
+def test_the_reviewer_knows_who_the_message_is_to(llm):
+    calls, _ = llm
+    gs.write_first_touch(_brief(), "Cloud of Association")
+    review = next(prompt for label, prompt in calls if label == "outreach_review")
+    assert "RECIPIENT\nAda Lovelace, CTO" in review
+
+
+def test_only_web_pages_are_fetched_as_sources(monkeypatch):
+    fetched = []
+    monkeypatch.setattr(gs, "scrape_url", lambda url, cfg: fetched.append(url) or "page")
+    brief = _brief()
+    brief.trigger_source = "founder"
+    gs._sources(brief)
+    assert fetched == ["https://acme.example"]
