@@ -75,6 +75,7 @@ function ConnectDialog({ laceId, name, connections, open, onOpenChange }: {
             {name} drafts on these; nothing is sent until you send it. You come back here after connecting.
           </DialogDescription>
         </DialogHeader>
+        <div className="flex flex-col gap-4 px-4 pb-4">
         <ul className="flex flex-col gap-2">
           {MESSAGING_PLATFORMS.map((platform) => {
             const connection = connections.connections.find((c) => c.platform === platform)
@@ -108,6 +109,7 @@ function ConnectDialog({ laceId, name, connections, open, onOpenChange }: {
           <p className="text-xs text-muted-foreground">Business accounts whose messages {name} reads and drafts answers to.</p>
           <LaceChannels laceId={laceId} />
         </section>
+        </div>
       </DialogContent>
     </Dialog>
   )
