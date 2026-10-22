@@ -72,7 +72,9 @@ def _reader(monkeypatch, intent="question", answer="Hi Samir, pricing starts at.
 
 def test_a_reply_is_read_answered_as_a_draft_and_reported(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
     _sent(lace, user.id)
-    _inbox(monkeypatch, _reply("m_1"))
+    # Gmail quotes the email it answers below the reply: only the reply is kept.
+    _inbox(monkeypatch, _reply("m_1", text="Interesting. What does it cost?\n\nOn Thu, Oct 22, 2026, 15:14 Caleb "
+                                           "<caleb@shanga.test> wrote:\n\n> Hi Samir"))
     seen = []
     _reader(monkeypatch, seen=seen)
     lace_runtime.append(AIMessage(content="Samir asked about pricing; an answer is ready for you."))
