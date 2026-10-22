@@ -13,6 +13,7 @@ import {
   deleteLaceOutreach,
   setLaceOpportunityStatus,
   listActiveRuns,
+  listLaceActivity,
   listLaceAccounts,
   listLaceCompetitors,
   listLaceFacts,
@@ -148,6 +149,11 @@ export function useLaceChat(laceId: string): LaceChat {
   const [jobs, setJobs] = useState<RunDto[]>([])
   const [draft, setDraft] = useState("")
   const abort = useRef<AbortController | null>(null)
+  // What the last look saw: the background jobs running, and the newest
+  // activity (undefined before the first look). A job ending or new activity
+  // (a draft written, a reply synced) means the lists changed on the server.
+  const seenJobs = useRef<Set<string>>(new Set())
+  const newestActivity = useRef<string | null | undefined>(undefined)
   // Mirrors `working` for callbacks; written only from them, never in render.
   const busy = useRef(false)
 
@@ -219,16 +225,30 @@ export function useLaceChat(laceId: string): LaceChat {
   }, [refresh])
 
   const checkRuns = useCallback(async () => {
-    const mine = (await listActiveRuns()).filter((run) => run.lace_id === laceId)
+    const [runs, latest] = await Promise.all([
+      listActiveRuns(),
+      // A failed look at activity only skips this round's change check.
+      listLaceActivity(laceId, undefined, 1).catch(() => null),
+    ])
+    const mine = runs.filter((run) => run.lace_id === laceId)
     setSearching(mine.some((run) => run.kind === "lace_competitors"))
     setFindingAccounts(mine.some((run) => ["lace_accounts", "lace_contacts", "lace_icp"].includes(run.kind)))
     setDrafting(mine.some((run) => run.kind === "lace_drafts"))
     setFindingOpportunities(mine.some((run) => run.kind === "lace_opportunities"))
     const isTurn = (run: RunDto) => run.kind === "lace_turn" || run.kind === "lace_onboarding"
-    setJobs(mine.filter((run) => !isTurn(run)).reverse())
+    const jobs = mine.filter((run) => !isTurn(run))
+    setJobs([...jobs].reverse())
+    const running = new Set(jobs.map((run) => run.id))
+    const jobEnded = [...seenJobs.current].some((id) => !running.has(id))
+    seenJobs.current = running
+    const newest = latest ? (latest[0]?.id ?? null) : newestActivity.current
+    const reported = newestActivity.current !== undefined && newest !== newestActivity.current
+    newestActivity.current = newest
+    // Drafts and replies land without a turn the page follows: load them now.
+    if (jobEnded || reported) void refresh().catch(() => undefined)
     const turn = mine.find(isTurn)
     if (turn && !busy.current) void follow(turn.id)
-  }, [laceId, follow])
+  }, [laceId, follow, refresh])
 
   useEffect(() => {
     let cancelled = false

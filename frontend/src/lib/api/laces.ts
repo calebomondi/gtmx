@@ -514,8 +514,11 @@ export interface ActivityDto {
 }
 
 /** Newest first; `before` (an item's created_at) pages back. */
-export function listLaceActivity(laceId: string, before?: string): Promise<ActivityDto[]> {
-  const query = before ? `?before=${encodeURIComponent(before)}` : ""
+export function listLaceActivity(laceId: string, before?: string, limit?: number): Promise<ActivityDto[]> {
+  const params = new URLSearchParams()
+  if (before) params.set("before", before)
+  if (limit) params.set("limit", String(limit))
+  const query = params.size ? `?${params}` : ""
   return apiFetch<ActivityDto[]>(`/api/v1/laces/${laceId}/activity${query}`)
 }
 
