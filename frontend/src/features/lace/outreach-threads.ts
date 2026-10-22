@@ -75,6 +75,14 @@ function hasReply(thread: OutreachThread): boolean {
   return thread.messages.some((m) => m.direction === "inbound")
 }
 
+/** What a thread's drafts answer: the latest reply before the first of
+ * them, or null for a first message. */
+export function answering(thread: OutreachThread, drafts: LaceOutreachDto[]): LaceOutreachDto | null {
+  const first = Math.min(...drafts.map((d) => Date.parse(d.created_at)))
+  const replies = thread.messages.filter((m) => m.direction === "inbound" && Date.parse(when(m)) <= first)
+  return replies.reduce<LaceOutreachDto | null>((latest, m) => (!latest || when(m) > when(latest) ? m : latest), null)
+}
+
 export function inFolder(thread: OutreachThread, folder: ThreadFolder): boolean {
   switch (folder) {
     case "replies": return hasReply(thread)
