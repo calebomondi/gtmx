@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { ArrowLeft, Inbox, Loader2, Mail, Search } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -16,6 +16,7 @@ import {
   groupThreads,
   inFolder,
   initials,
+  isUnread,
   matchesQuery,
   preview,
   type OutreachThread,
@@ -42,6 +43,8 @@ export interface ThreadActions {
   onSend: (id: string) => void
   onUndo: (id: string) => void
   onMarkSent: (id: string) => void
+  /** Replies the founder opened. */
+  onRead: (ids: string[]) => void
 }
 
 /** The person's initials, with their channel's mark in the corner. */
@@ -93,6 +96,12 @@ function ThreadView({ thread, folder, actions, onBack }: {
   const replyTo = folder === "drafts" ? answering(thread, drafts) : null
   const said = folder === "drafts" ? (replyTo ? [replyTo] : []) : thread.messages.filter((m) => !drafts.includes(m))
   const scroller = useScrollToEnd<HTMLDivElement>(thread.key, thread.messages.length)
+  // Shown is read: its replies stop counting as new.
+  const unread = thread.messages.filter(isUnread).map((m) => m.id).join(",")
+  const { onRead } = actions
+  useEffect(() => {
+    if (unread) onRead(unread.split(","))
+  }, [unread, onRead])
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <header className="flex items-center gap-3 border-b px-4 py-3">

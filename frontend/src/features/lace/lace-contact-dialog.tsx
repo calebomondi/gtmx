@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Check, Copy, ExternalLink, Loader2, MessageCircleReply, Sparkles } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -9,23 +9,15 @@ import { formatRelativeTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 import { ChannelIcon } from "./channel-icon"
-import { reachOf, type Reach } from "./contacts-model"
+import { messagesWith, reachOf, unreadByChannel, type Reach } from "./contacts-model"
 import { DraftCard } from "./lace-draft"
 import { Bubble } from "./lace-threads"
-import { CHANNEL_LABELS, initials } from "./outreach-threads"
+import { CHANNEL_LABELS, initials, isUnread } from "./outreach-threads"
 import type { LaceChat } from "./use-lace-chat"
+import { UnreadBadge } from "./unread-badge"
 import { useScrollToEnd } from "./use-scroll-to-end"
 
 const NOTE_IDEAS = ["Mention our pilot results", "Keep it under 80 words", "Ask for a 15-minute call"]
-
-/** Everything sent to, drafted for or received from one person, oldest first. */
-function withPerson(outreach: LaceOutreachDto[], contact: ContactDto): LaceOutreachDto[] {
-  const addresses = reachOf(contact).map((r) => r.address.toLowerCase())
-  return outreach
-    .filter((m) => (m.recipient_address && addresses.includes(m.recipient_address.toLowerCase()))
-      || (contact.name && m.recipient_name === contact.name && m.recipient_company === contact.account_name))
-    .sort((a, b) => (a.sent_at ?? a.created_at).localeCompare(b.sent_at ?? b.created_at))
-}
 
 /** Their latest reply on a channel other than `channel`, if any. */
 function replyElsewhere(messages: LaceOutreachDto[], channel: OutreachChannel): LaceOutreachDto | null {
@@ -83,7 +75,7 @@ export function LaceContactDialog({ contact, channel: initialChannel, name, chat
   const [note, setNote] = useState("")
   const [asked, setAsked] = useState<OutreachChannel | null>(null)
   const [asking, setAsking] = useState(false)
-  const everything = withPerson(chat.outreach, contact)
+  const everything = messagesWith(chat.outreach, contact)
   const messages = everything.filter((m) => m.channel === channel)
   const drafts = messages.filter((m) => m.direction === "outbound" && (m.status === "draft" || m.status === "failed"))
   const said = messages.filter((m) => !drafts.includes(m))
@@ -91,6 +83,13 @@ export function LaceContactDialog({ contact, channel: initialChannel, name, chat
   const scroller = useScrollToEnd<HTMLDivElement>(channel ?? "", messages.length)
   const who = contact.name ?? contact.email ?? "this person"
   const current = reach.find((r) => r.channel === channel)
+  const unreadOn = unreadByChannel(chat.outreach, contact)
+  // The channel shown is read: its replies stop counting as new.
+  const unread = messages.filter(isUnread).map((m) => m.id).join(",")
+  const { markRead } = chat
+  useEffect(() => {
+    if (unread) markRead(unread.split(","))
+  }, [unread, markRead])
 
   const pick = (next: OutreachChannel) => {
     setChannel(next)
@@ -127,6 +126,7 @@ export function LaceContactDialog({ contact, channel: initialChannel, name, chat
                         className={cn("flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors",
                                       channel === c ? "border-theme/60 bg-theme/15 text-foreground" : "text-muted-foreground hover:text-foreground")}>
                   <ChannelIcon channel={c} className="size-3.5" /> {CHANNEL_LABELS[c]}
+                  {channel !== c && unreadOn[c] ? <UnreadBadge count={unreadOn[c]} /> : null}
                 </button>
               ))}
             </div>

@@ -11,7 +11,7 @@ import { LaceContacts } from "./lace-contacts"
 import { LacePanelTabs, PanelIntro, type PanelTab } from "./lace-panel-tabs"
 import { LaceThreads, type ThreadActions } from "./lace-threads"
 import { messagingAccounts, onAccount, type AccountKey } from "./messaging-accounts"
-import { groupThreads, inFolder, outreachTally, waitsOnFounder } from "./outreach-threads"
+import { groupThreads, inFolder, isUnread, outreachTally } from "./outreach-threads"
 import type { LaceChat } from "./use-lace-chat"
 import { useConnections } from "./use-connections"
 import { useSection } from "./use-lace-section"
@@ -51,7 +51,7 @@ export function LaceMessaging({ laceId, name, chat }: { laceId: string; name: st
   const tally = outreachTally(outreach)
   const threads = groupThreads(outreach)
   const count = (folder: Parameters<typeof inFolder>[1]) => threads.filter((t) => inFolder(t, folder)).length
-  const unreadReplies = outreach.filter((m) => m.direction === "inbound" && waitsOnFounder(m)).length
+  const unreadReplies = outreach.filter(isUnread).length
   const toApprove = chat.contacts.filter((c) => !c.approved_at).length
   const actions: ThreadActions = {
     sendingSoon: chat.sendingSoon,
@@ -60,6 +60,7 @@ export function LaceMessaging({ laceId, name, chat }: { laceId: string; name: st
     onSend: chat.sendDraft,
     onUndo: chat.undoSend,
     onMarkSent: (id) => void chat.markSent(id),
+    onRead: chat.markRead,
   }
   const inbox = (folder: "replies" | "drafts" | "awaiting", empty: { title: string; body: string }) => (
     <LaceThreads outreach={outreach} folder={folder} drafting={chat.drafting} actions={actions} empty={empty} />
@@ -99,7 +100,8 @@ export function LaceMessaging({ laceId, name, chat }: { laceId: string; name: st
       content: (
         <>
           <PanelIntro>The people {name} found at your saved accounts, in the chat or its searches. It drafts only to people you approve.</PanelIntro>
-          <LaceContacts contacts={chat.contacts} onApprove={(id, approved) => void chat.approveContact(id, approved)}
+          <LaceContacts contacts={chat.contacts} outreach={chat.outreach}
+                        onApprove={(id, approved) => void chat.approveContact(id, approved)}
                         onApproveAccount={(id) => void chat.approveAccountContacts(id)}
                         onOpen={(c, channel) => setPerson({ id: c.id, channel })} />
           {opened && (

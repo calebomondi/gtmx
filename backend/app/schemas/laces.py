@@ -46,6 +46,8 @@ class LaceResponse(BaseModel):
 # What a Lace's mascot shows in the sidebar, when something is actually going
 # on: working (a turn or job running), or waiting on the founder.
 LaceMood = Literal["thinking", "alert"]
+# Replies marked read in one request: a conversation's worth, with room.
+MAX_READ_IDS = 200
 
 
 class LaceListItem(LaceResponse):
@@ -230,6 +232,7 @@ class OutreachResponse(BaseModel):
     intent: str | None = Field(description="inbound only: how the reply was read, e.g. interested, question")
     error: str | None
     sent_at: datetime | None
+    read_at: datetime | None = Field(default=None, description="inbound only: when the founder opened it; null is unread")
     created_at: datetime
 
 
@@ -345,6 +348,10 @@ class ActivityResponse(BaseModel):
     ref_id: uuid.UUID | None = None
     created_at: datetime
     read_at: datetime | None = None
+
+
+class OutreachReadRequest(BaseModel):
+    ids: list[uuid.UUID] = Field(min_length=1, max_length=MAX_READ_IDS, description="Replies the founder opened")
 
 
 class ActivityReadResponse(BaseModel):

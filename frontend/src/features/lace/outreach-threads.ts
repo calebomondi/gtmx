@@ -31,8 +31,12 @@ function threadKey(m: LaceOutreachDto): string {
 
 /** A draft to review and send, or a reply the Lace has not read yet. */
 export function waitsOnFounder(m: LaceOutreachDto): boolean {
-  return (m.direction === "outbound" && m.status === "draft")
-    || (m.direction === "inbound" && m.status === "received" && m.intent === null)
+  return (m.direction === "outbound" && m.status === "draft") || isUnread(m)
+}
+
+/** A reply the founder has not opened yet. */
+export function isUnread(m: LaceOutreachDto): boolean {
+  return m.direction === "inbound" && m.read_at === null
 }
 
 /** The Lace's outreach as conversations: ones that need the founder first,
