@@ -9,7 +9,9 @@ import { formatRelativeTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 import { DraftCard } from "./lace-draft"
+import { useScrollToEnd } from "./use-scroll-to-end"
 import {
+  answering,
   CHANNEL_LABELS,
   groupThreads,
   inFolder,
@@ -78,9 +80,19 @@ export function Bubble({ message }: { message: LaceOutreachDto }) {
   )
 }
 
-function ThreadView({ thread, actions, onBack }: { thread: OutreachThread; actions: ThreadActions; onBack: () => void }) {
+/** One conversation, opened at its newest message. In Drafts it shows only
+ * the drafts and the reply they answer; the whole history is under
+ * Conversations. */
+function ThreadView({ thread, folder, actions, onBack }: {
+  thread: OutreachThread
+  folder: ThreadFolder
+  actions: ThreadActions
+  onBack: () => void
+}) {
   const drafts = thread.messages.filter((m) => m.direction === "outbound" && (m.status === "draft" || m.status === "failed"))
-  const said = thread.messages.filter((m) => !drafts.includes(m))
+  const replyTo = folder === "drafts" ? answering(thread, drafts) : null
+  const said = folder === "drafts" ? (replyTo ? [replyTo] : []) : thread.messages.filter((m) => !drafts.includes(m))
+  const scroller = useScrollToEnd<HTMLDivElement>(thread.key, thread.messages.length)
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <header className="flex items-center gap-3 border-b px-4 py-3">
@@ -95,7 +107,8 @@ function ThreadView({ thread, actions, onBack }: { thread: OutreachThread; actio
           </p>
         </div>
       </header>
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+      <div ref={scroller} className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+        {replyTo && <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Answering</p>}
         {said.length > 0 && <div className="flex flex-col gap-3">{said.map((m) => <Bubble key={m.id} message={m} />)}</div>}
         {drafts.map((m) => (
           <DraftCard key={m.id} message={m} sendingSoon={actions.sendingSoon.has(m.id)}
@@ -193,7 +206,7 @@ export function LaceThreads({ outreach, folder, drafting, actions, empty }: {
       </div>
       <div className={cn("min-h-0 min-w-0 flex-col", open ? "flex" : "hidden md:flex")}>
         {shown ? (
-          <ThreadView thread={shown} actions={actions} onBack={() => setOpenKey(null)} />
+          <ThreadView thread={shown} folder={folder} actions={actions} onBack={() => setOpenKey(null)} />
         ) : (
           <p className="m-auto text-sm text-muted-foreground">Pick a conversation.</p>
         )}

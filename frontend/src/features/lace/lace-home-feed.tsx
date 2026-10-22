@@ -112,25 +112,28 @@ export default function LaceHomeFeed() {
   }))
 
   return (
-    <LacePanelTabs label="Home" tabs={tabs} value={section} onChange={setSection} header={
-      <section aria-label="Home" className="flex flex-col gap-3 rounded-2xl border bg-gradient-to-br from-theme/12 via-card to-card p-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-          <h1 className="text-base font-medium">Home</h1>
-          <p className="text-xs text-muted-foreground">
-            {laces.length} {laces.length === 1 ? "Lace" : "Laces"} at work{waiting.length ? ` · ${waiting.length} need you` : ""}
-          </p>
-        </div>
-        {waiting.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {waiting.map((lace) => (
-              <Button key={lace.id} size="sm" variant="outline" className="rounded-full border-theme/40 bg-background/70"
-                      onClick={() => navigate(`/lace/${lace.id}/feed`)}>
-                <Lace state="alert" size={MASCOT_PX} decorative /> {lace.name} needs you <ArrowRight />
-              </Button>
-            ))}
+    // The app shell clips overflow; the page scrolls itself, as a Lace's Feed does.
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <LacePanelTabs label="Home" tabs={tabs} value={section} onChange={setSection} header={
+        <section aria-label="Home" className="flex flex-col gap-3 rounded-2xl border bg-gradient-to-br from-theme/12 via-card to-card p-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+            <h1 className="text-base font-medium">Home</h1>
+            <p className="text-xs text-muted-foreground">
+              {laces.length} {laces.length === 1 ? "Lace" : "Laces"} at work{waiting.length ? ` · ${waiting.length} need you` : ""}
+            </p>
           </div>
-        )}
-      </section>
-    } />
+          {waiting.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {waiting.map((lace) => (
+                <Button key={lace.id} size="sm" variant="outline" className="rounded-full border-theme/40 bg-background/70"
+                        onClick={() => navigate(`/lace/${lace.id}/feed`)}>
+                  <Lace state="alert" size={MASCOT_PX} decorative /> {lace.name} needs you <ArrowRight />
+                </Button>
+              ))}
+            </div>
+          )}
+        </section>
+      } />
+    </div>
   )
 }
