@@ -50,6 +50,7 @@ _STEP_TEXT = {
     "map_site": lambda a: f"Looking through {a.get('url', 'a site')}",
     "read_page": lambda a: f"Reading {a.get('url', 'a page')}",
     "read_pages": lambda a: f"Reading {len(a.get('urls') or [])} pages",
+    "read_social": lambda a: f"Reading {a.get('url', 'a social profile')}",
     "get_facts": lambda a: "Checking what I know",
     "record_fact": lambda a: "Noting that down",
     "define_icp": lambda a: "Starting to work out your ideal customers",
