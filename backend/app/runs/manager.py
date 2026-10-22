@@ -90,16 +90,18 @@ async def start_lace_onboarding(user_id: uuid.UUID, lace_id: uuid.UUID) -> model
 
 
 async def start_lace_turn(user_id: uuid.UUID, lace_id: uuid.UUID, text: str,
-                          attachments: list[dict] | None = None) -> models.Run:
+                          attachments: list[dict] | None = None, draft: dict | None = None) -> models.Run:
     """One founder message and the Lace's work on it, with any documents
-    attached ([{id, filename}], already checked to be the Lace's). The caller
+    attached ([{id, filename}], already checked to be the Lace's) and the
+    unsent draft it is about, if any (lace_outreach.unsent_draft). The caller
     has already checked that `lace_id` is the user's."""
     text = text.strip()
     if not text and not attachments:
         raise InvalidInputError("Write a message first.")
-    params = {"text": text, **({"documents": attachments} if attachments else {})}
+    params = {"text": text, **({"documents": attachments} if attachments else {}),
+              **({"draft_id": draft["id"]} if draft else {})}
     run = await _start_lace_run("lace_turn", user_id, lace_id, params)
-    _spawn_turn(run.id, user_id, lace_id, lace_runs.founder_message(text, attachments))
+    _spawn_turn(run.id, user_id, lace_id, lace_runs.founder_message(text, attachments, draft))
     return run
 
 

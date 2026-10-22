@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { ArrowLeft, Inbox, Loader2, Mail, Search } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -45,6 +45,8 @@ export interface ThreadActions {
   onMarkSent: (id: string) => void
   /** Replies the founder opened. */
   onRead: (ids: string[]) => void
+  /** What sits before a draft's Send: the Lace, to work on it with. */
+  brainstorm?: (draft: LaceOutreachDto) => ReactNode
 }
 
 /** The person's initials, with their channel's mark in the corner. */
@@ -123,7 +125,7 @@ function ThreadView({ thread, folder, actions, onBack }: {
           <DraftCard key={m.id} message={m} sendingSoon={actions.sendingSoon.has(m.id)}
                      onSave={(changes) => actions.onSave(m.id, changes)} onDiscard={() => actions.onDiscard(m.id)}
                      onSend={() => actions.onSend(m.id)} onUndo={() => actions.onUndo(m.id)}
-                     onMarkSent={() => actions.onMarkSent(m.id)} />
+                     onMarkSent={() => actions.onMarkSent(m.id)} brainstorm={actions.brainstorm?.(m)} />
         ))}
       </div>
     </div>

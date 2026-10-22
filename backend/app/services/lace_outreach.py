@@ -71,6 +71,16 @@ async def get_in_lace(db: AsyncSession, lace_id: uuid.UUID, message_id: uuid.UUI
     return row
 
 
+async def unsent_draft(db: AsyncSession, lace_id: uuid.UUID, draft_id: uuid.UUID) -> dict:
+    """One of the Lace's unsent drafts, as the founder's message about it
+    carries it to the Lace. 404 for another Lace's; 409 once it is sent."""
+    draft = await get_in_lace(db, lace_id, draft_id)
+    if draft.direction != "outbound" or draft.status not in _EDITABLE_STATUSES:
+        raise ConflictError("That draft has already been sent.")
+    return {"id": str(draft.id), "channel": draft.channel, "recipient": draft.recipient_name or draft.recipient_address,
+            "company": draft.recipient_company, "subject": draft.subject, "body": draft.body}
+
+
 async def update(db: AsyncSession, message: LaceOutreach, changes: dict[str, Any]) -> LaceOutreach:
     if message.direction != "outbound" or message.status not in _EDITABLE_STATUSES:
         raise ConflictError("Only an unsent draft can be changed.")

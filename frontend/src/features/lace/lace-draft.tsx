@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { Check, Copy, ExternalLink, Send, Trash2, Undo2 } from "lucide-react"
 import { motion } from "motion/react"
 
@@ -21,10 +21,12 @@ const ANSWERABLE_IN_THREAD = new Set<OutreachChannel>(["instagram", "facebook"])
  * approval (email, X once connected, and Instagram or Facebook answers);
  * on the other channels, whose APIs cannot start a conversation, they copy
  * it, send it there and mark it sent. A send counts down `UNDO_SEND_MS`,
- * with Undo, before it goes. */
-export function DraftCard({ message, sendingSoon, onSave, onDiscard, onSend, onUndo, onMarkSent }: {
+ * with Undo, before it goes. `brainstorm` sits before Send: the Lace, to
+ * work on the draft with. */
+export function DraftCard({ message, sendingSoon, onSave, onDiscard, onSend, onUndo, onMarkSent, brainstorm }: {
   message: LaceOutreachDto
   sendingSoon: boolean
+  brainstorm?: ReactNode
   onSave: (changes: LaceOutreachChanges) => void
   onDiscard: () => void
   onSend: () => void
@@ -35,6 +37,16 @@ export function DraftCard({ message, sendingSoon, onSave, onDiscard, onSend, onU
   const [subject, setSubject] = useState(message.subject ?? "")
   const [body, setBody] = useState(message.body)
   const [copied, setCopied] = useState(false)
+  // The text last taken from the server: when the Lace rewrites the draft,
+  // the new text replaces what is shown, unless the founder is mid-edit.
+  const [seen, setSeen] = useState({ subject: message.subject ?? "", body: message.body })
+  if (seen.subject !== (message.subject ?? "") || seen.body !== message.body) {
+    if (subject === seen.subject && body === seen.body) {
+      setSubject(message.subject ?? "")
+      setBody(message.body)
+    }
+    setSeen({ subject: message.subject ?? "", body: message.body })
+  }
   const editable = EDITABLE.has(message.status)
   const changed = subject !== (message.subject ?? "") || body !== message.body
     || address !== (message.recipient_address ?? "")
@@ -84,6 +96,7 @@ export function DraftCard({ message, sendingSoon, onSave, onDiscard, onSend, onU
       )}
       {editable && !sendingSoon && (
         <div className="flex flex-wrap items-center gap-2">
+          {brainstorm}
           {changed && (
             <Button size="sm" variant="outline"
                     onClick={() => onSave(isEmail ? { subject, body, recipient_address: address } : { body })}>

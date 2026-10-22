@@ -250,13 +250,15 @@ async def list_messages(lace: OwnedLace, db: DbSession,
 
 @router.post("/{lace_id}/messages", response_model=LaceTurnResponse, status_code=status.HTTP_202_ACCEPTED)
 async def send_message(lace: OwnedLace, payload: LaceMessageRequest, user: CurrentUser, db: DbSession):
-    """A message to the Lace, with documents uploaded to it first attached;
-    or the founder's answer to a question under its latest reply."""
+    """A message to the Lace, with documents uploaded to it first attached,
+    and about one of its unsent drafts when `draft_id` is given; or the
+    founder's answer to a question under its latest reply."""
     if payload.answer is not None:
         return LaceTurnResponse(run_id=(await manager.start_lace_answer(user.id, lace.id, payload.answer)).id)
     docs = await lace_documents.attachments(db, lace.id, payload.document_ids)
     attached = [{"id": str(d.id), "filename": d.filename} for d in docs]
-    run = await manager.start_lace_turn(user.id, lace.id, payload.text, attached)
+    draft = await lace_outreach.unsent_draft(db, lace.id, payload.draft_id) if payload.draft_id else None
+    run = await manager.start_lace_turn(user.id, lace.id, payload.text, attached, draft)
     return LaceTurnResponse(run_id=run.id)
 
 

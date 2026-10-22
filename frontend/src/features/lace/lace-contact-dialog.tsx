@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 
 import { ChannelIcon } from "./channel-icon"
 import { messagesWith, reachOf, unreadByChannel, type Reach } from "./contacts-model"
+import { DraftBrainstorm } from "./draft-brainstorm"
 import { DraftCard } from "./lace-draft"
 import { Bubble } from "./lace-threads"
 import { CHANNEL_LABELS, initials, isUnread } from "./outreach-threads"
@@ -147,7 +148,8 @@ export function LaceContactDialog({ contact, channel: initialChannel, name, chat
                 <DraftCard key={m.id} message={m} sendingSoon={chat.sendingSoon.has(m.id)}
                            onSave={(changes) => void chat.saveDraft(m.id, changes)} onDiscard={() => void chat.discardDraft(m.id)}
                            onSend={() => chat.sendDraft(m.id)} onUndo={() => chat.undoSend(m.id)}
-                           onMarkSent={() => void chat.markSent(m.id)} />
+                           onMarkSent={() => void chat.markSent(m.id)}
+                           brainstorm={<DraftBrainstorm draft={m} chat={chat} name={name} />} />
               ))}
             </section>
           )}

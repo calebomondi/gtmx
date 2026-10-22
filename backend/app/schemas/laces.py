@@ -100,6 +100,7 @@ class LaceMessage(BaseModel):
     ui: list[UiBlock] | None = Field(default=None, description="Cards and questions shown under a Lace reply")
     documents: list[Attachment] | None = Field(default=None, description="What the founder attached to the message")
     answer: BlockAnswer | None = Field(default=None, description="The question this founder message answered")
+    draft_id: uuid.UUID | None = Field(default=None, description="The draft this message (or reply) worked on")
 
 
 class LaceMessageRequest(BaseModel):
@@ -107,11 +108,12 @@ class LaceMessageRequest(BaseModel):
     document_ids: list[uuid.UUID] = Field(default_factory=list, description="Documents uploaded to the Lace first")
     answer: BlockAnswer | None = Field(default=None, description="An answer to a question under the latest reply, "
                                                                  "sent instead of text")
+    draft_id: uuid.UUID | None = Field(default=None, description="An unsent draft to work on with the Lace")
 
     @model_validator(mode="after")
     def _says_something(self) -> "LaceMessageRequest":
         if self.answer is not None:
-            if self.text.strip() or self.document_ids:
+            if self.text.strip() or self.document_ids or self.draft_id:
                 raise ValueError("Send an answer on its own.")
             return self
         if not self.text.strip() and not self.document_ids:

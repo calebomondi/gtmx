@@ -138,6 +138,8 @@ export interface LaceMessageDto {
   documents?: AttachmentDto[]
   /** The question this founder message answered. */
   answer?: BlockAnswerDto
+  /** The draft this message, or the Lace's reply to it, worked on. */
+  draft_id?: string
 }
 
 /** A document shared with a Lace, kept as its text. Mirrors DocumentResponse. */
@@ -238,9 +240,11 @@ export function answerLaceQuestion(laceId: string, answer: BlockAnswerDto): Prom
   return apiFetch(`/api/v1/laces/${laceId}/messages`, { method: "POST", body: JSON.stringify({ answer }) })
 }
 
-export function sendLaceMessage(laceId: string, text: string, documentIds: string[] = []): Promise<{ run_id: string }> {
+/** A message to the Lace; with `draftId`, about that unsent draft (the Lace can rewrite it). */
+export function sendLaceMessage(laceId: string, text: string, documentIds: string[] = [],
+                                draftId?: string): Promise<{ run_id: string }> {
   return apiFetch(`/api/v1/laces/${laceId}/messages`, {
-    method: "POST", body: JSON.stringify({ text, document_ids: documentIds }),
+    method: "POST", body: JSON.stringify({ text, document_ids: documentIds, ...(draftId ? { draft_id: draftId } : {}) }),
   })
 }
 
