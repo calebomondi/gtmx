@@ -56,6 +56,7 @@ _STEP_TEXT = {
     "read_page": lambda a: f"Reading {a.get('url', 'a page')}",
     "read_pages": lambda a: f"Reading {len(a.get('urls') or [])} pages",
     "read_social": lambda a: f"Reading {a.get('url', 'a social profile')}",
+    "suggest_replies": lambda a: "Suggesting replies",
     "get_facts": lambda a: "Checking what I know",
     "record_fact": lambda a: "Noting that down",
     "define_icp": lambda a: "Starting to work out your ideal customers",
@@ -278,7 +279,7 @@ async def _converse(run_id: uuid.UUID, lace_id: uuid.UUID, message: HumanMessage
 # Where a reply keeps the cards and choices shown under it.
 UI_KEY = "ui"
 # The tools whose results put something under the reply.
-_UI_TOOLS = frozenset({"ask_choice", "ask_checklist", "ask_form", "show"})
+_UI_TOOLS = frozenset({"ask_choice", "ask_checklist", "ask_form", "show", "suggest_replies"})
 # The blocks the founder answers.
 _QUESTION_TYPES = frozenset({"choices", "checklist", "form"})
 _UI_BLOCK = TypeAdapter(UiBlock)

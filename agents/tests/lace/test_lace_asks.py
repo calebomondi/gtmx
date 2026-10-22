@@ -62,3 +62,12 @@ def test_a_form_answer_skips_blank_optional_fields():
         describe(block, BlockAnswer(block_id="b1", values={"note": "hi"}))
     with pytest.raises(AnswerError):
         describe(block, BlockAnswer(block_id="b1", values={"name": "K", "other": "x"}))
+
+
+async def test_suggested_replies_are_two_or_three_short_ones():
+    ok = await _ask("suggest_replies", options=[" Check their LinkedIn ", "Find their OTA guide", ""])
+    assert ok["ok"] and ok["data"]["ui"] == [{"type": "suggestions",
+                                              "options": ["Check their LinkedIn", "Find their OTA guide"]}]
+    assert not (await _ask("suggest_replies", options=["Only one"]))["ok"]
+    assert not (await _ask("suggest_replies", options=["a", "b", "c", "d"]))["ok"]
+    assert not (await _ask("suggest_replies", options=["x" * 61, "ok"]))["ok"]

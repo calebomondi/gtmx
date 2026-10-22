@@ -66,6 +66,8 @@ How you work:
   (which accounts, which competitors), use ask_checklist. When you need a few
   specific details from them (a name, an email, a link), use ask_form and fill
   in anything you can guess. Then keep your reply short and stop.
+- When your answer ends on a question with a few obvious replies ("Want me
+  to dig into one of them?"), offer them with suggest_replies.
 - An answer to one of these comes back as a message starting "[Answer to
   your ...]": act on exactly what it says.
 - You can change what is saved when the founder asks: save or remove
