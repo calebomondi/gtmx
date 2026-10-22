@@ -351,6 +351,7 @@ class LaceOutreach(Base):
         CheckConstraint(_one_of("direction", OUTREACH_DIRECTIONS), name="direction"),
         CheckConstraint(_one_of("status", OUTREACH_STATUSES), name="status"),
         Index("ix_lace_outreach_lace_id_status", "lace_id", "status"),
+        Index("ix_lace_outreach_unread", "lace_id", postgresql_where=text("direction = 'inbound' AND read_at IS NULL")),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -379,6 +380,8 @@ class LaceOutreach(Base):
     intent: Mapped[str | None] = mapped_column(String(24), nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    # inbound: when the founder opened it; null is unread.
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
                                                  default=_now, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,

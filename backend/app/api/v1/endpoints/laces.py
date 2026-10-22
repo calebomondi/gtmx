@@ -48,6 +48,7 @@ from backend.app.schemas.laces import (
     OpportunityResponse,
     OpportunityUpdateRequest,
     OutreachResponse,
+    OutreachReadRequest,
     OutreachUpdateRequest,
 )
 from backend.app.services import email, inbox, lace_accounts, lace_briefs, lace_cards, lace_documents, lace_activity, lace_contacts, lace_search, lace_channels, lace_competitors, lace_opportunities, lace_outreach
@@ -350,6 +351,12 @@ async def send_outreach(lace: OwnedLace, message_id: uuid.UUID, db: DbSession):
 async def mark_outreach_sent(lace: OwnedLace, message_id: uuid.UUID, db: DbSession):
     """Record a LinkedIn message you sent by hand."""
     return await lace_outreach.mark_sent(db, await lace_outreach.get_in_lace(db, lace.id, message_id))
+
+
+@router.post("/{lace_id}/outreach/read", response_model=ActivityReadResponse)
+async def mark_outreach_read(lace: OwnedLace, payload: OutreachReadRequest, db: DbSession):
+    """The founder opened these replies."""
+    return ActivityReadResponse(marked=await lace_outreach.mark_read(db, lace.id, payload.ids))
 
 
 @router.get("/{lace_id}/channels", response_model=list[ChannelResponse])

@@ -4,11 +4,12 @@ import { Check, CheckCheck, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import type { ContactDto, OutreachChannel } from "@/lib/api"
+import type { ContactDto, LaceOutreachDto, OutreachChannel } from "@/lib/api"
 
 import { ChannelIcon } from "./channel-icon"
-import { byAccount, filterContacts, reachOf } from "./contacts-model"
+import { byAccount, byNewReplies, filterContacts, reachOf, unreadByChannel } from "./contacts-model"
 import { CHANNEL_LABELS } from "./outreach-threads"
+import { UnreadBadge } from "./unread-badge"
 
 const LINK = "grid size-8 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
 
@@ -16,14 +17,17 @@ const LINK = "grid size-8 cursor-pointer place-items-center rounded-md text-mute
  * each. A person (or one of the ways to reach them) opens them: their messages and
  * a way to have the Lace write to them. Nothing is drafted to anyone until
  * the founder approves them: one by one, or everyone at an account at once. */
-export function LaceContacts({ contacts, onApprove, onApproveAccount, onOpen }: {
+export function LaceContacts({ contacts, outreach, onApprove, onApproveAccount, onOpen }: {
   contacts: ContactDto[]
+  /** For the new replies each person has, by channel. */
+  outreach: LaceOutreachDto[]
   onApprove: (contactId: string, approved: boolean) => void
   onApproveAccount: (accountId: string) => void
   onOpen: (contact: ContactDto, channel: OutreachChannel | null) => void
 }) {
   const [query, setQuery] = useState("")
-  const groups = byAccount(filterContacts(contacts, query))
+  const unread = new Map(contacts.map((c) => [c.id, unreadByChannel(outreach, c)]))
+  const groups = byNewReplies(byAccount(filterContacts(contacts, query)), unread)
 
   if (contacts.length === 0) {
     return <p className="text-sm text-muted-foreground">None yet. Ask your Lace to find who to contact at your saved accounts.</p>
@@ -72,7 +76,12 @@ export function LaceContacts({ contacts, onApprove, onApproveAccount, onOpen }: 
                                 title={channel === "email" ? `Write to ${address}` : `Message on ${CHANNEL_LABELS[channel]}`}
                                 aria-label={`${c.name ?? "Contact"} by ${CHANNEL_LABELS[channel]}`}
                                 className={LINK} onClick={() => onOpen(c, channel)}>
-                          <ChannelIcon channel={channel} />
+                          <span className="relative">
+                            <ChannelIcon channel={channel} />
+                            {unread.get(c.id)?.[channel] ? (
+                              <UnreadBadge count={unread.get(c.id)?.[channel] ?? 0} className="absolute -top-2 -right-2.5" />
+                            ) : null}
+                          </span>
                         </button>
                       ))}
                     </div>

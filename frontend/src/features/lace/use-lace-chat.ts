@@ -19,6 +19,7 @@ import {
   listLaceFacts,
   listLaceMessages,
   listLaceOutreach,
+  markLaceOutreachRead,
   markLaceOutreachSent,
   sendLaceMessage,
   uploadLaceDocument,
@@ -104,6 +105,8 @@ export interface LaceChat {
   sendingSoon: ReadonlySet<string>
   undoSend: (messageId: string) => void
   markSent: (messageId: string) => Promise<void>
+  /** The founder opened these replies: they stop counting as unread. */
+  markRead: (messageIds: string[]) => void
   /** Look for who to contact at one account, in the background. */
   findContacts: (accountId: string) => Promise<void>
   /** Ask the Lace to draft to one person, on email or LinkedIn, with a note.
@@ -358,6 +361,17 @@ export function useLaceChat(laceId: string): LaceChat {
   }, [laceId])
   const markSent = useCallback((messageId: string) => replaceOutreach(messageId, markLaceOutreachSent), [replaceOutreach])
 
+  const markRead = useCallback((messageIds: string[]) => {
+    if (messageIds.length === 0) return
+    const ids = new Set(messageIds)
+    const now = new Date().toISOString()
+    setOutreach((prev) => prev.map((m) => (ids.has(m.id) && m.read_at === null ? { ...m, read_at: now } : m)))
+    markLaceOutreachRead(laceId, messageIds).catch((err) => {
+      setOutreach((prev) => prev.map((m) => (ids.has(m.id) && m.read_at === now ? { ...m, read_at: null } : m)))
+      setError(message(err))
+    })
+  }, [laceId])
+
   const approveContact = useCallback(async (contactId: string, approved: boolean) => {
     try {
       const updated = await setLaceContactApproved(laceId, contactId, approved)
@@ -467,7 +481,7 @@ export function useLaceChat(laceId: string): LaceChat {
     lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, waiting, drafting, findingOpportunities,
     loading, error,
     working, step, steps, jobs, draft, send, answer, reload, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, sendingSoon,
-    undoSend, markSent, findContacts, draftToContact, contacts, approveContact, approveAccountContacts, saveCompetitor, saveAccount, decideOpportunity, suggestedCompetitors,
+    undoSend, markSent, markRead, findContacts, draftToContact, contacts, approveContact, approveAccountContacts, saveCompetitor, saveAccount, decideOpportunity, suggestedCompetitors,
     suggestedAccounts,
   }
 }

@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import exists, func, select
+from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database.lace_models import LaceAccount, LaceChannel, LaceOutreach
@@ -227,6 +228,17 @@ async def record_reading(db: AsyncSession, reply: LaceOutreach, intent: str, dra
                              thread_id=reply.thread_id, body=draft_body)
         db.add(draft)
     return draft
+
+
+async def mark_read(db: AsyncSession, lace_id: uuid.UUID, ids: list[uuid.UUID]) -> int:
+    """Mark these replies read (only this Lace's, only unread ones).
+    Returns how many were unread."""
+    result = await db.execute(sql_update(LaceOutreach).where(
+        LaceOutreach.lace_id == lace_id, LaceOutreach.id.in_(ids), LaceOutreach.direction == "inbound",
+        LaceOutreach.read_at.is_(None),
+    ).values(read_at=datetime.now(UTC)))
+    await db.commit()
+    return result.rowcount or 0
 
 
 async def mark_sent(db: AsyncSession, message: LaceOutreach) -> LaceOutreach:

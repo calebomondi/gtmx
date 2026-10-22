@@ -341,6 +341,8 @@ export interface LaceOutreachDto {
   intent: string | null
   error: string | null
   sent_at: string | null
+  /** Inbound only: when the founder opened it; null is unread. */
+  read_at: string | null
   created_at: string
 }
 
@@ -580,6 +582,11 @@ export function draftToLaceContact(laceId: string, contactId: string, channel: O
   return apiFetch(`/api/v1/laces/${laceId}/contacts/${contactId}/draft`, {
     method: "POST", body: JSON.stringify({ channel, note: note.trim() || null }),
   })
+}
+
+/** The founder opened these replies. */
+export function markLaceOutreachRead(laceId: string, ids: string[]): Promise<{ marked: number }> {
+  return apiFetch(`/api/v1/laces/${laceId}/outreach/read`, { method: "POST", body: JSON.stringify({ ids }) })
 }
 
 /** Clear everyone found at one account for outreach. */

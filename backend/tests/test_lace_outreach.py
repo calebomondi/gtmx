@@ -350,3 +350,28 @@ def test_a_draft_can_go_to_a_persons_own_social_account(client, lace, lace_runti
     with psycopg.connect(settings.database_url) as conn:
         assert conn.execute("SELECT channel, recipient_address FROM lace_outreach").fetchall() == [
             ("instagram", "https://www.instagram.com/amina.k")]
+
+
+def _reply_in(lace_id, user_id, channel="email") -> str:
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        return str(conn.execute(
+            "INSERT INTO lace_outreach (id, lace_id, user_id, channel, direction, recipient_address, body, status)"
+            " VALUES (%s, %s, %s, %s, 'inbound', 'jane@alpha.test', 'Sounds good', 'received') RETURNING id",
+            (uuid.uuid4(), lace_id, user_id, channel)).fetchone()[0])
+
+
+def test_opening_replies_marks_only_this_laces_unread_ones_read(client, lace, user):  # noqa: F811
+    first, second = _reply_in(lace, user.id), _reply_in(lace, user.id, channel="linkedin")
+    draft = str(_message(lace, user.id))
+    unread = {m["id"]: m["read_at"] for m in client.get(f"{API}/laces/{lace}/outreach").json()}
+    assert unread[first] is None and unread[second] is None
+
+    marked = client.post(f"{API}/laces/{lace}/outreach/read", json={"ids": [first, draft, str(uuid.uuid4())]})
+    assert marked.json() == {"marked": 1}  # a draft is never "read"; an unknown id matches nothing
+    read = {m["id"]: m["read_at"] for m in client.get(f"{API}/laces/{lace}/outreach").json()}
+    assert read[first] is not None and read[second] is None and read[draft] is None
+    assert client.post(f"{API}/laces/{lace}/outreach/read", json={"ids": [first]}).json() == {"marked": 0}
+    assert client.post(f"{API}/laces/{lace}/outreach/read", json={"ids": []}).status_code == 422
+
+    client.sign_in(make_user("Intruder"))
+    assert client.post(f"{API}/laces/{lace}/outreach/read", json={"ids": [second]}).status_code == 404
