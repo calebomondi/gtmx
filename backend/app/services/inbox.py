@@ -29,6 +29,16 @@ _BODY_CHARS = 20_000
 _BOUNCE_SENDERS = ("mailer-daemon", "postmaster")
 _BOUNCE_SUBJECTS = re.compile(r"delivery status notification|undeliverable|delivery failure|returned mail|failure notice", re.I)
 _ADDRESS_RE = re.compile(r"<?([^<>\s]+@[^<>\s]+)>?\s*$")
+# Where a reply's own words end and the mail it answers begins: Gmail's
+# "On <date>, <name> wrote:" (often wrapped over two lines), Outlook's
+# "-----Original Message-----" or "From: ... Sent: ..." header, or a run of
+# "> " quoted lines. Mirrored in migration 20261022_1200_strip_quotes_from_email_replies.
+_QUOTE_STARTS = (
+    re.compile(r"^[ \t]*On\b[^\n]{0,300}(?:\n[^\n]{0,300})?\bwrote:[ \t]*$", re.M),
+    re.compile(r"^[ \t]*-{2,}[ \t]*Original Message[ \t]*-{2,}", re.M | re.I),
+    re.compile(r"^[ \t]*From:[^\n]*\n[ \t]*(?:Sent|Date):", re.M),
+    re.compile(r"^[ \t]*>", re.M),
+)
 
 
 # Sent outreach the sync watches. v1 workspace outreach is no longer synced.
@@ -104,6 +114,13 @@ async def _sent_threads(db: AsyncSession, user_id: uuid.UUID, since: datetime) -
     return threads
 
 
+def reply_only(text: str) -> str:
+    """The reply without the earlier mail it quotes. A message that is
+    nothing but a quote is kept whole, so no reply ever reads as empty."""
+    cut = min((m.start() for pattern in _QUOTE_STARTS if (m := pattern.search(text))), default=len(text))
+    return text[:cut].rstrip() or text.strip()
+
+
 def _text(message: dict) -> str:
     for key in ("messageText", "preview"):
         value = message.get(key)
@@ -124,7 +141,7 @@ def _inbound(sent: Outreach, message: dict, status: str) -> Outreach:
         recipient_name=_display_name(sender) or sent.recipient_name,
         recipient_company=sent.recipient_company, recipient_address=_address(sender) or None,
         subject=(message.get("subject") or "")[:255] or None,
-        body=_text(message)[:_BODY_CHARS],
+        body=reply_only(_text(message))[:_BODY_CHARS],
         sent_at=timestamp(message.get("messageTimestamp")),
     )
 
