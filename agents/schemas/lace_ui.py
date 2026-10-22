@@ -79,7 +79,15 @@ class CardBlock(BaseModel):
     status: str | None = None
 
 
-UiBlock = Annotated[ChoicesBlock | ChecklistBlock | FormBlock | CardBlock, Field(discriminator="type")]
+class SuggestionsBlock(BaseModel):
+    """Likely replies to a question the reply ends on, as chips the founder
+    can tap to send. Not a question to answer: they can type anything."""
+    type: Literal["suggestions"] = "suggestions"
+    options: list[str]
+
+
+UiBlock = Annotated[ChoicesBlock | ChecklistBlock | FormBlock | CardBlock | SuggestionsBlock,
+                    Field(discriminator="type")]
 
 
 class BlockAnswer(BaseModel):
