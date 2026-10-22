@@ -8,6 +8,7 @@ from agents.lace import tools as lace_tools
 from agents.lace.tools import BATCH_PAGE_TOKEN_CAP, PAGE_TOKEN_CAP, build_tools
 from agents.context_budget import count_tokens
 from data_sources.scraping.firecrawl import FirecrawlError, Page, PageFailure
+from data_sources.socials.brightdata import SocialsError
 from lace_fakes import MemoryStore, make_fact
 
 
@@ -108,3 +109,46 @@ def test_tool_schemas_describe_their_arguments(store, settings):
         assert t.description
         for name, prop in t.args.items():
             assert prop.get("description"), f"{t.name}.{name} has no description"
+
+
+# read_social
+
+async def test_read_social_returns_the_reading_with_the_turn_timeout(monkeypatch, store, settings):
+    seen = {}
+
+    def fake_read(link, cfg, timeout_s):
+        seen.update(link=link, timeout=timeout_s)
+        return {"platform": link.platform, "kind": link.kind, "url": link.url, "name": "Jane Doe", "details": {}}
+    monkeypatch.setattr(lace_tools.socials, "read", fake_read)
+    out = await _run(_tools(store, settings)["read_social"], url="https://www.linkedin.com/in/jane-doe")
+    assert out["ok"] and out["summary"] == "Read the linkedin person at https://www.linkedin.com/in/jane-doe."
+    assert out["data"]["name"] == "Jane Doe"
+    assert seen["timeout"] == settings.social_read_timeout_s and seen["link"].method == "profiles"
+
+
+async def test_read_social_refuses_a_link_it_cannot_read(store, settings):
+    out = await _run(_tools(store, settings)["read_social"], url="https://www.facebook.com/acme")
+    assert not out["ok"] and "Facebook posts" in out["error"]
+
+
+async def test_read_social_reports_a_failed_scrape(monkeypatch, store, settings):
+    def down(link, cfg, timeout_s):
+        raise SocialsError("the instagram scraper stopped (timeout: no snapshot)")
+    monkeypatch.setattr(lace_tools.socials, "read", down)
+    out = await _run(_tools(store, settings)["read_social"], url="https://www.instagram.com/acme")
+    assert out["error"] == ("Couldn't read https://www.instagram.com/acme: "
+                            "the instagram scraper stopped (timeout: no snapshot).")
+
+
+async def test_read_social_says_when_nothing_was_there(monkeypatch, store, settings):
+    monkeypatch.setattr(lace_tools.socials, "read", lambda link, cfg, timeout_s: None)
+    out = await _run(_tools(store, settings)["read_social"], url="https://www.instagram.com/p/gone")
+    assert not out["ok"] and "private or removed" in out["error"]
+
+
+async def test_read_social_drops_details_past_the_cap(monkeypatch, store, settings):
+    monkeypatch.setattr(lace_tools.socials, "read", lambda link, cfg, timeout_s: {
+        "kind": "post", "text": "Short post", "details": {"blob": "word " * 10_000}})
+    out = await _run(_tools(store, settings)["read_social"], url="https://x.com/acme/status/1")
+    assert out["ok"] and "left out" in out["summary"]
+    assert out["data"] == {"kind": "post", "text": "Short post"}

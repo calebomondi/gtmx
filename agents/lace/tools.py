@@ -7,6 +7,7 @@ kept in the store.
 """
 
 import asyncio
+import json
 from typing import Literal
 
 from langchain_core.tools import BaseTool, tool
@@ -23,6 +24,8 @@ from agents.schemas.lace_ui import CardKind
 from config import Settings
 from data_sources.scraping import exa, firecrawl
 from data_sources.scraping.firecrawl import FirecrawlError
+from data_sources.socials import read as socials
+from data_sources.socials.brightdata import SocialsError
 
 # Tokens of one page the model reads in full; a batch shares a smaller cap
 # per page so eight pages can't flood the context.
@@ -41,6 +44,8 @@ DOCUMENTS_PER_READ = 50
 # One read_document call returns this much of a document (about 3k tokens),
 # so a long deck is read a part at a time.
 DOCUMENT_PART_CHARS = 12_000
+# Tokens of one social read; past it the read keeps its main fields and drops `details`.
+SOCIAL_TOKEN_CAP = 3_000
 # What one reply can put in front of the founder.
 MAX_CARDS = 6
 
@@ -139,6 +144,29 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
         data += [{"url": f.url, "error": f.reason} for f in failures]
         return ToolResult(ok=bool(pages), summary=f"Read {len(pages)} of {len(urls)} pages.", data=data,
                           error=None if pages else "No page could be read.")
+
+    @tool(parse_docstring=True)
+    @guarded
+    async def read_social(url: str) -> ToolResult:
+        """Read a social profile or post that read_page can't open (login walls): a person's headline, company, about and recent activity; an account's bio, followers and recent posts; or a post's text, date, likes, comments and top comments. Slower than read_page (up to a minute or so) and paid, so read only the links that matter.
+
+        Args:
+            url: A profile or post link, e.g. https://www.instagram.com/<handle>, https://www.linkedin.com/in/<name> or a post's address.
+        """
+        link = socials.classify(url)
+        if link is None:
+            return ToolResult.failure(f"{url} is not a social profile or post read_social can read. It reads {socials.SUPPORTED}")
+        try:
+            item = await asyncio.to_thread(socials.read, link, settings, settings.social_read_timeout_s)
+        except SocialsError as exc:
+            return ToolResult.failure(f"Couldn't read {url}: {exc}.")
+        if item is None:
+            return ToolResult.failure(f"Nothing could be read at {url}: it may be private or removed, or the link is wrong.")
+        note = ""
+        if count_tokens(json.dumps(item, default=str)) > SOCIAL_TOKEN_CAP:
+            item.pop("details", None)
+            note = " (extra details left out: too long)"
+        return ToolResult.success(f"Read the {link.platform} {link.kind} at {link.url}{note}.", item)
 
     @tool(parse_docstring=True)
     @guarded
@@ -270,7 +298,7 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
         return ToolResult.success(f"{summary.filename}, part {part} of {parts}.{more}{cut}",
                                   {"filename": summary.filename, "part": part, "parts": parts, "text": chunk})
 
-    tools = [search_web, map_site, read_page, read_pages, get_facts, record_fact, list_competitors,
+    tools = [search_web, map_site, read_page, read_pages, read_social, get_facts, record_fact, list_competitors,
              list_accounts, list_opportunities, list_suggestions, show, list_documents, read_document,
              *build_ask_tools(), *build_edit_tools(store)]
     if jobs is None:
