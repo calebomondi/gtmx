@@ -116,7 +116,13 @@ export interface CardBlockDto {
   status?: string | null
 }
 
-export type UiBlockDto = QuestionBlockDto | CardBlockDto
+/** Likely replies to the question a reply ends on: tap one to send it, or type anything. */
+export interface SuggestionsBlockDto {
+  type: "suggestions"
+  options: string[]
+}
+
+export type UiBlockDto = QuestionBlockDto | CardBlockDto | SuggestionsBlockDto
 
 export interface AttachmentDto {
   id: string

@@ -154,6 +154,10 @@ export function ChatBlocks({ blocks, chat, live, answers, onReview }: {
   }
   const cards = blocks.filter((b): b is CardBlockDto => b.type === "card")
   const questions = blocks.filter(isQuestion)
+  // Only under the latest reply, while the Lace is free: tapping one sends it.
+  const suggestions = live && !chat.working
+    ? blocks.flatMap((b) => (b.type === "suggestions" ? b.options : []))
+    : []
   return (
     <div className="flex flex-col gap-3">
       {cards.length > 0 && (
@@ -167,6 +171,16 @@ export function ChatBlocks({ blocks, chat, live, answers, onReview }: {
         <ChatQuestion key={block.id ?? block.question} block={block} answer={block.id ? answers.get(block.id) : undefined}
                       live={live && !chat.working} onAnswer={(answer) => void chat.answer(block, answer)} />
       ))}
+      {suggestions.length > 0 && (
+        <div className="flex flex-wrap gap-1.5" aria-label="Suggested replies">
+          {suggestions.map((option) => (
+            <Button key={option} size="sm" variant="outline" className="rounded-full border-theme/40"
+                    onClick={() => void chat.send(option)}>
+              {option}
+            </Button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

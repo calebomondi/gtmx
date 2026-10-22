@@ -1,7 +1,7 @@
 import type { BlockAnswerDto, LaceMessageDto, QuestionBlockDto, UiBlockDto } from "@/lib/api"
 
 export function isQuestion(block: UiBlockDto): block is QuestionBlockDto {
-  return block.type !== "card"
+  return block.type === "choices" || block.type === "checklist" || block.type === "form"
 }
 
 /** Every answered question in the conversation, by the question's id. */

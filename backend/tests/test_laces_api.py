@@ -172,8 +172,11 @@ async def test_live_subscribers_see_the_reply_stream_in(lace_runtime, user):
     await asyncio.wait_for(collector, 5)
 
     types = [f["type"] for f in frames]
-    # The pre-tool-call text is withdrawn before the step is shown.
+    # The pre-tool-call text leaves the reply box and stays in the trail,
+    # ahead of the step it led to.
     assert types.index("token_reset") < types.index("step")
+    steps = [f["text"] for f in frames if f["type"] == "step"]
+    assert steps[:2] == ["Let me check.", "Checking what I know"]
     after_step = frames[types.index("step"):]
     streamed = "".join(f["text"] for f in after_step if f["type"] == "token")
     assert streamed.strip() == "Your buyers are clinic owners who run three or more sites."
@@ -223,3 +226,47 @@ def test_another_laces_competitor_is_not_found(client, lace_runtime):
                               (uuid.uuid4(), other["lace"]["id"])).fetchone()[0]
     assert client.patch(f"{API}/laces/{mine['lace']['id']}/competitors/{theirs}",
                         json={"status": "dismissed"}).status_code == 404
+
+
+async def _live_frames(lace_runtime, user, monkeypatch, model_step) -> list[dict]:
+    import asyncio
+
+    from backend.app.runs import events
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        lace_id = conn.execute("INSERT INTO laces (id, user_id, name, website) VALUES (%s, %s, 'Ada', 'https://acme.test')"
+                               " RETURNING id", (uuid.uuid4(), user.id)).fetchone()[0]
+        run_id = conn.execute("INSERT INTO runs (id, user_id, lace_id, kind, status) VALUES (%s, %s, %s, 'lace_turn',"
+                              " 'running') RETURNING id", (uuid.uuid4(), user.id, lace_id)).fetchone()[0]
+    monkeypatch.setattr(lace_runs, "build_lace_graph", partial(build_lace_graph, model_step=model_step))
+    frames: list[dict] = []
+
+    async def collect():
+        async for frame in events.subscribe(run_id):
+            frames.append(frame)
+            if frame["type"] == "complete":
+                return
+
+    collector = asyncio.create_task(collect())
+    await asyncio.sleep(0.05)
+    await lace_runs.turn_segment(run_id, lace_id, "who buys?")
+    await asyncio.wait_for(collector, 5)
+    return frames
+
+
+async def test_a_retried_answer_says_so_instead_of_vanishing(lace_runtime, user, monkeypatch):
+    def model_step(messages, tools, sink):
+        sink.token("Your buyers are ")
+        sink.reset()  # the call failed; the ladder starts the answer over
+        sink.token("Clinic owners.")
+        return AIMessage(content="Clinic owners.")
+    frames = await _live_frames(lace_runtime, user, monkeypatch, model_step)
+    types = [f["type"] for f in frames]
+    assert [f["text"] for f in frames if f["type"] == "step"] == [lace_runs.RETRY_STEP]
+    assert types.index("token_reset") < types.index("step")
+
+
+def test_narration_is_one_short_line():
+    assert lace_runs.narration("  Let me\n\ncheck   the pricing page. ") == "Let me check the pricing page."
+    long = lace_runs.narration("word " * 100)
+    assert len(long) == lace_runs.NARRATION_CHARS and long.endswith("…")
+    assert lace_runs.narration("") == ""

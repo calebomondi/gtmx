@@ -150,3 +150,12 @@ def test_find_contacts_from_a_card(client, lace, lace_runtime, user, monkeypatch
     assert client.post(f"{API}/laces/{lace}/accounts/{uuid.uuid4()}/find-contacts").status_code == 404
     client.sign_in(make_user("Intruder"))
     assert client.post(url).status_code == 404
+
+
+def test_suggested_replies_stay_under_the_reply(client, lace, lace_runtime):  # noqa: F811
+    lace_runtime.extend([_call("suggest_replies", {"options": ["Check their LinkedIn", "Find their OTA guide"]}),
+                         AIMessage(content="Want me to dig deeper into one of them?")])
+    _say(client, lace, "who are Hamtech?")
+    client.portal.call(_wait_for_turns, lace, 1)
+    reply = client.get(f"{API}/laces/{lace}/messages").json()[-1]
+    assert reply["ui"] == [{"type": "suggestions", "options": ["Check their LinkedIn", "Find their OTA guide"]}]

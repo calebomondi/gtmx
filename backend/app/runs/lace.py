@@ -43,6 +43,11 @@ from config import settings
 WRITING_PROGRESS = 0.95
 # Characters per streamed "token" frame.
 TOKEN_FRAME_CHARS = 24
+# What the Lace says while it works ("let me check the pricing page") is
+# kept as one line of its step trail, at most this long.
+NARRATION_CHARS = 200
+# The step shown when a model call failed and the answer starts over.
+RETRY_STEP = "That didn't go through. Trying again"
 
 # What the progress line says while a tool runs.
 _STEP_TEXT = {
@@ -51,6 +56,7 @@ _STEP_TEXT = {
     "read_page": lambda a: f"Reading {a.get('url', 'a page')}",
     "read_pages": lambda a: f"Reading {len(a.get('urls') or [])} pages",
     "read_social": lambda a: f"Reading {a.get('url', 'a social profile')}",
+    "suggest_replies": lambda a: "Suggesting replies",
     "get_facts": lambda a: "Checking what I know",
     "record_fact": lambda a: "Noting that down",
     "define_icp": lambda a: "Starting to work out your ideal customers",
@@ -149,6 +155,12 @@ async def onboarding_segment(run_id: uuid.UUID, lace_id: uuid.UUID) -> None:
     await _finish(run_id, reply)
 
 
+def narration(content) -> str:
+    """What the model wrote beside its tool calls, as one trail line."""
+    text = " ".join(str(content or "").split())
+    return text if len(text) <= NARRATION_CHARS else text[:NARRATION_CHARS - 1].rstrip() + "…"
+
+
 class _TokenRelay:
     """Batches streamed tokens into "token" frames a few words at a time:
     one frame per model token would be hundreds per reply."""
@@ -238,14 +250,20 @@ async def _converse(run_id: uuid.UUID, lace_id: uuid.UUID, message: HumanMessage
             if "token" in chunk:
                 relay.add(chunk["token"])
             elif chunk.get("reset"):
+                # A retry or the next model starts the answer over: say so,
+                # rather than wiping the text without a word.
                 relay.reset()
+                await events.publish(run_id, "step", {"text": RETRY_STEP})
             continue
         relay.flush()
         for node, output in chunk.items():
             for message in (output or {}).get("messages", []):
                 if node == "agent" and message.tool_calls:
-                    # Text before a tool call ("let me look that up") is not the reply.
+                    # Text before a tool call ("let me look that up") is not the
+                    # reply: it leaves the reply box and stays in the trail.
                     relay.reset()
+                    if said := narration(message.content):
+                        await events.publish(run_id, "step", {"text": said})
                     for tool_call in message.tool_calls:
                         await events.publish(run_id, "step", {"text": step_text(tool_call)})
                 elif node == "agent":
@@ -261,7 +279,7 @@ async def _converse(run_id: uuid.UUID, lace_id: uuid.UUID, message: HumanMessage
 # Where a reply keeps the cards and choices shown under it.
 UI_KEY = "ui"
 # The tools whose results put something under the reply.
-_UI_TOOLS = frozenset({"ask_choice", "ask_checklist", "ask_form", "show"})
+_UI_TOOLS = frozenset({"ask_choice", "ask_checklist", "ask_form", "show", "suggest_replies"})
 # The blocks the founder answers.
 _QUESTION_TYPES = frozenset({"choices", "checklist", "form"})
 _UI_BLOCK = TypeAdapter(UiBlock)
