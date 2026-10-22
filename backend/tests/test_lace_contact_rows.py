@@ -46,6 +46,17 @@ def _contacts(client, lace_id):
     return client.get(f"{API}/laces/{lace_id}/contacts").json()
 
 
+def test_contacts_carry_their_own_social_accounts(client, lace):  # noqa: F811
+    record, fit = _found("SunCulture", "strong")
+    amina = AMINA.model_copy(update={"x": "@amina_o", "instagram": "https://instagram.com/amina.o",
+                                     "facebook": "https://elsewhere.test/amina", "tiktok": None})
+    client.portal.call(_search, lace, (record.model_copy(update={"key_contacts": [amina]}), fit))
+    _save_accounts(lace)
+    [row] = _contacts(client, lace)
+    assert (row["x"], row["instagram"], row["facebook"], row["tiktok"]) == (
+        "https://x.com/amina_o", "https://instagram.com/amina.o", None, None)
+
+
 def test_searches_fill_contacts_one_row_per_person(client, lace):  # noqa: F811
     record, fit = _found("SunCulture", "strong")
     client.portal.call(_search, lace, (record.model_copy(update={"key_contacts": [AMINA]}), fit))

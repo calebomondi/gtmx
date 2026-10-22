@@ -88,11 +88,12 @@ def _elsewhere(url: str, geo: str | None) -> bool:
 
 
 def contact_status(record: AccountRecord) -> ContactStatus:
-    """person: a named person reachable by email or LinkedIn. organisation:
-    only the organisation's own channels. none: nothing to reach them on."""
-    if any(c.name and (c.email or c.linkedin) for c in record.key_contacts):
+    """person: a named person reachable by email, LinkedIn or their own
+    social accounts. organisation: only the organisation's own channels.
+    none: nothing to reach them on."""
+    if any(c.name and c.addresses() for c in record.key_contacts):
         return "person"
-    if any(c.email or c.linkedin for c in record.key_contacts) or record.socials:
+    if any(c.addresses() for c in record.key_contacts) or record.socials:
         return "organisation"
     return "none"
 

@@ -10,10 +10,16 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agents.schemas.accounts import ContactRecord
-from agents.schemas.lace import ContactSource, NewContact
+from agents.schemas.accounts import PERSON_SOCIALS, ContactRecord, social_profile_url
+from agents.schemas.lace import ContactSource, NewContact, OutreachChannel
 from backend.app.database.lace_models import LaceAccount, LaceContact
 from backend.app.services.errors import InvalidInputError, NotFoundError
+
+
+# What "there's no ... for this person" names, per channel.
+_ADDRESS_LABEL: dict[str, str] = {"email": "email address", "linkedin": "LinkedIn profile", "x": "X account",
+                                  "instagram": "Instagram account", "facebook": "Facebook profile",
+                                  "tiktok": "TikTok account"}
 
 
 def _clean(value: str | None) -> str:
@@ -39,7 +45,9 @@ async def sync(db: AsyncSession, lace_id: uuid.UUID, account_id: uuid.UUID, cont
         if key is None:
             continue
         values = {"name": _clean(contact.name)[:200] or None, "title": _clean(contact.title)[:200] or None,
-                  "email": _clean(contact.email)[:320] or None, "linkedin": _clean(contact.linkedin) or None}
+                  "email": _clean(contact.email)[:320] or None, "linkedin": _clean(contact.linkedin) or None,
+                  # Again here: a record built with model_copy skipped the schema's check.
+                  **{p: social_profile_url(p, getattr(contact, p)) for p in PERSON_SOCIALS}}
         stmt = insert(LaceContact).values(id=uuid.uuid4(), lace_id=lace_id, account_id=account_id, key=key,
                                           source=source, last_seen_at=now, **values)
         await db.execute(stmt.on_conflict_do_update(
@@ -69,16 +77,17 @@ async def set_approved(db: AsyncSession, lace_id: uuid.UUID, contact_id: uuid.UU
     return contact
 
 
-async def person_to_draft(db: AsyncSession, lace_id: uuid.UUID, contact_id: uuid.UUID, channel: str) -> tuple[uuid.UUID, dict]:
+async def person_to_draft(db: AsyncSession, lace_id: uuid.UUID, contact_id: uuid.UUID,
+                          channel: OutreachChannel) -> tuple[uuid.UUID, dict]:
     """The account and the person to write to on `channel`, approving them:
     asking for a draft to someone is clearing them for it. NotFoundError for
     another Lace's contact; InvalidInputError when they can't be reached there."""
     contact = await db.scalar(select(LaceContact).where(LaceContact.id == contact_id, LaceContact.lace_id == lace_id))
     if contact is None:
         raise NotFoundError("Contact not found")
-    address = contact.email if channel == "email" else contact.linkedin
+    address = getattr(contact, channel)
     if not address:
-        raise InvalidInputError(f"There's no {'email address' if channel == 'email' else 'LinkedIn profile'} for this person.")
+        raise InvalidInputError(f"There's no {_ADDRESS_LABEL[channel]} for this person.")
     if contact.approved_at is None:
         contact.approved_at = datetime.now(UTC)
         await db.commit()
@@ -109,7 +118,8 @@ async def add_named(db: AsyncSession, lace_id: uuid.UUID, account: LaceAccount, 
     """Add a person the founder named at `account`, approved for outreach,
     and keep them on the account's record too. A person already on file is
     updated and moved there."""
-    found = ContactRecord(name=person.name, title=person.title, email=person.email, linkedin=person.linkedin)
+    found = ContactRecord(name=person.name, title=person.title, email=person.email, linkedin=person.linkedin,
+                          **{p: getattr(person, p) for p in PERSON_SOCIALS})
     key = contact_key(found)
     record = dict(account.record or {})
     people = [c for c in record.get("key_contacts") or [] if contact_key(ContactRecord.model_validate(c)) != key]

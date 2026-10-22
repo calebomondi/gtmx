@@ -34,6 +34,7 @@ import {
   type LaceMessageDto,
   type LaceOutreachDto,
   type LaceOutreachChanges,
+  type OutreachChannel,
   type QuestionBlockDto,
   type RunDto,
   type RunFrame,
@@ -106,7 +107,7 @@ export interface LaceChat {
   findContacts: (accountId: string) => Promise<void>
   /** Ask the Lace to draft to one person, on email or LinkedIn, with a note.
    * Resolves false (with `error` set) when it could not start. */
-  draftToContact: (contactId: string, channel: "email" | "linkedin", note: string) => Promise<boolean>
+  draftToContact: (contactId: string, channel: OutreachChannel, note: string) => Promise<boolean>
   /** Clear one person for outreach, or take it back. */
   approveContact: (contactId: string, approved: boolean) => Promise<void>
   /** Clear everyone at one account for outreach. */
@@ -375,7 +376,7 @@ export function useLaceChat(laceId: string): LaceChat {
     }
   }, [laceId, checkRuns])
 
-  const draftToContact = useCallback(async (contactId: string, channel: "email" | "linkedin", note: string) => {
+  const draftToContact = useCallback(async (contactId: string, channel: OutreachChannel, note: string) => {
     try {
       await draftToLaceContact(laceId, contactId, channel, note)
       // Asking cleared them for outreach.

@@ -1,24 +1,26 @@
 import { Fragment, useState } from "react"
-import { Check, CheckCheck, Mail, Search } from "lucide-react"
+import { Check, CheckCheck, Search } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import type { ContactDto } from "@/lib/api"
+import type { ContactDto, OutreachChannel } from "@/lib/api"
 
-import { byAccount, filterContacts } from "./contacts-model"
+import { ChannelIcon } from "./channel-icon"
+import { byAccount, filterContacts, reachOf } from "./contacts-model"
+import { CHANNEL_LABELS } from "./outreach-threads"
 
 const LINK = "grid size-8 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
 
 /** The people the Lace found at saved accounts, by account, with how to reach
- * each. A person (or their email or LinkedIn) opens them: their messages and
+ * each. A person (or one of the ways to reach them) opens them: their messages and
  * a way to have the Lace write to them. Nothing is drafted to anyone until
  * the founder approves them: one by one, or everyone at an account at once. */
 export function LaceContacts({ contacts, onApprove, onApproveAccount, onOpen }: {
   contacts: ContactDto[]
   onApprove: (contactId: string, approved: boolean) => void
   onApproveAccount: (accountId: string) => void
-  onOpen: (contact: ContactDto, channel: "email" | "linkedin" | null) => void
+  onOpen: (contact: ContactDto, channel: OutreachChannel | null) => void
 }) {
   const [query, setQuery] = useState("")
   const groups = byAccount(filterContacts(contacts, query))
@@ -65,19 +67,14 @@ export function LaceContacts({ contacts, onApprove, onApproveAccount, onOpen }: 
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
-                      {c.email && (
-                        <button type="button" title={`Write to ${c.email}`} aria-label={`Email ${c.name ?? c.email}`}
-                                className={LINK} onClick={() => onOpen(c, "email")}>
-                          <Mail className="size-4" />
+                      {reachOf(c).map(({ channel, address }) => (
+                        <button key={channel} type="button"
+                                title={channel === "email" ? `Write to ${address}` : `Message on ${CHANNEL_LABELS[channel]}`}
+                                aria-label={`${c.name ?? "Contact"} by ${CHANNEL_LABELS[channel]}`}
+                                className={LINK} onClick={() => onOpen(c, channel)}>
+                          <ChannelIcon channel={channel} />
                         </button>
-                      )}
-                      {c.linkedin && (
-                        <button type="button" title="Message on LinkedIn" aria-label={`${c.name ?? "Contact"} on LinkedIn`}
-                                className={LINK} onClick={() => onOpen(c, "linkedin")}>
-                          {/* lucide ships no brand marks: LinkedIn's "in", set in type. */}
-                          <span aria-hidden className="text-xs font-bold">in</span>
-                        </button>
-                      )}
+                      ))}
                     </div>
                   </TableCell>
                   <TableCell className="text-right">

@@ -556,6 +556,10 @@ export interface ContactDto {
   title: string | null
   email: string | null
   linkedin: string | null
+  x: string | null
+  instagram: string | null
+  facebook: string | null
+  tiktok: string | null
   source: "discovery" | "contact_search" | "founder"
   /** When the founder cleared them for outreach: drafts go only to approved people. */
   approved_at: string | null
@@ -568,7 +572,7 @@ export function setLaceContactApproved(laceId: string, contactId: string, approv
 
 /** Ask the Lace to draft a first message to one person (approving them),
  * with the founder's note. The draft lands in Messaging. */
-export function draftToLaceContact(laceId: string, contactId: string, channel: "email" | "linkedin",
+export function draftToLaceContact(laceId: string, contactId: string, channel: OutreachChannel,
                                    note: string): Promise<{ run_id: string }> {
   return apiFetch(`/api/v1/laces/${laceId}/contacts/${contactId}/draft`, {
     method: "POST", body: JSON.stringify({ channel, note: note.trim() || null }),

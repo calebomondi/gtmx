@@ -1,4 +1,21 @@
-import type { ContactDto } from "@/lib/api"
+import type { ContactDto, OutreachChannel } from "@/lib/api"
+
+/** Where a person can be written to, best first. */
+const REACH_ORDER: OutreachChannel[] = ["email", "linkedin", "x", "instagram", "facebook", "tiktok"]
+
+export interface Reach {
+  channel: OutreachChannel
+  /** An email address, or their profile URL on that platform. */
+  address: string
+}
+
+/** Each way to reach a person that is on file, best first. */
+export function reachOf(contact: ContactDto): Reach[] {
+  return REACH_ORDER.flatMap((channel) => {
+    const address = contact[channel]
+    return address ? [{ channel, address }] : []
+  })
+}
 
 /** Contacts whose name, title, account or email holds `query`. */
 export function filterContacts(contacts: ContactDto[], query: string): ContactDto[] {

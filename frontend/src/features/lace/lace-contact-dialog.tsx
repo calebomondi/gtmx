@@ -1,24 +1,24 @@
 import { useState } from "react"
-import { Check, Copy, ExternalLink, Loader2, Mail, Sparkles } from "lucide-react"
+import { Check, Copy, ExternalLink, Loader2, Sparkles } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
-import type { ContactDto, LaceOutreachDto } from "@/lib/api"
+import type { ContactDto, LaceOutreachDto, OutreachChannel } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
+import { ChannelIcon } from "./channel-icon"
+import { reachOf } from "./contacts-model"
 import { DraftCard } from "./lace-draft"
 import { Bubble } from "./lace-threads"
-import { initials } from "./outreach-threads"
+import { CHANNEL_LABELS, initials } from "./outreach-threads"
 import type { LaceChat } from "./use-lace-chat"
-
-type Channel = "email" | "linkedin"
 
 const NOTE_IDEAS = ["Mention our pilot results", "Keep it under 80 words", "Ask for a 15-minute call"]
 
 /** Everything sent to, drafted for or received from one person. */
 function withPerson(outreach: LaceOutreachDto[], contact: ContactDto): LaceOutreachDto[] {
-  const addresses = [contact.email, contact.linkedin].filter(Boolean).map((a) => (a as string).toLowerCase())
+  const addresses = reachOf(contact).map((r) => r.address.toLowerCase())
   return outreach
     .filter((m) => (m.recipient_address && addresses.includes(m.recipient_address.toLowerCase()))
       || (contact.name && m.recipient_name === contact.name && m.recipient_company === contact.account_name))
@@ -41,17 +41,17 @@ function CopyAddress({ value, label }: { value: string; label: string }) {
 
 /** One person found at a saved account: how to reach them, every message
  * with them (drafts editable and sendable in place), and a box to ask the
- * Lace to write to them on email or LinkedIn, with what to say. */
+ * Lace to write to them on any channel they have, with what to say. */
 export function LaceContactDialog({ contact, channel: initialChannel, name, chat, onClose }: {
   contact: ContactDto
-  channel: Channel | null
+  channel: OutreachChannel | null
   name: string
   chat: LaceChat
   onClose: () => void
 }) {
-  const reachable: Channel[] = [contact.email ? "email" : null, contact.linkedin ? "linkedin" : null]
-    .filter((c): c is Channel => c !== null)
-  const [channel, setChannel] = useState<Channel | null>(initialChannel ?? reachable[0] ?? null)
+  const reach = reachOf(contact)
+  const reachable = reach.map((r) => r.channel)
+  const [channel, setChannel] = useState<OutreachChannel | null>(initialChannel ?? reachable[0] ?? null)
   const [note, setNote] = useState("")
   const [asked, setAsked] = useState(false)
   const [asking, setAsking] = useState(false)
@@ -85,22 +85,25 @@ export function LaceContactDialog({ contact, channel: initialChannel, name, chat
 
         <div className="flex flex-col gap-4 px-4 pb-4">
         <div className="flex flex-col gap-1.5 rounded-xl border p-2 text-sm">
-          {contact.email && (
-            <div className="flex items-center gap-2 px-1">
-              <Mail className="size-4 text-muted-foreground" /> <span className="min-w-0 flex-1 truncate">{contact.email}</span>
-              <CopyAddress value={contact.email} label="email address" />
+          {reach.map(({ channel: c, address }) => (
+            <div key={c} className="flex items-center gap-2 px-1">
+              <ChannelIcon channel={c} className="text-muted-foreground" />
+              {c === "email" ? (
+                <>
+                  <span className="min-w-0 flex-1 truncate">{address}</span>
+                  <CopyAddress value={address} label="email address" />
+                </>
+              ) : (
+                <>
+                  <a href={address} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate hover:underline">
+                    {address.replace(/^https?:\/\/(www\.)?/, "")}
+                  </a>
+                  <ExternalLink className="size-3.5 text-muted-foreground" />
+                </>
+              )}
             </div>
-          )}
-          {contact.linkedin && (
-            <div className="flex items-center gap-2 px-1">
-              <span className="w-4 text-center text-xs font-bold text-muted-foreground">in</span>
-              <a href={contact.linkedin} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate hover:underline">
-                {contact.linkedin.replace(/^https?:\/\/(www\.)?/, "")}
-              </a>
-              <ExternalLink className="size-3.5 text-muted-foreground" />
-            </div>
-          )}
-          {reachable.length === 0 && <p className="px-1 text-muted-foreground">No email or LinkedIn on file for them.</p>}
+          ))}
+          {reach.length === 0 && <p className="px-1 text-muted-foreground">No email or social account on file for them.</p>}
         </div>
 
         {(said.length > 0 || drafts.length > 0) && (
@@ -119,12 +122,12 @@ export function LaceContactDialog({ contact, channel: initialChannel, name, chat
         {reachable.length > 0 && (
           <section className="flex flex-col gap-3 rounded-xl border border-theme/30 bg-gradient-to-br from-theme/10 via-card to-card p-3">
             <h3 className="flex items-center gap-2 text-sm font-medium"><Sparkles className="size-4 text-theme" /> Ask {name} to draft</h3>
-            <div className="flex gap-1.5" role="radiogroup" aria-label="Channel">
+            <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Channel">
               {reachable.map((c) => (
                 <button key={c} type="button" role="radio" aria-checked={channel === c} onClick={() => setChannel(c)}
                         className={cn("cursor-pointer rounded-full border px-3 py-1 text-xs transition-colors",
                                       channel === c ? "border-theme/60 bg-theme/15 text-foreground" : "text-muted-foreground hover:text-foreground")}>
-                  {c === "email" ? "Email" : "LinkedIn message"}
+                  {c === "email" ? "Email" : `${CHANNEL_LABELS[c]} message`}
                 </button>
               ))}
             </div>

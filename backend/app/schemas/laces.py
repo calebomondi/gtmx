@@ -372,13 +372,17 @@ class ContactResponse(BaseModel):
     title: str | None = None
     email: str | None = None
     linkedin: str | None = None
+    x: str | None = None
+    instagram: str | None = None
+    facebook: str | None = None
+    tiktok: str | None = None
     source: ContactSource
     approved_at: datetime | None = Field(default=None, description="When the founder cleared them for outreach")
     first_seen_at: datetime
 
 
 class ContactDraftRequest(BaseModel):
-    channel: Literal["email", "linkedin"] = Field(description="Write to their email, or a LinkedIn message")
+    channel: OutreachChannel = Field(description="Where to write to them: email, or a message on that platform")
     note: str | None = Field(default=None, max_length=500, description="What the founder wants the message to say")
 
 

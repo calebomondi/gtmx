@@ -29,6 +29,12 @@ def test_recipient_prefers_a_named_email_then_linkedin_then_the_org_email():
     assert recipient_for(_record()) is None
 
 
+def test_a_named_persons_own_social_account_comes_before_the_org_email():
+    org = ContactRecord(email="info@sunculture.com")
+    on_x = ContactRecord(name="Dan Owuor", x="@dan_o", instagram="@dan.o")
+    assert recipient_for(_record(org, on_x)) == Recipient("x", "Dan Owuor", None, "https://x.com/dan_o")
+
+
 def test_each_specialist_answers_from_its_own_facts():
     facts = [make_fact("1", "Builds rugged IoT hardware.", topic="offer"),
              make_fact("2", "Kenyan agri-IoT is growing.", topic="market"),

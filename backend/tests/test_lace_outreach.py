@@ -32,10 +32,11 @@ def _account(lace_id, name, contacts, status="person", strength="strong", approv
             (uuid.uuid4(), lace_id, name.lower(), name, json.dumps(record.model_dump(mode="json")), status, strength),
         ).fetchone()[0]
         for c in contacts:
-            conn.execute("INSERT INTO lace_contacts (id, lace_id, account_id, key, name, email, linkedin, source,"
-                         " approved_at) VALUES (%s, %s, %s, %s, %s, %s, %s, 'discovery', %s)",
-                         (uuid.uuid4(), lace_id, account_id, contact_key(c), c.name, c.email, c.linkedin,
-                          datetime.now(UTC) if approved else None))
+            conn.execute("INSERT INTO lace_contacts (id, lace_id, account_id, key, name, email, linkedin, x, instagram,"
+                         " facebook, tiktok, source, approved_at)"
+                         " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'discovery', %s)",
+                         (uuid.uuid4(), lace_id, account_id, contact_key(c), c.name, c.email, c.linkedin, c.x,
+                          c.instagram, c.facebook, c.tiktok, datetime.now(UTC) if approved else None))
     return account_id
 
 
@@ -332,3 +333,20 @@ def test_a_draft_needs_a_way_to_reach_them_and_a_contact_of_this_lace(client, la
     assert missing.status_code == 422 and "LinkedIn" in missing.json()["detail"]
     client.sign_in(make_user("Intruder"))
     assert client.post(f"{API}/laces/{lace}/contacts/{peter}/draft", json={"channel": "email"}).status_code == 404
+
+
+def test_a_draft_can_go_to_a_persons_own_social_account(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    written = _stub_writer(monkeypatch)
+    _account(lace, "Twiga", [ContactRecord(name="Amina", email="amina@twiga.test", instagram="@amina.k",
+                                           x="https://x.com/amina")])
+    with psycopg.connect(settings.database_url) as conn:
+        amina = str(conn.execute("SELECT id FROM lace_contacts WHERE name = 'Amina'").fetchone()[0])
+    assert client.post(f"{API}/laces/{lace}/contacts/{amina}/draft", json={"channel": "tiktok"}).json()["detail"] \
+        == "There's no TikTok account for this person."
+    lace_runtime.append(AIMessage(content="I drafted an Instagram note to Amina."))
+    started = client.post(f"{API}/laces/{lace}/contacts/{amina}/draft", json={"channel": "instagram"})
+    client.portal.call(_wait_for_status, uuid.UUID(started.json()["run_id"]), {"completed"})
+    assert written[0][1] == "https://www.instagram.com/amina.k"
+    with psycopg.connect(settings.database_url) as conn:
+        assert conn.execute("SELECT channel, recipient_address FROM lace_outreach").fetchall() == [
+            ("instagram", "https://www.instagram.com/amina.k")]
