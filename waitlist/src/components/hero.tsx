@@ -1,7 +1,8 @@
 import { SignupCard } from '../features/signup/signup-card'
 import type { PilotSpots } from '../lib/api'
 import { DEMO_VIDEO } from './demo-video'
-import { DemoPlaceholder, ProductDemo } from './product-demo'
+import { LacePreview } from './lace-preview'
+import { ProductDemo } from './product-demo'
 import { RotatingWord } from './rotating-word'
 
 const PROOF = ['One Lace per startup', 'Works wherever you sell', 'Email, LinkedIn, X, Instagram & more', 'You approve every send']
@@ -49,7 +50,7 @@ export function Hero({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; on
           </ul>
         </div>
         <div className="min-w-0 pr-3 pb-3 sm:pr-4 sm:pb-4">
-          {DEMO_VIDEO ? <ProductDemo video={DEMO_VIDEO} /> : <DemoPlaceholder />}
+          {DEMO_VIDEO ? <ProductDemo video={DEMO_VIDEO} /> : <LacePreview />}
         </div>
       </div>
     </section>

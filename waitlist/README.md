@@ -20,8 +20,8 @@ backend as the app (see `deploy/`).
 
 ## The hero's product recording
 
-Until a recording is published, the hero shows an empty frame. To show the real
-product:
+Until a recording is published, the hero acts out a labelled example with an
+invented Lace (`lace-preview.tsx`). To show the real product instead:
 
 1. **Record** (~20 s once edited, no audio) at 1440×900, browser zoom 110–125%,
    light theme. Storyboard: name a Lace and paste the website on `/new` → the
