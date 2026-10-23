@@ -1,53 +1,66 @@
+import { useCallback, useState } from 'react'
+
 import { stagger } from '../lib/stagger'
+import { RotatingGlobe } from './rotating-globe'
 import { Section } from './section'
 
-/** Reasons to reach out now, the kind Lace watches for wherever you sell. */
+/** Reasons to reach out now, the kind Lace spots wherever you sell. */
 const SIGNALS = [
   'funding rounds', 'new offices', 'tenders & RFPs', 'hiring pushes', 'product launches',
   'leadership moves', 'conferences', 'partnerships', 'expansions', 'tool switches',
 ]
 
 const POINTS = [
-  { title: 'Where your buyers are', body: 'Tell it the countries you sell in. It looks for buyers, rivals and news there, not in a default market.' },
-  { title: 'In their language', body: 'It reads local sites, news and posts in the language they are written in, and drafts in the one you choose.' },
-  { title: 'As of today', body: 'Searches favour what is recent, and every find shows its source and date, so stale news never passes for a reason.' },
+  {
+    title: 'Read from your site',
+    body: 'Your offices, your currencies, your customers’ logos. Lace works out your markets from what your pages already say.',
+  },
+  {
+    title: 'Or just say where',
+    body: '“Find me clinics in Lisbon.” Name a place in chat and that search goes there, while everything else carries on as before.',
+  },
+  {
+    title: 'Local, and current',
+    body: 'It reads local news, sites and posts in their own language, recent first, and every find shows its source and date.',
+  },
 ]
 
-// Finds blinking on the globe, as (x, y) in its 200×200 box.
-const FINDS = [[62, 70], [128, 58], [104, 104], [150, 118], [74, 132], [118, 150]]
+/** What a Lace might be finding under the part of the world facing you, by
+ * the longitude it sits at. Invented examples, said as such. */
+const REGIONS = [
+  { lon: -100, text: 'Over North America: a Toronto fintech is hiring its first head of partnerships.' },
+  { lon: -55, text: 'Over South America: a São Paulo retailer just opened an office in Bogotá.' },
+  { lon: 0, text: 'Over Europe: a Berlin logistics firm just raised its Series A.' },
+  { lon: 35, text: 'Over Africa: a Nairobi tender for clinic software closes in 12 days.' },
+  { lon: 78, text: 'Over South Asia: a Bengaluru SaaS company is looking for reseller partners.' },
+  { lon: 115, text: 'Over East Asia: a Singapore summit has opened its call for speakers.' },
+  { lon: 150, text: 'Over Oceania: a Sydney clinic group is opening three new sites.' },
+]
 
-/** A line globe: meridians and parallels, with finds blinking on it. */
-function Globe() {
-  return (
-    <svg viewBox="0 0 200 200" className="h-auto w-full max-w-sm text-brand-deep" aria-hidden>
-      <circle cx="100" cy="100" r="88" fill="var(--color-highlight)" fillOpacity="0.45" stroke="currentColor" strokeWidth="1.2" />
-      {[22, 48, 70].map((rx) => (
-        <ellipse key={rx} cx="100" cy="100" rx={rx} ry="88" fill="none" stroke="currentColor" strokeOpacity="0.45" strokeWidth="1" />
-      ))}
-      <line x1="100" y1="12" x2="100" y2="188" stroke="currentColor" strokeOpacity="0.45" strokeWidth="1" />
-      {[-56, -28, 0, 28, 56].map((dy) => {
-        const half = Math.sqrt(88 * 88 - dy * dy)
-        return <line key={dy} x1={100 - half} y1={100 + dy} x2={100 + half} y2={100 + dy} stroke="currentColor" strokeOpacity="0.45" strokeWidth="1" />
-      })}
-      {FINDS.map(([x, y], i) => (
-        <g key={`${x}-${y}`}>
-          <circle cx={x} cy={y} r="9" fill="var(--color-brand)" className="find-pulse" style={{ animationDelay: `${i * 0.6}s` }} />
-          <rect x={x - 4} y={y - 4} width="8" height="8" rx="1.5" fill="var(--color-ink)" />
-        </g>
-      ))}
-    </svg>
-  )
+function nearestRegion(lon: number): number {
+  const gap = (a: number) => Math.abs(((lon - a + 540) % 360) - 180)
+  return REGIONS.reduce((best, region, i) => (gap(region.lon) < gap(REGIONS[best].lon) ? i : best), 0)
 }
 
 export function Worldwide() {
+  const [region, setRegion] = useState(() => nearestRegion(-20))
+  // Called every frame; the state only changes when another region faces you.
+  const onFacing = useCallback((lon: number) => setRegion(nearestRegion(lon)), [])
+
   return (
     <Section
       label="Works wherever you sell"
-      title="Your market is wherever your buyers are."
-      intro="Lace isn’t tuned to one country. It researches the markets you name, the way someone local would: local rivals, local buyers, local news."
+      title="It already knows where to look."
+      intro="There’s no list of countries to pick from. Lace reads where you sell from your own website, and goes wherever you point it."
     >
       <div className="grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
-        <div data-reveal className="flex justify-center"><Globe /></div>
+        <div data-reveal className="flex flex-col items-center gap-4">
+          <RotatingGlobe onFacing={onFacing} />
+          <p className="flex min-h-12 max-w-sm flex-col items-center gap-1 text-center text-sm" aria-live="off">
+            <span className="font-mono text-[10px] uppercase tracking-wider text-brand-ink">For example</span>
+            <span key={region} className="word-in">{REGIONS[region].text}</span>
+          </p>
+        </div>
         <div className="flex flex-col gap-8">
           <div className="grid gap-5 sm:grid-cols-3">
             {POINTS.map((point, i) => (
@@ -58,7 +71,7 @@ export function Worldwide() {
             ))}
           </div>
           <div data-reveal style={stagger(3)}>
-            <p className="font-mono text-xs uppercase tracking-wider text-brand-ink">Reasons to reach out it watches for</p>
+            <p className="font-mono text-xs uppercase tracking-wider text-brand-ink">Reasons to reach out it spots, anywhere</p>
             <ul className="mt-3 flex flex-wrap gap-2">
               {SIGNALS.map((signal) => (
                 <li key={signal} className="rounded-full border border-brand/60 bg-highlight/50 px-2.5 py-1 font-mono text-[11px] tracking-wide text-ink">
