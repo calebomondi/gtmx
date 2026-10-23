@@ -2,9 +2,18 @@ import { stagger } from '../lib/stagger'
 import { Section } from './section'
 
 const STEPS = [
-  { title: 'Tell it what you sell', body: 'Paste your website, or describe your product or service in a few sentences if you don’t have one.' },
-  { title: 'Answer a few questions', body: 'Who it’s for, where you sell. A team of four specialists (product, market, competition and go-to-market) does the research.' },
-  { title: 'Review, then send', body: 'Read the brief, pick the accounts, edit the drafts. Messages go from your own email, only when you click send.' },
+  {
+    title: 'Name your Lace, give it your website',
+    body: 'It reads your site and shows you what it learned: what you sell, to whom, and how you stand out. You confirm or correct it.',
+  },
+  {
+    title: 'It gets to work, and keeps at it',
+    body: 'Customers and the people to reach, places to sell and partner, competitors to watch, on a schedule you set. Ask it for more any time.',
+  },
+  {
+    title: 'You decide, then send',
+    body: 'Approve who to contact, edit or brainstorm each draft, and send it from your own accounts. Replies come back with an answer drafted.',
+  },
 ]
 
 /** A timeline: orange nodes on a line that draws itself, across on wide
