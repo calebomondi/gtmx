@@ -26,7 +26,7 @@ const POINTS = [
 ]
 
 /** What a Lace might be finding under the part of the world facing you, by
- * the longitude it sits at. Invented examples, said as such. */
+ * the longitude it sits at. Invented examples. */
 const REGIONS = [
   { lon: -100, text: 'Over North America: a Toronto fintech is hiring its first head of partnerships.' },
   { lon: -55, text: 'Over South America: a São Paulo retailer just opened an office in Bogotá.' },
@@ -56,9 +56,8 @@ export function Worldwide() {
       <div className="grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
         <div data-reveal className="flex flex-col items-center gap-4">
           <RotatingGlobe onFacing={onFacing} />
-          <p className="flex min-h-12 max-w-sm flex-col items-center gap-1 text-center text-sm" aria-live="off">
-            <span className="font-mono text-[10px] uppercase tracking-wider text-brand-ink">For example</span>
-            <span key={region} className="word-in">{REGIONS[region].text}</span>
+          <p className="min-h-10 max-w-sm text-center text-sm" aria-live="off">
+            <span key={region} className="word-in inline-block">{REGIONS[region].text}</span>
           </p>
         </div>
         <div className="flex flex-col gap-8">

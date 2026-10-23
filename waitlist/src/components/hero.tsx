@@ -1,6 +1,7 @@
 import { SignupCard } from '../features/signup/signup-card'
 import type { PilotSpots } from '../lib/api'
 import { DEMO_VIDEO } from './demo-video'
+import { Lace } from './lace-mascot'
 import { LacePreview } from './lace-preview'
 import { ProductDemo } from './product-demo'
 import { RotatingWord } from './rotating-word'
@@ -15,13 +16,16 @@ export function Hero({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; on
     <section id="top" className="hero-paper flex min-h-[calc(100svh-3.5rem)] items-center">
       <div className="mx-auto grid w-full max-w-7xl gap-14 px-5 py-14 sm:px-8 short:py-8 lg:grid-cols-[0.95fr_1.15fr] lg:items-center lg:gap-16">
         <div className="flex min-w-0 flex-col gap-6 short:gap-4">
-          <p className="inline-flex w-fit items-center gap-2 rounded-full border border-ink/15 bg-panel/70 px-3 py-1 font-mono text-[11px] uppercase tracking-wider">
-            <span aria-hidden className="size-1.5 rounded-full bg-brand" />
-            Your startup’s own assistant
-          </p>
           <div className="flex flex-col gap-3">
             <h1 className="text-[2.75rem] leading-[1.02] font-semibold tracking-[-0.035em] text-balance sm:text-[4.1rem] short:text-[2.6rem]">
-              Meet Lace, your startup’s assistant.
+              Meet{' '}
+              {/* Lace itself, after its name, kept on one line with the comma; sized
+                  to the letters, so it scales with them. */}
+              <span className="whitespace-nowrap">
+                Lace
+                <Lace state="idle" size={64} decorative className="mx-[0.1em] inline-block size-[0.72em] align-baseline" />,
+              </span>{' '}
+              your startup’s assistant.
             </h1>
             <p className="text-2xl leading-tight font-semibold tracking-tight sm:text-3xl short:text-xl">
               It finds your{' '}

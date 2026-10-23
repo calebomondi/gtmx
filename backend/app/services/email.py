@@ -10,14 +10,9 @@ from utils.log import logger
 
 _RESEND_URL = "https://api.resend.com/emails"
 _SITE = "https://thalace.com"
-# Lace's small face beside the wordmark: an orange square with two dark square
-# eyes, drawn with inline blocks because email clients drop SVG and positioning.
-_EYE = '<span style="display:inline-block;width:6px;height:6px;background:#1F1F1F"></span>'
 _MARK = (
-    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:24px">'
-    '<span style="display:inline-block;box-sizing:border-box;width:20px;height:20px;padding:5px 0 0 3px;'
-    f'background:#FEA853;border-radius:2px;font-size:0;line-height:0">{_EYE}'
-    f'{_EYE.replace("display:inline-block;", "display:inline-block;margin-left:2px;")}</span>'
+    '<div style="display:flex;align-items:center;gap:6px;margin-bottom:24px">'
+    '<span style="display:inline-block;width:14px;height:14px;background:#FEA853;border-radius:2px"></span>'
     '<span style="font-size:20px;letter-spacing:-.01em;color:#1c1917">Thalace</span></div>'
 )
 
