@@ -9,6 +9,7 @@ case-insensitively (`exa_api_key` <- EXA_API_KEY).
 """
 
 import json
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
@@ -148,6 +149,8 @@ class Settings(BaseSettings):
     resend_timeout_s: float = 15.0
     waitlist_from_email: str = ""
     waitlist_pilot_spots: int = 50
+    # When the current pilot cohort starts, shown on thalace.com. Set per cohort.
+    waitlist_pilot_starts_on: date = date(2026, 10, 24)
     # Days after signup the team reaches out to pilot opt-ins (said in the email).
     waitlist_pilot_contact_days: int = 14
     waitlist_signups_per_ip_per_hour: int = 5
