@@ -106,9 +106,8 @@ function draw(ctx: CanvasRenderingContext2D, size: number, center: number, finds
 }
 
 /** The world as square boxes on a slowly turning globe, with finds lighting
- * up on land as it turns. Calls `onFacing` with the longitude in front, in
- * degrees, as it changes. Turns only on screen; still with reduced motion. */
-export function RotatingGlobe({ onFacing }: { onFacing?: (lon: number) => void }) {
+ * up on land as it turns. Turns only on screen; still with reduced motion. */
+export function RotatingGlobe() {
   const canvas = useRef<HTMLCanvasElement>(null)
   const [still] = useState(prefersStill)
 
@@ -146,14 +145,12 @@ export function RotatingGlobe({ onFacing }: { onFacing?: (lon: number) => void }
         nextFind = now + FIND_EVERY_S
       }
       draw(ctx, size, center, finds, now)
-      onFacing?.(((((center / RAD) + 180) % 360) + 360) % 360 - 180)
       frame = requestAnimationFrame(tick)
     }
 
     const sizer = new ResizeObserver(resize)
     sizer.observe(el)
     resize()
-    onFacing?.(START_LON)
     if (still) return () => sizer.disconnect()
 
     const watcher = new IntersectionObserver(([entry]) => {
@@ -168,7 +165,7 @@ export function RotatingGlobe({ onFacing }: { onFacing?: (lon: number) => void }
       watcher.disconnect()
       sizer.disconnect()
     }
-  }, [still, onFacing])
+  }, [still])
 
   return <canvas ref={canvas} aria-hidden className="aspect-square w-full max-w-sm" />
 }
