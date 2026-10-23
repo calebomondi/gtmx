@@ -95,7 +95,7 @@ export function DetailsStep({
         </label>
         <label className="flex flex-col gap-1.5 text-sm font-medium sm:col-span-2">
           Company or website
-          <input className={inputClass} value={company} onChange={(e) => setCompany(e.target.value)} autoComplete="organization" placeholder="acme.co.ke" maxLength={200} />
+          <input className={inputClass} value={company} onChange={(e) => setCompany(e.target.value)} autoComplete="organization" placeholder="Acme" maxLength={200} />
         </label>
       </div>
 
@@ -120,7 +120,7 @@ export function DetailsStep({
           value={expectations}
           onChange={(e) => setExpectations(e.target.value.slice(0, EXPECTATIONS_MAX_CHARS))}
           rows={3}
-          placeholder="e.g. Find hospitals in Nairobi that need our scheduling tool, and tell me who to email."
+          placeholder="e.g. Find clinics that need our scheduling tool, and a conference to show it at."
           className="w-full resize-none rounded-md border border-line bg-panel px-3 py-2.5 text-base outline-none transition focus:border-ink"
         />
         <span className="self-end font-mono text-xs text-muted tabular-nums">

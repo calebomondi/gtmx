@@ -2,8 +2,12 @@ import { SignupCard } from '../features/signup/signup-card'
 import type { PilotSpots } from '../lib/api'
 import { DEMO_VIDEO } from './demo-video'
 import { DemoPlaceholder, ProductDemo } from './product-demo'
+import { RotatingWord } from './rotating-word'
 
-const PROOF = ['Kenya · Nigeria · South Africa', 'Four specialists on every run', 'You approve every send']
+const PROOF = ['One Lace per startup', 'Works wherever you sell', 'Email, LinkedIn, X, Instagram & more', 'You approve every send']
+
+// What Lace finds, one after another; read whole without motion.
+const FINDS = ['customers.', 'opportunities.', 'partners.', 'next deal.']
 
 export function Hero({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; onPilotSpotsLeft: (left: number) => void }) {
   return (
@@ -12,15 +16,21 @@ export function Hero({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; on
         <div className="flex min-w-0 flex-col gap-6 short:gap-4">
           <p className="inline-flex w-fit items-center gap-2 rounded-full border border-ink/15 bg-panel/70 px-3 py-1 font-mono text-[11px] uppercase tracking-wider">
             <span aria-hidden className="size-1.5 rounded-full bg-brand" />
-            For founders selling in Kenya, Nigeria &amp; South Africa
+            Your startup’s own assistant
           </p>
-          <h1 className="text-[2.75rem] leading-[1.02] font-semibold tracking-[-0.035em] text-balance sm:text-[4.1rem] short:text-[2.6rem]">
-            Know who to sell to, and <span className="marker whitespace-nowrap">why now.</span>
-          </h1>
+          <div className="flex flex-col gap-3">
+            <h1 className="text-[2.75rem] leading-[1.02] font-semibold tracking-[-0.035em] text-balance sm:text-[4.1rem] short:text-[2.6rem]">
+              Meet Lace, your startup’s assistant.
+            </h1>
+            <p className="text-2xl leading-tight font-semibold tracking-tight sm:text-3xl short:text-xl">
+              It finds your{' '}
+              <RotatingWord words={FINDS} whole="customers, opportunities, partners and your next deal." />
+            </p>
+          </div>
           <p className="max-w-xl text-lg leading-relaxed text-muted short:text-base">
-            Thalace is a go-to-market team you don’t have to hire. It studies your offer, maps your market and
-            rivals, finds the companies and communities with a reason to buy this month, and drafts the first
-            message. You approve every send.
+            Give it your website. Lace learns what you sell, then finds your ideal customers and the people to reach,
+            spots places to sell, showcase and partner, watches your competitors, brainstorms with you, and drafts
+            every message and reply. Nothing goes out without your click.
           </p>
           <SignupCard id="join" pilot={pilot} onPilotSpotsLeft={onPilotSpotsLeft} />
           <ul className="flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-muted">

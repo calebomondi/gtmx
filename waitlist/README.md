@@ -1,7 +1,7 @@
 # Thalace waitlist page (thalace.com)
 
-The public landing page: what Thalace does, and a two-step signup (email, then
-optional details and a pilot opt-in). It talks only to the Thalace API under
+The public landing page: Lace, the startup's own assistant, what it does, and a
+two-step signup (email, then optional details and a pilot opt-in). It talks only to the Thalace API under
 `/api/v1/waitlist`; signups appear in the admin dashboard's Waitlist page.
 
 ```bash
@@ -11,7 +11,7 @@ bun run build    # tsc -b && vite build -> dist/
 bun run lint     # oxlint
 ```
 
-- `src/components/`: the page's sections (hero, example run, what you get, pilot, FAQ).
+- `src/components/`: the page's sections (hero, what your Lace does, how it works, worldwide, pilot, FAQ, closing). `lace-mascot.tsx` is a copy of the app's mascot: change both together.
 - `src/features/signup/`: the signup flow.
 - `src/lib/api.ts`: the typed API client; types mirror `backend/app/schemas/waitlist.py`.
 
@@ -20,14 +20,15 @@ backend as the app (see `deploy/`).
 
 ## The hero's product recording
 
-Until a recording is published, the hero plays a coded example run
-(`run-preview.tsx`). To show the real product instead:
+Until a recording is published, the hero shows an empty frame. To show the real
+product:
 
 1. **Record** (~20 s once edited, no audio) at 1440×900, browser zoom 110–125%,
-   light theme. Storyboard: paste the website on `/new` → discovery steps
-   streaming → Offer/ICP → Competitors with live steps → Targets with a trigger →
-   the account dialog's draft and **Send** (hold on it). Blur any real contact
-   names or emails you can't publish.
+   light theme. Storyboard: name a Lace and paste the website on `/new` → the
+   mascot printing while it reads the site → confirm what it learned → ask it in
+   chat for customers, then an opportunity → a draft in Messaging, brainstorm it
+   shorter, and **Send** (hold on it). Blur any real contact names or emails you
+   can't publish.
 2. **Encode**: `scripts/encode-demo.sh raw.mp4 --start 2 --end 24 --crop W:H:X:Y --poster 1`
    writes `public/media/demo.mp4`, `demo.webm` and `demo-poster.webp` (1200×900).
    Aim for under ~2 MB per video.

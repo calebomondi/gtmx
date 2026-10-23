@@ -6,7 +6,7 @@
    signup in reach. */
 @custom-variant short (@media (max-height: 30rem));
 
-/* An intelligence tool for African founders: warm off-white paper, strong
+/* An assistant for every startup: warm off-white paper, strong
    black type, and #FEA853 as the signature. On light surfaces orange is a
    fill behind black text (it is too light to be text there); orange text
    appears only on black, where it reads at ~9:1. */
@@ -125,6 +125,35 @@
 }
 
 /* The status dot blinking while the demo plays. */
+/* A find on the globe: a ring that swells and fades, again and again. */
+@keyframes find-pulse {
+  0% {
+    opacity: 0.7;
+    transform: scale(0.4);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+.find-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: find-pulse 3.6s ease-out infinite;
+}
+
+/* A word rising into place, for the hero's changing word. */
+@keyframes word-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.35em);
+  }
+}
+.word-in {
+  animation: word-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
 @keyframes caret {
   50% {
     opacity: 0;

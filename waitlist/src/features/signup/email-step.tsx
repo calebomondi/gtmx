@@ -33,7 +33,7 @@ export function EmailStep({
           required
           autoComplete="email"
           inputMode="email"
-          placeholder="you@company.co.ke"
+          placeholder="you@company.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className="h-12 w-full min-w-0 rounded-md border border-ink/20 bg-panel px-3.5 text-base outline-none transition focus:border-ink focus:ring-4 focus:ring-brand/40 sm:flex-1"
@@ -66,8 +66,8 @@ export function EmailStep({
           className="mt-0.5 size-4 shrink-0 cursor-pointer accent-ink"
         />
         <span>
-          Thalace may email me about the waitlist and the pilot. I can ask to be removed at any time, and my
-          details are handled under Kenya's Data Protection Act, Nigeria's NDPR and South Africa's POPIA.
+          Thalace may email me about the waitlist and the pilot. I can ask to be removed, and my details
+          deleted, at any time.
         </span>
       </label>
       {error && (
