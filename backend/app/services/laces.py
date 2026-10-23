@@ -20,7 +20,7 @@ from backend.app.database.lace_models import (
 from backend.app.database.models import Run
 from backend.app.schemas.laces import FactVerdict, LaceMood
 from backend.app.services.runs import TERMINAL_STATUSES
-from backend.app.services.competitors import domain_key, normalize_website
+from backend.app.services.competitors import checked_website
 from backend.app.services import limits
 from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError
 from config import settings
@@ -28,11 +28,10 @@ from config import settings
 
 async def create(db: AsyncSession, user_id: uuid.UUID, name: str, website: str,
                  timezone: str | None = None) -> Lace:
-    name, website = name.strip(), normalize_website(website)
+    name = name.strip()
     if not name:
         raise InvalidInputError("Give your Lace a name.")
-    if "." not in domain_key(website):
-        raise InvalidInputError("That doesn't look like a website address.")
+    website = checked_website(website)
     await _ensure_room(db, user_id)
     # Checked before the insert, so a refused onboarding leaves no Lace behind.
     await limits.ensure_can_start(db, user_id, "lace_onboarding")

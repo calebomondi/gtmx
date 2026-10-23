@@ -20,7 +20,7 @@ from backend.app.services.errors import NotFoundError
 STATS_DAYS = 30
 # A CSV is built in memory; far above launch scale, and a bound all the same.
 MAX_EXPORT_ROWS = 20_000
-EXPORT_COLUMNS = ("email", "name", "company", "role", "stage", "sells_to", "countries", "wants_pilot",
+EXPORT_COLUMNS = ("email", "name", "company", "website", "role", "stage", "sells_to", "countries", "wants_pilot",
                   "expectations", "status", "utm_source", "utm_medium", "utm_campaign", "referrer", "created_at")
 
 _W = models.WaitlistSignup
@@ -96,7 +96,7 @@ async def export_csv(db: AsyncSession, pilot: bool | None = None, status: str | 
     for r in rows:
         source = r.source or {}
         writer.writerow([
-            r.email, r.name or "", r.company or "", r.role or "", r.stage or "", r.sells_to or "",
+            r.email, r.name or "", r.company or "", r.website or "", r.role or "", r.stage or "", r.sells_to or "",
             "; ".join(r.countries or []), "yes" if r.wants_pilot else "no", r.expectations or "", r.status,
             source.get("utm_source", ""), source.get("utm_medium", ""), source.get("utm_campaign", ""),
             source.get("referrer", ""), r.created_at.isoformat(),

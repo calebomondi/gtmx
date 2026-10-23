@@ -861,6 +861,8 @@ class WaitlistSignup(Base):
     countries: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
     wants_pilot: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false(), index=True)
     expectations: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Their startup's website, so their Lace can be set up when they're let in.
+    website: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Where they came from: utm_source/medium/campaign and the referrer.
     source: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="new", server_default="new", index=True)

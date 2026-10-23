@@ -62,11 +62,24 @@ def test_details_and_pilot_opt_in_with_the_token(anonymous, outbox):
         "wants_pilot": True, "expectations": "Find SACCOs that need a CRM",
     })
     assert saved.status_code == 200 and saved.json() == {"wants_pilot": True, "pilot_spots_left": 49}
-    assert anonymous.get(f"{API}/pilot").json() == {"total": 50, "taken": 1, "left": 49}
+    assert anonymous.get(f"{API}/pilot").json() == {"total": 50, "taken": 1, "left": 49,
+                                                     "starts_on": settings.waitlist_pilot_starts_on.isoformat()}
     assert _rows()[0][1:4] == (True, "revenue", "Find SACCOs that need a CRM")
     assert outbox[-1] == ("founder@startup.example", "You're in line for the Thalace pilot")
     anonymous.patch(f"{API}/{token}", json={"wants_pilot": True})
     assert sum(subject.startswith("You're in line") for _, subject in outbox) == 1  # only on first opt-in
+
+
+def test_a_website_is_kept_as_an_address_and_nonsense_is_refused(anonymous, outbox):
+    token = _join(anonymous).json()["token"]
+    assert anonymous.patch(f"{API}/{token}", json={"website": "  acme.health "}).status_code == 200
+    with psycopg.connect(settings.database_url) as conn:
+        assert conn.execute("SELECT website FROM waitlist_signups").fetchone()[0] == "https://acme.health"
+    refused = anonymous.patch(f"{API}/{token}", json={"website": "not a site"})
+    assert refused.status_code == 422 and "website" in refused.json()["detail"]
+    assert anonymous.patch(f"{API}/{token}", json={"website": ""}).status_code == 200  # cleared
+    with psycopg.connect(settings.database_url) as conn:
+        assert conn.execute("SELECT website FROM waitlist_signups").fetchone()[0] is None
 
 
 def test_bad_input_and_unknown_tokens_are_refused(anonymous):

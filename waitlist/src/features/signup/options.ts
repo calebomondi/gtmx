@@ -12,5 +12,3 @@ export const SELLS_TO: { value: SellsTo; label: string }[] = [
   { value: 'b2c', label: 'Consumers' },
   { value: 'both', label: 'Both' },
 ]
-
-export const HOME_MARKETS = ['Kenya', 'Nigeria', 'South Africa']

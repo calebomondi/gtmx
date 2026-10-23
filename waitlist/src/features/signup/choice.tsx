@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
 /** A toggle pill: pressed is filled with ink. */
-export function Pill({ pressed, onClick, children }: { pressed: boolean; onClick: () => void; children: ReactNode }) {
+function Pill({ pressed, onClick, children }: { pressed: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button
       type="button"

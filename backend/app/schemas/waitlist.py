@@ -47,6 +47,7 @@ class WaitlistDetails(BaseModel):
     countries: list[Annotated[str, Field(max_length=60)]] | None = Field(default=None, max_length=MAX_COUNTRIES)
     wants_pilot: bool | None = None
     expectations: str | None = Field(default=None, max_length=EXPECTATIONS_MAX_CHARS)
+    website: str | None = Field(default=None, max_length=500, description="Their startup's website; a bare host is fine")
 
 
 class WaitlistSaved(BaseModel):
@@ -58,6 +59,7 @@ class PilotSpots(BaseModel):
     total: int
     taken: int
     left: int
+    starts_on: date = Field(description="When the current pilot cohort starts")
 
 
 class WaitlistSignupRow(BaseModel):
@@ -75,6 +77,7 @@ class WaitlistSignupRow(BaseModel):
     countries: list[str]
     wants_pilot: bool
     expectations: str | None
+    website: str | None = None
     source: dict
     status: WaitlistStatus
     confirmation_sent_at: datetime | None

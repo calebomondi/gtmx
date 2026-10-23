@@ -4,6 +4,8 @@ and the host that dedups it."""
 import re
 from urllib.parse import urlparse
 
+from backend.app.services.errors import InvalidInputError
+
 
 
 
@@ -12,6 +14,14 @@ def normalize_website(website: str) -> str:
     website = website.strip()
     if not re.match(r"^https?://", website, re.IGNORECASE):
         website = f"https://{website}"
+    return website
+
+
+def checked_website(website: str) -> str:
+    """`normalize_website`, refusing what is not a website address."""
+    website = normalize_website(website)
+    if "." not in domain_key(website):
+        raise InvalidInputError("That doesn't look like a website address.")
     return website
 
 

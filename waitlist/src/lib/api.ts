@@ -24,6 +24,8 @@ export interface WaitlistDetails {
   countries?: string[]
   wants_pilot?: boolean
   expectations?: string
+  /** Their startup's website; a bare host is fine. */
+  website?: string
 }
 
 export interface WaitlistSaved {
@@ -35,6 +37,8 @@ export interface PilotSpots {
   total: number
   taken: number
   left: number
+  /** When the current cohort starts, as YYYY-MM-DD. */
+  starts_on: string
 }
 
 export const EXPECTATIONS_MAX_CHARS = 500
@@ -54,8 +58,8 @@ export class ApiError extends Error {
 /** What to tell the visitor when a call fails, in their terms. */
 function messageFor(status: number, detail: unknown): string {
   if (status === 429) return 'Too many signups from this network right now. Please try again in an hour.'
-  if (status === 422) return 'Please check your email address and tick the consent box.'
   if (typeof detail === 'string' && status < 500) return detail
+  if (status === 422) return 'Please check your email address and tick the consent box.'
   return "We couldn't reach Thalace just now. Please try again in a moment."
 }
 
