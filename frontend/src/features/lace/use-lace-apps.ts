@@ -21,8 +21,8 @@ export interface LaceApps {
 }
 
 /** A Lace's apps and its app actions. The apps (read live from the founder's
- * connections) load when `open`; the actions are kept current all along, for
- * the rail's count. Coming back from connecting an app from this Lace
+ * connections) load when `open` (its settings); the actions are kept current
+ * all along, for the Feed. Coming back from connecting an app from this Lace
  * (?connected=<platform>) switches it on for this Lace. */
 export function useLaceApps(laceId: string, open: boolean): LaceApps {
   const [apps, setApps] = useState<LaceAppDto[] | null>(null)
@@ -67,7 +67,7 @@ export function useLaceApps(laceId: string, open: boolean): LaceApps {
 
   const connected = params.get("connected") as Platform | null
   useEffect(() => {
-    if (!open || !connected || !(connected in PLATFORM_LABEL)) return
+    if (!connected || !(connected in PLATFORM_LABEL)) return
     setParams((prev) => {
       prev.delete("connected")
       return prev
@@ -85,7 +85,7 @@ export function useLaceApps(laceId: string, open: boolean): LaceApps {
         await refresh()
       }
     })()
-  }, [laceId, open, connected, setParams, setEnabled, refresh])
+  }, [laceId, connected, setParams, setEnabled, refresh])
 
   return { apps, actions, waiting: actions.filter((a) => a.status === "proposed").length, error, refresh, setEnabled }
 }
