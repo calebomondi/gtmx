@@ -15,7 +15,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database.lace_models import Lace, LaceApp
 from backend.app.services import connections as connection_service
-from backend.app.services.errors import NotFoundError
+from agents.lace.notion_tools import page_id
+from agents.lace.slack_tools import channel_name
+from backend.app.services.errors import InvalidInputError, NotFoundError
+
+# The settings each app takes, and how each value is read (None: not a valid one).
+SETTINGS = {
+    "slack": {"brief_channel": channel_name},
+    "notion": {"brief_page": page_id},
+}
+_INVALID = {"brief_channel": "That isn't a Slack channel name, e.g. #sales.",
+            "brief_page": "That isn't a Notion page link."}
 
 
 def _app(platform: str) -> connection_service.App:
@@ -61,8 +71,12 @@ async def list_for_lace(db: AsyncSession, lace: Lace) -> list[dict]:
 
 async def update(db: AsyncSession, lace: Lace, platform: str, enabled: bool | None,
                  settings: dict[str, str] | None) -> None:
-    """Switch an app on or off for this Lace and/or replace its settings."""
+    """Switch an app on or off for this Lace and/or replace its settings.
+    InvalidInputError for a setting the app doesn't take or a value that
+    can't be one; an empty value clears it."""
     _app(platform)
+    if settings is not None:
+        settings = _checked(platform, settings)
     values: dict = {}
     if enabled is not None:
         values["enabled"] = enabled
@@ -75,6 +89,20 @@ async def update(db: AsyncSession, lace: Lace, platform: str, enabled: bool | No
                                   **{"enabled": default_on, "settings": {}, **values})
     await db.execute(stmt.on_conflict_do_update(constraint="uq_lace_apps_lace_id_platform", set_=values))
     await db.commit()
+
+
+def _checked(platform: str, settings: dict[str, str]) -> dict[str, str]:
+    known = SETTINGS.get(platform, {})
+    checked = {}
+    for key, value in settings.items():
+        if key not in known:
+            raise InvalidInputError(f"{connection_service.label(platform)} has no setting {key!r}.")
+        if not value.strip():
+            continue
+        if (read := known[key](value)) is None:
+            raise InvalidInputError(_INVALID[key])
+        checked[key] = read
+    return checked
 
 
 async def enabled_default(db: AsyncSession, lace: Lace, platform: str) -> bool:

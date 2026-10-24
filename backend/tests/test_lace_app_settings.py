@@ -43,10 +43,10 @@ def test_with_two_laces_work_apps_wait_to_be_switched_on(client, lace, lace_runt
 
 
 def test_settings_are_kept_per_lace(client, lace, lace_runtime, connected):  # noqa: F811
-    saved = client.put(f"{API}/laces/{lace}/apps/slack", json={"settings": {"brief_channel": "#founders"}}).json()
-    assert saved["settings"] == {"brief_channel": "#founders"} and saved["enabled"]
+    saved = client.put(f"{API}/laces/{lace}/apps/slack", json={"settings": {"brief_channel": "#Founders"}}).json()
+    assert saved["settings"] == {"brief_channel": "founders"} and saved["enabled"]
     assert client.put(f"{API}/laces/{lace}/apps/slack", json={"enabled": False}).json()["settings"] == {
-        "brief_channel": "#founders"}
+        "brief_channel": "founders"}
     assert client.put(f"{API}/laces/{lace}/apps/myspace", json={"enabled": True}).status_code == 404
     client.sign_in(make_user("Intruder"))
     assert client.get(f"{API}/laces/{lace}/apps").status_code == 404
@@ -60,3 +60,14 @@ def test_an_app_switched_off_is_not_used(client, lace, lace_runtime, connected):
     card = client.portal.call(propose, DbLaceStore(AsyncSessionLocal, uuid.UUID(lace)), proposal).data["ui"][0]
     refused = client.post(f"{API}/laces/{lace}/app-actions/{card['id']}/approve")
     assert refused.status_code == 409 and "switched off for this Lace" in refused.json()["detail"]
+
+
+def test_settings_are_checked_per_app(client, lace, lace_runtime, connected):  # noqa: F811
+    page = "https://www.notion.so/acme/Briefs-1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d"
+    saved = client.put(f"{API}/laces/{lace}/apps/notion", json={"settings": {"brief_page": page}}).json()
+    assert saved["settings"] == {"brief_page": "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d"}
+    for platform, settings in [("notion", {"brief_page": "my briefs page"}), ("slack", {"brief_channel": "#a b"}),
+                               ("slack", {"colour": "red"}), ("gmail", {"brief_channel": "sales"})]:
+        assert client.put(f"{API}/laces/{lace}/apps/{platform}", json={"settings": settings}).status_code == 422, settings
+    # An empty value clears the setting.
+    assert client.put(f"{API}/laces/{lace}/apps/notion", json={"settings": {"brief_page": ""}}).json()["settings"] == {}

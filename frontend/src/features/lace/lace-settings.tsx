@@ -7,6 +7,7 @@ import type { FactDto, LaceStatus } from "@/lib/api"
 
 import { LaceAppsSection } from "./lace-apps"
 import { LaceBrief } from "./lace-brief"
+import { LaceBriefApps } from "./lace-brief-apps"
 import { LaceDocuments } from "./lace-documents"
 import { LaceFacts } from "./lace-facts"
 import { LaceManage } from "./lace-manage"
@@ -48,6 +49,7 @@ export function LaceSettings({ laceId, name, status, facts, apps, open, onOpenCh
           <section className="flex flex-col gap-3">
             <h3 className="text-sm font-medium">Brief</h3>
             <LaceBrief schedule={schedule} />
+            <LaceBriefApps apps={apps} />
           </section>
           <Separator />
           <section className="flex flex-col gap-3">
