@@ -38,10 +38,12 @@ _WINDOW_MARKERS = ("2534022", "2018278", "outside of allowed window", "messaging
 # What to do on channels whose APIs cannot start a conversation (docs/lace-plan.md, Channels).
 _HANDOFF = {
     "linkedin": "LinkedIn messages are sent by you: copy the message, send it on LinkedIn, then mark it sent.",
-    "instagram": "Instagram doesn't let apps start a conversation: copy the message, send it on Instagram, "
-                 "then mark it sent.",
-    "facebook": "Facebook only lets a Page reply to people who wrote first: copy the message, send it on "
-                "Facebook, then mark it sent.",
+    "instagram": "Instagram only lets apps answer people who wrote first, so start this chat yourself: copy the "
+                 "message, send it on Instagram, then mark it sent. When they reply, your Lace sees it in "
+                 "Messaging and drafts every answer, which you send from here.",
+    "facebook": "Facebook only lets a Page answer people who wrote first, so start this chat yourself: copy the "
+                "message, send it from your Page on Facebook, then mark it sent. When they reply, your Lace "
+                "sees it in Messaging and drafts every answer, which you send from here.",
     "tiktok": "TikTok has no messaging for apps: copy the message, send it on TikTok, then mark it sent.",
 }
 

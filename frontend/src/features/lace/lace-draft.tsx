@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react"
-import { Check, Copy, ExternalLink, Send, Trash2, Undo2 } from "lucide-react"
+import { Check, Copy, ExternalLink, MessageCircleReply, Send, Trash2, Undo2 } from "lucide-react"
 import { motion } from "motion/react"
 
 import { Badge } from "@/components/ui/badge"
@@ -16,6 +16,7 @@ const EDITABLE = new Set(["draft", "failed"])
 // without that it is handed over like the rest.
 const SENT_FROM_HERE = new Set<OutreachChannel>(["email", "x"])
 const ANSWERABLE_IN_THREAD = new Set<OutreachChannel>(["instagram", "facebook"])
+const START_BY_HAND = ANSWERABLE_IN_THREAD
 
 /** A message the Lace drafted, editable until it goes. Send is the founder's
  * approval (email, X once connected, and Instagram or Facebook answers);
@@ -59,6 +60,9 @@ export function DraftCard({ message, sendingSoon, onSave, onDiscard, onSend, onU
   const handoff = !isEmail
   // An answer goes into the existing thread, under its subject.
   const isReply = Boolean(message.thread_id) && message.status === "draft"
+  // Meta lets apps answer only people who wrote first: the founder starts
+  // the chat, and the Lace answers from then on.
+  const startByHand = START_BY_HAND.has(message.channel) && !isReply
 
   const copy = async () => {
     await navigator.clipboard.writeText(body)
@@ -93,6 +97,15 @@ export function DraftCard({ message, sendingSoon, onSave, onDiscard, onSend, onU
           </span>
           <Button size="sm" variant="outline" onClick={onUndo}><Undo2 /> Undo</Button>
         </div>
+      )}
+      {editable && !sendingSoon && startByHand && (
+        <p className="flex items-start gap-2 rounded-md bg-theme/10 px-2.5 py-2 text-xs text-muted-foreground">
+          <MessageCircleReply className="mt-0.5 size-3.5 shrink-0 text-theme" />
+          <span>
+            Start this chat yourself: {CHANNEL_LABELS[message.channel]} only lets apps answer people who wrote first.
+            Send it there and mark it sent. When they reply, your Lace sees it here and drafts every answer.
+          </span>
+        </p>
       )}
       {editable && !sendingSoon && (
         <div className="flex flex-wrap items-center gap-2">

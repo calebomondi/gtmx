@@ -176,7 +176,40 @@ def test_outside_the_window_says_so(client, lace, lace_runtime, meta, monkeypatc
 def test_without_a_linked_account_or_a_conversation_it_is_a_handoff(client, lace, lace_runtime, meta, monkeypatch):  # noqa: F811
     sent = _send_result(monkeypatch, meta)
     unlinked = client.post(f"{API}/laces/{lace}/outreach/{_answer(lace)}/send")
-    assert unlinked.status_code == 409 and "Instagram doesn't let apps start" in unlinked.json()["detail"]
+    assert unlinked.status_code == 409 and "start this chat yourself" in unlinked.json()["detail"]
     client.post(f"{API}/laces/{lace}/channels", json={"platform": "instagram", "account_id": "ig_1"})
     first_touch = client.post(f"{API}/laces/{lace}/outreach/{_answer(lace, thread=None)}/send")
     assert first_touch.status_code == 409 and sent == []
+
+
+def test_a_reply_joins_the_chat_the_founder_started_by_hand(client, lace, lace_runtime, meta):  # noqa: F811
+    """Meta lets apps answer only people who wrote first: the founder sent the
+    first message by hand and marked it sent. When the person replies, their
+    conversation is the one the founder started."""
+    client.post(f"{API}/laces/{lace}/channels", json={"platform": "instagram", "account_id": "ig_1"})
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        user_id = conn.execute("SELECT user_id FROM laces WHERE id = %s", (lace,)).fetchone()[0]
+        account = conn.execute(
+            "INSERT INTO lace_accounts (id, lace_id, key, name, account_type, record) VALUES"
+            " (gen_random_uuid(), %s, 'joefarms', 'Joe Farms', 'company', '{}') RETURNING id", (lace,)).fetchone()[0]
+        first = conn.execute(
+            "INSERT INTO lace_outreach (id, lace_id, user_id, account_id, channel, recipient_name, recipient_company,"
+            " recipient_address, body, status, sent_at) VALUES (gen_random_uuid(), %s, %s, %s, 'instagram', 'Joe',"
+            " 'Joe Farms', 'https://www.instagram.com/Farmer_Joe', 'Hi Joe, thanks for asking!', 'sent', now())"
+            " RETURNING id", (lace, user_id, account)).fetchone()[0]
+    lace_runtime.append(AIMessage(content="Joe from Joe Farms replied on Instagram."))
+    client.portal.call(scheduler.sync_lace_channels)
+    [job] = client.portal.call(_runs, lace, "lace_reply")
+    client.portal.call(_wait_for_status, job.id, {"completed"})
+
+    with psycopg.connect(settings.database_url) as conn:
+        # The hand-sent message took the conversation, and wasn't stored twice when synced back.
+        assert conn.execute("SELECT thread_id, provider_message_id FROM lace_outreach WHERE id = %s",
+                            (first,)).fetchone() == ("c1", "m2")
+        assert conn.execute("SELECT count(*) FROM lace_outreach WHERE body = 'Hi Joe, thanks for asking!'"
+                            ).fetchone()[0] == 1
+        # Their reply carries the account and company it was started with.
+        assert conn.execute("SELECT account_id, recipient_company, recipient_name FROM lace_outreach"
+                            " WHERE provider_message_id = 'm1'").fetchone() == (account, "Joe Farms", "Joe")
+    answer = next(m for m in client.get(f"{API}/laces/{lace}/outreach").json() if m["status"] == "draft")
+    assert (answer["thread_id"], answer["recipient_address"]) == ("c1", "u9")
