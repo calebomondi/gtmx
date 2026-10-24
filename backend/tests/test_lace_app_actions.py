@@ -4,7 +4,6 @@ or declines; never run twice, never run without the app connected, and only
 for the Lace's owner."""
 
 import uuid
-from datetime import UTC, datetime
 
 import psycopg
 import pytest
@@ -13,11 +12,9 @@ from agents.lace.app_actions import propose
 from agents.schemas.lace import ProposedAction
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.services import lace_app_actions, lace_cards
-from backend.app.services import connections as connection_service
-from backend.app.services.connections import ConnectionInfo
 from backend.app.services.lace_app_actions import ActionFailed, Outcome
 from backend.app.services.lace_store import DbLaceStore
-from backend.tests.helpers import make_user
+from backend.tests.helpers import make_user, stub_accounts
 from backend.tests.test_lace_jobs import lace  # noqa: F401 -- fixture
 from backend.tests.test_laces_api import API, lace_runtime  # noqa: F401 -- fixture
 from config import settings
@@ -31,10 +28,7 @@ def linkedin(monkeypatch):
     """A live LinkedIn connection, and a runner that records what it ran."""
     box = {"live": {"linkedin"}, "ran": [], "fail": None}
 
-    async def list_for_user(db, user_id):
-        now = datetime.now(UTC)
-        return [ConnectionInfo(f"ca_{p}", p, "live", None, now, now) for p in box["live"]]
-    monkeypatch.setattr(connection_service, "list_for_user", list_for_user)
+    stub_accounts(monkeypatch, box["live"])
 
     async def publish(ctx, arguments):
         box["ran"].append((ctx.connection_id, arguments))
@@ -69,6 +63,13 @@ def test_an_approved_action_runs_once_as_the_founder_and_is_reported(client, lac
         assert conn.execute("SELECT provider_log_id FROM lace_app_actions").fetchone()[0] == "log_1"
 
 
+def test_a_lace_with_its_own_account_acts_from_it(client, lace, lace_runtime, linkedin, monkeypatch):  # noqa: F811
+    stub_accounts(monkeypatch, {"linkedin"}, own={"linkedin"})
+    card = _propose(client, lace)
+    assert client.post(f"{API}/laces/{lace}/app-actions/{card['id']}/approve").json()["status"] == "done"
+    assert linkedin["ran"] == [("ca_own_linkedin", {"text": "We opened in Nakuru."})]
+
+
 def test_declined_actions_never_run(client, lace, lace_runtime, linkedin):  # noqa: F811
     card = _propose(client, lace)
     assert client.post(f"{API}/laces/{lace}/app-actions/{card['id']}/decline").json()["status"] == "declined"
@@ -79,7 +80,7 @@ def test_declined_actions_never_run(client, lace, lace_runtime, linkedin):  # no
 
 
 def test_an_unconnected_app_keeps_it_waiting(client, lace, lace_runtime, linkedin):  # noqa: F811
-    linkedin["live"] = set()
+    linkedin["live"].clear()
     card = _propose(client, lace)
     refused = client.post(f"{API}/laces/{lace}/app-actions/{card['id']}/approve")
     assert refused.status_code == 409 and "Connect your LinkedIn" in refused.json()["detail"]

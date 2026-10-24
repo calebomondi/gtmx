@@ -2,7 +2,6 @@
 connection; no connection means no lookup, and a refusal is an AppError."""
 
 import uuid
-from datetime import UTC, datetime
 
 import psycopg
 import pytest
@@ -10,8 +9,8 @@ import pytest
 from agents.lace.apps import AppError
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.services import lace_apps
-from backend.app.services.connections import ConnectionInfo
 from config import settings
+from backend.tests.helpers import stub_accounts
 
 
 def _lace() -> uuid.UUID:
@@ -22,10 +21,7 @@ def _lace() -> uuid.UUID:
 
 
 def _connections(monkeypatch, platforms):
-    async def list_for_user(db, user_id):
-        now = datetime.now(UTC)
-        return [ConnectionInfo(f"ca_{p}", p, "live", None, now, now) for p in platforms]
-    monkeypatch.setattr(lace_apps.connection_service, "list_for_user", list_for_user)
+    stub_accounts(monkeypatch, set(platforms))
 
 
 async def test_x_lookups_use_the_owners_live_x(monkeypatch):

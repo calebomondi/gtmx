@@ -39,10 +39,11 @@ async def enabled(db: AsyncSession, lace: Lace, platform: str) -> bool:
 
 
 async def list_for_lace(db: AsyncSession, lace: Lace) -> list[dict]:
-    """Every app, with whether the founder connected it, whether this Lace
-    may use it, and its settings for this Lace."""
+    """Every app, with the account this Lace uses for it (its own, or the
+    founder's shared one), whether this Lace may use it, and its settings
+    for this Lace."""
     rows = {r.platform: r for r in (await db.scalars(select(LaceApp).where(LaceApp.lace_id == lace.id))).all()}
-    connected = {c.platform: c for c in await connection_service.list_for_user(db, lace.user_id)}
+    connected = await connection_service.for_lace(db, lace)
     one_lace = await _one_lace(db, lace.user_id)
     out = []
     for app in connection_service.APPS:
@@ -50,6 +51,8 @@ async def list_for_lace(db: AsyncSession, lace: Lace) -> list[dict]:
         out.append({
             "platform": app.platform, "label": app.label, "group": app.group,
             "connected": live is not None and live.status == "live", "status": live.status if live else None,
+            "account": None if live is None else "own" if live.own else "shared",
+            "account_name": live.display_name if live else None, "connection_id": live.id if live else None,
             "enabled": row.enabled if row else (app.group == "channels" or one_lace),
             "settings": dict(row.settings) if row else {},
         })

@@ -363,8 +363,12 @@ class LaceAppResponse(BaseModel):
     platform: str
     label: str
     group: Literal["channels", "crm", "docs", "team", "meetings"]
-    connected: bool = Field(description="The founder connected it, and it's live")
+    connected: bool = Field(description="The account this Lace uses for it is live")
     status: str | None = Field(description="The connection's status (live, pending, needs_attention), if connected")
+    account: Literal["own", "shared"] | None = Field(
+        default=None, description="Whose account it uses: the Lace's own, or the founder's shared one")
+    account_name: str | None = Field(default=None, description="Who the account is, e.g. its email or handle")
+    connection_id: str | None = Field(default=None, description="To disconnect the Lace's own account")
     enabled: bool = Field(description="This Lace may use it")
     settings: dict[str, str] = Field(description="Its settings for this Lace, e.g. the Slack channel for the brief")
 

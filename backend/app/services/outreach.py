@@ -1,6 +1,6 @@
 """Sending outreach on the founder's behalf, shared by every send path: the
-email send through their own connected Gmail, the daily send cap, and the
-name messages are signed with."""
+email send through the Gmail the Lace uses (its own, else the founder's), the
+daily send cap, and the name messages are signed with."""
 
 import asyncio
 import re
@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app import supabase_admin
 from backend.app.database import models
+from backend.app.database.lace_models import Lace
 from backend.app.services import connections as connection_service
 from backend.app.services.errors import ConflictError, InvalidInputError, RateLimitedError
 from config import settings
@@ -51,10 +52,9 @@ def ensure_under_daily_cap(sent: int) -> None:
         )
 
 
-async def send_email(db: AsyncSession, message):
-    """Send one approved outbound email (a workspace OutreachMessage or a
-    LaceOutreach: they share these fields) through the user's own connected
-    Gmail. Only ever called on the user's explicit action."""
+async def send_email(db: AsyncSession, message: models.LaceOutreach, lace: Lace):
+    """Send one approved outbound email through the Gmail `lace` uses. Only
+    ever called on the user's explicit action."""
     if message.channel != "email":
         raise ConflictError("LinkedIn messages are sent by you: copy the draft into LinkedIn.")
     if message.direction != "outbound":
@@ -66,10 +66,9 @@ async def send_email(db: AsyncSession, message):
     if not (message.body or "").strip() or not (message.thread_id or (message.subject or "").strip()):
         raise InvalidInputError("Add a subject and a message before sending.")
     ensure_under_daily_cap(await sends_today(db, message.user_id))
-    gmail = next((c for c in await connection_service.list_for_user(db, message.user_id)
-                  if c.platform == "gmail" and c.status == "live"), None)
+    gmail = await connection_service.connection_for(db, lace, "gmail")
     if gmail is None:
-        raise ConflictError("Connect your Gmail account (Accounts page) to send email.")
+        raise ConflictError("Connect a Gmail account (this Lace's settings) to send email.")
 
     # Claim the message before the network call, so a double click can't send twice.
     message.status, message.error = "sending", None
@@ -82,7 +81,7 @@ async def send_email(db: AsyncSession, message):
         }) if message.thread_id else (_SEND_TOOL, {
             "recipient_email": message.recipient_address, "subject": message.subject, "body": message.body,
         })
-        result = await asyncio.to_thread(connection_service.execute_tool, message.user_id, tool, arguments, gmail.id)
+        result = await asyncio.to_thread(connection_service.execute_tool, gmail.entity, tool, arguments, gmail.id)
         failed = bool(result.get("error"))
         message.provider_log_id = result.get("log_id")
         sent = result.get("data") if isinstance(result.get("data"), dict) else {}

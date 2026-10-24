@@ -1,5 +1,5 @@
-"""`agents.lace.apps.LaceApps` for one Lace: its owner's connected apps,
-reached through Composio."""
+"""`agents.lace.apps.LaceApps` for one Lace: the apps it uses (its own
+accounts, else its founder's shared ones), reached through Composio."""
 
 import asyncio
 import uuid
@@ -26,7 +26,7 @@ TEXT_CHARS = 300
 
 @dataclass(frozen=True)
 class _Live:
-    user_id: uuid.UUID
+    entity: str
     connection_id: str
     # The account in the app linked to this Lace (its Instagram business account, its Page).
     linked_account: str | None
@@ -38,21 +38,20 @@ class DbLaceApps:
         self._lace_id = lace_id
 
     async def _live(self, platform: str) -> _Live | None:
-        """The Lace owner's live connection to `platform`, if any."""
+        """The live account this Lace uses for `platform`, if any."""
         async with self._sessions() as session:
             lace = await session.get(Lace, self._lace_id)
             if lace is None or not await lace_app_settings.enabled(session, lace, platform):
                 return None
-            live = next((c for c in await connection_service.list_for_user(session, lace.user_id)
-                         if c.platform == platform and c.status == "live"), None)
+            live = await connection_service.connection_for(session, lace, platform)
             linked = await session.scalar(select(LaceChannel.account_id).where(
                 LaceChannel.lace_id == self._lace_id, LaceChannel.platform == platform))
-        return _Live(lace.user_id, live.id, linked) if live else None
+        return _Live(live.entity, live.id, linked) if live else None
 
     async def _run(self, live: _Live, platform: str, tool: str, arguments: dict):
         """One Composio tool's data; AppError when it is refused or fails."""
         try:
-            result = await asyncio.to_thread(connection_service.execute_tool, live.user_id, tool, arguments,
+            result = await asyncio.to_thread(connection_service.execute_tool, live.entity, tool, arguments,
                                              live.connection_id)
         except Exception as exc:  # noqa: BLE001 -- the SDK raises many types; reported to the model
             logger.exception("Composio %s failed for Lace %s", tool, self._lace_id)

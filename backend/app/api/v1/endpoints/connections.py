@@ -1,4 +1,5 @@
-"""The signed-in user's connected channels (via Composio)."""
+"""The signed-in user's shared accounts (via Composio), which every Lace of
+theirs uses unless it has its own (see the Lace routes)."""
 
 from dataclasses import asdict
 
@@ -34,9 +35,10 @@ async def start_connection(platform: str, user: CurrentUser, origin: str | None 
     """A Connect Link to send the user to; they return to `return_to` (an app
     path, e.g. a Lace's Messaging; /accounts by default) on the origin they
     started from."""
-    return ConnectStartResponse(redirect_url=await connection_service.start(user.id, platform, origin, return_to))
+    return ConnectStartResponse(redirect_url=await connection_service.start(
+        connection_service.founder_entity(user.id), platform, origin, return_to))
 
 
 @router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def disconnect(connection_id: str, user: CurrentUser, db: DbSession):
-    await connection_service.disconnect(db, user.id, connection_id)
+    await connection_service.disconnect(db, connection_service.founder_entity(user.id), connection_id)

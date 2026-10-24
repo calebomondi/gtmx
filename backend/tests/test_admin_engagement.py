@@ -79,7 +79,7 @@ def world(client, monkeypatch):
                   " (%s, %s, %s, 'email', 'Acme', 'thanks', 'received', NULL, 'inbound')",
                   (uuid.uuid4(), widgets, ann, NOW, uuid.uuid4(), widgets, ann, uuid.uuid4(), widgets, ann))
 
-    async def live_by_user():
+    async def live_by_user(db):
         return {ann: {"gmail", "linkedin"}}
     monkeypatch.setattr(connection_service, "live_by_user", live_by_user)
     client.sign_in(make_user("Boss", is_admin=True))
@@ -121,7 +121,7 @@ def test_connections(client, world, monkeypatch):
     assert (gmail["connected_users"], gmail["sends"], gmail["senders"]) == (1, 1, 1)
     assert (m["error"], m["users_with_connections"], m["avg_connections_per_user"]) == (None, 1, 0.67)
 
-    async def down():
+    async def down(db):
         raise ConnectionError("composio down")
     monkeypatch.setattr(connection_service, "live_by_user", down)
     m = client.get(f"{API}/metrics/connections").json()
@@ -143,8 +143,8 @@ def test_users_list_and_detail_show_activity_and_connections(client, world, monk
     assert ann["last_seen_at"] is not None
 
     async def ann_connections(db, user_id):
-        return [connection_service.ConnectionInfo("ca_1", "gmail", "live", "ann@acme.com", NOW, NOW)]
-    monkeypatch.setattr(connection_service, "list_for_user", ann_connections)
+        return [connection_service.ConnectionInfo("ca_1", "gmail", "live", "ann@acme.com", NOW, NOW, str(user_id))]
+    monkeypatch.setattr(connection_service, "list_with_laces", ann_connections)
     detail = client.get(f"{API}/users/{world.ann}").json()
     assert detail["connection_list"] == [
         {"platform": "gmail", "status": "live", "display_name": "ann@acme.com", "sends": 1},

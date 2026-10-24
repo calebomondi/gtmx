@@ -21,6 +21,7 @@ from backend.app.database.models import Run
 from backend.app.schemas.laces import FactVerdict, LaceMood
 from backend.app.services.runs import TERMINAL_STATUSES
 from backend.app.services.competitors import checked_website
+from backend.app.services import connections as connection_service
 from backend.app.services import limits
 from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError
 from config import settings
@@ -77,11 +78,13 @@ async def restore(db: AsyncSession, lace: Lace) -> Lace:
 
 
 async def delete_lace(db: AsyncSession, lace: Lace) -> None:
-    """Gone with everything under it. Its runs stay, unlinked, as the record
-    of what they cost."""
+    """Gone with everything under it, its own app accounts revoked. Its runs
+    stay, unlinked, as the record of what they cost."""
     await _ensure_idle(db, lace)
+    entity = connection_service.lace_entity(lace.id)
     await db.delete(lace)
     await db.commit()
+    await connection_service.remove_all(entity)
 
 
 async def prepare_onboarding_retry(db: AsyncSession, lace: Lace) -> None:

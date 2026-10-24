@@ -76,17 +76,17 @@ def is_bounce(message: dict) -> bool:
     return sender.split("@")[0] in _BOUNCE_SENDERS or bool(_BOUNCE_SUBJECTS.search(message.get("subject") or ""))
 
 
-def _fetch_recent(user_id: uuid.UUID, connection_id: str, days: int) -> list[dict]:
-    """Recent mail not sent by the user, newest first, bounded."""
+def _fetch_recent(gmail: connection_service.ConnectionInfo, days: int) -> list[dict]:
+    """Recent mail not sent by the account's owner, newest first, bounded."""
     messages: list[dict] = []
     page_token = None
     for _ in range(_MAX_PAGES):
         arguments = {"query": f"newer_than:{days}d -from:me", "max_results": _PAGE_SIZE, "include_payload": False}
         if page_token:
             arguments["page_token"] = page_token
-        result = connection_service.execute_tool(user_id, _FETCH_TOOL, arguments, connection_id)
+        result = connection_service.execute_tool(gmail.entity, _FETCH_TOOL, arguments, gmail.id)
         if result["error"] or not isinstance(result["data"], dict):
-            logger.info("Gmail fetch for user %s failed: %s", user_id, result["error"])
+            logger.info("Gmail fetch for %s failed: %s", gmail.entity, result["error"])
             break
         messages.extend(result["data"].get("messages") or [])
         page_token = result["data"].get("nextPageToken")
@@ -155,24 +155,48 @@ def _bounced_send(message: dict, threads: dict[str, Outreach]) -> Outreach | Non
     return next((s for s in threads.values() if s.recipient_address and s.recipient_address.lower() in text), None)
 
 
+async def _by_gmail(db: AsyncSession, threads: dict[str, Outreach]
+                    ) -> list[tuple[connection_service.ConnectionInfo, dict[str, Outreach]]]:
+    """The sent threads grouped by the Gmail their Lace sends from: a Lace's
+    own account, or the founder's shared one for the Laces without one."""
+    groups: dict[str, tuple[connection_service.ConnectionInfo, dict[str, Outreach]]] = {}
+    for lace_id in {sent.lace_id for sent in threads.values()}:
+        lace = await db.get(models.Lace, lace_id)
+        gmail = await connection_service.connection_for(db, lace, "gmail") if lace else None
+        if gmail is None:
+            continue
+        mine = {thread: sent for thread, sent in threads.items() if sent.lace_id == lace_id}
+        groups.setdefault(gmail.id, (gmail, {}))[1].update(mine)
+    return list(groups.values())
+
+
 async def sync_user(db: AsyncSession, user_id: uuid.UUID) -> SyncResult:
-    """Store new replies and bounces for the user's recent sends."""
+    """Store new replies and bounces for the user's recent sends, reading
+    each Gmail account their Laces send from."""
     result = SyncResult()
     since = datetime.now(UTC) - timedelta(days=settings.inbox_sync_window_days)
     threads = await _sent_threads(db, user_id, since)
     if not threads:
         return result
-    gmail = next((c for c in await connection_service.list_for_user(db, user_id)
-                  if c.platform == "gmail" and c.status == "live"), None)
-    if gmail is None:
-        return result
-
-    fetched = await asyncio.to_thread(_fetch_recent, user_id, gmail.id, settings.inbox_sync_window_days)
     known: set[str] = set()
     for model in _OUTREACH:
         known |= set((await db.execute(select(model.provider_message_id).where(
             model.user_id == user_id, model.provider_message_id.is_not(None),
         ))).scalars())
+    for gmail, sent_threads in await _by_gmail(db, threads):
+        fetched = await asyncio.to_thread(_fetch_recent, gmail, settings.inbox_sync_window_days)
+        _store(db, fetched, sent_threads, known, result)
+    try:
+        await db.commit()
+    except IntegrityError:  # a concurrent sync stored the same messages first
+        await db.rollback()
+        return SyncResult()
+    return result
+
+
+def _store(db: AsyncSession, fetched: list[dict], threads: dict[str, Outreach], known: set[str],
+           result: SyncResult) -> None:
+    """Add the replies and bounces among `fetched` that answer `threads`."""
     for message in fetched:
         if not message.get("messageId") or message["messageId"] in known:
             continue
@@ -188,12 +212,6 @@ async def sync_user(db: AsyncSession, user_id: uuid.UUID) -> SyncResult:
             db.add(reply)
             result.replies.append(reply)
         known.add(message["messageId"])
-    try:
-        await db.commit()
-    except IntegrityError:  # a concurrent sync stored the same messages first
-        await db.rollback()
-        return SyncResult()
-    return result
 
 
 async def users_to_sync(db: AsyncSession) -> list[uuid.UUID]:
