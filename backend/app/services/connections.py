@@ -164,6 +164,8 @@ def _linkedin_name(data: dict) -> str | None:
 # checked against each tool's published output schema (2026-10-12).
 _IDENTITY = {
     "gmail": ("GMAIL_GET_PROFILE", {"user_id": "me"}, lambda d: d.get("emailAddress")),
+    "outlook": ("OUTLOOK_OUTLOOK_GET_PROFILE", {"user_id": "me"},
+                lambda d: (d.get("response_data") or {}).get("mail") or (d.get("response_data") or {}).get("userPrincipalName")),
     "googlecalendar": ("GOOGLECALENDAR_GET_CALENDAR_PROFILE", {}, lambda d: d.get("id") or d.get("summary")),
     "linkedin": ("LINKEDIN_GET_MY_INFO", {}, _linkedin_name),
     "instagram": ("INSTAGRAM_GET_USER_INFO", {}, lambda d: _handle(d.get("username"))),

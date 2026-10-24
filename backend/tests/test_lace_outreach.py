@@ -207,7 +207,7 @@ def test_a_lace_with_its_own_gmail_sends_from_it(client, lace, lace_runtime, use
 
 def test_sending_needs_gmail_an_address_and_an_email(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
     _gmail(monkeypatch, connected=False)
-    assert "Connect a Gmail" in client.post(f"{API}/laces/{lace}/outreach/{_message(lace, user.id)}/send").json()["detail"]
+    assert "Connect Gmail or Outlook" in client.post(f"{API}/laces/{lace}/outreach/{_message(lace, user.id)}/send").json()["detail"]
     _gmail(monkeypatch)
     no_address = _message(lace, user.id, address=None)
     assert client.post(f"{API}/laces/{lace}/outreach/{no_address}/send").status_code == 422

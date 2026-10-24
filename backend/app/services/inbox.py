@@ -1,6 +1,7 @@
-"""Replies and bounces for sent outreach, synced from the user's Gmail.
+"""Replies and bounces for sent outreach, synced from the mailboxes the
+user's Laces send from (Gmail or Outlook; see outreach.email_account).
 
-One mailbox search per user per sync (recent mail not from the user), matched
+One search per mailbox per sync (recent mail not from the user), matched
 to the threads of emails a Lace sent. A reply
 becomes an inbound message in that thread, in the same table as the email it
 answers; a delivery-failure notice marks the sent email bounced. Read only:
@@ -19,6 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import models
 from backend.app.services import connections as connection_service
+from backend.app.services import outlook
+from backend.app.services.outreach import email_account
 from config import settings
 from utils.log import logger
 
@@ -155,19 +158,25 @@ def _bounced_send(message: dict, threads: dict[str, Outreach]) -> Outreach | Non
     return next((s for s in threads.values() if s.recipient_address and s.recipient_address.lower() in text), None)
 
 
-async def _by_gmail(db: AsyncSession, threads: dict[str, Outreach]
-                    ) -> list[tuple[connection_service.ConnectionInfo, dict[str, Outreach]]]:
-    """The sent threads grouped by the Gmail their Lace sends from: a Lace's
-    own account, or the founder's shared one for the Laces without one."""
+async def _by_mailbox(db: AsyncSession, threads: dict[str, Outreach]
+                      ) -> list[tuple[connection_service.ConnectionInfo, dict[str, Outreach]]]:
+    """The sent threads grouped by the mailbox their Lace sends from: a
+    Lace's own account, or the founder's shared one for the Laces without one."""
     groups: dict[str, tuple[connection_service.ConnectionInfo, dict[str, Outreach]]] = {}
     for lace_id in {sent.lace_id for sent in threads.values()}:
         lace = await db.get(models.Lace, lace_id)
-        gmail = await connection_service.connection_for(db, lace, "gmail") if lace else None
-        if gmail is None:
+        mailbox = await email_account(db, lace) if lace else None
+        if mailbox is None:
             continue
         mine = {thread: sent for thread, sent in threads.items() if sent.lace_id == lace_id}
-        groups.setdefault(gmail.id, (gmail, {}))[1].update(mine)
+        groups.setdefault(mailbox.id, (mailbox, {}))[1].update(mine)
     return list(groups.values())
+
+
+def _fetch(mailbox: connection_service.ConnectionInfo, days: int) -> list[dict]:
+    if mailbox.platform == "outlook":
+        return outlook.recent(mailbox, (datetime.now(UTC) - timedelta(days=days)).isoformat())
+    return _fetch_recent(mailbox, days)
 
 
 async def sync_user(db: AsyncSession, user_id: uuid.UUID) -> SyncResult:
@@ -183,8 +192,8 @@ async def sync_user(db: AsyncSession, user_id: uuid.UUID) -> SyncResult:
         known |= set((await db.execute(select(model.provider_message_id).where(
             model.user_id == user_id, model.provider_message_id.is_not(None),
         ))).scalars())
-    for gmail, sent_threads in await _by_gmail(db, threads):
-        fetched = await asyncio.to_thread(_fetch_recent, gmail, settings.inbox_sync_window_days)
+    for mailbox, sent_threads in await _by_mailbox(db, threads):
+        fetched = await asyncio.to_thread(_fetch, mailbox, settings.inbox_sync_window_days)
         _store(db, fetched, sent_threads, known, result)
     try:
         await db.commit()

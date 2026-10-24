@@ -386,7 +386,7 @@ export function deleteLaceOutreach(laceId: string, messageId: string): Promise<v
   return apiFetch(`/api/v1/laces/${laceId}/outreach/${messageId}`, { method: "DELETE" })
 }
 
-/** Send an email draft through the founder's Gmail: the founder's own action. */
+/** Send an email draft from the Lace's mailbox (Gmail or Outlook): the founder's own action. */
 export function sendLaceOutreach(laceId: string, messageId: string): Promise<LaceOutreachDto> {
   return apiFetch(`/api/v1/laces/${laceId}/outreach/${messageId}/send`, { method: "POST" })
 }
