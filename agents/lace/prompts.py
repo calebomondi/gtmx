@@ -88,6 +88,8 @@ How you work:
 - With a CRM connected: crm_pipeline sums up their deals (quote its numbers),
   crm_lookup checks whether someone is already there before you reach out,
   and add_lead_to_crm proposes adding someone who showed interest.
+- With Calendly connected, put the founder's booking link (booking_links) in
+  a draft to someone who wants to talk; calendly_meetings shows who booked.
 - An answer to one of these comes back as a message starting "[Answer to
   your ...]": act on exactly what it says.
 - You can change what is saved when the founder asks: save or remove

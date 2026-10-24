@@ -3,7 +3,7 @@ accounts, else its founder's shared ones), reached through Composio."""
 
 import asyncio
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -40,6 +40,7 @@ SLACK_RESULTS = 20
 _ASANA_WORKSPACES = "ASANA_GET_MULTIPLE_WORKSPACES"
 _ASANA_TASKS = "ASANA_GET_MULTIPLE_TASKS"
 ASANA_TASKS = 100
+CALENDLY_MEETINGS = 20
 # The founder's recent posts read for comments, and comments read per post.
 COMMENTS_PER_POST = 20
 TEXT_CHARS = 300
@@ -188,6 +189,42 @@ class DbLaceApps:
         platform, live = found
         return await crm.FIND[platform](lambda tool, args: self._run(live, platform, tool, args), query)
 
+    async def _calendly_user(self, live: _Live) -> str:
+        me = _calendly_body(await self._run(live, "calendly", "CALENDLY_GET_CURRENT_USER", {}))
+        uri = (me.get("resource") or {}).get("uri")
+        if not uri:
+            raise AppError("Calendly didn't say who you are; reconnect Calendly.")
+        return uri
+
+    async def calendly_links(self) -> list[dict] | None:
+        live = await self._live("calendly")
+        if live is None:
+            return None
+        types = _calendly_body(await self._run(live, "calendly", "CALENDLY_LIST_USER_S_EVENT_TYPES", {
+            "user": await self._calendly_user(live), "active": True, "count": 100}))
+        return [{"name": t.get("name"), "minutes": t.get("duration"), "url": t.get("scheduling_url")}
+                for t in types.get("collection") or [] if isinstance(t, dict) and t.get("scheduling_url")]
+
+    async def calendly_meetings(self, days_back: int, days_ahead: int) -> list[dict] | None:
+        live = await self._live("calendly")
+        if live is None:
+            return None
+        now = datetime.now(UTC)
+        events = _calendly_body(await self._run(live, "calendly", "CALENDLY_LIST_EVENTS", {
+            "user": await self._calendly_user(live), "status": "active", "count": CALENDLY_MEETINGS,
+            "sort": "start_time:asc", "min_start_time": (now - timedelta(days=days_back)).isoformat(),
+            "max_start_time": (now + timedelta(days=days_ahead)).isoformat()}))
+        meetings = []
+        for event in (events.get("collection") or [])[:CALENDLY_MEETINGS]:
+            if not isinstance(event, dict) or not event.get("uri"):
+                continue
+            invitees = _calendly_body(await self._run(live, "calendly", "CALENDLY_LIST_EVENT_INVITEES", {
+                "uuid": event["uri"].rstrip("/").rsplit("/", 1)[-1], "status": "active"}))
+            meetings.append({"name": event.get("name"), "start": event.get("start_time"), "invitees": [
+                {"name": i.get("name"), "email": i.get("email")}
+                for i in invitees.get("collection") or [] if isinstance(i, dict)]})
+        return meetings
+
     async def my_comments(self, platform: CommentsOn, posts: int) -> list[dict] | None:
         live = await self._live(platform)
         if live is None:
@@ -235,6 +272,13 @@ async def asana_workspace(run) -> str:
     if not workspaces or not workspaces[0].get("gid"):
         raise AppError("Asana didn't list a workspace for this account.")
     return str(workspaces[0]["gid"])
+
+
+def _calendly_body(data) -> dict:
+    """A Calendly API response, whether or not Composio wraps it."""
+    if isinstance(data, dict) and not ({"resource", "collection"} & data.keys()):
+        data = next((data[k] for k in ("data", "response_data") if isinstance(data.get(k), dict)), data)
+    return data if isinstance(data, dict) else {}
 
 
 def _slack_date(ts) -> str | None:

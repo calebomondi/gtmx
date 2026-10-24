@@ -107,7 +107,7 @@ const CAPABILITIES: Record<Platform, Connection['capabilities']> = {
     { label: 'Change tasks without approval', allowed: false },
   ],
   calendly: [
-    { label: 'Add a booking link for each prospect to drafts', allowed: true },
+    { label: 'Put your booking links in drafts', allowed: true },
     { label: 'See booked meetings, and who booked', allowed: true },
     { label: 'Cancel or move meetings', allowed: false },
   ],

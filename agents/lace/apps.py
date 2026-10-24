@@ -74,6 +74,18 @@ class LaceApps(Protocol):
         None without a CRM; AppError when a call fails."""
         ...
 
+    async def calendly_links(self) -> list[dict] | None:
+        """The founder's active Calendly event types: [{name, minutes, url}].
+        None when Calendly isn't connected or is switched off; AppError when
+        the call fails."""
+        ...
+
+    async def calendly_meetings(self, days_back: int, days_ahead: int) -> list[dict] | None:
+        """Meetings booked on the founder's Calendly in that window, soonest
+        first, bounded: [{name, start, invitees: [{name, email}]}]. None when
+        Calendly isn't connected or is switched off; AppError when a call fails."""
+        ...
+
     async def my_comments(self, platform: CommentsOn, posts: int) -> list[dict] | None:
         """Comments on the founder's own recent posts (their most recent
         `posts`), newest posts first: [{platform, post_url, post_text,

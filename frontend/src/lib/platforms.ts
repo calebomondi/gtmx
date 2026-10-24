@@ -70,7 +70,7 @@ export const ALL_PLATFORMS: Platform[] = APP_GROUPS.flatMap((group) => group.pla
 
 /** Apps a Lace can't use yet: they connect now, and their skills arrive one by one. */
 export const COMING_SOON: ReadonlySet<Platform> = new Set([
-  'whatsapp', 'calendly',
+  'whatsapp',
 ])
 
 /** Sends the browser to the platform's sign-in (via Composio) for a shared
