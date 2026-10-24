@@ -83,7 +83,7 @@ const CAPABILITIES: Record<Platform, Connection['capabilities']> = {
   hubspot: [
     { label: 'Summarise your pipeline: deals by stage, totals, stale deals', allowed: true },
     { label: 'Check whether a company or person is already in HubSpot', allowed: true },
-    { label: 'Add contacts, companies and deals when you approve', allowed: true },
+    { label: 'Add leads when you approve', allowed: true },
     { label: 'Change your CRM without approval', allowed: false },
   ],
   googlesheets: [
