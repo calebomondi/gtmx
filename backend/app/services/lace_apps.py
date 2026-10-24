@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from agents.lace.apps import AppError, CommentsOn, XRecord
 from backend.app.database.lace_models import Lace, LaceChannel
 from backend.app.services import connections as connection_service
-from backend.app.services import lace_app_settings
+from backend.app.services import crm, lace_app_settings
 from backend.app.services.lace_channels import items
 from data_sources.socials import x_api
 from utils.log import logger
@@ -165,6 +165,28 @@ class DbLaceApps:
                  "project": ", ".join(p.get("name") or "" for p in t.get("projects") or [] if isinstance(p, dict)) or None,
                  "link": t.get("permalink_url")}
                 for t in tasks if t.get("name") and not t.get("completed")]
+
+    async def _crm_live(self) -> tuple[str, _Live] | None:
+        for platform in crm.CRM_APPS:
+            if (live := await self._live(platform)) is not None:
+                return platform, live
+        return None
+
+    async def crm(self) -> str | None:
+        found = await self._crm_live()
+        return found[0] if found else None
+
+    async def crm_deals(self) -> list[dict] | None:
+        if (found := await self._crm_live()) is None:
+            return None
+        platform, live = found
+        return await crm.DEALS[platform](lambda tool, args: self._run(live, platform, tool, args))
+
+    async def crm_find(self, query: str) -> list[dict] | None:
+        if (found := await self._crm_live()) is None:
+            return None
+        platform, live = found
+        return await crm.FIND[platform](lambda tool, args: self._run(live, platform, tool, args), query)
 
     async def my_comments(self, platform: CommentsOn, posts: int) -> list[dict] | None:
         live = await self._live(platform)

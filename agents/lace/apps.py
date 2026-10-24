@@ -8,6 +8,8 @@ to `build_lace_graph`, as it does the store: `agents/` never imports
 from typing import Literal, Protocol
 
 XRecord = Literal["profile", "post"]
+# The CRMs a Lace can read and add leads to.
+CrmApp = Literal["zoho", "hubspot"]
 # The founder's own accounts whose post comments a Lace can read.
 CommentsOn = Literal["instagram", "facebook"]
 
@@ -54,6 +56,22 @@ class LaceApps(Protocol):
         """The founder's open Asana tasks (assigned to them): [{name, due_on,
         project, link}], bounded. None when Asana isn't connected or is
         switched off; AppError when the call fails."""
+        ...
+
+    async def crm(self) -> CrmApp | None:
+        """The CRM this Lace uses (connected and switched on), if any."""
+        ...
+
+    async def crm_deals(self) -> list[dict] | None:
+        """The deals in the Lace's CRM, newest first, bounded: [{name,
+        company, stage, amount, close_date, updated, closed, won}]. None
+        without a CRM; AppError when a call fails."""
+        ...
+
+    async def crm_find(self, query: str) -> list[dict] | None:
+        """Leads, contacts and companies in the Lace's CRM whose name, company
+        or email contains `query`: [{kind, name, company, email}], bounded.
+        None without a CRM; AppError when a call fails."""
         ...
 
     async def my_comments(self, platform: CommentsOn, posts: int) -> list[dict] | None:

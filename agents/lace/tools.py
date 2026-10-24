@@ -18,6 +18,7 @@ from agents.lace.ask_tools import build_ask_tools
 from agents.lace.cards import cards
 from agents.lace.edit_tools import build_edit_tools
 from agents.lace.asana_tools import build_asana_tools
+from agents.lace.crm_tools import build_crm_tools
 from agents.lace.notion_tools import build_notion_tools
 from agents.lace.sheet_tools import build_sheet_tools
 from agents.lace.slack_tools import build_slack_tools
@@ -330,7 +331,8 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
              *build_ask_tools(), *build_edit_tools(store),
              # Acting in the founder's apps needs them: proposals, run on approval.
              *([*build_social_tools(store, apps), *build_sheet_tools(store, apps), *build_notion_tools(store, apps),
-                *build_slack_tools(store, apps), *build_asana_tools(store, apps)] if apps is not None else [])]
+                *build_slack_tools(store, apps), *build_asana_tools(store, apps), *build_crm_tools(store, apps)]
+               if apps is not None else [])]
     if jobs is None:
         return tools
 

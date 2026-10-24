@@ -77,7 +77,7 @@ const CAPABILITIES: Record<Platform, Connection['capabilities']> = {
   zoho: [
     { label: 'Summarise your pipeline: deals by stage, totals, stale deals', allowed: true },
     { label: 'Check whether someone is already a lead', allowed: true },
-    { label: 'Add leads and log messages when you approve', allowed: true },
+    { label: 'Add leads when you approve', allowed: true },
     { label: 'Change your CRM without approval', allowed: false },
   ],
   hubspot: [
