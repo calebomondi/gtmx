@@ -97,8 +97,8 @@ const CAPABILITIES: Record<Platform, Connection['capabilities']> = {
     { label: 'Change your pages without approval', allowed: false },
   ],
   slack: [
-    { label: 'Post the brief and reply alerts to a channel you choose', allowed: true },
     { label: "Search your team's messages for context", allowed: true },
+    { label: 'Post messages you approve to a channel you choose', allowed: true },
     { label: 'Message people without approval', allowed: false },
   ],
   asana: [

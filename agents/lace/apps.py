@@ -43,6 +43,13 @@ class LaceApps(Protocol):
         AppError when the call fails."""
         ...
 
+    async def slack_search(self, query: str) -> list[dict] | None:
+        """Messages in the founder's Slack matching `query` (Slack's search
+        syntax: in:#channel, from:@name): [{text, author, channel, date,
+        link}], newest first, bounded. None when Slack isn't connected or is
+        switched off; AppError when the call fails."""
+        ...
+
     async def my_comments(self, platform: CommentsOn, posts: int) -> list[dict] | None:
         """Comments on the founder's own recent posts (their most recent
         `posts`), newest posts first: [{platform, post_url, post_text,
