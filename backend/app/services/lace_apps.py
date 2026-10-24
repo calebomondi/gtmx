@@ -37,6 +37,9 @@ _NOTION_LINE = {"heading_1": "# ", "heading_2": "## ", "heading_3": "### ", "bul
                 "paragraph": "", "code": ""}
 _SLACK_SEARCH = "SLACK_SEARCH_MESSAGES"
 SLACK_RESULTS = 20
+_ASANA_WORKSPACES = "ASANA_GET_MULTIPLE_WORKSPACES"
+_ASANA_TASKS = "ASANA_GET_MULTIPLE_TASKS"
+ASANA_TASKS = 100
 # The founder's recent posts read for comments, and comments read per post.
 COMMENTS_PER_POST = 20
 TEXT_CHARS = 300
@@ -150,6 +153,19 @@ class DbLaceApps:
                  "link": m.get("permalink")}
                 for m in messages.get("matches") or [] if isinstance(m, dict) and m.get("text")]
 
+    async def asana_tasks(self) -> list[dict] | None:
+        live = await self._live("asana")
+        if live is None:
+            return None
+        workspace = await asana_workspace(lambda tool, args: self._run(live, "asana", tool, args))
+        tasks = items(await self._run(live, "asana", _ASANA_TASKS, {
+            "workspace": workspace, "assignee": "me", "completed_since": "now", "limit": ASANA_TASKS,
+            "opt_fields": ["name", "due_on", "completed", "permalink_url", "projects.name"]}))
+        return [{"name": t.get("name"), "due_on": t.get("due_on"),
+                 "project": ", ".join(p.get("name") or "" for p in t.get("projects") or [] if isinstance(p, dict)) or None,
+                 "link": t.get("permalink_url")}
+                for t in tasks if t.get("name") and not t.get("completed")]
+
     async def my_comments(self, platform: CommentsOn, posts: int) -> list[dict] | None:
         live = await self._live(platform)
         if live is None:
@@ -188,6 +204,15 @@ class DbLaceApps:
                                (c.get("from") or {}).get("name"), c.get("message"), c.get("created_time"))
                       for c in comments if c.get("message")]
         return found
+
+
+async def asana_workspace(run) -> str:
+    """The founder's Asana workspace (the first, for one with several);
+    `run(tool, arguments)` returns a tool's data."""
+    workspaces = items(await run(_ASANA_WORKSPACES, {"limit": 10}))
+    if not workspaces or not workspaces[0].get("gid"):
+        raise AppError("Asana didn't list a workspace for this account.")
+    return str(workspaces[0]["gid"])
 
 
 def _slack_date(ts) -> str | None:
