@@ -16,6 +16,8 @@ import { LaceFindsDock } from "./lace-finds-dock"
 import { LaceMessaging } from "./lace-messaging"
 import { LaceRail, LaceTabBar } from "./lace-rail"
 import { useLaceApps } from "./use-lace-apps"
+import { AskAnApp, QuickAskChips } from "./lace-quick-asks"
+import { quickAsks } from "./quick-asks"
 import { chatMascot, LACE_TABS, type LaceTab } from "./lace-tabs"
 import { LaceSettings } from "./lace-settings"
 import { LaceStatusBanner } from "./lace-status-banner"
@@ -48,7 +50,9 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
   const opps = useLaceOpportunities(laceId, activity.items[0]?.id ?? "")
   // Back from connecting an app from the settings: open them again there.
   const [settingsOpen, setSettingsOpen] = useState(() => new URLSearchParams(window.location.search).has("connected"))
-  const apps = useLaceApps(laceId, settingsOpen)
+  // The apps load with the settings and the chat, whose quick asks come from them.
+  const apps = useLaceApps(laceId, settingsOpen || tab === "chat")
+  const asks = quickAsks(apps.apps)
   const [seenAt, markSeen] = useSeenAt<FoundSection["key"]>(laceId)
   const name = chat.lace?.name ?? "Lace"
   const subtitle = chat.lace?.startup_name ?? chat.lace?.website
@@ -102,8 +106,11 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
         </aside>
         <main className={tab === "chat" ? "flex min-h-0 min-w-0 flex-1 flex-col" : "min-h-0 min-w-0 flex-1 overflow-y-auto"}>
           {tab === "chat" && (
-            <LaceConversation chat={chat} name={name} onOpenMessaging={() => select("messaging")} prefill={prefill} dock={
+            <LaceConversation chat={chat} name={name} onOpenMessaging={() => select("messaging")} prefill={prefill}
+                              starters={<QuickAskChips asks={asks} onAsk={(text) => void chat.send(text)} disabled={chat.working} />}
+                              dock={
               <>
+                <AskAnApp asks={asks} onAsk={(text) => void chat.send(text)} busy={chat.working} />
                 <LaceBackgroundWork name={name} jobs={chat.jobs} />
                 <LaceFindsDock name={name} sections={found} seenAt={seenAt} onSeen={markSeen} busy={chat.working} searching={searching}
                                onAsk={(prompt) => void chat.send(prompt)} />
