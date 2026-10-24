@@ -20,6 +20,8 @@ export interface LaceApps {
   error: string | null
   refresh: () => Promise<void>
   setEnabled: (platform: Platform, enabled: boolean) => Promise<void>
+  /** Replace an app's settings for this Lace; false (with a toast) when refused. */
+  setSettings: (platform: Platform, settings: Record<string, string>) => Promise<boolean>
   /** Disconnect the Lace's own account for an app; it goes back to the shared one. */
   disconnectOwn: (app: LaceAppDto) => Promise<void>
 }
@@ -69,6 +71,19 @@ export function useLaceApps(laceId: string, open: boolean): LaceApps {
     }
   }, [laceId])
 
+  const setSettings = useCallback(async (platform: Platform, settings: Record<string, string>) => {
+    try {
+      const saved = await updateLaceApp(laceId, platform, { settings })
+      setApps((prev) => prev?.map((a) => (a.platform === platform ? saved : a)) ?? prev)
+      return true
+    } catch (err) {
+      toast.error(`Couldn't save ${PLATFORM_LABEL[platform]}'s setting`, {
+        description: err instanceof Error ? err.message : String(err),
+      })
+      return false
+    }
+  }, [laceId])
+
   const disconnectOwn = useCallback(async (app: LaceAppDto) => {
     if (app.account !== "own" || !app.connection_id) return
     try {
@@ -105,6 +120,6 @@ export function useLaceApps(laceId: string, open: boolean): LaceApps {
 
   return {
     apps, actions, waiting: actions.filter((a) => a.status === "proposed").length, error, refresh, setEnabled,
-    disconnectOwn,
+    setSettings, disconnectOwn,
   }
 }

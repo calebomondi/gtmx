@@ -124,13 +124,41 @@ async def approve(db: AsyncSession, row: LaceAppAction) -> LaceAppAction:
     if connection is None:
         raise ConflictError(f"Connect your {connection_service.label(row.app)} account first (this Lace's settings).")
 
-    linked = await db.scalar(select(LaceChannel.account_id).where(
-        LaceChannel.lace_id == row.lace_id, LaceChannel.platform == row.app))
-    context = RunContext(connection.entity, row.lace_id, row.app, connection.id, linked)
-
     # Claimed before the app is called, so a double click can't run it twice.
     row.status, row.decided_at = "running", datetime.now(UTC)
     await db.commit()
+    await _execute(db, row, runner, connection)
+    await lace_events.add(db, row.lace_id, f"The founder approved \"{row.title}\" and it "
+                          + (f"ran: {row.result}" if row.status == "done" else f"failed: {row.result}"))
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+async def run_standing(db: AsyncSession, lace: Lace, app: str, action: str, title: str, preview: str,
+                       arguments: dict) -> LaceAppAction | None:
+    """Run an action the founder set up to happen every time (the brief to
+    their Slack channel): their setting is the approval. Recorded like an
+    approved one. None when the app isn't connected or switched on."""
+    connection = await connection_service.connection_for(db, lace, app)
+    if connection is None or not await lace_app_settings.enabled(db, lace, app):
+        return None
+    row = LaceAppAction(lace_id=lace.id, app=app, action=action, title=title, preview=preview, arguments=arguments,
+                        status="running", decided_at=datetime.now(UTC))
+    db.add(row)
+    await db.commit()
+    await _execute(db, row, RUNNERS[(app, action)], connection)
+    await db.commit()
+    return row
+
+
+async def _execute(db: AsyncSession, row: LaceAppAction, runner: Runner,
+                   connection: connection_service.ConnectionInfo) -> None:
+    """Run a claimed action and record its outcome and its Feed item; the
+    caller commits."""
+    linked = await db.scalar(select(LaceChannel.account_id).where(
+        LaceChannel.lace_id == row.lace_id, LaceChannel.platform == row.app))
+    context = RunContext(connection.entity, row.lace_id, row.app, connection.id, linked)
     try:
         outcome = await runner(context, row.arguments)
         row.status, row.result, row.url, row.provider_log_id = "done", outcome.result, outcome.url, outcome.log_id
@@ -143,11 +171,6 @@ async def approve(db: AsyncSession, row: LaceAppAction) -> LaceAppAction:
     done = row.status == "done"
     await lace_activity.add(db, row.lace_id, "app_action", f"{row.title}: {'done' if done else 'didn’t go through'}",
                             row.result, ref=("app_action", row.id))
-    await lace_events.add(db, row.lace_id, f"The founder approved \"{row.title}\" and it "
-                          + (f"ran: {row.result}" if done else f"failed: {row.result}"))
-    await db.commit()
-    await db.refresh(row)
-    return row
 
 
 async def decline(db: AsyncSession, row: LaceAppAction) -> LaceAppAction:

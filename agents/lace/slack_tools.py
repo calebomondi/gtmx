@@ -19,6 +19,12 @@ NOT_CONNECTED = ("Slack isn't connected for this Lace, or is switched off. "
 _CHANNEL = re.compile(r"^#?([a-z0-9][a-z0-9_-]{0,79})$")
 
 
+def channel_name(channel: str) -> str | None:
+    """A Slack channel's name without its #, or None when it can't be one."""
+    match = _CHANNEL.match(channel.strip().lower())
+    return match.group(1) if match else None
+
+
 def build_slack_tools(store: LaceStore, apps: LaceApps) -> list[BaseTool]:
 
     @tool(parse_docstring=True)
@@ -47,7 +53,7 @@ def build_slack_tools(store: LaceStore, apps: LaceApps) -> list[BaseTool]:
             channel: The channel's name, e.g. "#sales".
             text: The message, in Slack markdown (*bold*, _italic_, bullets, links).
         """
-        name = _CHANNEL.match(channel.strip().lower())
+        name = channel_name(channel)
         if name is None:
             return ToolResult.failure("Give the channel's name, e.g. #sales.")
         body = text.strip()
@@ -56,7 +62,7 @@ def build_slack_tools(store: LaceStore, apps: LaceApps) -> list[BaseTool]:
         if len(body) > MESSAGE_CHARS:
             return ToolResult.failure(f"Slack takes at most {MESSAGE_CHARS} characters; this is {len(body)}.")
         return await propose(store, ProposedAction(
-            app="slack", action="post_message", title=f"Post in #{name.group(1)} on Slack", preview=body,
-            arguments={"channel": name.group(1), "text": body}))
+            app="slack", action="post_message", title=f"Post in #{name} on Slack", preview=body,
+            arguments={"channel": name, "text": body}))
 
     return [search_slack, post_to_slack]
