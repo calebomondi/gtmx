@@ -3,6 +3,7 @@ accounts, else its founder's shared ones), reached through Composio."""
 
 import asyncio
 import uuid
+from datetime import UTC, datetime
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -34,6 +35,8 @@ NOTION_CHARS = 30_000
 _NOTION_LINE = {"heading_1": "# ", "heading_2": "## ", "heading_3": "### ", "bulleted_list_item": "- ",
                 "numbered_list_item": "1. ", "quote": "> ", "to_do": "[ ] ", "toggle": "", "callout": "",
                 "paragraph": "", "code": ""}
+_SLACK_SEARCH = "SLACK_SEARCH_MESSAGES"
+SLACK_RESULTS = 20
 # The founder's recent posts read for comments, and comments read per post.
 COMMENTS_PER_POST = 20
 TEXT_CHARS = 300
@@ -135,6 +138,18 @@ class DbLaceApps:
                 break
         return "\n".join(lines).strip()[:NOTION_CHARS]
 
+    async def slack_search(self, query: str) -> list[dict] | None:
+        live = await self._live("slack")
+        if live is None:
+            return None
+        data = await self._run(live, "slack", _SLACK_SEARCH, {"query": query, "count": SLACK_RESULTS,
+                                                               "sort": "timestamp", "sort_dir": "desc"})
+        messages = (data or {}).get("messages") or {} if isinstance(data, dict) else {}
+        return [{"text": (m.get("text") or "")[:TEXT_CHARS * 2], "author": m.get("username") or m.get("user"),
+                 "channel": (m.get("channel") or {}).get("name"), "date": _slack_date(m.get("ts")),
+                 "link": m.get("permalink")}
+                for m in messages.get("matches") or [] if isinstance(m, dict) and m.get("text")]
+
     async def my_comments(self, platform: CommentsOn, posts: int) -> list[dict] | None:
         live = await self._live(platform)
         if live is None:
@@ -173,6 +188,14 @@ class DbLaceApps:
                                (c.get("from") or {}).get("name"), c.get("message"), c.get("created_time"))
                       for c in comments if c.get("message")]
         return found
+
+
+def _slack_date(ts) -> str | None:
+    """A Slack message's ts (epoch seconds, as text) as an ISO date and time."""
+    try:
+        return datetime.fromtimestamp(float(ts), UTC).isoformat(timespec="minutes")
+    except (TypeError, ValueError):
+        return None
 
 
 def _plain(rich_text) -> str:
