@@ -15,7 +15,6 @@ import { cn } from "@/lib/utils"
 
 import { capabilitiesFor } from "../connected-accounts/accounts-type"
 import { ActionCard } from "./lace-action-card"
-import { PanelIntro } from "./lace-panel-tabs"
 import type { LaceApps } from "./use-lace-apps"
 import type { LaceChat } from "./use-lace-chat"
 
@@ -39,7 +38,7 @@ function AppRow({ app, laceId, name, onToggle }: {
   const connect = async () => {
     setConnecting(true)
     try {
-      await beginConnection(app.platform, `/lace/${laceId}/apps`)
+      await beginConnection(app.platform, `/lace/${laceId}`)
     } catch {
       setConnecting(false)
     }
@@ -88,7 +87,7 @@ function History({ actions }: { actions: AppActionDto[] }) {
   if (done.length === 0) return null
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="text-sm font-semibold">What it did</h2>
+      <h4 className="text-xs font-semibold">What it did</h4>
       <Card size="sm">
         <CardContent className="flex flex-col divide-y p-0">
           {done.map((a) => (
@@ -111,31 +110,32 @@ function History({ actions }: { actions: AppActionDto[] }) {
   )
 }
 
-/** The Lace's apps: what waits for the founder's approval, every app by what
- * the Lace does with it (switch, connect, what it can do), and what it did. */
-export function LaceAppsTab({ laceId, name, chat, apps }: { laceId: string; name: string; chat: LaceChat; apps: LaceApps }) {
+/** Actions the Lace proposed in the founder's apps, waiting for their
+ * approval: shown on the Feed, where what needs them is. */
+export function LaceActionsWaiting({ chat, apps }: { chat: LaceChat; apps: LaceApps }) {
   const waiting = apps.actions.filter((a) => a.status === "proposed")
+  if (waiting.length === 0) return null
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-6">
-      <PanelIntro>
-        The apps {name} works in. It acts in them only when you approve, and only in the ones switched on here.
-      </PanelIntro>
+    <div className="flex flex-col gap-2">
+      <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Waiting for your approval</p>
+      {waiting.map((a) => (
+        <ActionCard key={a.id} chat={chat} onDecided={apps.refresh}
+                    block={{ type: "action", id: a.id, app: a.app, title: a.title, preview: a.preview, status: a.status }} />
+      ))}
+    </div>
+  )
+}
 
-      {waiting.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-sm font-semibold">Waiting for you</h2>
-          {waiting.map((a) => (
-            <ActionCard key={a.id} chat={chat} onDecided={apps.refresh}
-                        block={{ type: "action", id: a.id, app: a.app, title: a.title, preview: a.preview, status: a.status }} />
-          ))}
-        </section>
-      )}
-
+/** The Lace's apps, in its settings: every app by what the Lace does with
+ * it (switch, connect, what it can do), and what it did in them. */
+export function LaceAppsSection({ laceId, name, apps }: { laceId: string; name: string; apps: LaceApps }) {
+  return (
+    <div className="flex flex-col gap-5">
       {apps.error && <p className="text-sm text-destructive" role="alert">{apps.error}</p>}
       {APP_GROUPS.map((group) => (
-        <section key={group.key} className="flex flex-col gap-2">
+        <div key={group.key} className="flex flex-col gap-2">
           <div>
-            <h2 className="text-sm font-semibold">{group.label}</h2>
+            <h4 className="text-xs font-semibold">{group.label}</h4>
             <p className="text-xs text-muted-foreground">{group.blurb}</p>
           </div>
           {apps.apps
@@ -144,9 +144,8 @@ export function LaceAppsTab({ laceId, name, chat, apps }: { laceId: string; name
                         onToggle={(enabled) => void apps.setEnabled(app.platform, enabled)} />
               ))
             : group.platforms.map((p) => <Skeleton key={p} className="h-14 rounded-xl" />)}
-        </section>
+        </div>
       ))}
-
       <History actions={apps.actions} />
     </div>
   )

@@ -14,7 +14,6 @@ import { useSeenAt } from "./viewer-memory"
 import { LaceFeed } from "./lace-feed"
 import { LaceFindsDock } from "./lace-finds-dock"
 import { LaceMessaging } from "./lace-messaging"
-import { LaceAppsTab } from "./lace-apps"
 import { LaceRail, LaceTabBar } from "./lace-rail"
 import { useLaceApps } from "./use-lace-apps"
 import { chatMascot, LACE_TABS, type LaceTab } from "./lace-tabs"
@@ -44,10 +43,12 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
   // its run while the founder looks at the Feed.
   const chat = useLaceChat(laceId)
   const activity = useLaceActivity(laceId, tab === "feed")
-  const apps = useLaceApps(laceId, tab === "apps")
+
   // Refetched as new activity arrives (an opportunity search finished).
   const opps = useLaceOpportunities(laceId, activity.items[0]?.id ?? "")
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  // Back from connecting an app from the settings: open them again there.
+  const [settingsOpen, setSettingsOpen] = useState(() => new URLSearchParams(window.location.search).has("connected"))
+  const apps = useLaceApps(laceId, settingsOpen)
   const [seenAt, markSeen] = useSeenAt<FoundSection["key"]>(laceId)
   const name = chat.lace?.name ?? "Lace"
   const subtitle = chat.lace?.startup_name ?? chat.lace?.website
@@ -68,7 +69,6 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
     mascot: chatMascot(tab, chat.working),
     waiting: chat.waiting,
     unread: activity.unread,
-    appsWaiting: apps.waiting,
     feedBusy: chat.searching || chat.findingAccounts || chat.findingOpportunities,
     messagingBusy: chat.drafting,
   }
@@ -111,15 +111,15 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
             } />
           )}
           {tab === "feed" && (
-            <LaceFeed laceId={laceId} name={name} chat={chat} activity={activity} opps={opps} onOpen={open} onDiscuss={discuss} />
+            <LaceFeed laceId={laceId} name={name} chat={chat} activity={activity} opps={opps} apps={apps} onOpen={open}
+                      onDiscuss={discuss} />
           )}
           {tab === "messaging" && <LaceMessaging laceId={laceId} name={name} chat={chat} />}
-          {tab === "apps" && <LaceAppsTab laceId={laceId} name={name} chat={chat} apps={apps} />}
         </main>
       </div>
       <LaceTabBar {...nav} className="md:hidden" />
       <LaceSettings laceId={laceId} name={name} status={chat.lace?.status ?? "active"} facts={chat.facts}
-                    open={settingsOpen} onOpenChange={setSettingsOpen} onChanged={() => void chat.reload()} />
+                    apps={apps} open={settingsOpen} onOpenChange={setSettingsOpen} onChanged={() => void chat.reload()} />
     </div>
   )
 }

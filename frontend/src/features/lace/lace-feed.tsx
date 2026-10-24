@@ -3,6 +3,7 @@ import { ArrowRight } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 
+import { LaceActionsWaiting } from "./lace-apps"
 import { FEED_SECTIONS, needsYou, type FeedSection, type FeedTarget, type NeedsYouItem } from "./lace-activity-actions"
 import { LaceActivityList } from "./lace-activity"
 import { accountItem, competitorItem, opportunityItem } from "./feed-review"
@@ -20,15 +21,17 @@ import { LacePanelTabs, PanelIntro, type PanelTab } from "./lace-panel-tabs"
 import { LaceReview } from "./lace-review"
 import type { LaceActivity } from "./use-lace-activity"
 import type { LaceOpportunities as Opportunities } from "./use-lace-opportunities"
+import type { LaceApps } from "./use-lace-apps"
 import type { LaceChat } from "./use-lace-chat"
 import { useSection } from "./use-lace-section"
 
 /** Where things stand: the pipeline, and what waits on the founder. */
-function Pulse({ laceId, name, chat, activity, needs, onOpen }: {
+function Pulse({ laceId, name, chat, activity, apps, needs, onOpen }: {
   laceId: string
   name: string
   chat: LaceChat
   activity: LaceActivity
+  apps: LaceApps
   needs: NeedsYouItem[]
   onOpen: (target: FeedTarget) => void
 }) {
@@ -38,7 +41,9 @@ function Pulse({ laceId, name, chat, activity, needs, onOpen }: {
       <div className="flex flex-wrap items-baseline justify-between gap-x-3">
         <h2 className="text-base font-medium">Where things stand</h2>
         <p className="text-xs text-muted-foreground">
-          {needs.length > 0 ? `${name} needs you for ${needs.length} ${needs.length === 1 ? "thing" : "things"}` : "Nothing waits on you"}
+          {needs.length + apps.waiting > 0
+            ? `${name} needs you for ${needs.length + apps.waiting} ${needs.length + apps.waiting === 1 ? "thing" : "things"}`
+            : "Nothing waits on you"}
         </p>
       </div>
       <LaceFunnel laceId={laceId}
@@ -54,6 +59,7 @@ function Pulse({ laceId, name, chat, activity, needs, onOpen }: {
           ))}
         </div>
       )}
+      <LaceActionsWaiting chat={chat} apps={apps} />
     </section>
   )
 }
@@ -62,12 +68,13 @@ function Pulse({ laceId, name, chat, activity, needs, onOpen }: {
  * things stand: its activity, the opportunities it turned up, the customers
  * worth reaching, and the competitors it tracks. Each holds what waits for
  * the founder's review above what was saved. */
-export function LaceFeed({ laceId, name, chat, activity, opps, onOpen, onDiscuss }: {
+export function LaceFeed({ laceId, name, chat, activity, opps, apps, onOpen, onDiscuss }: {
   laceId: string
   name: string
   chat: LaceChat
   activity: LaceActivity
   opps: Opportunities
+  apps: LaceApps
   onOpen: (target: FeedTarget) => void
   /** Open the chat with a message about something here, ready to send. */
   onDiscuss: (prompt: string) => void
@@ -150,6 +157,6 @@ export function LaceFeed({ laceId, name, chat, activity, opps, onOpen, onDiscuss
 
   return (
     <LacePanelTabs label={`${name}'s Feed`} tabs={tabs} value={section} onChange={setSection}
-                   header={<Pulse laceId={laceId} name={name} chat={chat} activity={activity} needs={needs} onOpen={onOpen} />} />
+                   header={<Pulse laceId={laceId} name={name} chat={chat} activity={activity} apps={apps} needs={needs} onOpen={onOpen} />} />
   )
 }
