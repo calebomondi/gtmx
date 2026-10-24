@@ -31,6 +31,18 @@ class LaceApps(Protocol):
         switched off; AppError when the call fails."""
         ...
 
+    async def notion_search(self, query: str) -> list[dict] | None:
+        """Pages and databases in the founder's Notion whose titles match:
+        [{id, title, url, kind}], bounded. None when Notion isn't connected or
+        is switched off; AppError when the call fails."""
+        ...
+
+    async def notion_page(self, page_id: str) -> str | None:
+        """A Notion page's text, as markdown-ish lines (headings, bullets,
+        to-dos), bounded. None when Notion isn't connected or is switched off;
+        AppError when the call fails."""
+        ...
+
     async def my_comments(self, platform: CommentsOn, posts: int) -> list[dict] | None:
         """Comments on the founder's own recent posts (their most recent
         `posts`), newest posts first: [{platform, post_url, post_text,
