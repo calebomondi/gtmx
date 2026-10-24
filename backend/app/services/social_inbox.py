@@ -6,9 +6,18 @@ conversations updated since the last one. A message from the other person is
 an inbound "received" row; the business's own messages are stored as sent, so
 the Lace reads the whole conversation. Read only: syncing never sends or marks
 anything on the platform.
+
+Meta lets an app answer only people who wrote first, so a first touch is sent
+by the founder by hand and marked sent. When that person answers, their
+conversation is joined to it (by Instagram username against the handle in the
+profile URL, else by name): the hand-sent message takes the conversation's
+thread, the new rows carry its account and company, and the founder's own
+message, synced back, isn't stored twice. The Lace then reads the whole
+exchange and drafts the answers.
 """
 
 import asyncio
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -53,6 +62,41 @@ def _fetch(channel: LaceChannel, connection_id: str, tool: str, arguments: dict)
     return items(result.get("data"))
 
 
+# The handle in a profile URL the founder messaged: instagram.com/<handle>.
+_HANDLE = re.compile(r"(?:instagram|facebook)\.com/([A-Za-z0-9_.]+)", re.I)
+
+
+async def _started_by_hand(db: AsyncSession, channel: LaceChannel) -> list[LaceOutreach]:
+    """First touches the founder sent by hand on this channel, not yet joined
+    to a conversation."""
+    return list((await db.scalars(select(LaceOutreach).where(
+        LaceOutreach.lace_id == channel.lace_id, LaceOutreach.channel == channel.platform,
+        LaceOutreach.direction == "outbound", LaceOutreach.status == "sent", LaceOutreach.thread_id.is_(None),
+    ))).all())
+
+
+def _started_with(person: dict, started: list[LaceOutreach]) -> LaceOutreach | None:
+    """The hand-sent first touch to this person: their username is the handle
+    the founder messaged, else their name is the one it was addressed to."""
+    username = (person.get("username") or "").lower()
+    name = (person.get("name") or "").strip().lower()
+    for row in started:
+        handle = _HANDLE.search(row.recipient_address or "")
+        if username and handle and handle.group(1).lower() == username:
+            return row
+    named = [row for row in started if name and (row.recipient_name or "").strip().lower() == name]
+    return named[0] if len(named) == 1 else None
+
+
+async def _opener(db: AsyncSession, channel: LaceChannel, thread: str) -> LaceOutreach | None:
+    """The conversation's first message from the founder on file, if any:
+    what new messages in it take their account and company from."""
+    return await db.scalar(select(LaceOutreach).where(
+        LaceOutreach.lace_id == channel.lace_id, LaceOutreach.channel == channel.platform,
+        LaceOutreach.thread_id == thread, LaceOutreach.direction == "outbound",
+    ).order_by(LaceOutreach.created_at).limit(1))
+
+
 def _person(value) -> dict:
     return value if isinstance(value, dict) else {}
 
@@ -82,10 +126,13 @@ async def sync_channel(db: AsyncSession, channel: LaceChannel) -> list[LaceOutre
     known = set((await db.scalars(select(LaceOutreach.provider_message_id).where(
         LaceOutreach.lace_id == channel.lace_id, LaceOutreach.channel == channel.platform,
         LaceOutreach.provider_message_id.is_not(None)))).all())
+    started = await _started_by_hand(db, channel)
 
     arrived: list[LaceOutreach] = []
     newest = since
     for conversation in fresh:
+        thread = str(conversation["id"])[:64]
+        opener = await _opener(db, channel, thread)
         tool, arguments = _MESSAGES[channel.platform]
         messages = await asyncio.to_thread(_fetch, channel, connection.id, tool, arguments(channel, conversation["id"]))
         for message in sorted(messages, key=lambda m: timestamp(m.get("created_time"))):
@@ -95,11 +142,24 @@ async def sync_channel(db: AsyncSession, channel: LaceChannel) -> list[LaceOutre
             inbound = _person(message.get("from")).get("id") != channel.account_id
             other = _other_party(message, channel.account_id)
             sent_at = timestamp(message.get("created_time"))
+            if opener is None and (first := _started_with(other, started)) is not None:
+                # Their conversation is the one the founder started by hand.
+                first.thread_id = thread
+                started.remove(first)
+                opener = first
+            if not inbound and opener is not None and opener.provider_message_id is None and opener.body.strip() == text:
+                # The founder's hand-sent message, synced back: already on file.
+                opener.provider_message_id = str(message["id"])[:128]
+                known.add(message["id"])
+                continue
             row = LaceOutreach(
                 lace_id=channel.lace_id, user_id=channel.user_id, channel=channel.platform,
                 direction="inbound" if inbound else "outbound", status="received" if inbound else "sent",
-                thread_id=str(conversation["id"])[:64], provider_message_id=str(message["id"])[:128],
-                recipient_name=(other.get("username") or other.get("name") or "")[:255] or None,
+                thread_id=thread, provider_message_id=str(message["id"])[:128],
+                account_id=opener.account_id if opener else None,
+                recipient_company=opener.recipient_company if opener else "",
+                recipient_name=(opener.recipient_name if opener else None)
+                or (other.get("username") or other.get("name") or "")[:255] or None,
                 recipient_address=str(other.get("id") or "") or None, body=text[:_BODY_CHARS], sent_at=sent_at,
             )
             db.add(row)

@@ -289,7 +289,7 @@ def test_x_refusals_are_clear(client, lace, lace_runtime, user, monkeypatch):  #
 
 
 def test_other_social_channels_are_handed_to_the_founder(client, lace, lace_runtime, user):  # noqa: F811
-    for channel, words in (("instagram", "Instagram doesn't let apps start"), ("facebook", "only lets a Page reply"),
+    for channel, words in (("instagram", "start this chat yourself"), ("facebook", "When they reply, your Lace"),
                            ("tiktok", "TikTok has no messaging")):
         message = _message(lace, user.id, channel=channel, address=f"https://{channel}.com/enzi")
         refused = client.post(f"{API}/laces/{lace}/outreach/{message}/send")
