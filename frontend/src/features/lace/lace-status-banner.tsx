@@ -47,10 +47,13 @@ export function LaceStatusBanner({ lace, working, onChanged }: {
         {archived ? `${lace.name} is archived and isn't doing any work.` : `${lace.name} didn't finish reading your site.`}
         {error && <span className="ml-2 text-destructive">{error}</span>}
       </span>
-      <Button size="sm" variant="outline" onClick={() => void act()} disabled={busy}>
-        {busy ? <Loader2 className="animate-spin" /> : archived ? <ArchiveRestore /> : <RotateCcw />}
-        {archived ? "Restore" : "Try again"}
-      </Button>
+      {/* Only its owner restores an archived Lace. */}
+      {(!archived || lace.role === "owner") && (
+        <Button size="sm" variant="outline" onClick={() => void act()} disabled={busy}>
+          {busy ? <Loader2 className="animate-spin" /> : archived ? <ArchiveRestore /> : <RotateCcw />}
+          {archived ? "Restore" : "Try again"}
+        </Button>
+      )}
     </div>
   )
 }

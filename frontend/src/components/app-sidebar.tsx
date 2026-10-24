@@ -72,7 +72,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { state, toggleSidebar, isMobile } = useSidebar()
   // On phones the sidebar is a slide-over, always shown in full.
   const expanded = state === "expanded" || isMobile
-  const { laces, archived } = useLaces()
+  const { laces, archived, invites } = useLaces()
   const { user: authUser } = useAuth()
   const [user, setUser] = React.useState<{
     name: string
@@ -139,7 +139,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       url: "#",
       icon: <Layers />,
       isActive: true,
-      items: laces.map(toNavItem("all")),
+      items: [
+        ...laces.map(toNavItem("all")),
+        // Invites open the Lace on its accept-or-decline page; they can't be pinned.
+        ...invites.map((invite) => ({
+          id: invite.lace_id,
+          title: `${invite.lace_name} · invited`,
+          url: `/lace/${invite.lace_id}`,
+          icon: <Lace state="alert" size={MASCOT_PX} decorative />,
+        })),
+      ],
     },
     // Only when there are some, and closed: they do no work.
     ...(archived.length > 0 ? [{
