@@ -24,6 +24,16 @@ _SHEET_VALUES = "GOOGLESHEETS_BATCH_GET"
 # The most rows and columns read from one tab (the header row included).
 SHEET_ROWS = 1000
 SHEET_COLUMNS = "ZZ"
+_NOTION_SEARCH = "NOTION_SEARCH_NOTION_PAGE"
+_NOTION_BLOCKS = "NOTION_FETCH_BLOCK_CONTENTS"
+# Notion search results kept; block pages (of 100) and characters read from one page.
+NOTION_RESULTS = 20
+NOTION_BLOCK_PAGES = 5
+NOTION_CHARS = 30_000
+# How each Notion block type reads as a line of text.
+_NOTION_LINE = {"heading_1": "# ", "heading_2": "## ", "heading_3": "### ", "bulleted_list_item": "- ",
+                "numbered_list_item": "1. ", "quote": "> ", "to_do": "[ ] ", "toggle": "", "callout": "",
+                "paragraph": "", "code": ""}
 # The founder's recent posts read for comments, and comments read per post.
 COMMENTS_PER_POST = 20
 TEXT_CHARS = 300
@@ -95,6 +105,36 @@ class DbLaceApps:
         values = (ranges[0].get("values") if ranges and isinstance(ranges[0], dict) else None) or []
         return {"tabs": names, "tab": chosen, "rows": [[str(c) for c in row] for row in values if isinstance(row, list)]}
 
+    async def notion_search(self, query: str) -> list[dict] | None:
+        live = await self._live("notion")
+        if live is None:
+            return None
+        data = await self._run(live, "notion", _NOTION_SEARCH, {"query": query, "page_size": NOTION_RESULTS})
+        results = ((data or {}).get("response_data") or {}).get("results") or [] if isinstance(data, dict) else []
+        return [{"id": r.get("id"), "title": _notion_title(r), "url": r.get("url"), "kind": r.get("object")}
+                for r in results if isinstance(r, dict) and r.get("id")]
+
+    async def notion_page(self, page_id: str) -> str | None:
+        live = await self._live("notion")
+        if live is None:
+            return None
+        lines: list[str] = []
+        cursor = None
+        for _ in range(NOTION_BLOCK_PAGES):
+            data = await self._run(live, "notion", _NOTION_BLOCKS, {
+                "block_id": page_id, "page_size": 100, **({"start_cursor": cursor} if cursor else {})})
+            found = (data or {}).get("block_child_data") or {} if isinstance(data, dict) else {}
+            for block in found.get("results") or []:
+                kind = block.get("type") if isinstance(block, dict) else None
+                if kind in _NOTION_LINE:
+                    text = _plain((block.get(kind) or {}).get("rich_text"))
+                    checked = kind == "to_do" and (block.get(kind) or {}).get("checked")
+                    lines.append(("[x] " if checked else _NOTION_LINE[kind]) + text if text else "")
+            cursor = found.get("next_cursor") if found.get("has_more") else None
+            if not cursor or sum(map(len, lines)) > NOTION_CHARS:
+                break
+        return "\n".join(lines).strip()[:NOTION_CHARS]
+
     async def my_comments(self, platform: CommentsOn, posts: int) -> list[dict] | None:
         live = await self._live(platform)
         if live is None:
@@ -133,6 +173,20 @@ class DbLaceApps:
                                (c.get("from") or {}).get("name"), c.get("message"), c.get("created_time"))
                       for c in comments if c.get("message")]
         return found
+
+
+def _plain(rich_text) -> str:
+    return "".join(part.get("plain_text") or "" for part in rich_text or [] if isinstance(part, dict))
+
+
+def _notion_title(record: dict) -> str:
+    """A page's title property, or a database's title."""
+    if record.get("object") == "database":
+        return _plain(record.get("title")) or "Untitled"
+    for prop in (record.get("properties") or {}).values():
+        if isinstance(prop, dict) and prop.get("type") == "title":
+            return _plain(prop.get("title")) or "Untitled"
+    return "Untitled"
 
 
 def _comment(platform: str, post_url, post_text, comment_id, author, text, date) -> dict:

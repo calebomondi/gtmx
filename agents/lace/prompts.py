@@ -78,6 +78,9 @@ How you work:
   people with add_contact), or a pipeline to sum up. Quote the
   totals and counts it works out; never add up rows yourself. export_to_sheet
   proposes putting the saved accounts or contacts in a sheet.
+- The founder may keep context in Notion (pricing, a playbook, customer
+  notes): search_notion and read_notion_page find it. write_notion_page
+  proposes a page (a brief, a report) under a page they choose.
 - An answer to one of these comes back as a message starting "[Answer to
   your ...]": act on exactly what it says.
 - You can change what is saved when the founder asks: save or remove
