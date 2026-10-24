@@ -89,7 +89,7 @@ const LATEST_SLACK_PX = 120
 /** The founder's conversation with their Lace: the messages, what it is
  * doing now, the reply as it streams in, and the input. Scrolled back, a
  * button returns to the latest and counts what arrived meanwhile. */
-export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill }: {
+export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill, starters }: {
   chat: LaceChat
   name: string
   onOpenMessaging: () => void
@@ -97,6 +97,8 @@ export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill }:
   dock?: React.ReactNode
   /** A message waiting in the input ("Discuss with…"), for the founder to edit or send. */
   prefill?: { key: string; text: string }
+  /** Shown while there is no conversation yet: things to ask. */
+  starters?: React.ReactNode
 }) {
   const end = useRef<HTMLDivElement>(null)
   const lastIndex = chat.messages.length - 1
@@ -146,7 +148,10 @@ export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill }:
             </div>
           )}
           {!chat.loading && chat.messages.length === 0 && !chat.working && (
-            <p className="text-sm text-muted-foreground">No messages yet. Say hello to {name}.</p>
+            <div className="flex flex-col gap-4">
+              <p className="text-sm text-muted-foreground">No messages yet. Say hello to {name}.</p>
+              {starters}
+            </div>
           )}
           {foldDraftExchanges(chat.messages).map((item, i) => item.kind === "draft" ? (
             <DraftExchange key={`draft:${i}`} messages={item.messages}
