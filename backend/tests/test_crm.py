@@ -66,3 +66,53 @@ async def test_a_refused_lead_says_why(composio):  # noqa: F811
                                                         "message": "duplicate data"}]}
     with pytest.raises(ActionFailed, match="duplicate data"):
         await crm_actions.zoho_add_lead(_ctx("zoho"), {"name": "Joe", "company": "Acme"})
+
+
+async def test_hubspot_deals_read_with_their_stage_names(composio, monkeypatch):  # noqa: F811
+    stub_accounts(monkeypatch, {"hubspot"})
+    composio["answers"] = {
+        "HUBSPOT_RETRIEVE_ALL_PIPELINES_FOR_SPECIFIED_OBJECT_TYPE": {"results": [
+            {"id": "default", "stages": [{"id": "appointmentscheduled", "label": "Appointment"},
+                                         {"id": "closedwon", "label": "Closed won"}]}]},
+        "HUBSPOT_HUBSPOT_LIST_DEALS": {"results": [
+            {"id": "1", "properties": {"dealname": "Alpha", "dealstage": "closedwon", "amount": "1200",
+                                       "closedate": "2026-10-01T00:00:00Z", "hs_is_closed": "true",
+                                       "hs_is_closed_won": "true", "hs_lastmodifieddate": "2026-10-02T00:00:00Z"}},
+            {"id": "2", "properties": {"dealname": "Beta", "dealstage": "appointmentscheduled", "amount": None,
+                                       "hs_is_closed": "false"}}]},
+    }
+    apps = lace_apps.DbLaceApps(AsyncSessionLocal, _lace())
+    assert await apps.crm() == "hubspot"
+    assert await apps.crm_deals() == [
+        {"name": "Alpha", "company": None, "stage": "Closed won", "amount": 1200.0, "close_date": "2026-10-01",
+         "updated": "2026-10-02T00:00:00Z", "closed": True, "won": True},
+        {"name": "Beta", "company": None, "stage": "Appointment", "amount": None, "close_date": None,
+         "updated": None, "closed": False, "won": False}]
+
+
+async def test_hubspot_lookup_uses_its_search(composio, monkeypatch):  # noqa: F811
+    stub_accounts(monkeypatch, {"hubspot"})
+
+    def execute(entity, tool, arguments, connection_id):
+        results = {"contacts": [{"properties": {"firstname": "Joe", "lastname": "Kamau", "email": "joe@acme.test",
+                                                "company": "Acme", "lifecyclestage": "lead"}}],
+                   "companies": [{"properties": {"name": "Acme", "domain": "acme.test"}}]}[arguments["objectType"]]
+        return {"data": {"results": results}, "error": None, "log_id": "l"}
+    monkeypatch.setattr(connection_service, "execute_tool", execute)
+    assert await lace_apps.DbLaceApps(AsyncSessionLocal, _lace()).crm_find("acme") == [
+        {"kind": "lead", "name": "Joe Kamau", "company": "Acme", "email": "joe@acme.test"},
+        {"kind": "company", "name": "Acme", "company": "Acme", "email": None}]
+
+
+async def test_the_lace_prefers_zoho_when_both_are_connected(composio, monkeypatch):  # noqa: F811
+    stub_accounts(monkeypatch, {"zoho", "hubspot"})
+    assert await lace_apps.DbLaceApps(AsyncSessionLocal, _lace()).crm() == "zoho"
+
+
+async def test_an_approved_lead_goes_into_hubspot(composio):  # noqa: F811
+    composio["answers"] = {"HUBSPOT_CREATE_CONTACT": {"id": "501"}}
+    outcome = await crm_actions.hubspot_add_lead(_ctx("hubspot"), {"name": "Joe Kamau", "company": "Acme",
+                                                                   "title": "COO"})
+    assert composio["calls"] == [("HUBSPOT_CREATE_CONTACT", {"firstname": "Joe", "lastname": "Kamau", "company": "Acme",
+                                                             "jobtitle": "COO", "lifecyclestage": "lead"})]
+    assert outcome.result == "Added Joe Kamau to HubSpot as a lead."
