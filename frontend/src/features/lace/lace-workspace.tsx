@@ -16,7 +16,7 @@ import { LaceFindsDock } from "./lace-finds-dock"
 import { LaceMessaging } from "./lace-messaging"
 import { LaceRail, LaceTabBar } from "./lace-rail"
 import { useLaceApps } from "./use-lace-apps"
-import { AskAnApp, QuickAskChips } from "./lace-quick-asks"
+import { QuickAskChips } from "./lace-quick-asks"
 import { quickAsks } from "./quick-asks"
 import { chatMascot, LACE_TABS, type LaceTab } from "./lace-tabs"
 import { LaceSettings } from "./lace-settings"
@@ -110,7 +110,6 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
                               starters={<QuickAskChips asks={asks} onAsk={(text) => void chat.send(text)} disabled={chat.working} />}
                               dock={
               <>
-                <AskAnApp asks={asks} onAsk={(text) => void chat.send(text)} busy={chat.working} />
                 <LaceBackgroundWork name={name} jobs={chat.jobs} />
                 <LaceFindsDock name={name} sections={found} seenAt={seenAt} onSeen={markSeen} busy={chat.working} searching={searching}
                                onAsk={(prompt) => void chat.send(prompt)} />
