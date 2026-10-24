@@ -133,7 +133,7 @@ async def sync_channel(db: AsyncSession, channel: LaceChannel) -> list[LaceOutre
     arrived: list[LaceOutreach] = []
     newest = since
     for conversation in fresh:
-        thread = str(conversation["id"])[:64]
+        thread = str(conversation["id"])[:255]
         opener = await _opener(db, channel, thread)
         tool, arguments = _MESSAGES[channel.platform]
         messages = await asyncio.to_thread(_fetch, channel, connection, tool, arguments(channel, conversation["id"]))
@@ -151,13 +151,13 @@ async def sync_channel(db: AsyncSession, channel: LaceChannel) -> list[LaceOutre
                 opener = first
             if not inbound and opener is not None and opener.provider_message_id is None and opener.body.strip() == text:
                 # The founder's hand-sent message, synced back: already on file.
-                opener.provider_message_id = str(message["id"])[:128]
+                opener.provider_message_id = str(message["id"])[:255]
                 known.add(message["id"])
                 continue
             row = LaceOutreach(
                 lace_id=channel.lace_id, user_id=channel.user_id, channel=channel.platform,
                 direction="inbound" if inbound else "outbound", status="received" if inbound else "sent",
-                thread_id=thread, provider_message_id=str(message["id"])[:128],
+                thread_id=thread, provider_message_id=str(message["id"])[:255],
                 account_id=opener.account_id if opener else None,
                 recipient_company=opener.recipient_company if opener else "",
                 recipient_name=(opener.recipient_name if opener else None)

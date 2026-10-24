@@ -1,8 +1,9 @@
 """Sending outreach on the founder's behalf, shared by every send path: the
-email send through the Gmail the Lace uses (its own, else the founder's), the
-daily send cap, and the name messages are signed with."""
+email send through the mailbox the Lace uses (Gmail or Outlook, its own or
+the founder's), the daily send cap, and the name messages are signed with."""
 
 import asyncio
+import functools
 import re
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -14,6 +15,7 @@ from backend.app import supabase_admin
 from backend.app.database import models
 from backend.app.database.lace_models import Lace
 from backend.app.services import connections as connection_service
+from backend.app.services import lace_app_settings, outlook
 from backend.app.services.errors import ConflictError, InvalidInputError, RateLimitedError
 from config import settings
 from utils.log import logger
@@ -52,8 +54,23 @@ def ensure_under_daily_cap(sent: int) -> None:
         )
 
 
+# The mail apps a Lace sends email through, in the order it picks them.
+EMAIL_APPS = ("gmail", "outlook")
+
+
+async def email_account(db: AsyncSession, lace: Lace) -> connection_service.ConnectionInfo | None:
+    """The mailbox `lace` sends email from: its Gmail, else its Outlook (each
+    its own or the founder's shared one), if switched on for it."""
+    uses = await connection_service.for_lace(db, lace)
+    for platform in EMAIL_APPS:
+        account = uses.get(platform)
+        if account is not None and account.status == "live" and await lace_app_settings.enabled(db, lace, platform):
+            return account
+    return None
+
+
 async def send_email(db: AsyncSession, message: models.LaceOutreach, lace: Lace):
-    """Send one approved outbound email through the Gmail `lace` uses. Only
+    """Send one approved outbound email from the mailbox `lace` uses. Only
     ever called on the user's explicit action."""
     if message.channel != "email":
         raise ConflictError("LinkedIn messages are sent by you: copy the draft into LinkedIn.")
@@ -66,38 +83,72 @@ async def send_email(db: AsyncSession, message: models.LaceOutreach, lace: Lace)
     if not (message.body or "").strip() or not (message.thread_id or (message.subject or "").strip()):
         raise InvalidInputError("Add a subject and a message before sending.")
     ensure_under_daily_cap(await sends_today(db, message.user_id))
-    gmail = await connection_service.connection_for(db, lace, "gmail")
-    if gmail is None:
-        raise ConflictError("Connect a Gmail account (this Lace's settings) to send email.")
+    mailbox = await email_account(db, lace)
+    if mailbox is None:
+        raise ConflictError("Connect Gmail or Outlook (this Lace's settings) to send email.")
+    if mailbox.platform == "outlook":
+        answering, subject = await _outlook_thread(db, message)
+        send = functools.partial(_send_outlook, mailbox, message, answering, subject)
+    else:
+        send = functools.partial(_send_gmail, mailbox, message)
+    label = connection_service.label(mailbox.platform)
 
     # Claim the message before the network call, so a double click can't send twice.
     message.status, message.error = "sending", None
     await db.commit()
     try:
-        # A draft in an existing thread is a reply: it goes into that thread.
-        tool, arguments = (_REPLY_TOOL, {
-            "thread_id": message.thread_id, "recipient_email": message.recipient_address,
-            "message_body": message.body,
-        }) if message.thread_id else (_SEND_TOOL, {
-            "recipient_email": message.recipient_address, "subject": message.subject, "body": message.body,
-        })
-        result = await asyncio.to_thread(connection_service.execute_tool, gmail.entity, tool, arguments, gmail.id)
-        failed = bool(result.get("error"))
-        message.provider_log_id = result.get("log_id")
-        sent = result.get("data") if isinstance(result.get("data"), dict) else {}
-        message.thread_id = message.thread_id or sent.get("threadId")
-        message.provider_message_id = sent.get("id")
+        sent = await asyncio.to_thread(send)
+        failed = bool(sent["error"])
+        message.provider_log_id = sent["log_id"]
+        message.thread_id = message.thread_id or sent["thread_id"]
+        message.provider_message_id = sent["message_id"]
         message.status = "failed" if failed else "sent"
-        message.error = "Gmail rejected the message. Check the recipient address and try again." if failed else None
+        message.error = f"{label} rejected the message. Check the recipient address and try again." if failed else None
         message.sent_at = None if failed else datetime.now(UTC)
     except Exception:  # noqa: BLE001 -- an expected outcome: recorded on the message
         logger.exception("Outreach send failed for message %s", message.id)
         message.status = "failed"
-        message.error = "Couldn't reach Gmail. Please try again."
+        message.error = f"Couldn't reach {label}. Please try again."
     finally:
         await db.commit()
         await db.refresh(message)
     return message
+
+
+def _send_gmail(gmail: connection_service.ConnectionInfo, message: models.LaceOutreach) -> dict:
+    # A draft in an existing thread is a reply: it goes into that thread.
+    tool, arguments = (_REPLY_TOOL, {
+        "thread_id": message.thread_id, "recipient_email": message.recipient_address,
+        "message_body": message.body,
+    }) if message.thread_id else (_SEND_TOOL, {
+        "recipient_email": message.recipient_address, "subject": message.subject, "body": message.body,
+    })
+    result = connection_service.execute_tool(gmail.entity, tool, arguments, gmail.id)
+    sent = result.get("data") if isinstance(result.get("data"), dict) else {}
+    return {"error": result.get("error"), "log_id": result.get("log_id"),
+            "thread_id": sent.get("threadId"), "message_id": sent.get("id")}
+
+
+async def _outlook_thread(db: AsyncSession, message: models.LaceOutreach) -> tuple[str | None, str]:
+    """For an Outlook draft in a conversation: the latest message received in
+    it (answered in place), and the subject a new email in it would carry
+    when nothing was received yet."""
+    if not message.thread_id:
+        return None, message.subject or ""
+    o = models.LaceOutreach
+    in_thread = (o.lace_id == message.lace_id, o.thread_id == message.thread_id)
+    answering = await db.scalar(select(o.provider_message_id).where(
+        *in_thread, o.direction == "inbound", o.provider_message_id.is_not(None)).order_by(o.sent_at.desc()).limit(1))
+    first = await db.scalar(select(o.subject).where(*in_thread, o.subject.is_not(None)).order_by(o.created_at).limit(1))
+    return answering, message.subject or (f"Re: {first}" if first else "")
+
+
+def _send_outlook(outlook_account: connection_service.ConnectionInfo, message: models.LaceOutreach,
+                  answering: str | None, subject: str) -> dict:
+    if answering:
+        replied = outlook.reply(outlook_account, answering, message.body)
+        return {**replied, "thread_id": None, "message_id": None}
+    return outlook.send(outlook_account, message.recipient_address, subject, message.body)
 
 
 _OFFER_CAPABILITIES = 6  # features the drafting agent can tie a payoff to

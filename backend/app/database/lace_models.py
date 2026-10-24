@@ -365,8 +365,8 @@ class LaceOutreach(Base):
     channel: Mapped[str] = mapped_column(String(16), nullable=False)
     direction: Mapped[str] = mapped_column(String(8), nullable=False, default="outbound", server_default="outbound")
     # The provider's thread (Gmail threadId): ties replies to what was sent.
-    thread_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
-    provider_message_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    thread_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    provider_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Composio log id of the send, for support/debugging.
     provider_log_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     recipient_name: Mapped[str | None] = mapped_column(String(255), nullable=True)

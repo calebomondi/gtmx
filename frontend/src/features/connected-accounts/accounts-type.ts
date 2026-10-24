@@ -67,7 +67,6 @@ const CAPABILITIES: Record<Platform, Connection['capabilities']> = {
   // The apps below connect now; their skills arrive one by one (COMING_SOON).
   outlook: [
     { label: 'Send emails you approve, and read their replies', allowed: true },
-    { label: 'Find free slots on your Outlook calendar', allowed: true },
     { label: 'Send without your approval', allowed: false },
   ],
   whatsapp: [
