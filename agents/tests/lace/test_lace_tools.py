@@ -8,6 +8,7 @@ from agents.lace import tools as lace_tools
 from agents.lace.tools import BATCH_PAGE_TOKEN_CAP, PAGE_TOKEN_CAP, build_tools
 from agents.context_budget import count_tokens
 from data_sources.scraping.firecrawl import FirecrawlError, Page, PageFailure
+from agents.lace.apps import AppError
 from data_sources.socials.brightdata import SocialsError
 from lace_fakes import MemoryStore, make_fact
 
@@ -151,4 +152,49 @@ async def test_read_social_drops_details_past_the_cap(monkeypatch, store, settin
         "kind": "post", "text": "Short post", "details": {"blob": "word " * 10_000}})
     out = await _run(_tools(store, settings)["read_social"], url="https://x.com/acme/status/1")
     assert out["ok"] and "left out" in out["summary"]
-    assert out["data"] == {"kind": "post", "text": "Short post"}
+    assert out["data"] == {"kind": "post", "text": "Short post", "source": "web"}
+
+
+# read_social on X: the founder's connected X first, the web as the fallback.
+
+class FakeApps:
+    def __init__(self, answer=None, error=None):
+        self.answer, self.error, self.calls = answer, error, []
+
+    async def x(self, record, key):
+        self.calls.append((record, key))
+        if self.error:
+            raise AppError(self.error)
+        return self.answer
+
+
+X_USER = {"data": {"id": "1", "name": "Acme", "username": "acme", "description": "Clinics",
+                   "public_metrics": {"followers_count": 1200, "following_count": 80, "tweet_count": 340}}}
+
+
+def _tools_with(store, settings, apps):
+    return {t.name: t for t in build_tools(store, settings, apps=apps)}
+
+
+async def test_an_x_profile_is_read_from_x_itself_when_connected(monkeypatch, store, settings):
+    apps = FakeApps(answer=X_USER)
+    monkeypatch.setattr(lace_tools.socials, "read", lambda *a: pytest.fail("the web was not needed"))
+    out = await _run(_tools_with(store, settings, apps)["read_social"], url="https://x.com/acme")
+    assert apps.calls == [("profile", "acme")]
+    assert out["ok"] and out["data"]["source"] == "x_api"
+    assert (out["data"]["name"], out["data"]["followers"], out["data"]["bio"]) == ("Acme", 1200, "Clinics")
+
+
+async def test_x_falls_back_to_the_web_when_refused_or_not_connected(monkeypatch, store, settings):
+    monkeypatch.setattr(lace_tools.socials, "read", lambda link, cfg, timeout: {"kind": "post", "text": "From the web"})
+    for apps in (FakeApps(error="429 Too Many Requests"), FakeApps(answer=None), None):
+        out = await _run(_tools_with(store, settings, apps)["read_social"], url="https://x.com/acme/status/42")
+        assert out["data"] == {"kind": "post", "text": "From the web", "source": "web"}
+    assert FakeApps(answer=X_USER).calls == []
+
+
+async def test_other_platforms_never_ask_x(monkeypatch, store, settings):
+    apps = FakeApps(answer=X_USER)
+    monkeypatch.setattr(lace_tools.socials, "read", lambda link, cfg, timeout: {"kind": "profile", "name": "Jane"})
+    out = await _run(_tools_with(store, settings, apps)["read_social"], url="https://www.instagram.com/jane")
+    assert out["data"]["source"] == "web" and apps.calls == []
