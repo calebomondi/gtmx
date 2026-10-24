@@ -630,9 +630,14 @@ export interface LaceAppDto {
   platform: Platform
   label: string
   group: AppGroup
-  /** The founder connected it, and it's live. */
+  /** The account this Lace uses for it is live. */
   connected: boolean
   status: string | null
+  /** Whose account it uses: the Lace's own, or the founder's shared one. */
+  account: "own" | "shared" | null
+  /** Who the account is, e.g. its email or handle. */
+  account_name: string | null
+  connection_id: string | null
   /** This Lace may use it. */
   enabled: boolean
   settings: Record<string, string>
@@ -640,6 +645,18 @@ export interface LaceAppDto {
 
 export function listLaceApps(laceId: string): Promise<LaceAppDto[]> {
   return apiFetch(`/api/v1/laces/${laceId}/apps`)
+}
+
+/** A Connect Link for an account of the Lace's own, used instead of the
+ * founder's shared one; it comes back to `returnTo` with ?connected=<platform>. */
+export function startLaceConnection(laceId: string, platform: Platform, returnTo: string): Promise<{ redirect_url: string }> {
+  return apiFetch(`/api/v1/laces/${laceId}/connections/${platform}?return_to=${encodeURIComponent(returnTo)}`,
+                  { method: "POST" })
+}
+
+/** Disconnect the Lace's own account; it goes back to the shared one. */
+export function deleteLaceConnection(laceId: string, connectionId: string): Promise<void> {
+  return apiFetch(`/api/v1/laces/${laceId}/connections/${connectionId}`, { method: "DELETE" })
 }
 
 export function updateLaceApp(laceId: string, platform: Platform,

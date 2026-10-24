@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import type { AppActionDto, LaceAppDto } from "@/lib/api"
 import { formatRelativeTime } from "@/lib/format"
-import { APP_GROUPS, COMING_SOON, PLATFORM_LABEL, beginConnection } from "@/lib/platforms"
+import { APP_GROUPS, COMING_SOON, PLATFORM_LABEL, beginConnection, beginLaceConnection } from "@/lib/platforms"
 import { cn } from "@/lib/utils"
 
 import { capabilitiesFor } from "../connected-accounts/accounts-type"
@@ -23,26 +23,70 @@ const SAID: Record<string, string> = { done: "Done", failed: "Didn’t go throug
 
 function statusLine(app: LaceAppDto, name: string): string {
   if (!app.connected) return app.status === "needs_attention" ? "Needs attention: reconnect it" : "Not connected"
-  return app.enabled ? `Connected · ${name} can use it` : `Connected · switched off for ${name}`
+  const whose = app.account === "own" ? `${name}'s own` : "Shared"
+  const who = app.account_name ? `${whose} · ${app.account_name}` : whose
+  return app.enabled ? who : `${who} · switched off for ${name}`
+}
+
+/** Which account the Lace uses for the app, and a way to give it its own
+ * (a founder whose startups each have their own email and socials) or go
+ * back to the shared one. */
+function AccountChoice({ app, name, onConnectOwn, onDisconnectOwn }: {
+  app: LaceAppDto
+  name: string
+  onConnectOwn: () => void
+  onDisconnectOwn: () => void
+}) {
+  const [confirming, setConfirming] = useState(false)
+  if (app.account === "own") {
+    return (
+      <div className="flex flex-wrap items-center gap-2 border-t px-3 py-2.5 text-xs">
+        <p className="min-w-0 flex-1 text-muted-foreground">
+          {name} uses its own {PLATFORM_LABEL[app.platform]} account; your other Laces don't.
+        </p>
+        {app.status === "needs_attention" && (
+          <Button size="xs" variant="outline" onClick={onConnectOwn}>Reconnect</Button>
+        )}
+        <Button size="xs" variant={confirming ? "destructive" : "ghost"}
+                onClick={() => (confirming ? onDisconnectOwn() : setConfirming(true))}>
+          {confirming ? "Disconnect, use shared" : `Disconnect ${name}'s own`}
+        </Button>
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t px-3 py-2.5 text-xs">
+      <p className="min-w-0 flex-1 text-muted-foreground">
+        {app.account === "shared"
+          ? "Your shared account: every Lace without its own uses it."
+          : `Connect a shared account for all your Laces, or one just for ${name}.`}
+      </p>
+      <Button size="xs" variant="outline" onClick={onConnectOwn}>Use a separate account for {name}</Button>
+    </div>
+  )
 }
 
 /** One app: what it is to this Lace, a switch once connected, what the Lace
- * does with it, and a way to connect it without leaving the Lace. */
-function AppRow({ app, laceId, name, onToggle }: {
+ * does with it, which account it uses, and a way to connect one without
+ * leaving the Lace. */
+function AppRow({ app, laceId, name, onToggle, onDisconnectOwn }: {
   app: LaceAppDto
   laceId: string
   name: string
   onToggle: (enabled: boolean) => void
+  onDisconnectOwn: () => void
 }) {
   const [connecting, setConnecting] = useState(false)
-  const connect = async () => {
+  const go = async (begin: () => Promise<void>) => {
     setConnecting(true)
     try {
-      await beginConnection(app.platform, `/lace/${laceId}`)
+      await begin()
     } catch {
       setConnecting(false)
     }
   }
+  const connect = () => go(() => beginConnection(app.platform, `/lace/${laceId}`))
+  const connectOwn = () => void go(() => beginLaceConnection(laceId, app.platform))
   return (
     <Collapsible className="rounded-xl border bg-card">
       <div className="flex items-center gap-3 p-3">
@@ -77,6 +121,7 @@ function AppRow({ app, laceId, name, onToggle }: {
             </li>
           ))}
         </ul>
+        <AccountChoice app={app} name={name} onConnectOwn={connectOwn} onDisconnectOwn={onDisconnectOwn} />
       </CollapsibleContent>
     </Collapsible>
   )
@@ -141,7 +186,8 @@ export function LaceAppsSection({ laceId, name, apps }: { laceId: string; name: 
           {apps.apps
             ? apps.apps.filter((a) => a.group === group.key).map((app) => (
                 <AppRow key={app.platform} app={app} laceId={laceId} name={name}
-                        onToggle={(enabled) => void apps.setEnabled(app.platform, enabled)} />
+                        onToggle={(enabled) => void apps.setEnabled(app.platform, enabled)}
+                        onDisconnectOwn={() => void apps.disconnectOwn(app)} />
               ))
             : group.platforms.map((p) => <Skeleton key={p} className="h-14 rounded-xl" />)}
         </div>

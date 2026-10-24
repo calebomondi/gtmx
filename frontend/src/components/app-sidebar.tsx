@@ -42,7 +42,7 @@ const MASCOT_PX = 16
 const data = {
   projects: [
     {
-      name: "Accounts",
+      name: "Shared accounts",
       url: "/accounts",
       icon: (
         <LayoutGrid
