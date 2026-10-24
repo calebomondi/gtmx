@@ -6,15 +6,16 @@ reply to a comment, a lead), shown under its reply with Approve and Decline.
 Approving runs the action through Composio as the founder, records the
 outcome, puts it on the Feed and tells the Lace; declining tells the Lace too.
 
-Each runnable action is registered with `runs(app, action)`: a function that
-gets the founder's id, their live connection to the app, and the proposal's
-arguments, runs synchronously (in a worker thread), and returns an Outcome or
-raises ActionFailed with a reason the founder can read.
+Each runnable action is registered with `runs(app, action)`: an async function
+that gets the RunContext (the founder, the Lace, their live connection to the
+app, and the account in it linked to this Lace) and the proposal's arguments,
+and returns an Outcome or raises ActionFailed with a reason the founder can
+read. `call()` runs one Composio tool for it.
 """
 
 import asyncio
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -22,7 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.schemas.lace import AppActionStatus, ProposedAction
-from backend.app.database.lace_models import LaceAppAction
+from backend.app.database.lace_models import LaceAppAction, LaceChannel
 from backend.app.services import connections as connection_service
 from backend.app.services import lace_activity, lace_events
 from backend.app.services.errors import ConflictError, NotFoundError
@@ -42,8 +43,31 @@ class ActionFailed(Exception):
     """The app refused the action. The message is said to the founder as is."""
 
 
-Runner = Callable[[uuid.UUID, str, dict], Outcome]
+@dataclass(frozen=True)
+class RunContext:
+    user_id: uuid.UUID
+    lace_id: uuid.UUID
+    app: str
+    connection_id: str
+    # The account in the app linked to this Lace (its Facebook Page, its
+    # Instagram business account), when there is one.
+    linked_account: str | None = None
+
+
+Runner = Callable[[RunContext, dict], Awaitable[Outcome]]
 RUNNERS: dict[tuple[str, str], Runner] = {}
+# Characters of an app's own error said back to the founder.
+ERROR_CHARS = 200
+
+
+async def call(ctx: RunContext, tool: str, arguments: dict) -> dict:
+    """Run one Composio tool as the founder: its data, or ActionFailed with
+    the app's reason."""
+    result = await asyncio.to_thread(connection_service.execute_tool, ctx.user_id, tool, arguments, ctx.connection_id)
+    if result.get("error"):
+        reason = str(result["error"])[:ERROR_CHARS]
+        raise ActionFailed(f"{connection_service.label(ctx.app)} refused it: {reason}")
+    return {"data": result.get("data"), "log_id": result.get("log_id")}
 
 
 def runs(app: str, action: str) -> Callable[[Runner], Runner]:
@@ -96,11 +120,15 @@ async def approve(db: AsyncSession, row: LaceAppAction, user_id: uuid.UUID) -> L
     if connection is None:
         raise ConflictError(f"Connect your {connection_service.label(row.app)} account first (Accounts page).")
 
+    linked = await db.scalar(select(LaceChannel.account_id).where(
+        LaceChannel.lace_id == row.lace_id, LaceChannel.platform == row.app))
+    context = RunContext(user_id, row.lace_id, row.app, connection.id, linked)
+
     # Claimed before the app is called, so a double click can't run it twice.
     row.status, row.decided_at = "running", datetime.now(UTC)
     await db.commit()
     try:
-        outcome = await asyncio.to_thread(runner, user_id, connection.id, row.arguments)
+        outcome = await runner(context, row.arguments)
         row.status, row.result, row.url, row.provider_log_id = "done", outcome.result, outcome.url, outcome.log_id
     except ActionFailed as exc:
         row.status, row.result = "failed", str(exc)

@@ -46,6 +46,14 @@ _LABEL = {
 }
 
 
+def response_field(data, field: str) -> str | None:
+    """A field of a platform API response, which Composio may or may not wrap in `data`."""
+    if not isinstance(data, dict):
+        return None
+    inner = data.get("data") if isinstance(data.get("data"), dict) else data
+    return inner.get(field)
+
+
 def label(platform: str) -> str:
     """The platform's name as the founder knows it: "LinkedIn", "X"."""
     return _LABEL.get(platform, platform.title())

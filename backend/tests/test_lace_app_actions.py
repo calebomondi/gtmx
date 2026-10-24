@@ -36,8 +36,8 @@ def linkedin(monkeypatch):
         return [ConnectionInfo(f"ca_{p}", p, "live", None, now, now) for p in box["live"]]
     monkeypatch.setattr(connection_service, "list_for_user", list_for_user)
 
-    def publish(user_id, connection_id, arguments):
-        box["ran"].append((connection_id, arguments))
+    async def publish(ctx, arguments):
+        box["ran"].append((ctx.connection_id, arguments))
         if box["fail"]:
             raise box["fail"]
         return Outcome("Posted on LinkedIn.", url="https://linkedin.com/feed/update/1", log_id="log_1")
