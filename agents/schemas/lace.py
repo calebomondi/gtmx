@@ -236,6 +236,15 @@ class NewContact(BaseModel):
     website: str | None = Field(default=None, max_length=500)
 
 
+class NewLead(BaseModel):
+    """A person the Lace proposes adding to the founder's CRM."""
+    name: str = Field(min_length=1, max_length=200)
+    company: str = Field(min_length=1, max_length=200)
+    email: str | None = Field(default=None, max_length=320)
+    title: str | None = Field(default=None, max_length=200)
+    note: str | None = Field(default=None, max_length=1000)
+
+
 ContactStatus = Literal["person", "organisation", "none"]
 CONTACT_STATUSES: tuple[str, ...] = ContactStatus.__args__
 
