@@ -5,6 +5,7 @@ new route that forgets the ownership dependency fails here."""
 import re
 import uuid
 
+from backend.app.api.v1.endpoints.lace_members import router as members_router
 from backend.app.api.v1.endpoints.laces import router as laces_router
 from backend.tests.helpers import make_user
 from backend.tests.test_lace_jobs import lace  # noqa: F401 -- fixture
@@ -17,7 +18,7 @@ def _lace_routes(lace_id: str) -> list[tuple[str, str]]:
     """(method, path) of every route under /laces/{lace_id}, with its other
     path parameters filled with random ids."""
     out = []
-    for route in laces_router.routes:
+    for route in [*laces_router.routes, *members_router.routes]:
         if not route.path.startswith("/{lace_id}"):
             continue
         filled = _PARAM.sub(lambda m: lace_id if m[1] == "lace_id" else str(uuid.uuid4()), route.path)

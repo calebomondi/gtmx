@@ -53,12 +53,11 @@ async def user_from_token(token: str) -> Optional[AuthUser]:
     except (ValueError, AttributeError, TypeError):
         return None
 
-    metadata = getattr(suser, "user_metadata", None) or {}
     return AuthUser(
         id=uid,
         email=getattr(suser, "email", None),
-        name=metadata.get("full_name") or metadata.get("name"),
-        avatar_url=metadata.get("avatar_url") or metadata.get("picture"),
+        name=supabase_admin.name_of(suser),
+        avatar_url=supabase_admin.avatar_of(suser),
         is_admin=supabase_admin.is_admin(getattr(suser, "app_metadata", None)),
     )
 

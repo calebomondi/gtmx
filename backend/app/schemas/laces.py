@@ -454,3 +454,33 @@ class LaceSearchHit(BaseModel):
     subtitle: str | None = None
     lace_id: uuid.UUID
     lace_name: str
+
+
+class PersonResponse(BaseModel):
+    """Someone on a Lace, or invited to it."""
+    user_id: uuid.UUID
+    name: str | None = None
+    email: str | None = None
+    avatar_url: str | None = None
+    role: LaceRole
+    status: Literal["invited", "active"]
+
+
+class InviteRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    role: Literal["admin", "member"] = "member"
+
+
+class RoleUpdate(BaseModel):
+    role: Literal["admin", "member"]
+
+
+class InviteResponse(BaseModel):
+    """A Lace someone was invited to, waiting for their answer."""
+    lace_id: uuid.UUID
+    lace_name: str
+    startup_name: str | None = None
+    website: str
+    role: LaceRole
+    invited_by: str | None = Field(default=None, description="Who invited them: a name or an email")
+    invited_at: datetime
