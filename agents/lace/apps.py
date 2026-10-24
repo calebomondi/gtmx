@@ -50,6 +50,12 @@ class LaceApps(Protocol):
         switched off; AppError when the call fails."""
         ...
 
+    async def asana_tasks(self) -> list[dict] | None:
+        """The founder's open Asana tasks (assigned to them): [{name, due_on,
+        project, link}], bounded. None when Asana isn't connected or is
+        switched off; AppError when the call fails."""
+        ...
+
     async def my_comments(self, platform: CommentsOn, posts: int) -> list[dict] | None:
         """Comments on the founder's own recent posts (their most recent
         `posts`), newest posts first: [{platform, post_url, post_text,
