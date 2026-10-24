@@ -19,6 +19,11 @@ from utils.log import logger
 # Composio tools, verified against the live catalog.
 _X_USER = "TWITTER_USER_LOOKUP_BY_USERNAME"
 _X_POST = "TWITTER_POST_LOOKUP_BY_POST_ID"
+_SHEET_TABS = "GOOGLESHEETS_GET_SHEET_NAMES"
+_SHEET_VALUES = "GOOGLESHEETS_BATCH_GET"
+# The most rows and columns read from one tab (the header row included).
+SHEET_ROWS = 1000
+SHEET_COLUMNS = "ZZ"
 # The founder's recent posts read for comments, and comments read per post.
 COMMENTS_PER_POST = 20
 TEXT_CHARS = 300
@@ -71,6 +76,24 @@ class DbLaceApps:
                                         "expansions": x_api.POST_EXPANSIONS, "user__fields": ["username", "name"]}
         data = await self._run(live, "x", tool, arguments)
         return data if isinstance(data, dict) else None
+
+    async def sheet(self, spreadsheet_id: str, tab: str | None) -> dict | None:
+        live = await self._live("googlesheets")
+        if live is None:
+            return None
+        tabs = await self._run(live, "googlesheets", _SHEET_TABS, {"spreadsheet_id": spreadsheet_id})
+        names = [str(n) for n in (tabs or {}).get("sheet_names") or []] if isinstance(tabs, dict) else []
+        if not names:
+            raise AppError("Google Sheets didn't list that spreadsheet's tabs: check the link, and that you can open it.")
+        chosen = next((n for n in names if tab and n.lower() == tab.strip().lower()), None) if tab else names[0]
+        if chosen is None:
+            raise AppError(f"There's no tab named {tab!r}; its tabs are {', '.join(names)}.")
+        quoted = chosen.replace("'", "''")
+        data = await self._run(live, "googlesheets", _SHEET_VALUES, {
+            "spreadsheet_id": spreadsheet_id, "ranges": [f"'{quoted}'!A1:{SHEET_COLUMNS}{SHEET_ROWS}"]})
+        ranges = ((data or {}).get("spreadsheet_data") or {}).get("valueRanges") or [] if isinstance(data, dict) else []
+        values = (ranges[0].get("values") if ranges and isinstance(ranges[0], dict) else None) or []
+        return {"tabs": names, "tab": chosen, "rows": [[str(c) for c in row] for row in values if isinstance(row, list)]}
 
     async def my_comments(self, platform: CommentsOn, posts: int) -> list[dict] | None:
         live = await self._live(platform)

@@ -24,6 +24,13 @@ class LaceApps(Protocol):
         isn't connected. Raises AppError when the call fails."""
         ...
 
+    async def sheet(self, spreadsheet_id: str, tab: str | None) -> dict | None:
+        """One tab of a Google Sheet the founder can open (the first when
+        `tab` is None): {tabs, tab, rows}, rows as lists of cell text with the
+        header first, bounded. None when Google Sheets isn't connected or is
+        switched off; AppError when the call fails."""
+        ...
+
     async def my_comments(self, platform: CommentsOn, posts: int) -> list[dict] | None:
         """Comments on the founder's own recent posts (their most recent
         `posts`), newest posts first: [{platform, post_url, post_text,
