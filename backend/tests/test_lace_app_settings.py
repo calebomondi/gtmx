@@ -34,7 +34,7 @@ def test_every_app_is_listed_with_its_connection_and_switch(client, lace, lace_r
 
 
 def test_with_two_laces_work_apps_wait_to_be_switched_on(client, lace, lace_runtime, connected):  # noqa: F811
-    _create(client, name="Second")
+    _create(client, name="Second", website="second.test")
     apps = _apps(client, lace)
     assert apps["gmail"]["enabled"] and apps["linkedin"]["enabled"]  # channels: on everywhere
     assert not apps["hubspot"]["enabled"]  # a CRM: only where the founder says

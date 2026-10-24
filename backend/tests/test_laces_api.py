@@ -142,7 +142,8 @@ def test_lace_count_is_capped(client, lace_runtime, monkeypatch):
     monkeypatch.setattr(settings, "max_laces_per_user", 1)
     first = _create(client).json()
     client.portal.call(_wait_for_status, uuid.UUID(first["run_id"]), {"completed"})
-    assert _create(client, name="Second").status_code == 409
+    capped = _create(client, name="Second", website="second.test")
+    assert capped.status_code == 409 and "already has a Lace" not in capped.json()["detail"]
 
 
 async def test_live_subscribers_see_the_reply_stream_in(lace_runtime, user):
@@ -218,7 +219,7 @@ def test_competitors_list_and_dismiss(client, lace_runtime):
 def test_another_laces_competitor_is_not_found(client, lace_runtime):
     mine = _create(client).json()
     client.portal.call(_wait_for_status, uuid.UUID(mine["run_id"]), {"completed"})
-    other = _create(client, name="Bob").json()
+    other = _create(client, name="Bob", website="bob.test").json()
     client.portal.call(_wait_for_status, uuid.UUID(other["run_id"]), {"completed"})
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
         theirs = conn.execute("INSERT INTO lace_competitors (id, lace_id, name, website, domain_key)"

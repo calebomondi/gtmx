@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy import Select, and_, delete, exists, func, literal_column, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database.lace_models import (
@@ -21,7 +22,7 @@ from backend.app.database.lace_models import (
 from backend.app.database.models import Run
 from backend.app.schemas.laces import FactVerdict, LaceMood
 from backend.app.services.runs import TERMINAL_STATUSES
-from backend.app.services.competitors import checked_website
+from backend.app.services.competitors import checked_website, domain_key
 from backend.app.services import connections as connection_service
 from backend.app.services import lace_members
 from backend.app.services import limits
@@ -35,15 +36,26 @@ async def create(db: AsyncSession, user_id: uuid.UUID, name: str, website: str,
     if not name:
         raise InvalidInputError("Give your Lace a name.")
     website = checked_website(website)
+    domain = domain_key(website)
+    if await lace_members.lace_for_domain(db, domain) is not None:
+        raise _taken(domain)
     await _ensure_room(db, user_id)
     # Checked before the insert, so a refused onboarding leaves no Lace behind.
     await limits.ensure_can_start(db, user_id, "lace_onboarding")
-    lace = Lace(user_id=user_id, name=name, website=website, timezone=timezone or "UTC")
+    lace = Lace(user_id=user_id, name=name, website=website, domain=domain, timezone=timezone or "UTC")
     db.add(lace)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:  # made at the same moment by someone else
+        await db.rollback()
+        raise _taken(domain) from None
     lace_members.add_owner(db, lace)
     await db.commit()
     return lace
+
+
+def _taken(domain: str) -> ConflictError:
+    return ConflictError(f"{domain} already has a Lace on Thalace. Ask its owner to invite you, or ask to join it.")
 
 
 async def _ensure_room(db: AsyncSession, user_id: uuid.UUID) -> None:

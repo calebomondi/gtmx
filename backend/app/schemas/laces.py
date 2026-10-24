@@ -463,12 +463,21 @@ class PersonResponse(BaseModel):
     email: str | None = None
     avatar_url: str | None = None
     role: LaceRole
-    status: Literal["invited", "active"]
+    status: Literal["invited", "requested", "active"]
 
 
 class InviteRequest(BaseModel):
     email: str = Field(min_length=3, max_length=320, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
     role: Literal["admin", "member"] = "member"
+
+
+class DomainClaim(BaseModel):
+    domain: str
+    taken: bool = Field(description="A Lace for this startup exists: ask to join it instead")
+
+
+class JoinRequest(BaseModel):
+    website: str = Field(min_length=3, max_length=500)
 
 
 class RoleUpdate(BaseModel):

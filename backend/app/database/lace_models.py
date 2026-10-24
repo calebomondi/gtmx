@@ -42,6 +42,7 @@ class Lace(Base):
         CheckConstraint("(quiet_start IS NULL) = (quiet_end IS NULL)", name="quiet_hours_paired"),
         CheckConstraint("quiet_start BETWEEN 0 AND 23 AND quiet_end BETWEEN 0 AND 23 AND quiet_start <> quiet_end",
                         name="quiet_hours_range"),
+        Index("uq_laces_domain", "domain", unique=True, postgresql_where=text("domain IS NOT NULL")),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -49,6 +50,9 @@ class Lace(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(60), nullable=False)
     website: Mapped[str] = mapped_column(Text, nullable=False)
+    # The website's domain (acme.com): one Lace per startup. NULL only for a
+    # Lace that shared its domain with an older one when this was introduced.
+    domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Learned at onboarding; NULL until then.
     startup_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="onboarding",
