@@ -11,7 +11,7 @@ from sqlalchemy import exists, func, select
 from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.database.lace_models import LaceAccount, LaceChannel, LaceOutreach
+from backend.app.database.lace_models import Lace, LaceAccount, LaceChannel, LaceOutreach
 from backend.app.services import connections as connection_service
 from backend.app.services import lace_channels
 from backend.app.services import outreach as outreach_service
@@ -101,32 +101,34 @@ async def delete(db: AsyncSession, message: LaceOutreach) -> None:
 
 
 async def send(db: AsyncSession, message: LaceOutreach) -> LaceOutreach:
-    """Send a draft from the founder's own account: only ever on the founder's
-    click, which is their approval. Email goes through Gmail and X through X;
+    """Send a draft from the account the Lace uses (its own, else the
+    founder's shared one): only ever on the founder's click, which is their
+    approval. Email goes through Gmail and X through X;
     the other channels cannot start a conversation through their APIs, so
     those the founder sends by hand and marks sent."""
     if message.account_id and (account := await db.get(LaceAccount, message.account_id)) and account.do_not_contact:
         raise ConflictError(f"{account.name} asked not to be contacted.")
+    lace = await db.get(Lace, message.lace_id)
     if message.channel == "email":
-        return await outreach_service.send_email(db, message)
+        return await outreach_service.send_email(db, message, lace)
     if message.channel == "x":
-        return await _send_x(db, message)
+        return await _send_x(db, message, lace)
     if message.channel in _DM_SEND and message.thread_id:
         channel = await db.scalar(select(LaceChannel).where(
             LaceChannel.lace_id == message.lace_id, LaceChannel.platform == message.channel))
         if channel is not None:
-            return await _answer_dm(db, message, channel)
+            return await _answer_dm(db, message, channel, lace)
     raise ConflictError(_HANDOFF[message.channel])
 
 
-async def _answer_dm(db: AsyncSession, message: LaceOutreach, channel: LaceChannel) -> LaceOutreach:
+async def _answer_dm(db: AsyncSession, message: LaceOutreach, channel: LaceChannel, lace: Lace) -> LaceOutreach:
     """Answer someone who messaged the founder's linked account, in that
     conversation. Meta allows it only inside its reply window."""
     if message.direction != "outbound" or message.status not in _EDITABLE_STATUSES:
         raise ConflictError("This message was already sent.")
     if not message.recipient_address or not (message.body or "").strip():
         raise InvalidInputError("Write a message before sending.")
-    connection = await lace_channels.live_connection(db, message.user_id, channel.platform)
+    connection = await lace_channels.live_connection(db, lace, channel.platform)
 
     # Claim the message before the network call, so a double click can't send twice.
     message.status, message.error = "sending", None
@@ -134,7 +136,7 @@ async def _answer_dm(db: AsyncSession, message: LaceOutreach, channel: LaceChann
     tool, arguments = _DM_SEND[message.channel](channel.account_id, message.recipient_address, message.body)
     label = lace_channels.LABELS[message.channel]
     try:
-        result = await asyncio.to_thread(connection_service.execute_tool, message.user_id, tool, arguments,
+        result = await asyncio.to_thread(connection_service.execute_tool, connection.entity, tool, arguments,
                                          connection.id)
         error = str(result.get("error") or "")
         message.provider_log_id = result.get("log_id")
@@ -159,7 +161,7 @@ def _outside_window(error: str) -> bool:
     return any(marker in error.lower() for marker in _WINDOW_MARKERS)
 
 
-async def _send_x(db: AsyncSession, message: LaceOutreach) -> LaceOutreach:
+async def _send_x(db: AsyncSession, message: LaceOutreach, lace: Lace) -> LaceOutreach:
     if message.direction != "outbound" or message.status not in _EDITABLE_STATUSES:
         raise ConflictError("This message was already sent.")
     handle = _X_PROFILE.match(message.recipient_address or "")
@@ -168,23 +170,22 @@ async def _send_x(db: AsyncSession, message: LaceOutreach) -> LaceOutreach:
     if not (message.body or "").strip():
         raise InvalidInputError("Write a message before sending.")
     outreach_service.ensure_under_daily_cap(await outreach_service.sends_today(db, message.user_id))
-    x = next((c for c in await connection_service.list_for_user(db, message.user_id)
-              if c.platform == "x" and c.status == "live"), None)
+    x = await connection_service.connection_for(db, lace, "x")
     if x is None:
-        raise ConflictError("Connect your X account (Accounts page) to send from here, "
+        raise ConflictError("Connect an X account (this Lace's settings) to send from here, "
                             "or copy the message, send it on X and mark it sent.")
 
     # Claim the message before the network calls, so a double click can't send twice.
     message.status, message.error = "sending", None
     await db.commit()
     try:
-        found = await asyncio.to_thread(connection_service.execute_tool, message.user_id, _X_LOOKUP,
+        found = await asyncio.to_thread(connection_service.execute_tool, x.entity, _X_LOOKUP,
                                         {"username": handle.group("handle")}, x.id)
         user = connection_service.response_field(found.get("data"), "id")
         if found.get("error") or not user:
             message.status, message.error = "failed", f"Couldn't find @{handle.group('handle')} on X."
         else:
-            result = await asyncio.to_thread(connection_service.execute_tool, message.user_id, _X_SEND,
+            result = await asyncio.to_thread(connection_service.execute_tool, x.entity, _X_SEND,
                                              {"participant_id": user, "text": message.body}, x.id)
             failed = bool(result.get("error"))
             message.provider_log_id = result.get("log_id")

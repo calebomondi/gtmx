@@ -5,7 +5,7 @@ Work happens in runs; follow them at /runs/{run_id}/events."""
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, File, Query, UploadFile, status
+from fastapi import APIRouter, File, Header, Query, UploadFile, status
 
 from backend.app.api.deps import CurrentUser, DbSession, OwnedLace
 from backend.app.runs import lace as lace_runs
@@ -58,7 +58,9 @@ from backend.app.schemas.laces import (
 # Registers the social actions' runners, which approving app actions runs.
 from backend.app.services import social_actions  # noqa: F401
 from backend.app.services import email, inbox, lace_app_actions, lace_app_settings, lace_accounts, lace_briefs, lace_cards, lace_documents, lace_activity, lace_contacts, lace_search, lace_channels, lace_competitors, lace_opportunities, lace_outreach
+from backend.app.services import connections as connection_service
 from backend.app.services import laces as lace_service
+from backend.app.schemas.connections import ConnectStartResponse
 from agents.lace.store import JobRefused
 from backend.app.services.errors import ConflictError
 from agents.schemas.lace import AppActionStatus, AccountStatus, CompetitorStatus, FactTopic, InboxPlatform
@@ -380,6 +382,21 @@ async def update_lace_app(lace: OwnedLace, platform: str, payload: LaceAppUpdate
     return next(a for a in await lace_app_settings.list_for_lace(db, lace) if a["platform"] == platform)
 
 
+@router.post("/{lace_id}/connections/{platform}", response_model=ConnectStartResponse)
+async def start_lace_connection(lace: OwnedLace, platform: str, origin: str | None = Header(default=None),
+                                return_to: str | None = Query(default=None, max_length=200)):
+    """A Connect Link for an account of the Lace's own, which it then uses
+    instead of the founder's shared one for that app."""
+    return ConnectStartResponse(redirect_url=await connection_service.start(
+        connection_service.lace_entity(lace.id), platform, origin, return_to))
+
+
+@router.delete("/{lace_id}/connections/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def disconnect_lace_connection(lace: OwnedLace, connection_id: str, db: DbSession):
+    """Disconnect the Lace's own account; it goes back to the shared one."""
+    await connection_service.disconnect(db, connection_service.lace_entity(lace.id), connection_id)
+
+
 @router.get("/{lace_id}/app-actions", response_model=list[AppActionResponse])
 async def list_app_actions(lace: OwnedLace, db: DbSession, status: AppActionStatus | None = None,
                            limit: int = Query(default=50, ge=1, le=MAX_APP_ACTIONS_PER_PAGE)):
@@ -389,8 +406,8 @@ async def list_app_actions(lace: OwnedLace, db: DbSession, status: AppActionStat
 
 @router.post("/{lace_id}/app-actions/{action_id}/approve", response_model=AppActionResponse)
 async def approve_app_action(lace: OwnedLace, action_id: uuid.UUID, user: CurrentUser, db: DbSession):
-    """Run a proposed action as the founder. This request, made by them, is the approval."""
-    row = await lace_app_actions.approve(db, await lace_app_actions.get_in_lace(db, lace.id, action_id), user.id)
+    """Run a proposed action from the Lace's account. This request, made by the founder, is the approval."""
+    row = await lace_app_actions.approve(db, await lace_app_actions.get_in_lace(db, lace.id, action_id))
     await manager.wake_lace(user.id, lace.id)
     return row
 
@@ -407,14 +424,14 @@ async def list_channels(lace: OwnedLace, db: DbSession):
 
 
 @router.get("/{lace_id}/channels/available", response_model=list[ChannelAccount])
-async def available_channels(lace: OwnedLace, platform: InboxPlatform, user: CurrentUser, db: DbSession):
-    """The accounts your connected Instagram or Facebook manages, to link one."""
-    return await lace_channels.available(db, user.id, platform)
+async def available_channels(lace: OwnedLace, platform: InboxPlatform, db: DbSession):
+    """The accounts the Lace's connected Instagram or Facebook manages, to link one."""
+    return await lace_channels.available(db, lace, platform)
 
 
 @router.post("/{lace_id}/channels", response_model=ChannelResponse, status_code=status.HTTP_201_CREATED)
-async def link_channel(lace: OwnedLace, payload: ChannelLinkRequest, user: CurrentUser, db: DbSession):
-    return await lace_channels.link(db, lace.id, user.id, payload.platform, payload.account_id)
+async def link_channel(lace: OwnedLace, payload: ChannelLinkRequest, db: DbSession):
+    return await lace_channels.link(db, lace, payload.platform, payload.account_id)
 
 
 @router.delete("/{lace_id}/channels/{channel_id}", status_code=status.HTTP_204_NO_CONTENT)

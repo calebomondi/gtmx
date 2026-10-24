@@ -408,7 +408,7 @@ async def reply_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None
             if not pending:
                 break
             user_id = pending[0].user_id
-            slots, timezone = await calendar_service.free_slots(db, user_id)
+            slots, timezone = await calendar_service.free_slots(db, await db.get(models.Lace, lace_id))
             work = []
             for reply in pending:
                 conversation = await lace_outreach.thread(db, reply)

@@ -3,7 +3,6 @@ where switched on (or when there is one Lace); switching off stops the Lace
 using an app, however connected; settings are kept per Lace."""
 
 import uuid
-from datetime import UTC, datetime
 
 import pytest
 
@@ -11,19 +10,15 @@ from agents.lace.app_actions import propose
 from agents.schemas.lace import ProposedAction
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.services import connections as connection_service
-from backend.app.services.connections import ConnectionInfo
 from backend.app.services.lace_store import DbLaceStore
-from backend.tests.helpers import make_user
+from backend.tests.helpers import make_user, stub_accounts
 from backend.tests.test_lace_jobs import lace  # noqa: F401 -- fixture
 from backend.tests.test_laces_api import API, _create, lace_runtime  # noqa: F401 -- fixture
 
 
 @pytest.fixture
 def connected(monkeypatch):
-    async def list_for_user(db, user_id):
-        now = datetime.now(UTC)
-        return [ConnectionInfo(f"ca_{p}", p, "live", None, now, now) for p in ("gmail", "hubspot", "linkedin")]
-    monkeypatch.setattr(connection_service, "list_for_user", list_for_user)
+    stub_accounts(monkeypatch, {"gmail", "hubspot", "linkedin"})
 
 
 def _apps(client, lace_id) -> dict:

@@ -66,7 +66,7 @@ async def list_users(db: AsyncSession, page: int, per_page: int, q: str | None) 
     users.sort(key=lambda u: str(getattr(u, "created_at", "") or ""), reverse=True)
     window = users[(page - 1) * per_page: page * per_page]
     activity = await _activity(db, [uuid.UUID(str(u.id)) for u in window])
-    live, error = await live_connections() if window else ({}, None)
+    live, error = await live_connections(db) if window else ({}, None)
     for uid, counts in activity.items():
         counts["connections"] = None if error else len(live.get(uid, ()))
     return Page(

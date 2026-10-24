@@ -45,7 +45,8 @@ class ActionFailed(Exception):
 
 @dataclass(frozen=True)
 class RunContext:
-    user_id: uuid.UUID
+    # Whose account runs it: the founder's shared one or the Lace's own.
+    entity: str
     lace_id: uuid.UUID
     app: str
     connection_id: str
@@ -61,9 +62,9 @@ ERROR_CHARS = 200
 
 
 async def call(ctx: RunContext, tool: str, arguments: dict) -> dict:
-    """Run one Composio tool as the founder: its data, or ActionFailed with
-    the app's reason."""
-    result = await asyncio.to_thread(connection_service.execute_tool, ctx.user_id, tool, arguments, ctx.connection_id)
+    """Run one Composio tool from the Lace's account: its data, or
+    ActionFailed with the app's reason."""
+    result = await asyncio.to_thread(connection_service.execute_tool, ctx.entity, tool, arguments, ctx.connection_id)
     if result.get("error"):
         reason = str(result["error"])[:ERROR_CHARS]
         raise ActionFailed(f"{connection_service.label(ctx.app)} refused it: {reason}")
@@ -108,24 +109,24 @@ def _waiting(row: LaceAppAction) -> None:
         raise ConflictError(f"This was already {'approved' if row.status in ('running', 'done', 'failed') else row.status}.")
 
 
-async def approve(db: AsyncSession, row: LaceAppAction, user_id: uuid.UUID) -> LaceAppAction:
-    """Run the action as the founder. The founder must have the app connected;
-    otherwise it stays proposed and they're told to connect it."""
+async def approve(db: AsyncSession, row: LaceAppAction) -> LaceAppAction:
+    """Run the action from the account the Lace uses for the app. The app
+    must be connected; otherwise it stays proposed and the founder is told to
+    connect it."""
     _waiting(row)
     runner = RUNNERS.get((row.app, row.action))
     if runner is None:
         raise ConflictError("Your Lace can't do that yet.")
     lace = await db.get(Lace, row.lace_id)
     if lace is None or not await lace_app_settings.enabled(db, lace, row.app):
-        raise ConflictError(f"{connection_service.label(row.app)} is switched off for this Lace (Apps tab).")
-    connection = next((c for c in await connection_service.list_for_user(db, user_id)
-                       if c.platform == row.app and c.status == "live"), None)
+        raise ConflictError(f"{connection_service.label(row.app)} is switched off for this Lace (its settings).")
+    connection = await connection_service.connection_for(db, lace, row.app)
     if connection is None:
-        raise ConflictError(f"Connect your {connection_service.label(row.app)} account first (Accounts page).")
+        raise ConflictError(f"Connect your {connection_service.label(row.app)} account first (this Lace's settings).")
 
     linked = await db.scalar(select(LaceChannel.account_id).where(
         LaceChannel.lace_id == row.lace_id, LaceChannel.platform == row.app))
-    context = RunContext(user_id, row.lace_id, row.app, connection.id, linked)
+    context = RunContext(connection.entity, row.lace_id, row.app, connection.id, linked)
 
     # Claimed before the app is called, so a double click can't run it twice.
     row.status, row.decided_at = "running", datetime.now(UTC)

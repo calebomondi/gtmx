@@ -12,7 +12,7 @@ from agents.pipelines.outreach.gtm_replies import ReplyResult
 from agents.schemas.outreach import ReplyAnalysis, ReplyDraft
 from backend.app.runs import lace_jobs, scheduler
 from backend.app.services import connections as connection_service
-from backend.app.services.connections import ConnectionInfo
+from backend.tests.helpers import stub_accounts
 from backend.tests.helpers import make_user
 from backend.tests.test_lace_jobs import _runs, _wait_for_turns, lace  # noqa: F401 -- fixture
 from backend.tests.test_laces_api import API, _create, lace_runtime  # noqa: F401 -- fixture
@@ -33,9 +33,6 @@ def meta(monkeypatch):
          "message": "Hi Joe, thanks for asking!", "created_time": (NOW - timedelta(minutes=4)).isoformat()},
     ]}
 
-    async def connections(db, user_id):
-        return [ConnectionInfo(f"ca_{p}", p, "live", "me", None, None) for p in sorted(box["live"])]
-
     def execute(user_id, tool, arguments, connection_id):
         box["calls"].append(tool)
         data = {
@@ -46,7 +43,7 @@ def meta(monkeypatch):
         }.get(tool, {"data": []})
         return {"data": data, "error": None, "log_id": "l"}
 
-    monkeypatch.setattr(connection_service, "list_for_user", connections)
+    stub_accounts(monkeypatch, box["live"], name="me")
     monkeypatch.setattr(connection_service, "execute_tool", execute)
 
     def draft_reply(brief):
@@ -85,9 +82,10 @@ def test_linking_offers_only_the_founders_own_accounts(client, lace, lace_runtim
 
 
 def test_linking_needs_a_live_connection(client, lace, lace_runtime, meta):  # noqa: F811
-    meta["live"] = {"facebook"}
+    meta["live"].clear()
+    meta["live"].add("facebook")
     refused = client.get(f"{API}/laces/{lace}/channels/available?platform=instagram")
-    assert refused.status_code == 409 and "Connect your Instagram" in refused.json()["detail"]
+    assert refused.status_code == 409 and "Connect an Instagram" in refused.json()["detail"]
 
 
 def test_a_dm_is_synced_read_and_answered_on_its_channel(client, lace, lace_runtime, meta):  # noqa: F811
@@ -116,7 +114,7 @@ def test_a_dm_is_synced_read_and_answered_on_its_channel(client, lace, lace_runt
 
 def test_a_disconnected_account_is_skipped(client, lace, lace_runtime, meta):  # noqa: F811
     client.post(f"{API}/laces/{lace}/channels", json={"platform": "instagram", "account_id": "ig_1"})
-    meta["live"] = set()
+    meta["live"].clear()
     meta["calls"].clear()
     assert client.portal.call(scheduler.sync_lace_channels) == 0
     assert meta["calls"] == []

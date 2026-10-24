@@ -6,6 +6,7 @@ import uuid
 import psycopg
 
 from backend.app.runs import lace as lace_runs
+from backend.app.services import connections as connection_service
 from backend.tests.helpers import make_user
 from backend.tests.test_lace_jobs import lace  # noqa: F401 -- fixture
 from backend.tests.test_laces_api import API, lace_runtime  # noqa: F401 -- fixture
@@ -42,12 +43,18 @@ def test_a_working_lace_cannot_be_archived_or_deleted(client, lace):  # noqa: F8
     assert client.delete(f"{API}/laces/{lace}").status_code == 409
 
 
-def test_delete_removes_the_lace_its_findings_and_its_conversation(client, lace, lace_runtime):  # noqa: F811
+def test_delete_removes_the_lace_its_findings_and_its_conversation(client, lace, lace_runtime, monkeypatch):  # noqa: F811
     checkpointer = lace_runs.get_checkpointer()
     config = lace_runs.thread_config(uuid.UUID(lace))
     assert client.portal.call(checkpointer.aget_tuple, config) is not None
+    revoked = []
+
+    async def remove_all(entity):
+        revoked.append(entity)
+    monkeypatch.setattr(connection_service, "remove_all", remove_all)
 
     assert client.delete(f"{API}/laces/{lace}").status_code == 204
+    assert revoked == [f"lace:{lace}"]  # its own app accounts go with it
     assert client.get(f"{API}/laces/{lace}").status_code == 404
     assert client.portal.call(checkpointer.aget_tuple, config) is None
     with psycopg.connect(settings.database_url) as conn:

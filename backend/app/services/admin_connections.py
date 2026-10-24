@@ -18,11 +18,11 @@ from utils.log import logger
 COMPOSIO_UNAVAILABLE = "Couldn't read connected accounts from Composio; see the API logs."
 
 
-async def live_connections() -> tuple[dict[uuid.UUID, set[str]] | None, str | None]:
+async def live_connections(db: AsyncSession) -> tuple[dict[uuid.UUID, set[str]] | None, str | None]:
     """Every user's live platforms, or (None, reason) when Composio fails, so
     a Composio outage degrades the page instead of breaking it."""
     try:
-        return await connection_service.live_by_user(), None
+        return await connection_service.live_by_user(db), None
     except Exception:  # the SDK raises its own and httpx's error types
         logger.exception("Listing connected accounts from Composio failed")
         return None, COMPOSIO_UNAVAILABLE
@@ -46,7 +46,7 @@ async def sends_by_platform(
 
 async def connection_metrics(db: AsyncSession, days: int) -> ConnectionMetrics:
     since, _ = window(days)
-    live, error = await live_connections()
+    live, error = await live_connections(db)
     live = live or {}
     sends = await sends_by_platform(db, since=since)
     total_users = len(await admin_service.list_all_users())

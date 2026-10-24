@@ -24,7 +24,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.database.lace_models import LaceChannel, LaceOutreach
+from backend.app.database.lace_models import Lace, LaceChannel, LaceOutreach
 from backend.app.services import connections as connection_service
 from backend.app.services.errors import ConflictError
 from backend.app.services.inbox import timestamp
@@ -54,8 +54,9 @@ _MESSAGES = {
 }
 
 
-def _fetch(channel: LaceChannel, connection_id: str, tool: str, arguments: dict) -> list[dict]:
-    result = connection_service.execute_tool(channel.user_id, tool, arguments, connection_id)
+def _fetch(channel: LaceChannel, connection: connection_service.ConnectionInfo, tool: str,
+           arguments: dict) -> list[dict]:
+    result = connection_service.execute_tool(connection.entity, tool, arguments, connection.id)
     if result.get("error"):
         logger.info("%s for %s %s failed: %s", tool, channel.platform, channel.account_id, result["error"])
         return []
@@ -113,13 +114,14 @@ def _other_party(message: dict, account_id: str) -> dict:
 async def sync_channel(db: AsyncSession, channel: LaceChannel) -> list[LaceOutreach]:
     """Store new messages from the account's recent conversations. Returns the
     new inbound ones."""
+    lace = await db.get(Lace, channel.lace_id)
     try:
-        connection = await live_connection(db, channel.user_id, channel.platform)
+        connection = await live_connection(db, lace, channel.platform)
     except ConflictError:
         return []  # disconnected since it was linked: nothing to read until reconnected
     since = channel.synced_until or datetime.now(UTC) - timedelta(days=settings.inbox_sync_window_days)
     tool, arguments = _CONVERSATIONS[channel.platform]
-    conversations = await asyncio.to_thread(_fetch, channel, connection.id, tool, arguments(channel))
+    conversations = await asyncio.to_thread(_fetch, channel, connection, tool, arguments(channel))
     fresh = [c for c in conversations if c.get("id") and timestamp(c.get("updated_time")) > since]
     if not fresh:
         return []
@@ -134,7 +136,7 @@ async def sync_channel(db: AsyncSession, channel: LaceChannel) -> list[LaceOutre
         thread = str(conversation["id"])[:64]
         opener = await _opener(db, channel, thread)
         tool, arguments = _MESSAGES[channel.platform]
-        messages = await asyncio.to_thread(_fetch, channel, connection.id, tool, arguments(channel, conversation["id"]))
+        messages = await asyncio.to_thread(_fetch, channel, connection, tool, arguments(channel, conversation["id"]))
         for message in sorted(messages, key=lambda m: timestamp(m.get("created_time"))):
             text = (message.get("message") or "").strip()
             if not message.get("id") or message["id"] in known or not text:

@@ -1,8 +1,13 @@
-"""Users' connected channel accounts (Gmail, Google Calendar, LinkedIn,
-Instagram, Facebook, TikTok, X), held by Composio under the user's id.
-Composio is the source of truth: it stores and refreshes the tokens. The only
-local state is each account's display label (`ConnectionIdentity`), read once
-from the provider so the accounts page can say which account is connected.
+"""Founders' connected app accounts (Gmail, LinkedIn, Notion...), held by
+Composio. Composio is the source of truth: it stores and refreshes the tokens.
+The only local state is each account's display label (`ConnectionIdentity`),
+read once from the provider so the app can say which account is connected.
+
+Composio holds accounts under an id we choose (an "entity"). A founder's
+shared accounts are under their user id, and every Lace may use them. A Lace's
+own accounts are under `lace:<lace id>`, for a founder whose startups each have
+their own email and socials: where a Lace has its own account for an app, it
+uses that one and never the shared one (`for_lace`).
 
 Composio's SDK is synchronous; every call runs in a worker thread.
 """
@@ -21,6 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import models
+from backend.app.database.lace_models import Lace
 from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError
 from config import settings
 from utils.log import logger
@@ -77,6 +83,19 @@ def response_field(data, field: str) -> str | None:
     return inner.get(field)
 
 
+_LACE_ENTITY = "lace:"
+
+
+def founder_entity(user_id: uuid.UUID) -> str:
+    """Where the founder's shared accounts are held."""
+    return str(user_id)
+
+
+def lace_entity(lace_id: uuid.UUID) -> str:
+    """Where a Lace's own accounts are held."""
+    return f"{_LACE_ENTITY}{lace_id}"
+
+
 def label(platform: str) -> str:
     """The platform's name as the founder knows it: "LinkedIn", "X"."""
     return _LABEL.get(platform, platform.title())
@@ -90,6 +109,13 @@ class ConnectionInfo:
     display_name: str | None
     created_at: datetime | None
     updated_at: datetime | None
+    # Whose account it is: a founder's (shared) or one Lace's own.
+    entity: str
+
+    @property
+    def own(self) -> bool:
+        """One Lace's own account, not the founder's shared one."""
+        return self.entity.startswith(_LACE_ENTITY)
 
 
 @lru_cache(maxsize=1)
@@ -118,6 +144,7 @@ def _info(account) -> ConnectionInfo | None:
         display_name=state.get("displayName") or None,
         created_at=account.created_at,
         updated_at=account.updated_at,
+        entity=str(account.user_id),
     )
 
 
@@ -146,11 +173,11 @@ _IDENTITY = {
 _IDENTITY_TIMEOUT_S = 15.0
 
 
-def _read_identity(user_id: uuid.UUID, info: ConnectionInfo) -> str | None:
+def _read_identity(info: ConnectionInfo) -> str | None:
     """The account's label from the provider, or None if it can't be read."""
     tool, arguments, label_of = _IDENTITY[info.platform]
     try:
-        result = execute_tool(user_id, tool, arguments, info.id)
+        result = execute_tool(info.entity, tool, arguments, info.id)
     except Exception:  # noqa: BLE001 -- the label is cosmetic; listing must not fail on it
         logger.exception("Reading the %s identity for connection %s failed", info.platform, info.id)
         return None
@@ -163,7 +190,8 @@ def _read_identity(user_id: uuid.UUID, info: ConnectionInfo) -> str | None:
 
 async def _with_identities(db: AsyncSession, user_id: uuid.UUID, infos: list[ConnectionInfo]) -> list[ConnectionInfo]:
     """Label each live connection with who it is, reading unknown ones from
-    the provider once and remembering them."""
+    the provider once and remembering them (under the founder, for a Lace's
+    own accounts too)."""
     stored = {
         row.connection_id: row.label for row in (await db.execute(
             select(models.ConnectionIdentity).where(models.ConnectionIdentity.user_id == user_id)
@@ -172,7 +200,7 @@ async def _with_identities(db: AsyncSession, user_id: uuid.UUID, infos: list[Con
     missing = [i for i in infos if i.status == "live" and i.id not in stored and i.platform in _IDENTITY]
     if missing:
         labels = await asyncio.gather(*(
-            asyncio.wait_for(asyncio.to_thread(_read_identity, user_id, i), _IDENTITY_TIMEOUT_S) for i in missing
+            asyncio.wait_for(asyncio.to_thread(_read_identity, i), _IDENTITY_TIMEOUT_S) for i in missing
         ), return_exceptions=True)
         for info, label in zip(missing, labels):
             if isinstance(label, str):
@@ -184,19 +212,49 @@ async def _with_identities(db: AsyncSession, user_id: uuid.UUID, infos: list[Con
     ]
 
 
-async def list_for_user(db: AsyncSession, user_id: uuid.UUID) -> list[ConnectionInfo]:
+async def _list(db: AsyncSession, user_id: uuid.UUID, entities: list[str]) -> list[ConnectionInfo]:
+    """The accounts held under `entities`, all of them the founder's."""
     def fetch():
         return _client().connected_accounts.list(
-            user_ids=[str(user_id)], toolkit_slugs=list(TOOLKITS.values()),
+            user_ids=entities, toolkit_slugs=list(TOOLKITS.values()),
             statuses=["ACTIVE", "INITIALIZING", "INITIATED", "EXPIRED", "FAILED", "INACTIVE"],
         )
     response = await asyncio.to_thread(fetch)
     infos = [_info(a) for a in getattr(response, "items", []) or []]
     # An abandoned Connect Link stays INITIATED until it expires; only show a
-    # pending row when the user has nothing live for that platform.
-    live = {i.platform for i in infos if i and i.status == "live"}
-    shown = [i for i in infos if i and not (i.status == "pending" and i.platform in live)]
+    # pending row when that entity has nothing live for that platform.
+    live = {(i.entity, i.platform) for i in infos if i and i.status == "live"}
+    shown = [i for i in infos if i and not (i.status == "pending" and (i.entity, i.platform) in live)]
     return await _with_identities(db, user_id, shown)
+
+
+async def list_for_user(db: AsyncSession, user_id: uuid.UUID) -> list[ConnectionInfo]:
+    """The founder's shared accounts."""
+    return await _list(db, user_id, [founder_entity(user_id)])
+
+
+async def list_with_laces(db: AsyncSession, user_id: uuid.UUID) -> list[ConnectionInfo]:
+    """The founder's shared accounts and every one of their Laces' own (admin)."""
+    laces = (await db.scalars(select(Lace.id).where(Lace.user_id == user_id))).all()
+    return await _list(db, user_id, [founder_entity(user_id), *(lace_entity(i) for i in laces)])
+
+
+async def for_lace(db: AsyncSession, lace: Lace) -> dict[str, ConnectionInfo]:
+    """platform -> the account `lace` uses for it: its own when it has one
+    (even one needing attention, so it never falls back to sending as another
+    startup), else the founder's shared one. A Connect Link left pending
+    doesn't count as its own."""
+    infos = await _list(db, lace.user_id, [lace_entity(lace.id), founder_entity(lace.user_id)])
+    chosen: dict[str, ConnectionInfo] = {}
+    for info in sorted(infos, key=lambda i: (i.own and i.status != "pending", i.status == "live")):
+        chosen[info.platform] = info
+    return chosen
+
+
+async def connection_for(db: AsyncSession, lace: Lace, platform: str) -> ConnectionInfo | None:
+    """The live account `lace` uses for `platform`, or None (see for_lace)."""
+    info = (await for_lace(db, lace)).get(platform)
+    return info if info is not None and info.status == "live" else None
 
 
 # Bounds the admin-wide listing: 20 pages x 100 covers far past launch scale.
@@ -205,8 +263,9 @@ _LIST_MAX_PAGES = 20
 _LIST_TIMEOUT_S = 20.0
 
 
-async def live_by_user() -> dict[uuid.UUID, set[str]]:
-    """Every user's live platforms, in one paged pass (admin metrics)."""
+async def live_by_user(db: AsyncSession) -> dict[uuid.UUID, set[str]]:
+    """Every user's live platforms, shared or a Lace's own, in one paged pass
+    (admin metrics)."""
     def fetch() -> list:
         items, cursor = [], None
         for _ in range(_LIST_MAX_PAGES):
@@ -219,16 +278,31 @@ async def live_by_user() -> dict[uuid.UUID, set[str]]:
             if not cursor:
                 break
         return items
+    accounts = await asyncio.to_thread(fetch)
+    lace_ids = {_lace_id(str(a.user_id)) for a in accounts} - {None}
+    owner_of = dict((await db.execute(select(Lace.id, Lace.user_id).where(Lace.id.in_(lace_ids)))).tuples().all()) \
+        if lace_ids else {}
     live: dict[uuid.UUID, set[str]] = {}
-    for account in await asyncio.to_thread(fetch):
+    for account in accounts:
         platform = PLATFORM_OF.get(account.toolkit.slug)
-        try:
-            user_id = uuid.UUID(str(account.user_id))
-        except ValueError:
-            continue  # not one of our users (Composio playground, other apps on the key)
-        if platform:
+        entity = str(account.user_id)
+        lace_id = _lace_id(entity)
+        user_id = owner_of.get(lace_id) if lace_id else _uuid(entity)
+        # None: not one of our users (Composio playground, other apps on the key) or a deleted Lace.
+        if platform and user_id:
             live.setdefault(user_id, set()).add(platform)
     return live
+
+
+def _uuid(value: str) -> uuid.UUID | None:
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        return None
+
+
+def _lace_id(entity: str) -> uuid.UUID | None:
+    return _uuid(entity.removeprefix(_LACE_ENTITY)) if entity.startswith(_LACE_ENTITY) else None
 
 
 _LOOPBACK = {"localhost", "127.0.0.1"}
@@ -269,8 +343,9 @@ def return_path(path: str | None) -> str:
     return path
 
 
-async def start(user_id: uuid.UUID, platform: str, origin: str | None = None, return_to: str | None = None) -> str:
-    """Begin connecting `platform` for the user; returns the Connect Link URL.
+async def start(entity: str, platform: str, origin: str | None = None, return_to: str | None = None) -> str:
+    """Begin connecting `platform` under `entity` (the founder's shared
+    accounts, or one Lace's own); returns the Connect Link URL.
     Composio redirects back to `return_to` (an app path; the accounts page by
     default) with ?connected=<platform>, and that page re-lists from Composio
     -- the callback's query parameters are never trusted."""
@@ -287,14 +362,14 @@ async def start(user_id: uuid.UUID, platform: str, origin: str | None = None, re
     def authorize() -> str:
         # One connection per app: tools can't choose between two (see execute_tool).
         live = _client().connected_accounts.list(
-            user_ids=[str(user_id)], toolkit_slugs=[TOOLKITS[platform]], statuses=["ACTIVE"],
+            user_ids=[entity], toolkit_slugs=[TOOLKITS[platform]], statuses=["ACTIVE"],
         )
         if getattr(live, "items", None):
             raise ConflictError(
-                f"You already have a {_LABEL[platform]} account connected. Disconnect it first to connect a different one."
+                f"A {_LABEL[platform]} account is already connected here. Disconnect it first to connect a different one."
             )
         session = _client().create(
-            user_id=str(user_id), manage_connections=False, auth_configs=_auth_configs(),
+            user_id=entity, manage_connections=False, auth_configs=_auth_configs(),
         )
         request = session.authorize(
             TOOLKITS[platform], callback_url=f"{base}{path}?connected={platform}",
@@ -303,15 +378,16 @@ async def start(user_id: uuid.UUID, platform: str, origin: str | None = None, re
     return await asyncio.to_thread(authorize)
 
 
-async def disconnect(db: AsyncSession, user_id: uuid.UUID, connection_id: str) -> None:
-    """Delete the connection (revoking the provider token) if it is the user's."""
+async def disconnect(db: AsyncSession, entity: str, connection_id: str) -> None:
+    """Delete the connection (revoking the provider token) if it is held
+    under `entity`."""
     def remove():
         client = _client()
         try:
             account = client.connected_accounts.get(connection_id)
         except Exception:  # noqa: BLE001 -- unknown id and someone else's look the same
             account = None
-        if account is None or account.user_id != str(user_id):
+        if account is None or account.user_id != entity:
             raise NotFoundError("Connection not found")
         client.connected_accounts.delete(connection_id, revoke_on_delete=True)
     await asyncio.to_thread(remove)
@@ -321,15 +397,32 @@ async def disconnect(db: AsyncSession, user_id: uuid.UUID, connection_id: str) -
         await db.commit()
 
 
-def execute_tool(user_id: uuid.UUID, tool_slug: str, arguments: dict, connected_account_id: str) -> dict:
-    """Run one Composio tool as the user. Synchronous: call it in a worker
-    thread. Returns {data, error, log_id}.
+async def remove_all(entity: str) -> None:
+    """Delete every account held under `entity` (a deleted Lace's own),
+    revoking their tokens. Failures are logged, not raised: the Lace is
+    already gone, and an account left behind is never used again."""
+    def remove():
+        client = _client()
+        for account in getattr(client.connected_accounts.list(user_ids=[entity]), "items", []) or []:
+            try:
+                client.connected_accounts.delete(account.id, revoke_on_delete=True)
+            except Exception:  # noqa: BLE001 -- the SDK raises many types
+                logger.exception("Removing connection %s of %s failed", account.id, entity)
+    try:
+        await asyncio.to_thread(remove)
+    except Exception:  # noqa: BLE001 -- listing them failed (Composio down)
+        logger.exception("Listing the connections of %s to remove them failed", entity)
 
-    Composio picks the user's connection for the tool's app itself: our
+
+def execute_tool(entity: str, tool_slug: str, arguments: dict, connected_account_id: str) -> dict:
+    """Run one Composio tool as `entity` (a founder, or one of their Laces).
+    Synchronous: call it in a worker thread. Returns {data, error, log_id}.
+
+    Composio picks the entity's connection for the tool's app itself: our
     project has no multi-account selection (naming an account is rejected),
-    and `start` allows one connection per app, so that pick is the connection
-    the caller checked is live. Its id is only kept for the log."""
-    session = _client().create(user_id=str(user_id), manage_connections=False, auth_configs=_auth_configs())
+    and `start` allows one connection per app per entity, so that pick is the
+    connection the caller checked is live. Its id is only kept for the log."""
+    session = _client().create(user_id=entity, manage_connections=False, auth_configs=_auth_configs())
     response = session.execute(tool_slug, arguments=arguments)
     if response.error:
         logger.info("Composio %s via connection %s failed: %s", tool_slug, connected_account_id, response.error)

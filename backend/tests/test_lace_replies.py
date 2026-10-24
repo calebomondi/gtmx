@@ -14,7 +14,7 @@ from agents.schemas.accounts import AccountRecord, TriggerEvent
 from agents.schemas.outreach import ReplyAnalysis, ReplyDraft
 from backend.app.runs import lace_jobs, scheduler
 from backend.app.services import connections as connection_service
-from backend.app.services.connections import ConnectionInfo
+from backend.tests.helpers import stub_accounts
 from backend.tests.test_lace_jobs import _runs, _wait_for_turns, lace  # noqa: F401 -- fixture
 from backend.tests.test_laces_api import API, lace_runtime  # noqa: F401 -- fixture
 from backend.tests.test_runs import _wait_for_status
@@ -38,13 +38,10 @@ def _sent(lace_id, user_id, thread="t_1") -> uuid.UUID:
 
 
 def _inbox(monkeypatch, *messages):
-    async def connections(db, user_id):
-        return [ConnectionInfo("ca_gmail", "gmail", "live", "me@acme.example", None, None)]
-
     def execute(user_id, tool, arguments, account):
         return {"data": {"messages": list(messages)}, "error": None, "log_id": "log_1"}
 
-    monkeypatch.setattr(connection_service, "list_for_user", connections)
+    stub_accounts(monkeypatch, {"gmail"}, name="me@acme.example")
     monkeypatch.setattr(connection_service, "execute_tool", execute)
 
     async def no_slots(db, user_id):

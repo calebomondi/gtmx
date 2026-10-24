@@ -13,7 +13,7 @@ from agents.schemas.outreach import OutreachDraft
 from backend.app.runs import lace_jobs
 from backend.app.runs import manager
 from backend.app.services.lace_contacts import contact_key
-from backend.tests.helpers import make_user
+from backend.tests.helpers import make_user, stub_accounts
 from backend.tests.test_lace_jobs import _wait_for_turns, lace  # noqa: F401 -- fixture
 from backend.tests.test_laces_api import API, lace_runtime  # noqa: F401 -- fixture
 from backend.tests.test_runs import _wait_for_status
@@ -165,17 +165,13 @@ def _message(lace_id, user_id, channel="email", status="draft", address="jane@al
 
 def _gmail(monkeypatch, connected=True, error=None):
     from backend.app.services import connections as connection_service
-    from backend.app.services.connections import ConnectionInfo
     calls = []
-
-    async def connections(db, user_id):
-        return [ConnectionInfo("ca_1", "gmail", "live", "me@acme.example", None, None)] if connected else []
 
     def execute(user_id, tool, arguments, connection_id):
         calls.append((tool, arguments))
         return {"data": None if error else {"id": "m_1", "threadId": "t_1"}, "error": error, "log_id": "log_1"}
 
-    monkeypatch.setattr(connection_service, "list_for_user", connections)
+    stub_accounts(monkeypatch, {"gmail"} if connected else set())
     monkeypatch.setattr(connection_service, "execute_tool", execute)
     return calls
 
@@ -196,9 +192,22 @@ def test_the_founders_click_sends_through_their_gmail(client, lace, lace_runtime
     assert len(calls) == 1
 
 
+def test_a_lace_with_its_own_gmail_sends_from_it(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    from backend.app.services import connections as connection_service
+    stub_accounts(monkeypatch, {"gmail"}, own={"gmail"})
+    sent_as = []
+
+    def execute(entity, tool, arguments, connection_id):
+        sent_as.append((entity, connection_id))
+        return {"data": {"id": "m_1", "threadId": "t_1"}, "error": None, "log_id": "log_1"}
+    monkeypatch.setattr(connection_service, "execute_tool", execute)
+    assert client.post(f"{API}/laces/{lace}/outreach/{_message(lace, user.id)}/send").json()["status"] == "sent"
+    assert sent_as == [(f"lace:{lace}", "ca_own_gmail")]
+
+
 def test_sending_needs_gmail_an_address_and_an_email(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
     _gmail(monkeypatch, connected=False)
-    assert "Connect your Gmail" in client.post(f"{API}/laces/{lace}/outreach/{_message(lace, user.id)}/send").json()["detail"]
+    assert "Connect a Gmail" in client.post(f"{API}/laces/{lace}/outreach/{_message(lace, user.id)}/send").json()["detail"]
     _gmail(monkeypatch)
     no_address = _message(lace, user.id, address=None)
     assert client.post(f"{API}/laces/{lace}/outreach/{no_address}/send").status_code == 422
@@ -242,11 +251,7 @@ def test_another_users_message_cannot_be_sent(client, lace, lace_runtime, user, 
 
 def _x(monkeypatch, connected=True, user_id="123", send_error=None):
     from backend.app.services import connections as connection_service
-    from backend.app.services.connections import ConnectionInfo
     calls = []
-
-    async def connections(db, user_id_):
-        return [ConnectionInfo("ca_x", "x", "live", "@me", None, None)] if connected else []
 
     def execute(user_id_, tool, arguments, connection_id):
         calls.append((tool, arguments))
@@ -255,7 +260,7 @@ def _x(monkeypatch, connected=True, user_id="123", send_error=None):
                     "log_id": "l1"}
         return {"data": None if send_error else {"data": {"dm_event_id": "e_1"}}, "error": send_error, "log_id": "l2"}
 
-    monkeypatch.setattr(connection_service, "list_for_user", connections)
+    stub_accounts(monkeypatch, {"x"} if connected else set())
     monkeypatch.setattr(connection_service, "execute_tool", execute)
     return calls
 
@@ -276,7 +281,7 @@ def test_an_x_dm_is_sent_through_x_on_the_founders_click(client, lace, lace_runt
 def test_x_refusals_are_clear(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
     _x(monkeypatch, connected=False)
     no_x = _message(lace, user.id, channel="x", address="https://x.com/EnziMotors")
-    assert "Connect your X account" in client.post(f"{API}/laces/{lace}/outreach/{no_x}/send").json()["detail"]
+    assert "Connect an X account" in client.post(f"{API}/laces/{lace}/outreach/{no_x}/send").json()["detail"]
     _x(monkeypatch)
     bad = _message(lace, user.id, channel="x", address="https://x.com/i/status/1")
     assert client.post(f"{API}/laces/{lace}/outreach/{bad}/send").status_code == 422
