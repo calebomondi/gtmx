@@ -24,26 +24,43 @@ from backend.app.services.errors import ConflictError, InvalidInputError, NotFou
 from config import settings
 from utils.log import logger
 
-# App platform -> Composio toolkit slug (verified against the live API).
-TOOLKITS = {
-    "gmail": "gmail",
-    "googlecalendar": "googlecalendar",
-    "linkedin": "linkedin",
-    "instagram": "instagram",
-    "facebook": "facebook",
-    "tiktok": "tiktok",
-    "x": "twitter",
-}
-PLATFORM_OF = {toolkit: platform for platform, toolkit in TOOLKITS.items()}
-# Toolkits Composio manages auth for (verified 2026-10-10). The others need an
-# auth config backed by our own OAuth app (settings.composio_auth_configs).
-MANAGED = {"gmail", "googlecalendar", "linkedin", "instagram", "facebook"}
+@dataclass(frozen=True)
+class App:
+    """An app the founder can connect: its Composio toolkit, its name, and
+    whether Composio manages its sign-in (the others need our own OAuth app,
+    in settings.composio_auth_configs)."""
+    platform: str
+    toolkit: str
+    label: str
+    managed: bool
+
+
+# Every app the founder can connect. Toolkits and managed sign-in verified
+# against the live Composio API (2026-10-10; the second wave 2026-10-24).
+APPS = (
+    App("gmail", "gmail", "Gmail", True),
+    App("outlook", "outlook", "Outlook", True),
+    App("googlecalendar", "googlecalendar", "Google Calendar", True),
+    App("linkedin", "linkedin", "LinkedIn", True),
+    App("instagram", "instagram", "Instagram", True),
+    App("facebook", "facebook", "Facebook", True),
+    App("tiktok", "tiktok", "TikTok", False),
+    App("x", "twitter", "X", False),
+    App("whatsapp", "whatsapp", "WhatsApp Business", True),
+    App("zoho", "zoho", "Zoho CRM", True),
+    App("hubspot", "hubspot", "HubSpot", True),
+    App("googlesheets", "googlesheets", "Google Sheets", True),
+    App("notion", "notion", "Notion", True),
+    App("slack", "slack", "Slack", True),
+    App("asana", "asana", "Asana", True),
+    App("calendly", "calendly", "Calendly", True),
+)
+TOOLKITS = {app.platform: app.toolkit for app in APPS}
+PLATFORM_OF = {app.toolkit: app.platform for app in APPS}
+MANAGED = {app.toolkit for app in APPS if app.managed}
 
 _STATUS = {"ACTIVE": "live", "INITIATED": "pending", "INITIALIZING": "pending"}
-_LABEL = {
-    "gmail": "Gmail", "googlecalendar": "Google Calendar", "linkedin": "LinkedIn", "instagram": "Instagram",
-    "facebook": "Facebook", "tiktok": "TikTok", "x": "X",
-}
+_LABEL = {app.platform: app.label for app in APPS}
 
 
 def response_field(data, field: str) -> str | None:

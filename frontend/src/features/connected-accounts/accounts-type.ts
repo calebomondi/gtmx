@@ -61,7 +61,56 @@ const CAPABILITIES: Record<Platform, Connection['capabilities']> = {
   ],
   x: [
     { label: 'Send DMs you approve', allowed: true },
+    { label: 'Post, reply, like and repost when you approve', allowed: true },
     { label: 'Send without your approval', allowed: false },
+  ],
+  // The apps below connect now; their skills arrive one by one (COMING_SOON).
+  outlook: [
+    { label: 'Send emails you approve, and read their replies', allowed: true },
+    { label: 'Find free slots on your Outlook calendar', allowed: true },
+    { label: 'Send without your approval', allowed: false },
+  ],
+  whatsapp: [
+    { label: 'Start chats with your approved templates, when you approve', allowed: true },
+    { label: 'Answer replies you approve', allowed: true },
+    { label: 'Message without your approval', allowed: false },
+  ],
+  zoho: [
+    { label: 'Summarise your pipeline: deals by stage, totals, stale deals', allowed: true },
+    { label: 'Check whether someone is already a lead', allowed: true },
+    { label: 'Add leads and log messages when you approve', allowed: true },
+    { label: 'Change your CRM without approval', allowed: false },
+  ],
+  hubspot: [
+    { label: 'Summarise your pipeline: deals by stage, totals, stale deals', allowed: true },
+    { label: 'Check whether a company or person is already in HubSpot', allowed: true },
+    { label: 'Add contacts, companies and deals when you approve', allowed: true },
+    { label: 'Change your CRM without approval', allowed: false },
+  ],
+  googlesheets: [
+    { label: 'Read and summarise a sheet, or import a lead list', allowed: true },
+    { label: 'Export accounts and contacts when you approve', allowed: true },
+    { label: 'Change your sheets without approval', allowed: false },
+  ],
+  notion: [
+    { label: 'Search your workspace for context', allowed: true },
+    { label: 'Write the brief or a report as a page when you approve', allowed: true },
+    { label: 'Change your pages without approval', allowed: false },
+  ],
+  slack: [
+    { label: 'Post the brief and reply alerts to a channel you choose', allowed: true },
+    { label: "Search your team's messages for context", allowed: true },
+    { label: 'Message people without approval', allowed: false },
+  ],
+  asana: [
+    { label: 'Create follow-up tasks when you approve', allowed: true },
+    { label: 'Summarise open and overdue tasks', allowed: true },
+    { label: 'Change tasks without approval', allowed: false },
+  ],
+  calendly: [
+    { label: 'Add a booking link for each prospect to drafts', allowed: true },
+    { label: 'See booked meetings, and who booked', allowed: true },
+    { label: 'Cancel or move meetings', allowed: false },
   ],
 }
 
