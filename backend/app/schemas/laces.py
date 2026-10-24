@@ -3,7 +3,7 @@
 import uuid
 from datetime import date, datetime
 from zoneinfo import available_timezones
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -49,6 +49,7 @@ LaceMood = Literal["thinking", "alert"]
 # Replies marked read in one request: a conversation's worth, with room.
 MAX_READ_IDS = 200
 MAX_APP_ACTIONS_PER_PAGE = 100
+MAX_APP_SETTINGS = 10
 
 
 class LaceListItem(LaceResponse):
@@ -355,6 +356,23 @@ class ActivityResponse(BaseModel):
 
 class OutreachReadRequest(BaseModel):
     ids: list[uuid.UUID] = Field(min_length=1, max_length=MAX_READ_IDS, description="Replies the founder opened")
+
+
+class LaceAppResponse(BaseModel):
+    """One app, as one Lace sees it."""
+    platform: str
+    label: str
+    group: Literal["channels", "crm", "docs", "team", "meetings"]
+    connected: bool = Field(description="The founder connected it, and it's live")
+    status: str | None = Field(description="The connection's status (live, pending, needs_attention), if connected")
+    enabled: bool = Field(description="This Lace may use it")
+    settings: dict[str, str] = Field(description="Its settings for this Lace, e.g. the Slack channel for the brief")
+
+
+class LaceAppUpdate(BaseModel):
+    enabled: bool | None = None
+    settings: dict[Annotated[str, Field(max_length=40)], Annotated[str, Field(max_length=300)]] | None = Field(
+        default=None, max_length=MAX_APP_SETTINGS, description="Replaces the app's settings for this Lace")
 
 
 class AppActionResponse(BaseModel):

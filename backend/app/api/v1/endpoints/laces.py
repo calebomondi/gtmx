@@ -50,12 +50,14 @@ from backend.app.schemas.laces import (
     OutreachResponse,
     OutreachReadRequest,
     AppActionResponse,
+    LaceAppResponse,
+    LaceAppUpdate,
     MAX_APP_ACTIONS_PER_PAGE,
     OutreachUpdateRequest,
 )
 # Registers the social actions' runners, which approving app actions runs.
 from backend.app.services import social_actions  # noqa: F401
-from backend.app.services import email, inbox, lace_app_actions, lace_accounts, lace_briefs, lace_cards, lace_documents, lace_activity, lace_contacts, lace_search, lace_channels, lace_competitors, lace_opportunities, lace_outreach
+from backend.app.services import email, inbox, lace_app_actions, lace_app_settings, lace_accounts, lace_briefs, lace_cards, lace_documents, lace_activity, lace_contacts, lace_search, lace_channels, lace_competitors, lace_opportunities, lace_outreach
 from backend.app.services import laces as lace_service
 from agents.lace.store import JobRefused
 from backend.app.services.errors import ConflictError
@@ -363,6 +365,19 @@ async def mark_outreach_sent(lace: OwnedLace, message_id: uuid.UUID, db: DbSessi
 async def mark_outreach_read(lace: OwnedLace, payload: OutreachReadRequest, db: DbSession):
     """The founder opened these replies."""
     return ActivityReadResponse(marked=await lace_outreach.mark_read(db, lace.id, payload.ids))
+
+
+@router.get("/{lace_id}/apps", response_model=list[LaceAppResponse])
+async def list_lace_apps(lace: OwnedLace, db: DbSession):
+    """Every app: connected or not, and whether this Lace may use it."""
+    return await lace_app_settings.list_for_lace(db, lace)
+
+
+@router.put("/{lace_id}/apps/{platform}", response_model=LaceAppResponse)
+async def update_lace_app(lace: OwnedLace, platform: str, payload: LaceAppUpdate, db: DbSession):
+    """Switch an app on or off for this Lace, or change its settings here."""
+    await lace_app_settings.update(db, lace, platform, payload.enabled, payload.settings)
+    return next(a for a in await lace_app_settings.list_for_lace(db, lace) if a["platform"] == platform)
 
 
 @router.get("/{lace_id}/app-actions", response_model=list[AppActionResponse])

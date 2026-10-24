@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from agents.lace.apps import AppError, CommentsOn, XRecord
 from backend.app.database.lace_models import Lace, LaceChannel
 from backend.app.services import connections as connection_service
+from backend.app.services import lace_app_settings
 from backend.app.services.lace_channels import items
 from data_sources.socials import x_api
 from utils.log import logger
@@ -40,7 +41,7 @@ class DbLaceApps:
         """The Lace owner's live connection to `platform`, if any."""
         async with self._sessions() as session:
             lace = await session.get(Lace, self._lace_id)
-            if lace is None:
+            if lace is None or not await lace_app_settings.enabled(session, lace, platform):
                 return None
             live = next((c for c in await connection_service.list_for_user(session, lace.user_id)
                          if c.platform == platform and c.status == "live"), None)
