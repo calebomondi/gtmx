@@ -53,6 +53,8 @@ from backend.app.schemas.laces import (
     MAX_APP_ACTIONS_PER_PAGE,
     OutreachUpdateRequest,
 )
+# Registers the social actions' runners, which approving app actions runs.
+from backend.app.services import social_actions  # noqa: F401
 from backend.app.services import email, inbox, lace_app_actions, lace_accounts, lace_briefs, lace_cards, lace_documents, lace_activity, lace_contacts, lace_search, lace_channels, lace_competitors, lace_opportunities, lace_outreach
 from backend.app.services import laces as lace_service
 from agents.lace.store import JobRefused

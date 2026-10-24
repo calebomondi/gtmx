@@ -144,7 +144,7 @@ async def _answer_dm(db: AsyncSession, message: LaceOutreach, channel: LaceChann
                              f"then mark it sent." if _outside_window(error)
                              else f"{label} refused the message. Try again, or answer on {label} directly.")
         else:
-            message.provider_message_id = _response_field(result.get("data"), "message_id")
+            message.provider_message_id = connection_service.response_field(result.get("data"), "message_id")
             message.status, message.sent_at = "sent", datetime.now(UTC)
     except Exception:  # noqa: BLE001 -- an expected outcome: recorded on the message
         logger.exception("%s answer failed for message %s", label, message.id)
@@ -180,7 +180,7 @@ async def _send_x(db: AsyncSession, message: LaceOutreach) -> LaceOutreach:
     try:
         found = await asyncio.to_thread(connection_service.execute_tool, message.user_id, _X_LOOKUP,
                                         {"username": handle.group("handle")}, x.id)
-        user = _response_field(found.get("data"), "id")
+        user = connection_service.response_field(found.get("data"), "id")
         if found.get("error") or not user:
             message.status, message.error = "failed", f"Couldn't find @{handle.group('handle')} on X."
         else:
@@ -188,7 +188,7 @@ async def _send_x(db: AsyncSession, message: LaceOutreach) -> LaceOutreach:
                                              {"participant_id": user, "text": message.body}, x.id)
             failed = bool(result.get("error"))
             message.provider_log_id = result.get("log_id")
-            message.provider_message_id = _response_field(result.get("data"), "dm_event_id")
+            message.provider_message_id = connection_service.response_field(result.get("data"), "dm_event_id")
             message.status = "failed" if failed else "sent"
             message.error = "X refused the message: they may not accept DMs from you." if failed else None
             message.sent_at = None if failed else datetime.now(UTC)
@@ -199,14 +199,6 @@ async def _send_x(db: AsyncSession, message: LaceOutreach) -> LaceOutreach:
         await db.commit()
         await db.refresh(message)
     return message
-
-
-def _response_field(data, field: str) -> str | None:
-    """A field of a platform API response, which Composio may or may not wrap in `data`."""
-    if not isinstance(data, dict):
-        return None
-    inner = data.get("data") if isinstance(data.get("data"), dict) else data
-    return inner.get(field)
 
 
 async def unhandled_replies(db: AsyncSession, lace_id: uuid.UUID, limit: int) -> list[LaceOutreach]:

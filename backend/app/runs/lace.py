@@ -58,6 +58,10 @@ _STEP_TEXT = {
     "read_pages": lambda a: f"Reading {len(a.get('urls') or [])} pages",
     "read_social": lambda a: f"Reading {a.get('url', 'a social profile')}",
     "suggest_replies": lambda a: "Suggesting replies",
+    "post_on_social": lambda a: f"Drafting a post for {a.get('platform', 'your socials')}",
+    "reply_to_comment": lambda a: "Drafting a reply to a comment",
+    "engage_on_x": lambda a: f"Preparing a {a.get('action', 'reply')} on X",
+    "read_my_comments": lambda a: f"Reading comments on your {a.get('platform', 'social')} posts",
     "get_facts": lambda a: "Checking what I know",
     "record_fact": lambda a: "Noting that down",
     "define_icp": lambda a: "Starting to work out your ideal customers",
@@ -296,7 +300,9 @@ async def _converse(run_id: uuid.UUID, lace_id: uuid.UUID, message: HumanMessage
 # Where a reply keeps the cards and choices shown under it.
 UI_KEY = "ui"
 # The tools whose results put something under the reply.
-_UI_TOOLS = frozenset({"ask_choice", "ask_checklist", "ask_form", "show", "suggest_replies"})
+_UI_TOOLS = frozenset({"ask_choice", "ask_checklist", "ask_form", "show", "suggest_replies",
+                       # Proposals in the founder's apps, shown with Approve and Decline.
+                       "post_on_social", "reply_to_comment", "engage_on_x"})
 # The blocks the founder answers.
 _QUESTION_TYPES = frozenset({"choices", "checklist", "form"})
 _UI_BLOCK = TypeAdapter(UiBlock)
