@@ -13,6 +13,7 @@ from typing import Literal
 from langchain_core.tools import BaseTool, tool
 
 from agents.context_budget import _truncate_to_tokens, count_tokens
+from agents.lace.apps import AppError, LaceApps
 from agents.lace.ask_tools import build_ask_tools
 from agents.lace.cards import cards
 from agents.lace.edit_tools import build_edit_tools
@@ -25,7 +26,9 @@ from config import Settings
 from data_sources.scraping import exa, firecrawl
 from data_sources.scraping.firecrawl import FirecrawlError
 from data_sources.socials import read as socials
+from data_sources.socials import x_api
 from data_sources.socials.brightdata import SocialsError
+from utils.log import logger
 
 # Tokens of one page the model reads in full; a batch shares a smaller cap
 # per page so eight pages can't flood the context.
@@ -56,7 +59,8 @@ def _capped(markdown: str, cap: int) -> tuple[str, bool]:
     return _truncate_to_tokens(markdown, cap), True
 
 
-def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = None) -> list[BaseTool]:
+def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = None,
+                apps: LaceApps | None = None) -> list[BaseTool]:
     """Every tool the Lace can call, closed over its store. The job-starting
     tools are included only when there is something to run jobs."""
 
@@ -145,6 +149,21 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
         return ToolResult(ok=bool(pages), summary=f"Read {len(pages)} of {len(urls)} pages.", data=data,
                           error=None if pages else "No page could be read.")
 
+    async def _read_x(link: socials.SocialLink) -> dict | None:
+        """An X profile or post from X's own API, through the founder's
+        connected X; None to fall back to the web (not connected, or refused)."""
+        if apps is None:
+            return None
+        try:
+            raw = await apps.x(link.kind if link.kind == "post" else "profile", x_api.key(link.url, link.kind))
+        except AppError as exc:
+            logger.info("X API read of %s fell back to the web: %s", link.url, exc)
+            return None
+        if raw is None:
+            return None
+        item = x_api.post(raw, link.url) if link.kind == "post" else x_api.profile(raw, link.url)
+        return {**item, "source": "x_api"}
+
     @tool(parse_docstring=True)
     @guarded
     async def read_social(url: str) -> ToolResult:
@@ -156,12 +175,15 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
         link = socials.classify(url)
         if link is None:
             return ToolResult.failure(f"{url} is not a social profile or post read_social can read. It reads {socials.SUPPORTED}")
-        try:
-            item = await asyncio.to_thread(socials.read, link, settings, settings.social_read_timeout_s)
-        except SocialsError as exc:
-            return ToolResult.failure(f"Couldn't read {url}: {exc}.")
+        item = await _read_x(link) if link.platform == "x" else None
         if item is None:
-            return ToolResult.failure(f"Nothing could be read at {url}: it may be private or removed, or the link is wrong.")
+            try:
+                item = await asyncio.to_thread(socials.read, link, settings, settings.social_read_timeout_s)
+            except SocialsError as exc:
+                return ToolResult.failure(f"Couldn't read {url}: {exc}.")
+            if item is None:
+                return ToolResult.failure(f"Nothing could be read at {url}: it may be private or removed, or the link is wrong.")
+            item["source"] = "web"
         note = ""
         if count_tokens(json.dumps(item, default=str)) > SOCIAL_TOKEN_CAP:
             item.pop("details", None)

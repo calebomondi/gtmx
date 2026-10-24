@@ -34,6 +34,7 @@ from backend.app.database.lace_models import Lace
 from backend.app.runs import events
 from backend.app.services import lace_activity, lace_brief_email, lace_briefs
 from backend.app.services.errors import ConflictError, InvalidInputError
+from backend.app.services.lace_apps import DbLaceApps
 from backend.app.services.lace_store import DbLaceStore
 from backend.app.services.runs import set_run_fields
 from config import settings
@@ -96,7 +97,8 @@ async def forget_thread(lace_id: uuid.UUID) -> None:
 
 def _graph(lace_id: uuid.UUID, jobs: LaceJobs | None = None):
     store = DbLaceStore(AsyncSessionLocal, lace_id)
-    return build_lace_graph(store, checkpointer=get_checkpointer(), jobs=jobs), store
+    apps = DbLaceApps(AsyncSessionLocal, lace_id)
+    return build_lace_graph(store, checkpointer=get_checkpointer(), jobs=jobs, apps=apps), store
 
 
 def step_text(tool_call: dict) -> str:
