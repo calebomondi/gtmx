@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { createLace } from "@/lib/api"
+import { ApiError, askToJoinLace, checkLaceClaimed, createLace } from "@/lib/api"
 import { refetchLaces } from "@/lib/laces-store"
 
 import { useEyeTarget } from "./use-eye-target"
@@ -24,6 +24,9 @@ export default function NewLace() {
   const [website, setWebsite] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // The startup already has a Lace: the domain, to ask to join it instead.
+  const [taken, setTaken] = useState<string | null>(null)
+  const [asked, setAsked] = useState(false)
   const [mood, setMood] = useState<LaceState>("idle")
   const mascot = useRef<HTMLDivElement>(null)
   const form = useRef<HTMLFormElement>(null)
@@ -50,6 +53,23 @@ export default function NewLace() {
       navigate(`/lace/${lace.id}/setup?run=${run_id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
+      setSubmitting(false)
+      if (err instanceof ApiError && err.status === 409) {
+        const claim = await checkLaceClaimed(website.trim()).catch(() => null)
+        setTaken(claim?.taken ? claim.domain : null)
+      }
+    }
+  }
+
+  const askToJoin = async () => {
+    setSubmitting(true)
+    try {
+      await askToJoinLace(website.trim())
+      setAsked(true)
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
       setSubmitting(false)
     }
   }
@@ -78,17 +98,28 @@ export default function NewLace() {
               </Field>
               <Field>
                 <FieldLabel htmlFor="lace-website">Your startup's website</FieldLabel>
-                <Input id="lace-website" value={website} onChange={(e) => setWebsite(e.target.value)}
+                <Input id="lace-website" value={website} onChange={(e) => { setWebsite(e.target.value); setTaken(null); setAsked(false) }}
                        placeholder="acme.com" inputMode="url" autoComplete="url" required />
                 <FieldDescription>Your Lace starts here: it reads the site to learn your offer.</FieldDescription>
               </Field>
               {error && <FieldError>{error}</FieldError>}
+              {asked && (
+                <p className="text-sm text-muted-foreground" role="status">
+                  Asked. The people on {taken}'s Lace will see it and can let you in; it then appears in your sidebar.
+                </p>
+              )}
             </FieldGroup>
           </CardContent>
           <CardFooter>
-            <Button type="submit" className="w-full" disabled={submitting || !name.trim() || !website.trim()}>
-              {submitting && <Loader2 className="animate-spin" />} Create My Lace
-            </Button>
+            {taken ? (
+              <Button type="button" className="w-full" disabled={submitting || asked} onClick={() => void askToJoin()}>
+                {submitting && <Loader2 className="animate-spin" />} {asked ? "Asked to join" : `Ask to join ${taken}'s Lace`}
+              </Button>
+            ) : (
+              <Button type="submit" className="w-full" disabled={submitting || !name.trim() || !website.trim()}>
+                {submitting && <Loader2 className="animate-spin" />} Create My Lace
+              </Button>
+            )}
           </CardFooter>
         </form>
       </Card>

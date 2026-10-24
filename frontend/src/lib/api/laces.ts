@@ -1,4 +1,5 @@
 import { apiFetch } from "./http"
+import type { LaceRole } from "./lace-members"
 import type { AppGroup, Platform } from "@/lib/platforms"
 
 export type LaceStatus = "onboarding" | "active" | "archived"
@@ -19,8 +20,10 @@ export interface LaceDto {
   website: string
   startup_name: string | null
   status: LaceStatus
-  /** Shown first in the sidebar. */
+  /** Shown first in this person's sidebar. */
   pinned: boolean
+  /** This person's role on the Lace. */
+  role: LaceRole
   created_at: string
 }
 

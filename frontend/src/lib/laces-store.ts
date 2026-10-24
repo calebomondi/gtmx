@@ -4,11 +4,14 @@ import type { LaceState } from "@/components/lace-mascot"
 import {
   archiveLace as archiveLaceApi,
   deleteLace as deleteLaceApi,
+  answerLaceInvite,
   listArchivedLaces,
+  listLaceInvites,
   listLaces,
   restoreLace as restoreLaceApi,
   updateLace,
   type LaceDto,
+  type LaceInviteDto,
   type LaceListItemDto,
 } from "@/lib/api"
 import { supabase } from "@/lib/supabase"
@@ -16,6 +19,8 @@ import { supabase } from "@/lib/supabase"
 export interface LacesState {
   laces: LaceListItemDto[]
   archived: LaceDto[]
+  /** Laces this person was invited to and hasn't answered. */
+  invites: LaceInviteDto[]
   loading: boolean
   /** True once a fetch has finished, so an empty list means "no Laces". */
   loaded: boolean
@@ -26,7 +31,7 @@ type Listener = () => void
 
 const listeners = new Set<Listener>()
 
-let state: LacesState = { laces: [], archived: [], loading: false, loaded: false, error: null }
+let state: LacesState = { laces: [], archived: [], invites: [], loading: false, loaded: false, error: null }
 
 function setState(patch: Partial<LacesState>): void {
   state = { ...state, ...patch }
@@ -50,8 +55,10 @@ export async function refetchLaces(): Promise<void> {
   setState({ loading: true, error: null })
   try {
     const { data } = await supabase.auth.getSession()
-    const [laces, archived] = data.session ? await Promise.all([listLaces(), listArchivedLaces()]) : [[], []]
-    setState({ laces, archived, loading: false, loaded: true })
+    const [laces, archived, invites] = data.session
+      ? await Promise.all([listLaces(), listArchivedLaces(), listLaceInvites()])
+      : [[], [], []]
+    setState({ laces, archived, invites, loading: false, loaded: true })
   } catch (err) {
     setState({ loading: false, error: err instanceof Error ? err.message : String(err) })
   }
@@ -91,6 +98,12 @@ export async function restoreLace(laceId: string): Promise<LaceDto> {
   const lace = await restoreLaceApi(laceId)
   await refetchLaces()
   return lace
+}
+
+/** Accept or decline an invite, then reload: an accepted Lace joins the list. */
+export async function answerInvite(laceId: string, answer: "accept" | "decline"): Promise<void> {
+  await answerLaceInvite(laceId, answer)
+  await refetchLaces()
 }
 
 export async function deleteLace(laceId: string): Promise<void> {

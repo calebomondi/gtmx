@@ -3,7 +3,7 @@ import { ChevronRight } from "lucide-react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Separator } from "@/components/ui/separator"
-import type { FactDto, LaceStatus } from "@/lib/api"
+import type { FactDto, LaceRole, LaceStatus } from "@/lib/api"
 
 import { LaceAppsSection } from "./lace-apps"
 import { LaceBrief } from "./lace-brief"
@@ -18,10 +18,12 @@ import { useLaceBrief } from "./use-lace-brief"
 /** A Lace's settings and memory: how often it keeps watch, when it posts
  * its brief, everything it knows about the startup (each fact with its
  * source), and archiving or deleting it. */
-export function LaceSettings({ laceId, name, status, facts, apps, open, onOpenChange, onChanged }: {
+export function LaceSettings({ laceId, name, status, role, facts, apps, open, onOpenChange, onChanged }: {
   laceId: string
   name: string
   status: LaceStatus
+  /** The person's role: members see what admins set, without changing it. */
+  role: LaceRole
   facts: FactDto[]
   apps: LaceApps
   open: boolean
@@ -30,6 +32,7 @@ export function LaceSettings({ laceId, name, status, facts, apps, open, onOpenCh
   onChanged: () => void
 }) {
   const schedule = useLaceBrief(laceId)
+  const manages = role !== "member"
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="overflow-y-auto">
@@ -41,6 +44,13 @@ export function LaceSettings({ laceId, name, status, facts, apps, open, onOpenCh
           </SheetDescription>
         </SheetHeader>
         <div className="flex flex-col gap-6 px-4 pb-6">
+          {!manages && (
+            <p className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              Its admins and owner change how {name} keeps watch, its brief and its apps. You can see them here.
+            </p>
+          )}
+          {/* A disabled fieldset turns off every control in it, for members. */}
+          <fieldset disabled={!manages} className="flex min-w-0 flex-col gap-6">
           <section className="flex flex-col gap-3">
             <h3 className="text-sm font-medium">Keeping watch</h3>
             <LaceWatch name={name} schedule={schedule} />
@@ -59,6 +69,7 @@ export function LaceSettings({ laceId, name, status, facts, apps, open, onOpenCh
             </p>
             <LaceAppsSection laceId={laceId} name={name} apps={apps} />
           </section>
+          </fieldset>
           <Separator />
           {/* Closed by default: a long list would push Manage out of sight. */}
           <Collapsible render={<section className="group/knows flex flex-col gap-3" />}>
@@ -77,11 +88,15 @@ export function LaceSettings({ laceId, name, status, facts, apps, open, onOpenCh
             <p className="text-xs text-muted-foreground">What you shared with {name} in the chat. It reads them when they matter.</p>
             <LaceDocuments laceId={laceId} name={name} />
           </section>
-          <Separator />
-          <section className="flex flex-col gap-3">
-            <h3 className="text-sm font-medium">Manage</h3>
-            <LaceManage laceId={laceId} name={name} status={status} onChanged={onChanged} />
-          </section>
+          {role === "owner" && (
+            <>
+              <Separator />
+              <section className="flex flex-col gap-3">
+                <h3 className="text-sm font-medium">Manage</h3>
+                <LaceManage laceId={laceId} name={name} status={status} onChanged={onChanged} />
+              </section>
+            </>
+          )}
         </div>
       </SheetContent>
     </Sheet>

@@ -1,8 +1,9 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom"
 import { RotateCcw, Settings2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { ensureLacesLoaded, useLaces } from "@/lib/laces-store"
 
 import { JOB_INFO } from "./background-jobs"
 import type { DiscussState } from "./discuss"
@@ -13,6 +14,8 @@ import { foundSections, type FoundSection } from "./found-model"
 import { useSeenAt } from "./viewer-memory"
 import { LaceFeed } from "./lace-feed"
 import { LaceFindsDock } from "./lace-finds-dock"
+import { LaceInviteGate } from "./lace-invite-gate"
+import { LacePeopleButton } from "./lace-people"
 import { LaceMessaging } from "./lace-messaging"
 import { LaceRail, LaceTabBar } from "./lace-rail"
 import { useLaceApps } from "./use-lace-apps"
@@ -35,6 +38,11 @@ function isTab(value: string | undefined): value is LaceTab {
 export default function LaceWorkspacePage() {
   // The route only renders this page with a lace_id.
   const { lace_id: laceId = "", tab } = useParams()
+  const { invites } = useLaces()
+  useEffect(ensureLacesLoaded, [])
+  // Invited and not yet answered: the invite, and nothing of the Lace.
+  const invite = invites.find((i) => i.lace_id === laceId)
+  if (invite) return <LaceInviteGate invite={invite} />
   if (tab !== undefined && !isTab(tab)) return <Navigate to={`/lace/${laceId}`} replace />
   return <LaceWorkspace key={laceId} laceId={laceId} tab={tab ?? "feed"} />
 }
@@ -86,10 +94,13 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
           <h1 className="truncate text-base font-medium">{name}</h1>
           {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
         </div>
-        <Button variant="outline" size="icon-sm" onClick={() => setSettingsOpen(true)} disabled={chat.loading}
-                aria-label={`${name}'s settings`} title="Settings">
-          <Settings2 />
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          {chat.lace && <LacePeopleButton laceId={laceId} name={name} me={chat.lace.role} />}
+          <Button variant="outline" size="icon-sm" onClick={() => setSettingsOpen(true)} disabled={chat.loading}
+                  aria-label={`${name}'s settings`} title="Settings">
+            <Settings2 />
+          </Button>
+        </div>
       </header>
       <LaceStatusBanner lace={chat.lace} working={chat.working} onChanged={() => void chat.reload()} />
       {/* The chat shows its own errors in line; elsewhere they sit up here. */}
@@ -124,7 +135,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
         </main>
       </div>
       <LaceTabBar {...nav} className="md:hidden" />
-      <LaceSettings laceId={laceId} name={name} status={chat.lace?.status ?? "active"} facts={chat.facts}
+      <LaceSettings laceId={laceId} name={name} status={chat.lace?.status ?? "active"} role={chat.lace?.role ?? "member"} facts={chat.facts}
                     apps={apps} open={settingsOpen} onOpenChange={setSettingsOpen} onChanged={() => void chat.reload()} />
     </div>
   )
