@@ -253,6 +253,22 @@ WatchEvery = Literal[6, 12, 24, 168]
 WATCH_EVERY_H: tuple[int, ...] = WatchEvery.__args__
 DEFAULT_WATCH_EVERY_H = 6
 
+# Something the Lace proposed doing in one of the founder's apps (post, reply,
+# add a lead): it waits for the founder's click, then runs or is declined.
+AppActionStatus = Literal["proposed", "running", "done", "failed", "declined"]
+APP_ACTION_STATUSES: tuple[str, ...] = AppActionStatus.__args__
+
+
+class ProposedAction(BaseModel):
+    """An action in one of the founder's apps, proposed by the Lace for the
+    founder to approve. Nothing runs until they do."""
+    app: str = Field(max_length=32, description="The app it runs in, e.g. linkedin")
+    action: str = Field(max_length=48, description="What it does there, e.g. publish_post")
+    title: str = Field(min_length=1, max_length=200, description="What will happen, for the founder: 'Post on LinkedIn'")
+    preview: str = Field(default="", max_length=4000, description="What will be posted or written, as the founder sees it")
+    arguments: dict = Field(default_factory=dict, description="What the action needs to run")
+
+
 # Where a contact came from: the account search's own sources, or a contact search.
 ContactSource = Literal["discovery", "contact_search", "founder"]
 CONTACT_SOURCES: tuple[str, ...] = ContactSource.__args__
@@ -260,9 +276,9 @@ CONTACT_SOURCES: tuple[str, ...] = ContactSource.__args__
 # What a Lace's Feed shows the founder it did (docs/lace-ui-plan.md, Feed).
 ActivityKind = Literal[
     "brief", "competitors_found", "competitor_moves", "accounts_found", "contacts_found",
-    "drafts_ready", "reply_received", "opportunities_found", "job_failed",
+    "drafts_ready", "reply_received", "opportunities_found", "job_failed", "app_action",
 ]
 ACTIVITY_KINDS: tuple[str, ...] = ActivityKind.__args__
 # What an activity is about, when it is one thing the founder can open.
-ActivityRef = Literal["brief", "outreach"]
+ActivityRef = Literal["brief", "outreach", "app_action"]
 ACTIVITY_REFS: tuple[str, ...] = ActivityRef.__args__

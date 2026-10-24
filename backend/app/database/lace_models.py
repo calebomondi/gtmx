@@ -15,7 +15,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from agents.schemas.monitor import MOVE_IMPORTANCES, MOVE_KINDS
 from agents.schemas.opportunities import OPPORTUNITY_KINDS, OPPORTUNITY_STATUSES
-from agents.schemas.lace import ACCOUNT_STATUSES, ACTIVITY_KINDS, ACTIVITY_REFS, CONTACT_SOURCES, BRIEF_FREQUENCIES, CONTACT_STATUSES, INBOX_PLATFORMS, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, DEFAULT_WATCH_EVERY_H, FACT_ORIGINS, FACT_TOPICS, WATCH_EVERY_H
+from agents.schemas.lace import ACCOUNT_STATUSES, ACTIVITY_KINDS, ACTIVITY_REFS, APP_ACTION_STATUSES, CONTACT_SOURCES, BRIEF_FREQUENCIES, CONTACT_STATUSES, INBOX_PLATFORMS, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, DEFAULT_WATCH_EVERY_H, FACT_ORIGINS, FACT_TOPICS, WATCH_EVERY_H
 from backend.app.database.connect import Base
 
 LACE_STATUSES = ("onboarding", "active", "archived")
@@ -486,3 +486,35 @@ class LaceDocument(Base):
     truncated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
                                                  default=_now, server_default=func.now())
+
+
+class LaceAppAction(Base):
+    """Something a Lace proposed doing in one of its founder's apps (a post, a
+    comment reply, a lead): proposed, then run on the founder's click, or
+    declined. Kept as the record of what was done in their name."""
+
+    __tablename__ = "lace_app_actions"
+    __table_args__ = (
+        CheckConstraint(_one_of("status", APP_ACTION_STATUSES), name="status"),
+        Index("ix_lace_app_actions_lace_id_status", "lace_id", "status"),
+        Index("ix_lace_app_actions_lace_id_created_at", "lace_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Indexed by the indexes above, which lead with it.
+    lace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("laces.id", ondelete="CASCADE"), nullable=False)
+    app: Mapped[str] = mapped_column(String(32), nullable=False)
+    action: Mapped[str] = mapped_column(String(48), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    preview: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    # What the action needs to run, as the Lace proposed it: opaque to the database.
+    arguments: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="proposed", server_default="proposed")
+    result: Mapped[str | None] = mapped_column(Text, nullable=True)
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Composio's log id of the run, for support.
+    provider_log_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
+                                                 default=_now, server_default=func.now())
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

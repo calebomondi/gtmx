@@ -21,6 +21,7 @@ class MemoryStore:
         self.targets: list = []
         self._ids = itertools.count(len(self._facts) + 1)
         self.startup_name: str | None = "Acme"
+        self.proposed: list = []
         self.website = "https://acme.test"
         # id -> (summary, text)
         self.shared: dict[str, tuple[DocumentSummary, str]] = {}
@@ -111,6 +112,10 @@ class MemoryStore:
         self.drafted = [d for d in self.drafted if d.id not in ids]
         return ItemsChanged(changed=[NamedItem(id=d.id, name=d.recipient) for d in gone],
                             missing=[i for i in ids if i not in {d.id for d in gone}])
+
+    async def propose_action(self, action) -> str:
+        self.proposed.append(action)
+        return f"a{len(self.proposed)}"
 
 
 class RecordingJobs:

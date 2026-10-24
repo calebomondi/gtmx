@@ -86,7 +86,21 @@ class SuggestionsBlock(BaseModel):
     options: list[str]
 
 
-UiBlock = Annotated[ChoicesBlock | ChecklistBlock | FormBlock | CardBlock | SuggestionsBlock,
+class ActionBlock(BaseModel):
+    """Something the Lace proposes doing in one of the founder's apps, with
+    Approve and Decline. `status` is filled in when the conversation is read."""
+    type: Literal["action"] = "action"
+    id: str
+    app: str
+    title: str
+    preview: str = ""
+    status: str | None = None
+    # What running it produced: a line, and a link to it when there is one.
+    result: str | None = None
+    url: str | None = None
+
+
+UiBlock = Annotated[ChoicesBlock | ChecklistBlock | FormBlock | CardBlock | SuggestionsBlock | ActionBlock,
                     Field(discriminator="type")]
 
 

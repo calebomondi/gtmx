@@ -4,9 +4,10 @@ import { Bookmark, Check, CheckCheck, ExternalLink, Loader2, Search, Send, Undo2
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import type { BlockAnswerDto, CardBlockDto, UiBlockDto } from "@/lib/api"
+import type { ActionBlockDto, BlockAnswerDto, CardBlockDto, UiBlockDto } from "@/lib/api"
 
 import { cardState, contactsLine, type CardState } from "./chat-cards"
+import { ActionCard } from "./lace-action-card"
 import { ChatQuestion } from "./lace-chat-questions"
 import { isQuestion } from "./questions"
 import { waitingAt } from "./contacts-model"
@@ -154,6 +155,7 @@ export function ChatBlocks({ blocks, chat, live, answers, onReview }: {
   }
   const cards = blocks.filter((b): b is CardBlockDto => b.type === "card")
   const questions = blocks.filter(isQuestion)
+  const actions = blocks.filter((b): b is ActionBlockDto => b.type === "action")
   // Only under the latest reply, while the Lace is free: tapping one sends it.
   const suggestions = live && !chat.working
     ? blocks.flatMap((b) => (b.type === "suggestions" ? b.options : []))
@@ -167,6 +169,7 @@ export function ChatBlocks({ blocks, chat, live, answers, onReview }: {
           ))}
         </div>
       )}
+      {actions.map((block) => <ActionCard key={block.id} block={block} chat={chat} />)}
       {questions.map((block) => (
         <ChatQuestion key={block.id ?? block.question} block={block} answer={block.id ? answers.get(block.id) : undefined}
                       live={live && !chat.working} onAnswer={(answer) => void chat.answer(block, answer)} />

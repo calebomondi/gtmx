@@ -10,7 +10,7 @@ from typing import Literal, Protocol
 
 from agents.schemas.icp import ICP
 from agents.schemas.opportunities import OpportunitySummary
-from agents.schemas.lace import AccountSummary, CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Suggestions, Fact, FactTopic, ItemsChanged, LaceProfile, NamedItem, NewContact, NewFact, SavedKind, SavedVerdict, SourcePage
+from agents.schemas.lace import ProposedAction, AccountSummary, CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Suggestions, Fact, FactTopic, ItemsChanged, LaceProfile, NamedItem, NewContact, NewFact, SavedKind, SavedVerdict, SourcePage
 
 
 class LaceStore(Protocol):
@@ -102,6 +102,11 @@ class LaceStore(Protocol):
 
     async def discard_drafts(self, ids: list[str]) -> ItemsChanged:
         """Delete unsent drafts; sent messages are never touched."""
+        ...
+
+    async def propose_action(self, action: ProposedAction) -> str:
+        """Keep an action in one of the founder's apps for them to approve;
+        its id. Nothing runs until they do."""
         ...
 
 

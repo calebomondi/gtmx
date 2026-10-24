@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from agents.schemas.lace_ui import BlockAnswer, UiBlock
 from agents.schemas.monitor import MoveImportance, MoveKind
 from agents.schemas.opportunities import OpportunityKind, OpportunityStatus
-from agents.schemas.lace import WatchEvery, AccountStatus, ActivityKind, ActivityRef, ContactSource, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
+from agents.schemas.lace import AppActionStatus, WatchEvery, AccountStatus, ActivityKind, ActivityRef, ContactSource, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
 
 
 def known_zone(value: str | None) -> str | None:
@@ -48,6 +48,7 @@ class LaceResponse(BaseModel):
 LaceMood = Literal["thinking", "alert"]
 # Replies marked read in one request: a conversation's worth, with room.
 MAX_READ_IDS = 200
+MAX_APP_ACTIONS_PER_PAGE = 100
 
 
 class LaceListItem(LaceResponse):
@@ -354,6 +355,22 @@ class ActivityResponse(BaseModel):
 
 class OutreachReadRequest(BaseModel):
     ids: list[uuid.UUID] = Field(min_length=1, max_length=MAX_READ_IDS, description="Replies the founder opened")
+
+
+class AppActionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    app: str
+    action: str
+    title: str
+    preview: str
+    status: AppActionStatus
+    result: str | None = Field(default=None, description="What running it produced, or why it failed")
+    url: str | None = Field(default=None, description="A link to what it made, when there is one")
+    created_at: datetime
+    decided_at: datetime | None
+    finished_at: datetime | None
 
 
 class ActivityReadResponse(BaseModel):

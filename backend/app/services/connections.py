@@ -46,6 +46,11 @@ _LABEL = {
 }
 
 
+def label(platform: str) -> str:
+    """The platform's name as the founder knows it: "LinkedIn", "X"."""
+    return _LABEL.get(platform, platform.title())
+
+
 @dataclass
 class ConnectionInfo:
     id: str
