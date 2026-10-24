@@ -13,7 +13,7 @@ import { useAuth } from "@/lib/auth"
 import { refetchLaces } from "@/lib/laces-store"
 
 import { PersonAvatar } from "./person-avatar"
-import { useLacePeople, type LacePeople } from "./use-lace-people"
+import type { LacePeople } from "./use-lace-people"
 
 // Faces shown in the header before "+N".
 const FACES = 4
@@ -105,8 +105,7 @@ function InviteForm({ me, people }: { me: LaceRole; people: LacePeople }) {
 /** The people on a Lace, as faces in its header; opening them lists
  * everyone, with what the person looking may do: invite, let in, change
  * roles, remove, or leave. */
-export function LacePeopleButton({ laceId, name, me }: { laceId: string; name: string; me: LaceRole }) {
-  const people = useLacePeople(laceId)
+export function LacePeopleButton({ name, me, people }: { name: string; me: LaceRole; people: LacePeople }) {
   const { user } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)

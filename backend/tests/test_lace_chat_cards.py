@@ -95,6 +95,7 @@ def test_a_checklist_is_answered_once_and_stays_answered(client, lace, lace_runt
 
     *_, asked, answered, reply = client.get(f"{API}/laces/{lace}/messages").json()
     assert asked["ui"][0]["id"] == block["id"]
+    answered.pop("author")  # who sent it: covered in test_lace_members
     assert answered == {"role": "founder", "content": "Remove ticked: Logistics expo",
                         "answer": {"block_id": block["id"], "chosen": ["o1"], "values": {}}}
     assert reply["content"] == "Removed the expo."

@@ -6,12 +6,14 @@ import { PromptInputWithActions } from "@/components/chat-input"
 import { Markdown } from "@/components/ui/markdown"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DOCUMENT_ACCEPT, type LaceMessageDto } from "@/lib/api"
+import { useAuth } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 
 import { LaceAvatar } from "./lace-avatar"
 import { ChatBlocks } from "./lace-chat-blocks"
 import { LaceReplySources } from "./lace-reply-sources"
 import { LaceWorkTrail } from "./lace-work-trail"
+import { PersonAvatar } from "./person-avatar"
 import { foldDraftExchanges } from "./draft-exchanges"
 import { answersByBlock } from "./questions"
 import { splitSources } from "./reply-sources"
@@ -49,10 +51,18 @@ function DraftExchange({ messages, to }: { messages: LaceMessageDto[]; to: strin
   )
 }
 
-function Message({ message, children }: { message: LaceMessageDto; children?: React.ReactNode }) {
+/** Who sent a founder message: its author, else (just sent, not yet saved) the person here. */
+interface Sender { name: string | null; email: string | null; avatarUrl: string | null }
+
+function Message({ message, sender, children }: {
+  message: LaceMessageDto
+  /** Shown beside the founder's message when the Lace has a team. */
+  sender?: Sender
+  children?: React.ReactNode
+}) {
   if (message.role === "founder") {
-    return (
-      <div className="flex flex-col items-end gap-1.5">
+    const bubble = (
+      <div className="flex min-w-0 flex-col items-end gap-1.5">
         {message.documents && message.documents.length > 0 && (
           <ul className="flex max-w-[85%] flex-wrap justify-end gap-1.5" aria-label="Attached">
             {message.documents.map((doc) => (
@@ -65,6 +75,13 @@ function Message({ message, children }: { message: LaceMessageDto; children?: Re
         {message.content && (
           <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl bg-muted px-4 py-2 text-sm">{message.content}</div>
         )}
+      </div>
+    )
+    if (!sender) return bubble
+    return (
+      <div className="flex justify-end gap-3">
+        <div className="flex min-w-0 flex-1 flex-col items-end">{bubble}</div>
+        <PersonAvatar name={sender.name} email={sender.email} avatarUrl={sender.avatarUrl} />
       </div>
     )
   }
@@ -89,7 +106,7 @@ const LATEST_SLACK_PX = 120
 /** The founder's conversation with their Lace: the messages, what it is
  * doing now, the reply as it streams in, and the input. Scrolled back, a
  * button returns to the latest and counts what arrived meanwhile. */
-export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill, starters }: {
+export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill, starters, team = false }: {
   chat: LaceChat
   name: string
   onOpenMessaging: () => void
@@ -99,7 +116,17 @@ export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill, s
   prefill?: { key: string; text: string }
   /** Shown while there is no conversation yet: things to ask. */
   starters?: React.ReactNode
+  /** The Lace has several people: each founder message shows who sent it. */
+  team?: boolean
 }) {
+  const { user } = useAuth()
+  const senderOf = (message: LaceMessageDto): Sender | undefined => {
+    if (!team || message.role !== "founder") return undefined
+    if (message.author) return { name: message.author.name, email: null, avatarUrl: message.author.avatar_url }
+    const meta = user?.user_metadata ?? {}
+    return { name: meta.full_name ?? meta.name ?? null, email: user?.email ?? null,
+             avatarUrl: meta.avatar_url ?? meta.picture ?? null }
+  }
   const end = useRef<HTMLDivElement>(null)
   const lastIndex = chat.messages.length - 1
   const answers = answersByBlock(chat.messages)
@@ -157,7 +184,7 @@ export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill, s
             <DraftExchange key={`draft:${i}`} messages={item.messages}
                            to={chat.outreach.find((m) => m.id === item.draftId)?.recipient_name ?? null} />
           ) : (
-            <Message key={item.index} message={item.message}>
+            <Message key={item.index} message={item.message} sender={senderOf(item.message)}>
               {item.message.ui && item.message.ui.length > 0 && (
                 <ChatBlocks blocks={item.message.ui} chat={chat} live={item.index === lastIndex} answers={answers}
                             onReview={onOpenMessaging} />

@@ -159,6 +159,8 @@ export interface LaceMessageDto {
   answer?: BlockAnswerDto
   /** The draft this message, or the Lace's reply to it, worked on. */
   draft_id?: string
+  /** Who on the founding team sent a founder message. */
+  author?: { id: string; name: string | null; avatar_url: string | null }
 }
 
 /** A document shared with a Lace, kept as its text. Mirrors DocumentResponse. */
