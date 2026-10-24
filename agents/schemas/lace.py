@@ -266,6 +266,12 @@ DEFAULT_WATCH_EVERY_H = 6
 # add a lead): it waits for the founder's click, then runs or is declined.
 AppActionStatus = Literal["proposed", "running", "done", "failed", "declined"]
 APP_ACTION_STATUSES: tuple[str, ...] = AppActionStatus.__args__
+# Who a Lace's people are to it: its creator, those who manage it with them, and the rest of the team.
+LaceRole = Literal["owner", "admin", "member"]
+LACE_ROLES: tuple[str, ...] = LaceRole.__args__
+# An invite waits for its answer; declined ones are kept so it isn't re-sent unasked.
+MemberStatus = Literal["invited", "active", "declined"]
+MEMBER_STATUSES: tuple[str, ...] = MemberStatus.__args__
 
 
 class ProposedAction(BaseModel):

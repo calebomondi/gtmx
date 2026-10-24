@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from agents.schemas.lace_ui import BlockAnswer, UiBlock
 from agents.schemas.monitor import MoveImportance, MoveKind
 from agents.schemas.opportunities import OpportunityKind, OpportunityStatus
-from agents.schemas.lace import AppActionStatus, WatchEvery, AccountStatus, ActivityKind, ActivityRef, ContactSource, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
+from agents.schemas.lace import AppActionStatus, LaceRole, WatchEvery, AccountStatus, ActivityKind, ActivityRef, ContactSource, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
 
 
 def known_zone(value: str | None) -> str | None:
@@ -39,7 +39,8 @@ class LaceResponse(BaseModel):
     website: str
     startup_name: str | None = None
     status: str = Field(description="onboarding | active | archived")
-    pinned: bool = False
+    pinned: bool = Field(default=False, description="Pinned in this person's sidebar")
+    role: LaceRole = Field(default="owner", description="This person's role on the Lace")
     created_at: datetime
 
 

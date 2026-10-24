@@ -15,7 +15,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from agents.schemas.monitor import MOVE_IMPORTANCES, MOVE_KINDS
 from agents.schemas.opportunities import OPPORTUNITY_KINDS, OPPORTUNITY_STATUSES
-from agents.schemas.lace import ACCOUNT_STATUSES, ACTIVITY_KINDS, ACTIVITY_REFS, APP_ACTION_STATUSES, CONTACT_SOURCES, BRIEF_FREQUENCIES, CONTACT_STATUSES, INBOX_PLATFORMS, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, DEFAULT_WATCH_EVERY_H, FACT_ORIGINS, FACT_TOPICS, WATCH_EVERY_H
+from agents.schemas.lace import ACCOUNT_STATUSES, ACTIVITY_KINDS, ACTIVITY_REFS, APP_ACTION_STATUSES, CONTACT_SOURCES, LACE_ROLES, MEMBER_STATUSES, BRIEF_FREQUENCIES, CONTACT_STATUSES, INBOX_PLATFORMS, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, DEFAULT_WATCH_EVERY_H, FACT_ORIGINS, FACT_TOPICS, WATCH_EVERY_H
 from backend.app.database.connect import Base
 
 LACE_STATUSES = ("onboarding", "active", "archived")
@@ -539,3 +539,31 @@ class LaceApp(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
                                                  server_default=func.now(), onupdate=_now)
 
+
+
+class LaceMember(Base):
+    """A person on a Lace: its owner (who made it), and the cofounders they
+    invited, as admins or members. An invite is a row too, until it is
+    answered. The Lace's own `user_id` stays its creator."""
+
+    __tablename__ = "lace_members"
+    __table_args__ = (
+        UniqueConstraint("lace_id", "user_id", name="uq_lace_members_lace_id_user_id"),
+        CheckConstraint(_one_of("role", LACE_ROLES), name="role"),
+        CheckConstraint(_one_of("status", MEMBER_STATUSES), name="status"),
+        Index("ix_lace_members_user_id_status", "user_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Indexed by the unique constraint, which leads with it.
+    lace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("laces.id", ondelete="CASCADE"), nullable=False)
+    # A Supabase user: no FK (Supabase owns users). Indexed by the index above.
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    # Pinned in this person's sidebar.
+    pinned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+    invited_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
+                                                 server_default=func.now())
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

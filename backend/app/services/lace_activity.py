@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.schemas.lace import ActivityKind, ActivityRef
 from backend.app.database.lace_models import Lace, LaceActivity
+from backend.app.services import lace_members
 
 # Names quoted in an activity's summary; the rest are counted.
 NAMES_SHOWN = 3
@@ -77,7 +78,7 @@ async def list_for_user(db: AsyncSession, user_id: uuid.UUID, limit: int,
     """Activity across all the user's Laces (archived ones left out), newest
     first, each with its Lace."""
     query = (select(LaceActivity, Lace).join(Lace, Lace.id == LaceActivity.lace_id)
-             .where(Lace.user_id == user_id, Lace.status != "archived"))
+             .where(Lace.id.in_(lace_members.lace_ids_of(user_id)), Lace.status != "archived"))
     if before is not None:
         query = query.where(LaceActivity.created_at < before)
     return [(a, lace) for a, lace in (await db.execute(query.order_by(LaceActivity.created_at.desc()).limit(limit))).all()]

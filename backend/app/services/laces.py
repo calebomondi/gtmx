@@ -14,6 +14,7 @@ from backend.app.database.lace_models import (
     LaceActivity,
     LaceCompetitor,
     LaceFact,
+    LaceMember,
     LaceOpportunity,
     LaceOutreach,
 )
@@ -22,6 +23,7 @@ from backend.app.schemas.laces import FactVerdict, LaceMood
 from backend.app.services.runs import TERMINAL_STATUSES
 from backend.app.services.competitors import checked_website
 from backend.app.services import connections as connection_service
+from backend.app.services import lace_members
 from backend.app.services import limits
 from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError
 from config import settings
@@ -38,6 +40,8 @@ async def create(db: AsyncSession, user_id: uuid.UUID, name: str, website: str,
     await limits.ensure_can_start(db, user_id, "lace_onboarding")
     lace = Lace(user_id=user_id, name=name, website=website, timezone=timezone or "UTC")
     db.add(lace)
+    await db.flush()
+    lace_members.add_owner(db, lace)
     await db.commit()
     return lace
 
@@ -100,12 +104,14 @@ async def prepare_onboarding_retry(db: AsyncSession, lace: Lace) -> None:
 @dataclass(frozen=True)
 class LaceSummary:
     lace: Lace
+    # The user's place on it: their role, their pin.
+    member: LaceMember
     mood: LaceMood | None
     last_active_at: datetime
 
 
 async def list_for_user(db: AsyncSession, user_id: uuid.UUID, limit: int) -> list[LaceSummary]:
-    """The user's Laces, most recently active first, each with its mood:
+    """The Laces the user is on, most recently active first, each with its mood:
     thinking while a run is unfinished, alert while something waits on the
     founder (a draft to send, a reply not yet read, activity not yet seen, a
     suggestion to save or dismiss)."""
@@ -122,32 +128,31 @@ async def list_for_user(db: AsyncSession, user_id: uuid.UUID, limit: int) -> lis
     last_run = select(func.max(Run.created_at)).where(Run.lace_id == Lace.id).correlate(Lace).scalar_subquery()
     last_active = func.coalesce(last_run, Lace.created_at)
     rows = await db.execute(
-        select(Lace, working.label("working"), waiting.label("waiting"), last_active.label("last_active_at"))
-        .where(Lace.user_id == user_id, Lace.status != "archived")
+        select(Lace, LaceMember, working.label("working"), waiting.label("waiting"),
+               last_active.label("last_active_at"))
+        .join(LaceMember, and_(LaceMember.lace_id == Lace.id, LaceMember.user_id == user_id,
+                               LaceMember.status == "active"))
+        .where(Lace.status != "archived")
         .order_by(last_active.desc()).limit(limit)
     )
-    return [LaceSummary(lace, "thinking" if busy else "alert" if needs else None, active)
-            for lace, busy, needs, active in rows.all()]
+    return [LaceSummary(lace, member, "thinking" if busy else "alert" if needs else None, active)
+            for lace, member, busy, needs, active in rows.all()]
 
 
-async def list_archived(db: AsyncSession, user_id: uuid.UUID, limit: int) -> list[Lace]:
-    """The user's archived Laces, most recently changed first."""
-    return list((await db.scalars(select(Lace).where(Lace.user_id == user_id, Lace.status == "archived")
-                                  .order_by(Lace.updated_at.desc()).limit(limit))).all())
+async def list_archived(db: AsyncSession, user_id: uuid.UUID, limit: int) -> list[tuple[Lace, LaceMember]]:
+    """The archived Laces the user is on, most recently changed first."""
+    rows = await db.execute(
+        select(Lace, LaceMember)
+        .join(LaceMember, and_(LaceMember.lace_id == Lace.id, LaceMember.user_id == user_id,
+                               LaceMember.status == "active"))
+        .where(Lace.status == "archived").order_by(Lace.updated_at.desc()).limit(limit))
+    return [(lace, member) for lace, member in rows.all()]
 
 
-async def set_pinned(db: AsyncSession, lace: Lace, pinned: bool) -> Lace:
-    lace.pinned = pinned
+async def set_pinned(db: AsyncSession, member: LaceMember, pinned: bool) -> None:
+    """Pin or unpin a Lace in one person's sidebar."""
+    member.pinned = pinned
     await db.commit()
-    return lace
-
-
-async def get_owned(db: AsyncSession, user_id: uuid.UUID, lace_id: uuid.UUID) -> Lace:
-    """404 for another user's Lace, the same as for one that does not exist."""
-    lace = await db.scalar(select(Lace).where(Lace.id == lace_id, Lace.user_id == user_id))
-    if lace is None:
-        raise NotFoundError("Lace not found")
-    return lace
 
 
 def current_facts_query(lace_id: uuid.UUID, topic: str | None, limit: int) -> Select[tuple[LaceFact]]:

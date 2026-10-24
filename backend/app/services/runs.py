@@ -1,11 +1,12 @@
 """Run rows: status bookkeeping and the queries the API needs."""
 
 import uuid
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
+from backend.app.services import lace_members
 from backend.app.services.errors import NotFoundError
 
 
@@ -30,19 +31,23 @@ async def set_run_fields(model: type[models.Run], run_id: uuid.UUID, **fields) -
             return run
 
 
-async def get_owned(db: AsyncSession, owner_id: uuid.UUID, run_id: uuid.UUID) -> models.Run:
-    run = await db.scalar(
-        select(models.Run).where(models.Run.id == run_id, models.Run.user_id == owner_id)
-    )
+def _visible_to(user_id: uuid.UUID):
+    """Runs the user started, and every run of a Lace they are on (a
+    cofounder's turn, the scheduled brief)."""
+    return or_(models.Run.user_id == user_id, models.Run.lace_id.in_(lace_members.lace_ids_of(user_id)))
+
+
+async def get_visible(db: AsyncSession, user_id: uuid.UUID, run_id: uuid.UUID) -> models.Run:
+    run = await db.scalar(select(models.Run).where(models.Run.id == run_id, _visible_to(user_id)))
     if run is None:
         raise NotFoundError("Run not found")
     return run
 
 
-async def list_steps(db: AsyncSession, owner_id: uuid.UUID, run_id: uuid.UUID,
+async def list_steps(db: AsyncSession, user_id: uuid.UUID, run_id: uuid.UUID,
                      after: int, limit: int) -> list[models.RunEvent]:
-    """The owned run's progress steps after the `after` cursor, oldest first."""
-    await get_owned(db, owner_id, run_id)
+    """A visible run's progress steps after the `after` cursor, oldest first."""
+    await get_visible(db, user_id, run_id)
     result = await db.execute(
         select(models.RunEvent)
         .where(models.RunEvent.run_id == run_id, models.RunEvent.type == "step", models.RunEvent.id > after)
@@ -52,12 +57,12 @@ async def list_steps(db: AsyncSession, owner_id: uuid.UUID, run_id: uuid.UUID,
     return list(result.scalars().all())
 
 
-async def list_active(db: AsyncSession, owner_id: uuid.UUID) -> list[models.Run]:
-    """The user's runs that are not finished, newest first -- what a reloaded
-    client reattaches to."""
+async def list_active(db: AsyncSession, user_id: uuid.UUID) -> list[models.Run]:
+    """The runs the user can see that are not finished, newest first -- what a
+    reloaded client reattaches to."""
     result = await db.execute(
         select(models.Run)
-        .where(models.Run.user_id == owner_id, models.Run.status.not_in(TERMINAL_STATUSES))
+        .where(_visible_to(user_id), models.Run.status.not_in(TERMINAL_STATUSES))
         .order_by(models.Run.created_at.desc())
     )
     return list(result.scalars().all())

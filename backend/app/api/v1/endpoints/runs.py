@@ -23,7 +23,7 @@ async def list_active_runs(user: CurrentUser, db: DbSession):
 
 @router.get("/{run_id}", response_model=RunResponse)
 async def get_run(run_id: uuid.UUID, user: CurrentUser, db: DbSession):
-    return await run_service.get_owned(db, user.id, run_id)
+    return await run_service.get_visible(db, user.id, run_id)
 
 
 # A run reports well under this many steps; the client pages with `after`.
@@ -53,7 +53,7 @@ async def stream_run_events(run_id: uuid.UUID, user: CurrentUser, db: DbSession,
     """Every frame after the `after` cursor, one JSON object per line: the
     stored backlog, then live frames, ending after a terminal frame. Read it
     with a streaming fetch, which (unlike EventSource) sends the auth header."""
-    await run_service.get_owned(db, user.id, run_id)
+    await run_service.get_visible(db, user.id, run_id)
     return StreamingResponse(_ndjson(run_id, after), media_type="application/x-ndjson")
 
 

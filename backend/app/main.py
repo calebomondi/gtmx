@@ -11,7 +11,9 @@ from config import settings
 from backend.app.api.v1.routes import api_router
 from backend.app.database.connect import engine, AsyncSessionLocal
 from backend.app.database.schema_check import ensure_schema_at_head
-from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError, RateLimitedError, ServiceError
+from backend.app.services.errors import (
+    ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RateLimitedError, ServiceError,
+)
 from backend.app import agents_runtime, observability, usage
 from backend.app.runs import manager as run_manager
 from backend.app.runs import scheduler as run_scheduler
@@ -59,6 +61,7 @@ async def lifespan(app: FastAPI):
 _SERVICE_ERROR_STATUS = {
     NotFoundError: 404,
     ConflictError: 409,
+    ForbiddenError: 403,
     InvalidInputError: 422,
     RateLimitedError: 429,
 }

@@ -240,7 +240,7 @@ class _LaceJobs:
 
 async def cancel(user_id: uuid.UUID, run_id: uuid.UUID) -> models.Run:
     async with AsyncSessionLocal() as db:
-        run = await run_service.get_owned(db, user_id, run_id)
+        run = await run_service.get_visible(db, user_id, run_id)
         return await _cancel(db, run, "Run cancelled.")
 
 

@@ -21,6 +21,7 @@ from backend.app.database.lace_models import (
     LaceOpportunity,
     LaceOutreach,
 )
+from backend.app.services import lace_members
 from backend.app.schemas.laces import LaceSearchHit, LaceSearchKind
 
 MIN_QUERY_LEN = 2
@@ -46,7 +47,8 @@ async def _hits(db: AsyncSession, user_id: uuid.UUID, term: str, limit: int, kin
     rows = await db.execute(
         select(model.id, title, subtitle, Lace.id, Lace.name)
         .join(Lace, Lace.id == model.lace_id)
-        .where(Lace.user_id == user_id, Lace.status != "archived", or_(*(contains(c, term) for c in matched)), *where)
+        .where(Lace.id.in_(lace_members.lace_ids_of(user_id)), Lace.status != "archived",
+               or_(*(contains(c, term) for c in matched)), *where)
         .order_by(_prefix_first(title, term), title).limit(limit)
     )
     return [LaceSearchHit(kind=kind, id=row_id, title=row_title or "", subtitle=row_subtitle or None, lace_id=lace_id,
@@ -58,7 +60,7 @@ async def search(db: AsyncSession, user_id: uuid.UUID, term: str, per_kind: int)
     """Hits grouped by kind (Laces first), best matches first in each."""
     term = term.strip()[:MAX_QUERY_LEN]
     laces = await db.execute(
-        select(Lace).where(Lace.user_id == user_id, Lace.status != "archived",
+        select(Lace).where(Lace.id.in_(lace_members.lace_ids_of(user_id)), Lace.status != "archived",
                            or_(contains(Lace.name, term), contains(Lace.startup_name, term),
                                contains(Lace.website, term)))
         .order_by(_prefix_first(Lace.name, term), Lace.name).limit(per_kind))
