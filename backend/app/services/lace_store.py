@@ -16,9 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agents.schemas.icp import ICP
 from agents.schemas.opportunities import OpportunitySummary
-from agents.schemas.lace import AccountSummary, CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Fact, ItemsChanged, NamedItem, NewContact, SavedKind, SavedVerdict, Suggestions, FactTopic, LaceProfile, NewFact, SourcePage
+from agents.schemas.lace import ProposedAction, AccountSummary, CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Fact, ItemsChanged, NamedItem, NewContact, SavedKind, SavedVerdict, Suggestions, FactTopic, LaceProfile, NewFact, SourcePage
 from backend.app.database.lace_models import Lace, LaceAccount, LaceCompetitor, LaceContact, LaceFact, LaceOutreach, LaceSource
-from backend.app.services import lace_accounts, lace_competitors, lace_contacts, lace_documents, lace_opportunities, lace_outreach
+from backend.app.services import lace_app_actions, lace_accounts, lace_competitors, lace_contacts, lace_documents, lace_opportunities, lace_outreach
 from backend.app.services import laces as lace_service
 from backend.app.services.errors import ConflictError, NotFoundError
 from backend.app.services.laces import current_facts_query
@@ -216,6 +216,10 @@ class DbLaceStore:
         async with self._sessions() as session:
             rows = await lace_contacts.list_for_lace(session, self._lace_id, limit)
         return [_contact(contact, account) for contact, account in rows]
+
+    async def propose_action(self, action: ProposedAction) -> str:
+        async with self._sessions() as session:
+            return str((await lace_app_actions.propose(session, self._lace_id, action)).id)
 
     async def add_contact(self, contact: NewContact) -> ContactSummary:
         async with self._sessions() as session:

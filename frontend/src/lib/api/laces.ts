@@ -122,7 +122,22 @@ export interface SuggestionsBlockDto {
   options: string[]
 }
 
-export type UiBlockDto = QuestionBlockDto | CardBlockDto | SuggestionsBlockDto
+export type AppActionStatus = "proposed" | "running" | "done" | "failed" | "declined"
+
+/** Something the Lace proposes doing in one of the founder's apps, with Approve and Decline. */
+export interface ActionBlockDto {
+  type: "action"
+  id: string
+  app: string
+  title: string
+  preview: string
+  /** Where it stands now; "gone" once it no longer exists. */
+  status?: AppActionStatus | "gone" | null
+  result?: string | null
+  url?: string | null
+}
+
+export type UiBlockDto = QuestionBlockDto | CardBlockDto | SuggestionsBlockDto | ActionBlockDto
 
 export interface AttachmentDto {
   id: string
@@ -592,6 +607,31 @@ export function draftToLaceContact(laceId: string, contactId: string, channel: O
   return apiFetch(`/api/v1/laces/${laceId}/contacts/${contactId}/draft`, {
     method: "POST", body: JSON.stringify({ channel, note: note.trim() || null }),
   })
+}
+
+/** An action the Lace proposed in one of the founder's apps. Mirrors AppActionResponse. */
+export interface AppActionDto {
+  id: string
+  app: string
+  action: string
+  title: string
+  preview: string
+  status: AppActionStatus
+  result: string | null
+  url: string | null
+  created_at: string
+  decided_at: string | null
+  finished_at: string | null
+}
+
+export function listLaceAppActions(laceId: string, status?: AppActionStatus): Promise<AppActionDto[]> {
+  return apiFetch(`/api/v1/laces/${laceId}/app-actions${status ? `?status=${status}` : ""}`)
+}
+
+/** Approve runs it now, as the founder; decline drops it. */
+export function decideLaceAppAction(laceId: string, actionId: string,
+                                    verdict: "approve" | "decline"): Promise<AppActionDto> {
+  return apiFetch(`/api/v1/laces/${laceId}/app-actions/${actionId}/${verdict}`, { method: "POST" })
 }
 
 /** The founder opened these replies. */

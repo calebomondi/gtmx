@@ -49,13 +49,15 @@ from backend.app.schemas.laces import (
     OpportunityUpdateRequest,
     OutreachResponse,
     OutreachReadRequest,
+    AppActionResponse,
+    MAX_APP_ACTIONS_PER_PAGE,
     OutreachUpdateRequest,
 )
-from backend.app.services import email, inbox, lace_accounts, lace_briefs, lace_cards, lace_documents, lace_activity, lace_contacts, lace_search, lace_channels, lace_competitors, lace_opportunities, lace_outreach
+from backend.app.services import email, inbox, lace_app_actions, lace_accounts, lace_briefs, lace_cards, lace_documents, lace_activity, lace_contacts, lace_search, lace_channels, lace_competitors, lace_opportunities, lace_outreach
 from backend.app.services import laces as lace_service
 from agents.lace.store import JobRefused
 from backend.app.services.errors import ConflictError
-from agents.schemas.lace import AccountStatus, CompetitorStatus, FactTopic, InboxPlatform
+from agents.schemas.lace import AppActionStatus, AccountStatus, CompetitorStatus, FactTopic, InboxPlatform
 from agents.schemas.opportunities import OpportunityStatus
 
 router = APIRouter()
@@ -359,6 +361,26 @@ async def mark_outreach_sent(lace: OwnedLace, message_id: uuid.UUID, db: DbSessi
 async def mark_outreach_read(lace: OwnedLace, payload: OutreachReadRequest, db: DbSession):
     """The founder opened these replies."""
     return ActivityReadResponse(marked=await lace_outreach.mark_read(db, lace.id, payload.ids))
+
+
+@router.get("/{lace_id}/app-actions", response_model=list[AppActionResponse])
+async def list_app_actions(lace: OwnedLace, db: DbSession, status: AppActionStatus | None = None,
+                           limit: int = Query(default=50, ge=1, le=MAX_APP_ACTIONS_PER_PAGE)):
+    """What the Lace proposed doing in the founder's apps, newest first."""
+    return await lace_app_actions.list_for_lace(db, lace.id, limit, status)
+
+
+@router.post("/{lace_id}/app-actions/{action_id}/approve", response_model=AppActionResponse)
+async def approve_app_action(lace: OwnedLace, action_id: uuid.UUID, user: CurrentUser, db: DbSession):
+    """Run a proposed action as the founder. This request, made by them, is the approval."""
+    row = await lace_app_actions.approve(db, await lace_app_actions.get_in_lace(db, lace.id, action_id), user.id)
+    await manager.wake_lace(user.id, lace.id)
+    return row
+
+
+@router.post("/{lace_id}/app-actions/{action_id}/decline", response_model=AppActionResponse)
+async def decline_app_action(lace: OwnedLace, action_id: uuid.UUID, db: DbSession):
+    return await lace_app_actions.decline(db, await lace_app_actions.get_in_lace(db, lace.id, action_id))
 
 
 @router.get("/{lace_id}/channels", response_model=list[ChannelResponse])

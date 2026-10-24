@@ -12,6 +12,7 @@ import {
   type ContactDto,
   deleteLaceOutreach,
   setLaceOpportunityStatus,
+  decideLaceAppAction,
   listActiveRuns,
   listLaceActivity,
   listLaceAccounts,
@@ -118,6 +119,8 @@ export interface LaceChat {
   /** Clear everyone at one account for outreach. */
   approveAccountContacts: (accountId: string) => Promise<void>
   saveCompetitor: (competitorId: string) => Promise<void>
+  /** Approve (run it now, as the founder) or decline an action the Lace proposed. */
+  decideAction: (actionId: string, verdict: "approve" | "decline") => Promise<boolean>
   saveAccount: (accountId: string) => Promise<void>
   /** Save an opportunity (open) or drop it (dismissed). True when done. */
   decideOpportunity: (opportunityId: string, status: "open" | "dismissed") => Promise<boolean>
@@ -291,6 +294,19 @@ export function useLaceChat(laceId: string): LaceChat {
   }, [laceId])
   const dismissCompetitor = useCallback((id: string) => decideCompetitor(id, "dismissed"), [decideCompetitor])
   const saveCompetitor = useCallback((id: string) => decideCompetitor(id, "tracked"), [decideCompetitor])
+
+  const decideAction = useCallback(async (actionId: string, verdict: "approve" | "decline") => {
+    try {
+      await decideLaceAppAction(laceId, actionId, verdict)
+      // The cards read where the action stands; approving also wakes the Lace to report.
+      await refresh()
+      await checkRuns()
+      return true
+    } catch (err) {
+      setError(message(err))
+      return false
+    }
+  }, [laceId, refresh, checkRuns])
 
   const decideAccount = useCallback(async (accountId: string, status: "target" | "dismissed") => {
     try {
@@ -483,7 +499,7 @@ export function useLaceChat(laceId: string): LaceChat {
     lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, waiting, drafting, findingOpportunities,
     loading, error,
     working, step, steps, jobs, draft, send, answer, reload, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, sendingSoon,
-    undoSend, markSent, markRead, findContacts, draftToContact, contacts, approveContact, approveAccountContacts, saveCompetitor, saveAccount, decideOpportunity, suggestedCompetitors,
+    undoSend, markSent, markRead, decideAction, findContacts, draftToContact, contacts, approveContact, approveAccountContacts, saveCompetitor, saveAccount, decideOpportunity, suggestedCompetitors,
     suggestedAccounts,
   }
 }
