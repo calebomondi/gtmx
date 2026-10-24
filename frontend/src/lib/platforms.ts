@@ -1,7 +1,7 @@
 // The apps a user can connect (via Composio), as every app shows them. Mirrors
 // the backend's registry (services/connections.APPS).
 
-import { startConnection } from "@/lib/api"
+import { startConnection, startLaceConnection } from "@/lib/api"
 
 export type Platform =
   | 'gmail' | 'outlook' | 'googlecalendar' | 'linkedin' | 'instagram' | 'facebook' | 'tiktok' | 'x' | 'whatsapp'
@@ -73,10 +73,16 @@ export const COMING_SOON: ReadonlySet<Platform> = new Set([
   'outlook', 'whatsapp', 'zoho', 'hubspot', 'googlesheets', 'notion', 'slack', 'asana', 'calendly',
 ])
 
-/** Sends the browser to the platform's sign-in (via Composio). It comes back
- * to `returnTo` (an app path; the accounts page by default) with
- * ?connected=<platform>. */
+/** Sends the browser to the platform's sign-in (via Composio) for a shared
+ * account, which every Lace uses. It comes back to `returnTo` (an app path;
+ * the accounts page by default) with ?connected=<platform>. */
 export async function beginConnection(platform: Platform, returnTo?: string): Promise<void> {
   const { redirect_url } = await startConnection(platform, returnTo)
+  window.location.assign(redirect_url)
+}
+
+/** The same, for an account only this Lace uses; it comes back to the Lace. */
+export async function beginLaceConnection(laceId: string, platform: Platform): Promise<void> {
+  const { redirect_url } = await startLaceConnection(laceId, platform, `/lace/${laceId}`)
   window.location.assign(redirect_url)
 }

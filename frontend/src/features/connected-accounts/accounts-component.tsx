@@ -76,12 +76,10 @@ export function AccountsComponent() {
         {/* header */}
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            {/* <p className="text-xs font-medium tracking-widest text-muted-foreground uppercase">
-              Accounts
-            </p> */}
-            <h1 className="mt-1 text-2xl font-semibold">Connected apps</h1>
+            <h1 className="mt-1 text-2xl font-semibold">Shared accounts</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              The apps your Lace works in. It acts in them only when you approve.
+              Every Lace of yours uses these, unless you give one its own account in its settings. It acts in them only
+              when you approve.
             </p>
           </div>
           <p className="flex items-center gap-2 text-sm text-muted-foreground">

@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 
-import { listLaceAppActions, listLaceApps, updateLaceApp, type AppActionDto, type LaceAppDto } from "@/lib/api"
+import {
+  deleteLaceConnection, listLaceAppActions, listLaceApps, updateLaceApp, type AppActionDto, type LaceAppDto,
+} from "@/lib/api"
 import { PLATFORM_LABEL, type Platform } from "@/lib/platforms"
 
 // How often the actions waiting for the founder are looked at again.
@@ -18,6 +20,8 @@ export interface LaceApps {
   error: string | null
   refresh: () => Promise<void>
   setEnabled: (platform: Platform, enabled: boolean) => Promise<void>
+  /** Disconnect the Lace's own account for an app; it goes back to the shared one. */
+  disconnectOwn: (app: LaceAppDto) => Promise<void>
 }
 
 /** A Lace's apps and its app actions. The apps (read live from the founder's
@@ -65,6 +69,18 @@ export function useLaceApps(laceId: string, open: boolean): LaceApps {
     }
   }, [laceId])
 
+  const disconnectOwn = useCallback(async (app: LaceAppDto) => {
+    if (app.account !== "own" || !app.connection_id) return
+    try {
+      await deleteLaceConnection(laceId, app.connection_id)
+    } catch (err) {
+      toast.error(`Couldn't disconnect ${PLATFORM_LABEL[app.platform]}`, {
+        description: err instanceof Error ? err.message : String(err),
+      })
+    }
+    await refresh()
+  }, [laceId, refresh])
+
   const connected = params.get("connected") as Platform | null
   useEffect(() => {
     if (!connected || !(connected in PLATFORM_LABEL)) return
@@ -87,5 +103,8 @@ export function useLaceApps(laceId: string, open: boolean): LaceApps {
     })()
   }, [laceId, connected, setParams, setEnabled, refresh])
 
-  return { apps, actions, waiting: actions.filter((a) => a.status === "proposed").length, error, refresh, setEnabled }
+  return {
+    apps, actions, waiting: actions.filter((a) => a.status === "proposed").length, error, refresh, setEnabled,
+    disconnectOwn,
+  }
 }

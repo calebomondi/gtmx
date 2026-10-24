@@ -20,7 +20,7 @@ export function LaceChannels({ laceId }: { laceId: string }) {
     <div className="flex flex-col gap-5">
       <p className="text-sm text-muted-foreground">
         When people message your linked accounts, your Lace reads the messages and drafts answers for you to send.
-        Connect the account on the Accounts page first.
+        Connect the account first, under Apps & accounts in this Lace's settings.
       </p>
       {PLATFORMS.map((platform) => {
         const linked = channels.filter((c) => c.platform === platform.id)
