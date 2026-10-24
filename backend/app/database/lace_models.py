@@ -518,3 +518,24 @@ class LaceAppAction(Base):
                                                  default=_now, server_default=func.now())
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class LaceApp(Base):
+    """Whether one Lace may use one of its founder's connected apps, and that
+    app's settings for it (which Slack channel gets the brief, which Asana
+    project gets tasks). A missing row means the default
+    (services.lace_app_settings.enabled)."""
+
+    __tablename__ = "lace_apps"
+    __table_args__ = (UniqueConstraint("lace_id", "platform", name="uq_lace_apps_lace_id_platform"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Indexed by the unique constraint, which leads with it.
+    lace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("laces.id", ondelete="CASCADE"), nullable=False)
+    platform: Mapped[str] = mapped_column(String(32), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    # Per-app choices, keyed by name: opaque to the database.
+    settings: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
+                                                 server_default=func.now(), onupdate=_now)
+

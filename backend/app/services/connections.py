@@ -11,6 +11,7 @@ import asyncio
 import re
 import uuid
 from dataclasses import dataclass
+from typing import Literal
 from urllib.parse import urlsplit
 from datetime import datetime
 from functools import lru_cache
@@ -24,36 +25,40 @@ from backend.app.services.errors import ConflictError, InvalidInputError, NotFou
 from config import settings
 from utils.log import logger
 
+AppGroup = Literal["channels", "crm", "docs", "team", "meetings"]
+
+
 @dataclass(frozen=True)
 class App:
-    """An app the founder can connect: its Composio toolkit, its name, and
-    whether Composio manages its sign-in (the others need our own OAuth app,
-    in settings.composio_auth_configs)."""
+    """An app the founder can connect: its Composio toolkit, its name, what a
+    Lace uses it for, and whether Composio manages its sign-in (the others
+    need our own OAuth app, in settings.composio_auth_configs)."""
     platform: str
     toolkit: str
     label: str
+    group: AppGroup
     managed: bool
 
 
 # Every app the founder can connect. Toolkits and managed sign-in verified
 # against the live Composio API (2026-10-10; the second wave 2026-10-24).
 APPS = (
-    App("gmail", "gmail", "Gmail", True),
-    App("outlook", "outlook", "Outlook", True),
-    App("googlecalendar", "googlecalendar", "Google Calendar", True),
-    App("linkedin", "linkedin", "LinkedIn", True),
-    App("instagram", "instagram", "Instagram", True),
-    App("facebook", "facebook", "Facebook", True),
-    App("tiktok", "tiktok", "TikTok", False),
-    App("x", "twitter", "X", False),
-    App("whatsapp", "whatsapp", "WhatsApp Business", True),
-    App("zoho", "zoho", "Zoho CRM", True),
-    App("hubspot", "hubspot", "HubSpot", True),
-    App("googlesheets", "googlesheets", "Google Sheets", True),
-    App("notion", "notion", "Notion", True),
-    App("slack", "slack", "Slack", True),
-    App("asana", "asana", "Asana", True),
-    App("calendly", "calendly", "Calendly", True),
+    App("gmail", "gmail", "Gmail", "channels", True),
+    App("outlook", "outlook", "Outlook", "channels", True),
+    App("googlecalendar", "googlecalendar", "Google Calendar", "meetings", True),
+    App("linkedin", "linkedin", "LinkedIn", "channels", True),
+    App("instagram", "instagram", "Instagram", "channels", True),
+    App("facebook", "facebook", "Facebook", "channels", True),
+    App("tiktok", "tiktok", "TikTok", "channels", False),
+    App("x", "twitter", "X", "channels", False),
+    App("whatsapp", "whatsapp", "WhatsApp Business", "channels", True),
+    App("zoho", "zoho", "Zoho CRM", "crm", True),
+    App("hubspot", "hubspot", "HubSpot", "crm", True),
+    App("googlesheets", "googlesheets", "Google Sheets", "docs", True),
+    App("notion", "notion", "Notion", "docs", True),
+    App("slack", "slack", "Slack", "team", True),
+    App("asana", "asana", "Asana", "team", True),
+    App("calendly", "calendly", "Calendly", "meetings", True),
 )
 TOOLKITS = {app.platform: app.toolkit for app in APPS}
 PLATFORM_OF = {app.toolkit: app.platform for app in APPS}
@@ -61,6 +66,7 @@ MANAGED = {app.toolkit for app in APPS if app.managed}
 
 _STATUS = {"ACTIVE": "live", "INITIATED": "pending", "INITIALIZING": "pending"}
 _LABEL = {app.platform: app.label for app in APPS}
+APP_OF = {app.platform: app for app in APPS}
 
 
 def response_field(data, field: str) -> str | None:

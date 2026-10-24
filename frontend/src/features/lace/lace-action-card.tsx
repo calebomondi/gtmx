@@ -16,13 +16,19 @@ const SAID: Record<string, string> = {
 /** Something the Lace proposes doing in one of the founder's apps: what will
  * happen and what it will say, with Approve and Decline. Nothing runs until
  * they approve; then it shows how it went. */
-export function ActionCard({ block, chat }: { block: ActionBlockDto; chat: LaceChat }) {
+export function ActionCard({ block, chat, onDecided }: {
+  block: ActionBlockDto
+  chat: LaceChat
+  /** Called after the founder decides, for lists outside the chat to refresh. */
+  onDecided?: () => Promise<void> | void
+}) {
   const [busy, setBusy] = useState<"approve" | "decline" | null>(null)
   const status = block.status ?? "proposed"
   const app = (PLATFORM_LABEL as Record<string, string>)[block.app] ?? block.app
   const decide = async (verdict: "approve" | "decline") => {
     setBusy(verdict)
     await chat.decideAction(block.id, verdict)
+    await onDecided?.()
     setBusy(null)
   }
 

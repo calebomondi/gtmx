@@ -1,0 +1,67 @@
+"""Which apps a Lace may use: channels on for every Lace, work apps on only
+where switched on (or when there is one Lace); switching off stops the Lace
+using an app, however connected; settings are kept per Lace."""
+
+import uuid
+from datetime import UTC, datetime
+
+import pytest
+
+from agents.lace.app_actions import propose
+from agents.schemas.lace import ProposedAction
+from backend.app.database.connect import AsyncSessionLocal
+from backend.app.services import connections as connection_service
+from backend.app.services.connections import ConnectionInfo
+from backend.app.services.lace_store import DbLaceStore
+from backend.tests.helpers import make_user
+from backend.tests.test_lace_jobs import lace  # noqa: F401 -- fixture
+from backend.tests.test_laces_api import API, _create, lace_runtime  # noqa: F401 -- fixture
+
+
+@pytest.fixture
+def connected(monkeypatch):
+    async def list_for_user(db, user_id):
+        now = datetime.now(UTC)
+        return [ConnectionInfo(f"ca_{p}", p, "live", None, now, now) for p in ("gmail", "hubspot", "linkedin")]
+    monkeypatch.setattr(connection_service, "list_for_user", list_for_user)
+
+
+def _apps(client, lace_id) -> dict:
+    return {a["platform"]: a for a in client.get(f"{API}/laces/{lace_id}/apps").json()}
+
+
+def test_every_app_is_listed_with_its_connection_and_switch(client, lace, lace_runtime, connected):  # noqa: F811
+    apps = _apps(client, lace)
+    assert set(apps) == {a.platform for a in connection_service.APPS}
+    assert (apps["hubspot"]["connected"], apps["hubspot"]["group"], apps["slack"]["connected"]) == (True, "crm", False)
+    # One Lace: everything is on for it.
+    assert apps["gmail"]["enabled"] and apps["hubspot"]["enabled"]
+
+
+def test_with_two_laces_work_apps_wait_to_be_switched_on(client, lace, lace_runtime, connected):  # noqa: F811
+    _create(client, name="Second")
+    apps = _apps(client, lace)
+    assert apps["gmail"]["enabled"] and apps["linkedin"]["enabled"]  # channels: on everywhere
+    assert not apps["hubspot"]["enabled"]  # a CRM: only where the founder says
+    on = client.put(f"{API}/laces/{lace}/apps/hubspot", json={"enabled": True}).json()
+    assert on["enabled"] and on["settings"] == {}
+
+
+def test_settings_are_kept_per_lace(client, lace, lace_runtime, connected):  # noqa: F811
+    saved = client.put(f"{API}/laces/{lace}/apps/slack", json={"settings": {"brief_channel": "#founders"}}).json()
+    assert saved["settings"] == {"brief_channel": "#founders"} and saved["enabled"]
+    assert client.put(f"{API}/laces/{lace}/apps/slack", json={"enabled": False}).json()["settings"] == {
+        "brief_channel": "#founders"}
+    assert client.put(f"{API}/laces/{lace}/apps/myspace", json={"enabled": True}).status_code == 404
+    client.sign_in(make_user("Intruder"))
+    assert client.get(f"{API}/laces/{lace}/apps").status_code == 404
+    assert client.put(f"{API}/laces/{lace}/apps/slack", json={"enabled": True}).status_code == 404
+
+
+def test_an_app_switched_off_is_not_used(client, lace, lace_runtime, connected):  # noqa: F811
+    client.put(f"{API}/laces/{lace}/apps/linkedin", json={"enabled": False})
+    proposal = ProposedAction(app="linkedin", action="publish_post", title="Post on LinkedIn", preview="Hi",
+                              arguments={"text": "Hi"})
+    card = client.portal.call(propose, DbLaceStore(AsyncSessionLocal, uuid.UUID(lace)), proposal).data["ui"][0]
+    refused = client.post(f"{API}/laces/{lace}/app-actions/{card['id']}/approve")
+    assert refused.status_code == 409 and "switched off for this Lace" in refused.json()["detail"]

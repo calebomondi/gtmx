@@ -23,9 +23,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.schemas.lace import AppActionStatus, ProposedAction
-from backend.app.database.lace_models import LaceAppAction, LaceChannel
+from backend.app.database.lace_models import Lace, LaceAppAction, LaceChannel
 from backend.app.services import connections as connection_service
-from backend.app.services import lace_activity, lace_events
+from backend.app.services import lace_activity, lace_app_settings, lace_events
 from backend.app.services.errors import ConflictError, NotFoundError
 from utils.log import logger
 
@@ -115,6 +115,9 @@ async def approve(db: AsyncSession, row: LaceAppAction, user_id: uuid.UUID) -> L
     runner = RUNNERS.get((row.app, row.action))
     if runner is None:
         raise ConflictError("Your Lace can't do that yet.")
+    lace = await db.get(Lace, row.lace_id)
+    if lace is None or not await lace_app_settings.enabled(db, lace, row.app):
+        raise ConflictError(f"{connection_service.label(row.app)} is switched off for this Lace (Apps tab).")
     connection = next((c for c in await connection_service.list_for_user(db, user_id)
                        if c.platform == row.app and c.status == "live"), None)
     if connection is None:

@@ -1,4 +1,5 @@
 import { apiFetch } from "./http"
+import type { AppGroup, Platform } from "@/lib/platforms"
 
 export type LaceStatus = "onboarding" | "active" | "archived"
 
@@ -622,6 +623,28 @@ export interface AppActionDto {
   created_at: string
   decided_at: string | null
   finished_at: string | null
+}
+
+/** One app as one Lace sees it. Mirrors LaceAppResponse. */
+export interface LaceAppDto {
+  platform: Platform
+  label: string
+  group: AppGroup
+  /** The founder connected it, and it's live. */
+  connected: boolean
+  status: string | null
+  /** This Lace may use it. */
+  enabled: boolean
+  settings: Record<string, string>
+}
+
+export function listLaceApps(laceId: string): Promise<LaceAppDto[]> {
+  return apiFetch(`/api/v1/laces/${laceId}/apps`)
+}
+
+export function updateLaceApp(laceId: string, platform: Platform,
+                              change: { enabled?: boolean; settings?: Record<string, string> }): Promise<LaceAppDto> {
+  return apiFetch(`/api/v1/laces/${laceId}/apps/${platform}`, { method: "PUT", body: JSON.stringify(change) })
 }
 
 export function listLaceAppActions(laceId: string, status?: AppActionStatus): Promise<AppActionDto[]> {

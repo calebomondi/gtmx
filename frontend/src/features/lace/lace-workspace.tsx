@@ -14,7 +14,9 @@ import { useSeenAt } from "./viewer-memory"
 import { LaceFeed } from "./lace-feed"
 import { LaceFindsDock } from "./lace-finds-dock"
 import { LaceMessaging } from "./lace-messaging"
+import { LaceAppsTab } from "./lace-apps"
 import { LaceRail, LaceTabBar } from "./lace-rail"
+import { useLaceApps } from "./use-lace-apps"
 import { chatMascot, LACE_TABS, type LaceTab } from "./lace-tabs"
 import { LaceSettings } from "./lace-settings"
 import { LaceStatusBanner } from "./lace-status-banner"
@@ -42,6 +44,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
   // its run while the founder looks at the Feed.
   const chat = useLaceChat(laceId)
   const activity = useLaceActivity(laceId, tab === "feed")
+  const apps = useLaceApps(laceId, tab === "apps")
   // Refetched as new activity arrives (an opportunity search finished).
   const opps = useLaceOpportunities(laceId, activity.items[0]?.id ?? "")
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -65,6 +68,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
     mascot: chatMascot(tab, chat.working),
     waiting: chat.waiting,
     unread: activity.unread,
+    appsWaiting: apps.waiting,
     feedBusy: chat.searching || chat.findingAccounts || chat.findingOpportunities,
     messagingBusy: chat.drafting,
   }
@@ -110,6 +114,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
             <LaceFeed laceId={laceId} name={name} chat={chat} activity={activity} opps={opps} onOpen={open} onDiscuss={discuss} />
           )}
           {tab === "messaging" && <LaceMessaging laceId={laceId} name={name} chat={chat} />}
+          {tab === "apps" && <LaceAppsTab laceId={laceId} name={name} chat={chat} apps={apps} />}
         </main>
       </div>
       <LaceTabBar {...nav} className="md:hidden" />
