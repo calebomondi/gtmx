@@ -95,7 +95,8 @@ def test_a_turn_streams_steps_and_the_reply(client, lace_runtime):
     result = next(f for f in frames if f["type"] == "tool_result")
     assert result["tool"] == "record_fact" and result["ok"]
     assert frames[-2]["content"] == "Got it: clinic owners."
-    assert client.get(f"{API}/laces/{lace_id}/messages").json()[-2:] == [
+    assert [{k: v for k, v in m.items() if k != "author"}
+            for m in client.get(f"{API}/laces/{lace_id}/messages").json()[-2:]] == [
         {"role": "founder", "content": "clinic owners buy"},
         {"role": "lace", "content": "Got it: clinic owners."},
     ]

@@ -88,6 +88,8 @@ ANSWER_KEY = "answer"
 # On a founder message about one draft: its id. The Lace's replies to it carry
 # the id too, so the draft's own panel can show that exchange.
 DRAFT_KEY = "draft_id"
+# On a founder message: who on the founding team sent it ({id, name, avatar_url}).
+AUTHOR_KEY = "author"
 
 
 def thread_config(lace_id: uuid.UUID) -> dict:
@@ -213,6 +215,16 @@ def founder_message(text: str, attachments: list[dict] | None = None, draft: dic
         return HumanMessage(content=text)
     note = "\n\n".join(notes)
     return HumanMessage(content=f"{text}\n\n{note}" if text else note, additional_kwargs={**meta, FOUNDER_TEXT_KEY: text})
+
+
+def signed(message: HumanMessage, author: dict, name_for_lace: str | None) -> HumanMessage:
+    """The message marked with who sent it. With `name_for_lace` (a Lace with
+    several people), the Lace reads it as from them; the sender's own words,
+    as shown, stay unchanged."""
+    shown = message.additional_kwargs.get(FOUNDER_TEXT_KEY, str(message.content))
+    content = f"[From {name_for_lace}] {message.content}" if name_for_lace else message.content
+    return HumanMessage(content=content, additional_kwargs={**message.additional_kwargs, FOUNDER_TEXT_KEY: shown,
+                                                            AUTHOR_KEY: author})
 
 
 def event_message(updates: list[str]) -> HumanMessage:
@@ -344,8 +356,10 @@ def visible_messages(messages: list[AnyMessage]) -> list[dict]:
             content = m.additional_kwargs.get(FOUNDER_TEXT_KEY, str(m.content))
             answer = m.additional_kwargs.get(ANSWER_KEY)
             about = m.additional_kwargs.get(DRAFT_KEY)
+            author = m.additional_kwargs.get(AUTHOR_KEY)
             out.append({"role": "founder", "content": content, **({"documents": attached} if attached else {}),
-                        **({"answer": answer} if answer else {}), **({"draft_id": about} if about else {})})
+                        **({"answer": answer} if answer else {}), **({"draft_id": about} if about else {}),
+                        **({"author": author} if author else {})})
         elif isinstance(m, AIMessage) and not m.tool_calls:
             ui = m.additional_kwargs.get(UI_KEY)
             if str(m.content).strip() or ui:

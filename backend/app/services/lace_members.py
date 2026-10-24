@@ -59,6 +59,12 @@ async def lace_for_domain(db: AsyncSession, domain: str) -> Lace | None:
     return await db.scalar(select(Lace).where(Lace.domain == domain))
 
 
+async def team_size(db: AsyncSession, lace_id: uuid.UUID) -> int:
+    """How many people are on the Lace now."""
+    return await db.scalar(select(func.count()).select_from(LaceMember).where(
+        LaceMember.lace_id == lace_id, LaceMember.status == "active")) or 0
+
+
 def add_owner(db: AsyncSession, lace: Lace) -> None:
     """Its creator joins a new Lace as its owner; the caller commits."""
     now = datetime.now(UTC)

@@ -97,8 +97,16 @@ class Attachment(BaseModel):
     filename: str
 
 
+class MessageAuthor(BaseModel):
+    """Who on the founding team sent a message."""
+    id: uuid.UUID
+    name: str | None = None
+    avatar_url: str | None = None
+
+
 class LaceMessage(BaseModel):
     role: Literal["founder", "lace"]
+    author: MessageAuthor | None = Field(default=None, description="Who sent a founder message")
     content: str
     ui: list[UiBlock] | None = Field(default=None, description="Cards and questions shown under a Lace reply")
     documents: list[Attachment] | None = Field(default=None, description="What the founder attached to the message")

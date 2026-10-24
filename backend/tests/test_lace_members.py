@@ -80,3 +80,29 @@ def test_everyone_on_it_sees_its_runs(client, user, lace):  # noqa: F811
     assert client.get(f"{API}/runs/{run}").status_code == 200
     client.sign_in(make_user("Stranger"))
     assert client.get(f"{API}/runs/{run}").status_code == 404
+
+
+def test_a_message_is_signed_for_the_lace_only_in_a_team():
+    from langchain_core.messages import HumanMessage
+
+    from backend.app.runs import lace as lace_runs
+    author = {"id": "u1", "name": "Wanjiru", "avatar_url": None}
+    alone = lace_runs.signed(HumanMessage(content="Who replied?"), author, None)
+    team = lace_runs.signed(HumanMessage(content="Who replied?"), author, "Wanjiru")
+    assert (alone.content, team.content) == ("Who replied?", "[From Wanjiru] Who replied?")
+    shown = lace_runs.visible_messages([team])
+    assert shown == [{"role": "founder", "content": "Who replied?", "author": author}]
+
+
+def test_each_message_shows_who_sent_it(client, user, lace, lace_runtime):  # noqa: F811
+    from langchain_core.messages import AIMessage
+
+    from backend.tests.test_lace_jobs import _wait_for_turns
+    cofounder = make_user("Wanjiru")
+    _join(lace, cofounder)
+    client.sign_in(cofounder)
+    lace_runtime.append(AIMessage(content="Hi Wanjiru."))
+    client.post(f"{API}/laces/{lace}/messages", json={"text": "Hello from me"})
+    client.portal.call(_wait_for_turns, lace, 1)
+    mine = [m for m in client.get(f"{API}/laces/{lace}/messages").json() if m["content"] == "Hello from me"]
+    assert mine[0]["author"]["id"] == str(cofounder.id) and mine[0]["author"]["name"] == "Wanjiru"

@@ -63,6 +63,7 @@ def test_an_attached_document_reaches_the_lace_and_shows_in_the_chat(client, lac
     assert f"- notes.md (id {doc['id']})" in system.content
     assert asked.content.startswith("What do we charge?") and f"notes.md (document id {doc['id']})" in asked.content
     founder = [m for m in client.get(f"{API}/laces/{lace}/messages").json() if m["role"] == "founder"][-1]
+    founder.pop("author")  # who sent it: covered in test_lace_members
     assert founder == {"role": "founder", "content": "What do we charge?",
                        "documents": [{"id": doc["id"], "filename": "notes.md"}]}
 

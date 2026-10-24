@@ -89,26 +89,30 @@ async def start_lace_onboarding(user_id: uuid.UUID, lace_id: uuid.UUID) -> model
     return run
 
 
-async def start_lace_turn(user_id: uuid.UUID, lace_id: uuid.UUID, text: str,
-                          attachments: list[dict] | None = None, draft: dict | None = None) -> models.Run:
+async def start_lace_turn(user_id: uuid.UUID, lace_id: uuid.UUID, text: str, author: dict,
+                          name_for_lace: str | None, attachments: list[dict] | None = None,
+                          draft: dict | None = None) -> models.Run:
     """One founder message and the Lace's work on it, with any documents
     attached ([{id, filename}], already checked to be the Lace's) and the
     unsent draft it is about, if any (lace_outreach.unsent_draft). The caller
-    has already checked that `lace_id` is the user's."""
+    has already checked that the user is on the Lace. `author` and
+    `name_for_lace` sign the message (lace_runs.signed)."""
     text = text.strip()
     if not text and not attachments:
         raise InvalidInputError("Write a message first.")
     params = {"text": text, **({"documents": attachments} if attachments else {}),
               **({"draft_id": draft["id"]} if draft else {})}
     run = await _start_lace_run("lace_turn", user_id, lace_id, params)
-    _spawn_turn(run.id, user_id, lace_id, lace_runs.founder_message(text, attachments, draft))
+    message = lace_runs.signed(lace_runs.founder_message(text, attachments, draft), author, name_for_lace)
+    _spawn_turn(run.id, user_id, lace_id, message)
     return run
 
 
-async def start_lace_answer(user_id: uuid.UUID, lace_id: uuid.UUID, answer: BlockAnswer) -> models.Run:
+async def start_lace_answer(user_id: uuid.UUID, lace_id: uuid.UUID, answer: BlockAnswer, author: dict,
+                            name_for_lace: str | None) -> models.Run:
     """The founder's answer to a question under the Lace's latest reply (a
     choice, checklist or form), and the Lace's work on it."""
-    message = await lace_runs.answer_message(lace_id, answer)
+    message = lace_runs.signed(await lace_runs.answer_message(lace_id, answer), author, name_for_lace)
     run = await _start_lace_run("lace_turn", user_id, lace_id, {"answer": answer.model_dump()})
     _spawn_turn(run.id, user_id, lace_id, message)
     return run

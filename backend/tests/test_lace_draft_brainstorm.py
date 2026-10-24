@@ -39,6 +39,7 @@ def test_a_message_about_a_draft_carries_it_and_its_exchange_is_tagged(client, l
         assert conn.execute("SELECT body FROM lace_outreach WHERE id = %s", (draft,)).fetchone()[0] == "Hi Kaleb, short one."
 
     founder, reply = client.get(f"{API}/laces/{lace}/messages").json()[-2:]
+    founder.pop("author")  # who sent it: covered in test_lace_members
     assert founder == {"role": "founder", "content": "make it shorter", "draft_id": draft}
     assert reply == {"role": "lace", "content": "Cut it to one line and kept the ask.", "draft_id": draft}
 

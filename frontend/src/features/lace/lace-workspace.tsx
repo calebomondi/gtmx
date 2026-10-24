@@ -19,6 +19,7 @@ import { LacePeopleButton } from "./lace-people"
 import { LaceMessaging } from "./lace-messaging"
 import { LaceRail, LaceTabBar } from "./lace-rail"
 import { useLaceApps } from "./use-lace-apps"
+import { useLacePeople } from "./use-lace-people"
 import { QuickAskChips } from "./lace-quick-asks"
 import { quickAsks } from "./quick-asks"
 import { chatMascot, LACE_TABS, type LaceTab } from "./lace-tabs"
@@ -61,6 +62,9 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
   // The apps load with the settings and the chat, whose quick asks come from them.
   const apps = useLaceApps(laceId, settingsOpen || tab === "chat")
   const asks = quickAsks(apps.apps)
+  // Shared by the header's faces and the chat, which shows who sent what in a team.
+  const people = useLacePeople(laceId)
+  const team = (people.people ?? []).filter((p) => p.status === "active").length > 1
   const [seenAt, markSeen] = useSeenAt<FoundSection["key"]>(laceId)
   const name = chat.lace?.name ?? "Lace"
   const subtitle = chat.lace?.startup_name ?? chat.lace?.website
@@ -95,7 +99,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
           {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {chat.lace && <LacePeopleButton laceId={laceId} name={name} me={chat.lace.role} />}
+          {chat.lace && <LacePeopleButton name={name} me={chat.lace.role} people={people} />}
           <Button variant="outline" size="icon-sm" onClick={() => setSettingsOpen(true)} disabled={chat.loading}
                   aria-label={`${name}'s settings`} title="Settings">
             <Settings2 />
@@ -117,7 +121,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
         </aside>
         <main className={tab === "chat" ? "flex min-h-0 min-w-0 flex-1 flex-col" : "min-h-0 min-w-0 flex-1 overflow-y-auto"}>
           {tab === "chat" && (
-            <LaceConversation chat={chat} name={name} onOpenMessaging={() => select("messaging")} prefill={prefill}
+            <LaceConversation chat={chat} name={name} onOpenMessaging={() => select("messaging")} prefill={prefill} team={team}
                               starters={<QuickAskChips asks={asks} onAsk={(text) => void chat.send(text)} disabled={chat.working} />}
                               dock={
               <>

@@ -59,7 +59,7 @@ from backend.app.schemas.laces import (
 from backend.app.services import (  # noqa: F401 -- registers their runners
     asana_actions, crm_actions, notion_actions, sheet_actions, slack_actions, social_actions,
 )
-from backend.app.services import email, inbox, lace_app_actions, lace_app_settings, lace_accounts, lace_briefs, lace_cards, lace_documents, lace_activity, lace_contacts, lace_search, lace_channels, lace_competitors, lace_opportunities, lace_outreach
+from backend.app.services import email, inbox, lace_app_actions, lace_app_settings, lace_accounts, lace_briefs, lace_cards, lace_documents, lace_activity, lace_contacts, lace_members, lace_search, lace_channels, lace_competitors, lace_opportunities, lace_outreach
 from backend.app.services import connections as connection_service
 from backend.app.services import laces as lace_service
 from backend.app.schemas.connections import ConnectStartResponse
@@ -270,12 +270,16 @@ async def send_message(lace: MemberLace, payload: LaceMessageRequest, user: Curr
     """A message to the Lace, with documents uploaded to it first attached,
     and about one of its unsent drafts when `draft_id` is given; or the
     founder's answer to a question under its latest reply."""
+    author = {"id": str(user.id), "name": user.name or user.email, "avatar_url": user.avatar_url}
+    # With a team on the Lace, it reads each message as from its sender.
+    name_for_lace = author["name"] if await lace_members.team_size(db, lace.id) > 1 else None
     if payload.answer is not None:
-        return LaceTurnResponse(run_id=(await manager.start_lace_answer(user.id, lace.id, payload.answer)).id)
+        return LaceTurnResponse(run_id=(await manager.start_lace_answer(
+            user.id, lace.id, payload.answer, author, name_for_lace)).id)
     docs = await lace_documents.attachments(db, lace.id, payload.document_ids)
     attached = [{"id": str(d.id), "filename": d.filename} for d in docs]
     draft = await lace_outreach.unsent_draft(db, lace.id, payload.draft_id) if payload.draft_id else None
-    run = await manager.start_lace_turn(user.id, lace.id, payload.text, attached, draft)
+    run = await manager.start_lace_turn(user.id, lace.id, payload.text, author, name_for_lace, attached, draft)
     return LaceTurnResponse(run_id=run.id)
 
 
