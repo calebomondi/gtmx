@@ -72,7 +72,7 @@ def test_linking_offers_only_the_founders_own_accounts(client, lace, lace_runtim
     linked = client.post(f"{API}/laces/{lace}/channels", json={"platform": "instagram", "account_id": "ig_1"})
     assert linked.status_code == 201 and linked.json()["account_name"] == "shangalabs"
     # One Lace per account.
-    other = _create(client, name="Bob").json()["lace"]["id"]
+    other = _create(client, name="Bob", website="bob.test").json()["lace"]["id"]
     assert client.post(f"{API}/laces/{other}/channels", json={"platform": "instagram", "account_id": "ig_1"}
                        ).status_code == 409
     channel_id = linked.json()["id"]

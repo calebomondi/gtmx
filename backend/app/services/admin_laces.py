@@ -74,7 +74,7 @@ def _row(found, emails: dict, costs: dict) -> dict:
     return dict(id=lace.id, name=lace.name, website=lace.website, startup_name=lace.startup_name, status=lace.status,
                 user_id=lace.user_id, user_email=emails.get(lace.user_id), created_at=lace.created_at,
                 last_active_at=last_active, facts=facts, competitors=competitors, accounts=accounts,
-                contacts=contacts, sent=sent, runs=runs, cost_usd=costs.get(lace.id))
+                contacts=contacts, sent=sent, runs=runs, cost_usd=costs.get(lace.id), domain_clash=lace.domain is None)
 
 
 async def list_laces(db: AsyncSession, page: int, per_page: int, q: str | None = None,

@@ -180,6 +180,7 @@ class AdminLaceRow(BaseModel):
     user_id: uuid.UUID
     user_email: str | None = None
     created_at: datetime
+    domain_clash: bool = Field(default=False, description="Shares its domain with an older Lace: merge or delete it")
     last_active_at: datetime = Field(description="Its latest run, or its creation")
     facts: int = 0
     competitors: int = Field(default=0, description="Saved (tracked)")

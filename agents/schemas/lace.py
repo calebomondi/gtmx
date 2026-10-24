@@ -270,7 +270,8 @@ APP_ACTION_STATUSES: tuple[str, ...] = AppActionStatus.__args__
 LaceRole = Literal["owner", "admin", "member"]
 LACE_ROLES: tuple[str, ...] = LaceRole.__args__
 # An invite waits for its answer; declined ones are kept so it isn't re-sent unasked.
-MemberStatus = Literal["invited", "active", "declined"]
+# A request is someone asking to join, for the owner or an admin to let in.
+MemberStatus = Literal["invited", "requested", "active", "declined"]
 MEMBER_STATUSES: tuple[str, ...] = MemberStatus.__args__
 
 
@@ -291,7 +292,7 @@ CONTACT_SOURCES: tuple[str, ...] = ContactSource.__args__
 # What a Lace's Feed shows the founder it did (docs/lace-ui-plan.md, Feed).
 ActivityKind = Literal[
     "brief", "competitors_found", "competitor_moves", "accounts_found", "contacts_found",
-    "drafts_ready", "reply_received", "opportunities_found", "job_failed", "app_action",
+    "drafts_ready", "reply_received", "opportunities_found", "job_failed", "app_action", "access_requested",
 ]
 ACTIVITY_KINDS: tuple[str, ...] = ActivityKind.__args__
 # What an activity is about, when it is one thing the founder can open.

@@ -19,6 +19,7 @@ from agents.schemas.lace import LaceRole
 from backend.app import supabase_admin
 from backend.app.database.lace_models import Lace, LaceMember
 from backend.app.services import admin as admin_service
+from backend.app.services import lace_activity
 from backend.app.services.errors import ConflictError, ForbiddenError, InvalidInputError, NotFoundError
 from utils.log import logger
 
@@ -51,6 +52,11 @@ async def open_lace(db: AsyncSession, lace_id: uuid.UUID, user_id: uuid.UUID,
     if _RANK[member.role] < _RANK[at_least]:
         raise ForbiddenError(f"Only {_ROLE_NAME[at_least]} of {lace.name} can do that.")
     return lace, member
+
+
+async def lace_for_domain(db: AsyncSession, domain: str) -> Lace | None:
+    """The Lace of the startup at that domain, if one exists."""
+    return await db.scalar(select(Lace).where(Lace.domain == domain))
 
 
 def add_owner(db: AsyncSession, lace: Lace) -> None:
@@ -107,7 +113,8 @@ async def invite(db: AsyncSession, lace: Lace, inviter: LaceMember, email: str, 
     user_id = uuid.UUID(str(user.id))
     row = await membership(db, lace.id, user_id)
     if row is not None and row.status != "declined":
-        raise ConflictError("They are already on this Lace." if row.status == "active" else "They are already invited.")
+        raise ConflictError({"active": "They are already on this Lace.", "invited": "They are already invited.",
+                             "requested": "They asked to join: let them in from their request."}[row.status])
     count = await db.scalar(select(func.count()).select_from(LaceMember).where(
         LaceMember.lace_id == lace.id, LaceMember.status != "declined"))
     if (count or 0) >= MAX_MEMBERS:
@@ -191,4 +198,33 @@ async def accept(db: AsyncSession, lace_id: uuid.UUID, user_id: uuid.UUID) -> La
 async def decline(db: AsyncSession, lace_id: uuid.UUID, user_id: uuid.UUID) -> None:
     row = await _invited(db, lace_id, user_id)
     row.status, row.responded_at = "declined", datetime.now(UTC)
+    await db.commit()
+
+
+async def request_to_join(db: AsyncSession, domain: str, user_id: uuid.UUID, who: str) -> None:
+    """Ask to join the Lace of the startup at `domain`; its people see it on
+    their Feed and let them in, or don't. `who` names the asker there."""
+    lace = await lace_for_domain(db, domain)
+    if lace is None:
+        raise NotFoundError(f"There's no Lace for {domain} yet: you can make it.")
+    row = await membership(db, lace.id, user_id)
+    if row is not None and row.status != "declined":
+        raise ConflictError({"active": "You're already on it.", "requested": "You already asked; its people will see it.",
+                             "invited": "You're already invited: accept it from your invites."}[row.status])
+    if row is None:
+        row = LaceMember(lace_id=lace.id, user_id=user_id)
+        db.add(row)
+    row.role, row.status, row.invited_by, row.responded_at = "member", "requested", None, None
+    row.created_at = datetime.now(UTC)
+    await lace_activity.add(db, lace.id, "access_requested", f"{who} asked to join",
+                            "Let them in, or remove the request, under the people at the top of the Lace.")
+    await db.commit()
+
+
+async def let_in(db: AsyncSession, lace: Lace, user_id: uuid.UUID) -> None:
+    """Accept someone's request to join, as a member."""
+    row = await membership(db, lace.id, user_id)
+    if row is None or row.status != "requested":
+        raise NotFoundError("No request to join from them.")
+    row.status, row.responded_at = "active", datetime.now(UTC)
     await db.commit()
