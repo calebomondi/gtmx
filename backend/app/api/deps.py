@@ -3,7 +3,7 @@
 Identity: verify the Supabase access token from the Authorization header.
 Supabase owns identity (no local users table): a verified token IS the user.
 
-Ownership: every Lace-scoped route resolves its Lace through OwnedLace.
+Access: every Lace-scoped route resolves its Lace through MemberLace, AdminLace or OwnerLace.
 Someone else's Lace is a 404, indistinguishable from a missing one."""
 
 import uuid
@@ -16,8 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app import supabase_admin
 from backend.app.database.connect import get_db
-from backend.app.database.lace_models import Lace
-from backend.app.services import laces as lace_service
+from backend.app.database.lace_models import Lace, LaceMember
+from backend.app.services import lace_members
 from backend.app.services import limits
 from utils.log import current_user_id
 
@@ -85,11 +85,31 @@ CurrentUser = Annotated[AuthUser, Depends(require_user)]
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 
 
-async def get_owned_lace(lace_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Lace:
-    return await lace_service.get_owned(db, user.id, lace_id)
+async def get_member_lace(lace_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Lace:
+    """A Lace the user is on, in any role; 404 otherwise."""
+    return (await lace_members.open_lace(db, lace_id, user.id, "member"))[0]
 
 
-OwnedLace = Annotated[Lace, Depends(get_owned_lace)]
+async def get_admin_lace(lace_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Lace:
+    """A Lace the user manages (admin or owner); 403 for a member, 404 for anyone else."""
+    return (await lace_members.open_lace(db, lace_id, user.id, "admin"))[0]
+
+
+async def get_owner_lace(lace_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Lace:
+    """A Lace the user owns; 403 for its admins and members, 404 for anyone else."""
+    return (await lace_members.open_lace(db, lace_id, user.id, "owner"))[0]
+
+
+async def get_lace_membership(lace_id: uuid.UUID, user: CurrentUser, db: DbSession) -> LaceMember:
+    """The user's place on a Lace they are on (their role, their pin); 404 otherwise."""
+    return (await lace_members.open_lace(db, lace_id, user.id, "member"))[1]
+
+
+# Every route under a Lace takes one of these: the only place access to a Lace is decided.
+MemberLace = Annotated[Lace, Depends(get_member_lace)]
+AdminLace = Annotated[Lace, Depends(get_admin_lace)]
+OwnerLace = Annotated[Lace, Depends(get_owner_lace)]
+LaceMembership = Annotated[LaceMember, Depends(get_lace_membership)]
 
 
 async def require_admin(user: CurrentUser) -> AuthUser:

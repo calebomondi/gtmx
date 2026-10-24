@@ -15,6 +15,11 @@ class ConflictError(ServiceError):
     """The request clashes with current state (duplicate name, non-empty project)."""
 
 
+class ForbiddenError(ServiceError):
+    """The user may see the resource but not do this to it (a member changing
+    an owner's setting)."""
+
+
 class InvalidInputError(ServiceError):
     """Input passed schema validation but breaks a business rule."""
 

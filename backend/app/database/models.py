@@ -884,4 +884,4 @@ class WaitlistSignup(Base):
 
 
 # Registered with the rest so Base.metadata (migrations, test cleanup) sees them.
-from backend.app.database.lace_models import Lace, LaceAccount, LaceActivity, LaceBrief, LaceChannel, LaceCompetitor, LaceCompetitorMove, LaceContact, LaceDocument, LaceEvent, LaceFact, LaceOpportunity, LaceOutreach, LaceSource  # noqa: E402,F401
+from backend.app.database.lace_models import Lace, LaceAccount, LaceActivity, LaceBrief, LaceChannel, LaceMember, LaceCompetitor, LaceCompetitorMove, LaceContact, LaceDocument, LaceEvent, LaceFact, LaceOpportunity, LaceOutreach, LaceSource  # noqa: E402,F401
