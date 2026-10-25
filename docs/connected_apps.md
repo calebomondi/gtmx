@@ -124,17 +124,31 @@ latest posts. Websites are read with **Firecrawl** (`FIRECRAWL_API_KEY`).
 #### Telegram
 - **Connects a bot, not the founder's account.** The founder creates a bot
   with Telegram's @BotFather (`/newbot`) and pastes its token when connecting.
-- **Does:** sends each brief to a chat or group they choose (under Brief in the
-  Lace's settings: a group or channel by @name, or a chat's number); posts to
-  the startup's Telegram channel when they approve a post the Lace proposed.
+- **Does:**
+  - **Inbox.** Once the bot is linked to a Lace (Messaging → Inboxes), messages
+    people send it, and messages in its groups that mention it or reply to it,
+    show up in Messaging every few minutes. The Lace reads them and drafts
+    answers, which the founder sends with a click, back to the same chat.
+  - **Brief.** Sends each brief to a chat or group they choose (under Brief in
+    the Lace's settings: a group or channel by @name, or a chat's number).
+  - **Channel posts.** Posts to the startup's Telegram channel when they
+    approve a post the Lace proposed.
 - **Why:** many founders and their communities live on Telegram rather than
   Slack.
 - **Setup:** a bot-token auth config of ours in Composio (no developer app),
   listed in `COMPOSIO_AUTH_CONFIGS`. The bot must be in the group, or an admin
   of the channel, it sends to.
-- **Limits:** a Telegram bot can't start a chat with someone; it can only
-  answer people who messaged it, and post where it was added. Briefs go as
-  plain text (Telegram's markdown rejects much of what a brief contains).
+- **Limits:**
+  - A Telegram bot can't start a chat with someone. It can only answer people
+    who messaged it and post where it was added, so the founder shares the
+    bot's link (t.me/theirbot) for people to write to.
+  - In a group, the bot only sees all messages if its owner turns off "privacy
+    mode" in @BotFather; the Lace keeps only those that mention the bot or
+    reply to it anyway.
+  - Telegram keeps a bot's unread messages for a day; the sync reads every few
+    minutes.
+  - Briefs go as plain text (Telegram's markdown rejects much of what a brief
+    contains).
 
 #### WhatsApp Business (Soon)
 - **Planned:** start chats with the founder's approved templates and answer

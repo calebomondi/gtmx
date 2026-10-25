@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database.lace_models import Lace, LaceChannel, LaceOutreach
 from backend.app.services import connections as connection_service
+from backend.app.services import telegram_inbox
 from backend.app.services.errors import ConflictError
 from backend.app.services.inbox import timestamp
 from backend.app.services.lace_channels import items, live_connection
@@ -119,6 +120,8 @@ async def sync_channel(db: AsyncSession, channel: LaceChannel) -> list[LaceOutre
         connection = await live_connection(db, lace, channel.platform)
     except ConflictError:
         return []  # disconnected since it was linked: nothing to read until reconnected
+    if channel.platform == "telegram":
+        return await telegram_inbox.sync_bot(db, channel, connection)
     since = channel.synced_until or datetime.now(UTC) - timedelta(days=settings.inbox_sync_window_days)
     tool, arguments = _CONVERSATIONS[channel.platform]
     conversations = await asyncio.to_thread(_fetch, channel, connection, tool, arguments(channel))

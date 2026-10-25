@@ -18,6 +18,7 @@ export interface OutreachThread {
 
 export const CHANNEL_LABELS: Record<OutreachChannel, string> = {
   email: "Email", linkedin: "LinkedIn", x: "X", instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok",
+  telegram: "Telegram",
 }
 
 function when(m: LaceOutreachDto): string {

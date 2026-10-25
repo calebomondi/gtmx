@@ -248,11 +248,11 @@ class NewLead(BaseModel):
 ContactStatus = Literal["person", "organisation", "none"]
 CONTACT_STATUSES: tuple[str, ...] = ContactStatus.__args__
 
-OutreachChannel = Literal["email", "linkedin", "x", "instagram", "facebook", "tiktok"]
+OutreachChannel = Literal["email", "linkedin", "x", "instagram", "facebook", "tiktok", "telegram"]
 OUTREACH_CHANNELS: tuple[str, ...] = OutreachChannel.__args__
 
 # Business accounts whose inbound DMs a Lace reads (docs/lace-plan.md, Channels).
-InboxPlatform = Literal["instagram", "facebook"]
+InboxPlatform = Literal["instagram", "facebook", "telegram"]
 INBOX_PLATFORMS: tuple[str, ...] = InboxPlatform.__args__
 
 BriefFrequency = Literal["off", "daily", "weekly"]

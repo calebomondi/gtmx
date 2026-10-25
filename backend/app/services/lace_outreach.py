@@ -30,6 +30,8 @@ _DM_SEND = {
     "facebook": lambda account, recipient, text: (
         "FACEBOOK_SEND_MESSAGE", {"page_id": account, "recipient_id": recipient, "message_text": text,
                                   "messaging_type": "RESPONSE"}),
+    # To the chat the message came from (a private chat, or the group), through the bot.
+    "telegram": lambda account, recipient, text: ("TELEGRAM_SEND_MESSAGE", {"chat_id": recipient, "text": text}),
 }
 # How Meta reports a message outside its window: Instagram's error subcode
 # 2534022 (per the action's docs), Facebook's 2018278, or the words themselves.
@@ -45,6 +47,9 @@ _HANDOFF = {
                 "message, send it from your Page on Facebook, then mark it sent. When they reply, your Lace "
                 "sees it in Messaging and drafts every answer, which you send from here.",
     "tiktok": "TikTok has no messaging for apps: copy the message, send it on TikTok, then mark it sent.",
+    "telegram": "A Telegram bot can only answer people who wrote to it first: copy the message, send it on "
+                "Telegram, then mark it sent. Share your bot's link (t.me/yourbot) so people can write to it; "
+                "your Lace then answers there.",
 }
 
 # What the founder may change on a message that is still theirs to change.
