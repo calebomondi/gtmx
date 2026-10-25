@@ -5,6 +5,7 @@ import { AlertTriangle, Loader2 } from "lucide-react"
 import { Lace } from "@/components/lace-mascot"
 import { Button } from "@/components/ui/button"
 import { retryLaceOnboarding } from "@/lib/api"
+import { deleteLace } from "@/lib/laces-store"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 
 import { LaceFactReview } from "./lace-fact-review"
@@ -50,22 +51,7 @@ function LaceSetup({ laceId, runId }: { laceId: string; runId: string | null }) 
     )
   }
 
-  if (setup.phase === "unreadable") {
-    return (
-      <Shell>
-        <Card className="w-full max-w-md shadow-lg">
-          <CardHeader className="justify-items-center gap-3 text-center">
-            <Lace state="idle" size={72} decorative />
-            <CardTitle className="text-xl">{name} couldn't read your site</CardTitle>
-            <CardDescription className="text-balance">
-              Tell {name} what you sell, to whom and at what price, and it will take it from there.
-            </CardDescription>
-          </CardHeader>
-          <CardFooter><Button className="w-full" onClick={meet}>Tell {name}</Button></CardFooter>
-        </Card>
-      </Shell>
-    )
-  }
+  if (setup.phase === "unreadable") return <SiteUnreadable laceId={laceId} name={name} website={setup.lace?.website ?? ""} />
 
   if (setup.phase === "failed") return <SetupFailed laceId={laceId} name={name} error={setup.error} onOpen={meet} />
 
@@ -90,8 +76,53 @@ function LaceSetup({ laceId, runId }: { laceId: string; runId: string | null }) 
   )
 }
 
+/** The page scrolls, so a long review keeps its button in reach; a card that
+ * fits stays centred. */
 function Shell({ children }: { children: React.ReactNode }) {
-  return <div className="flex flex-1 items-center justify-center px-4 py-10">{children}</div>
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="flex min-h-full items-center justify-center px-4 py-10">{children}</div>
+    </div>
+  )
+}
+
+
+/** The site couldn't be read: the founder checks the address and starts over
+ * (this Lace, which knows nothing, is removed). */
+function SiteUnreadable({ laceId, name, website }: { laceId: string; name: string; website: string }) {
+  const navigate = useNavigate()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const startOver = async () => {
+    setBusy(true)
+    try {
+      await deleteLace(laceId)
+      navigate(`/new?website=${encodeURIComponent(website)}`, { replace: true })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+      setBusy(false)
+    }
+  }
+  return (
+    <Shell>
+      <Card className="w-full max-w-md shadow-lg">
+        <CardHeader className="justify-items-center gap-3 text-center">
+          <Lace state="idle" size={72} decorative />
+          <CardTitle className="text-xl">{name} couldn't read your site</CardTitle>
+          <CardDescription className="text-balance">
+            Nothing could be read at {website || "that address"}. Check that the website address is right, then start
+            over.
+          </CardDescription>
+          {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
+        </CardHeader>
+        <CardFooter>
+          <Button className="w-full" onClick={() => void startOver()} disabled={busy}>
+            {busy && <Loader2 className="animate-spin" />} Check the address and start over
+          </Button>
+        </CardFooter>
+      </Card>
+    </Shell>
+  )
 }
 
 

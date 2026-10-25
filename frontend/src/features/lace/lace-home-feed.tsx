@@ -64,9 +64,10 @@ export default function LaceHomeFeed() {
       <div className="flex flex-1 items-center justify-center px-4 py-10">
         <div className="flex w-full max-w-md flex-col items-center gap-4 text-center">
           <Lace state="idle" size={72} decorative />
-          <h1 className="text-xl font-medium">Meet your first Lace</h1>
+          <h1 className="text-xl font-medium">Create your first Lace</h1>
           <p className="text-sm text-muted-foreground">
-            Give it your startup's website. It learns what you sell, then finds your customers and helps you reach them.
+            Give it your startup's website. It learns what you sell, then works alongside you: spotting opportunities,
+            finding customers and partners, watching competitors, and drafting outreach and replies.
           </p>
           <Link to="/new" className={cn(buttonVariants())}><Plus /> New Lace</Link>
         </div>

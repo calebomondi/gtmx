@@ -24,7 +24,7 @@ from backend.app.schemas.laces import FactVerdict, LaceMood
 from backend.app.services.runs import TERMINAL_STATUSES
 from backend.app.services.competitors import checked_website, domain_key
 from backend.app.services import connections as connection_service
-from backend.app.services import lace_members
+from backend.app.services import lace_members, website_check
 from backend.app.services import limits
 from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError
 from config import settings
@@ -40,6 +40,8 @@ async def create(db: AsyncSession, user_id: uuid.UUID, name: str, website: str,
     if await lace_members.lace_for_domain(db, domain) is not None:
         raise _taken(domain)
     await _ensure_room(db, user_id)
+    if not await website_check.readable(website):
+        raise InvalidInputError(f"We couldn't open {domain}. Check that the website address is right, then try again.")
     # Checked before the insert, so a refused onboarding leaves no Lace behind.
     await limits.ensure_can_start(db, user_id, "lace_onboarding")
     lace = Lace(user_id=user_id, name=name, website=website, domain=domain, timezone=timezone or "UTC")

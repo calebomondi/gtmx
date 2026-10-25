@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState, type FormEvent } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { Loader2 } from "lucide-react"
 
 import { Lace, type LaceState } from "@/components/lace-mascot"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { ApiError, askToJoinLace, checkLaceClaimed, createLace } from "@/lib/api"
 import { refetchLaces } from "@/lib/laces-store"
+import { isWebsite } from "@/lib/validation"
 
 import { useEyeTarget } from "./use-eye-target"
 
@@ -21,7 +22,11 @@ const NAME_PERK_MS = 900
 export default function NewLace() {
   const navigate = useNavigate()
   const [name, setName] = useState("")
-  const [website, setWebsite] = useState("")
+  // Back from a site that couldn't be read: its address, to check and fix.
+  const [params] = useSearchParams()
+  const [website, setWebsite] = useState(() => params.get("website") ?? "")
+  const [websiteTouched, setWebsiteTouched] = useState(false)
+  const websiteOk = isWebsite(website)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // The startup already has a Lace: the domain, to ask to join it instead.
@@ -86,7 +91,8 @@ export default function NewLace() {
             </div>
             <CardTitle className="text-xl">Create your Lace</CardTitle>
             <CardDescription className="text-balance">
-              Your Lace reads your website, learns what you sell, then finds your customers and helps you reach them.
+              Your Lace reads your website to learn what you sell, then spots opportunities, finds customers and partners,
+              watches competitors, and drafts your outreach and replies.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -98,9 +104,13 @@ export default function NewLace() {
               </Field>
               <Field>
                 <FieldLabel htmlFor="lace-website">Your startup's website</FieldLabel>
-                <Input id="lace-website" value={website} onChange={(e) => { setWebsite(e.target.value); setTaken(null); setAsked(false) }}
+                <Input id="lace-website" value={website} onBlur={() => setWebsiteTouched(true)}
+                       aria-invalid={websiteTouched && !!website.trim() && !websiteOk}
+                       onChange={(e) => { setWebsite(e.target.value); setTaken(null); setAsked(false) }}
                        placeholder="acme.com" inputMode="url" autoComplete="url" required />
-                <FieldDescription>Your Lace starts here: it reads the site to learn your offer.</FieldDescription>
+                {websiteTouched && website.trim() && !websiteOk && (
+                  <FieldError>Enter your startup's website, e.g. acme.com</FieldError>
+                )}
               </Field>
               {error && <FieldError>{error}</FieldError>}
               {asked && (
@@ -116,8 +126,8 @@ export default function NewLace() {
                 {submitting && <Loader2 className="animate-spin" />} {asked ? "Asked to join" : `Ask to join ${taken}'s Lace`}
               </Button>
             ) : (
-              <Button type="submit" className="w-full" disabled={submitting || !name.trim() || !website.trim()}>
-                {submitting && <Loader2 className="animate-spin" />} Create My Lace
+              <Button type="submit" className="w-full" disabled={submitting || !name.trim() || !websiteOk}>
+                {submitting && <Loader2 className="animate-spin" />} {submitting ? "Opening your site…" : "Create My Lace"}
               </Button>
             )}
           </CardFooter>

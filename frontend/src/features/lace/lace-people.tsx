@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import type { LacePersonDto, LaceRole } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { refetchLaces } from "@/lib/laces-store"
+import { isValidEmail } from "@/lib/validation"
 
 import { PersonAvatar } from "./person-avatar"
 import type { LacePeople } from "./use-lace-people"
@@ -69,6 +70,10 @@ function InviteForm({ me, people }: { me: LaceRole; people: LacePeople }) {
   const [error, setError] = useState<string | null>(null)
   const submit = async (event: FormEvent) => {
     event.preventDefault()
+    if (!isValidEmail(email)) {
+      setError("Enter an email address, e.g. name@acme.com")
+      return
+    }
     setSending(true)
     const refused = await people.invite(email.trim(), role)
     setError(refused)
@@ -80,7 +85,8 @@ function InviteForm({ me, people }: { me: LaceRole; people: LacePeople }) {
       <Field>
         <FieldLabel htmlFor="invite-email">Invite a cofounder</FieldLabel>
         <div className="flex gap-2">
-          <Input id="invite-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+          <Input id="invite-email" type="email" value={email} aria-invalid={!!error}
+                 onChange={(e) => { setEmail(e.target.value); setError(null) }}
                  placeholder="their sign-in email" required />
           {me === "owner" && (
             <select value={role} onChange={(e) => setRole(e.target.value as "admin" | "member")} aria-label="Their role"

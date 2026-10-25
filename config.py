@@ -205,6 +205,8 @@ class Settings(BaseSettings):
     market_recency_days: int = 365
     competitor_search_timeout_s: float = 20.0
     competitor_scrape_timeout_s: float = 30.0
+    # Opening a new Lace's website before it is made: one that can't be read is refused.
+    website_check_timeout_s: float = 30.0
     competitor_profile_workers: int = 6
     account_search_timeout_s: float = 20.0
     account_scrape_timeout_s: float = 30.0
