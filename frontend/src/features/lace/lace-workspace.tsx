@@ -70,8 +70,11 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
   const subtitle = chat.lace?.startup_name ?? chat.lace?.website
   const select = (next: LaceTab) => navigate(`/lace/${laceId}/${next}`)
   // The sub-tab rides in the hash, which Feed and Messaging read.
-  const open = ({ tab: next, section }: FeedTarget) =>
+  const [peopleOpen, setPeopleOpen] = useState(false)
+  const open = ({ tab: next, section, people: toPeople }: FeedTarget) => {
     navigate(`/lace/${laceId}/${next}${section ? sectionHash(section) : ""}`)
+    if (toPeople) setPeopleOpen(true)
+  }
   // "Discuss with…": into the chat with the topic waiting in the input.
   const discuss = (prompt: string) =>
     navigate(`/lace/${laceId}/chat`, { state: { prefill: prompt } satisfies DiscussState })
@@ -99,7 +102,8 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
           {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {chat.lace && <LacePeopleButton name={name} me={chat.lace.role} people={people} />}
+          {chat.lace && <LacePeopleButton name={name} me={chat.lace.role} people={people} open={peopleOpen}
+                                          onOpenChange={setPeopleOpen} />}
           <Button variant="outline" size="icon-sm" onClick={() => setSettingsOpen(true)} disabled={chat.loading}
                   aria-label={`${name}'s settings`} title="Settings">
             <Settings2 />

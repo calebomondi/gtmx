@@ -7,7 +7,7 @@ import type { ActivityDto } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 import { byDay, dayLabel, timeOfDay } from "./activity-days"
-import { ACTIVITY_ACTIONS, type FeedTarget } from "./lace-activity-actions"
+import { activityAction, type FeedTarget } from "./lace-activity-actions"
 import type { LaceActivity } from "./use-lace-activity"
 import { useOpenedItems } from "./viewer-memory"
 
@@ -21,7 +21,7 @@ function Step<T extends ActivityDto>({ item, fresh, opened, last, onOpen, tag }:
   onOpen: (target: FeedTarget) => void
   tag?: ReactNode
 }) {
-  const action = ACTIVITY_ACTIONS[item.kind]
+  const action = activityAction(item.kind)
   const failed = item.kind === "job_failed"
   return (
     <li className="grid grid-cols-[4.25rem_1.25rem_1fr] gap-x-2">
