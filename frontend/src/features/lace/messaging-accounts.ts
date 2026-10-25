@@ -13,7 +13,7 @@ export const CHANNEL_PLATFORM: Record<OutreachChannel, Platform> = {
 }
 
 /** Platforms Messaging offers to connect, in order: the ones outreach goes through. */
-export const MESSAGING_PLATFORMS: Platform[] = ["gmail", "linkedin", "instagram", "facebook", "x"]
+export const MESSAGING_PLATFORMS: Platform[] = ["gmail", "linkedin", "instagram", "facebook", "x", "telegram"]
 
 export interface MessagingAccount {
   key: OutreachChannel
