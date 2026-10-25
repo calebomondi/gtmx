@@ -77,7 +77,8 @@ def composio(monkeypatch, user):
     return fake
 
 
-def test_lists_only_the_users_connections(client, composio):
+def test_lists_only_the_users_connections(client, composio, monkeypatch):
+    monkeypatch.setattr(settings, "composio_auth_configs", {})  # as before any own auth config is set up
     body = client.get(API).json()
     assert {c["platform"]: c["available"] for c in body["channels"]} == {
         "gmail": True, "googlecalendar": True, "linkedin": True, "instagram": True, "facebook": True,

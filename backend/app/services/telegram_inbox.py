@@ -5,8 +5,8 @@ Telegram has no conversation list for bots: each read takes the bot's new
 updates (after the last one read; Telegram keeps a day of them). A private
 chat with the bot is kept whole; in a group, only messages that mention the
 bot or reply to it, so a busy group doesn't flood the Lace. Each kept message
-is an inbound "received" row in its chat's thread. Read only: syncing sends
-nothing. Composio tool verified against the live catalog (2026-10-25)."""
+is an inbound "received" row in its chat's thread; bot commands (/start)
+are left out. Read only: syncing sends nothing. Composio tool verified against the live catalog (2026-10-25)."""
 
 import asyncio
 from datetime import UTC, datetime
@@ -67,8 +67,9 @@ async def sync_bot(db: AsyncSession, channel: LaceChannel, connection: Connectio
         chat_id = (message.get("chat") or {}).get("id")
         text = (message.get("text") or "").strip()
         key = f"{chat_id}:{message.get('message_id')}"
-        if (not text or chat_id is None or key in known or (message.get("from") or {}).get("is_bot")
-                or not for_the_bot(message, channel.account_name)):
+        # A command (/start, sent when someone opens the bot) says nothing to answer.
+        if (not text or text.startswith("/") or chat_id is None or key in known
+                or (message.get("from") or {}).get("is_bot") or not for_the_bot(message, channel.account_name)):
             continue
         row = LaceOutreach(
             lace_id=channel.lace_id, user_id=channel.user_id, channel="telegram", direction="inbound",

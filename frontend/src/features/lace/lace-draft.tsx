@@ -15,7 +15,7 @@ const EDITABLE = new Set(["draft", "failed"])
 // Sent from here through the founder's own account. X needs it connected;
 // without that it is handed over like the rest.
 const SENT_FROM_HERE = new Set<OutreachChannel>(["email", "x"])
-const ANSWERABLE_IN_THREAD = new Set<OutreachChannel>(["instagram", "facebook"])
+const ANSWERABLE_IN_THREAD = new Set<OutreachChannel>(["instagram", "facebook", "telegram"])
 const START_BY_HAND = ANSWERABLE_IN_THREAD
 
 /** A message the Lace drafted, editable until it goes. Send is the founder's

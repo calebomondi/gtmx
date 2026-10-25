@@ -71,14 +71,15 @@ def test_a_linked_bot_brings_its_messages_and_answers_go_back(client, lace, lace
     telegram["updates"] = [_msg(10, 1, PRIVATE, "Do you deliver to Nakuru?"),
                            _msg(11, 2, GROUP, "@shanga_bot pricing?", sender="ann"),
                            _msg(12, 3, GROUP, "unrelated chatter", sender="bob"),
-                           _msg(13, 4, PRIVATE, "/start", sender="spam_bot", is_bot=True)]
+                           _msg(13, 4, PRIVATE, "/start", sender="spam_bot", is_bot=True),
+                           _msg(14, 5, PRIVATE, "/start")]  # sent by Telegram when someone opens the bot
     arrived, cursor = client.portal.call(_sync, lace)
     assert arrived == [("Joe", "Do you deliver to Nakuru?", "9"), ("Ann in Farmers Kenya", "@shanga_bot pricing?", "-100555")]
-    assert cursor == "13"
+    assert cursor == "14"
     # The next read starts after the last update, and nothing is stored twice.
     again, _ = client.portal.call(_sync, lace)
     assert again == [] and telegram["calls"][-1] == ("TELEGRAM_GET_UPDATES", {
-        "limit": 100, "allowed_updates": ["message"], "offset": 14})
+        "limit": 100, "allowed_updates": ["message"], "offset": 15})
 
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
         user_id = conn.execute("SELECT user_id FROM laces WHERE id = %s", (lace,)).fetchone()[0]
