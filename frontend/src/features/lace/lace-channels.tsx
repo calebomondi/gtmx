@@ -9,6 +9,7 @@ import { useLaceChannels } from "./use-lace-channels"
 const PLATFORMS: { id: InboxPlatform; label: string; what: string; link: string }[] = [
   { id: "instagram", label: "Instagram", what: "business account", link: "Link an Instagram business account" },
   { id: "facebook", label: "Facebook", what: "Page", link: "Link a Facebook Page" },
+  { id: "telegram", label: "Telegram", what: "bot", link: "Link your Telegram bot" },
 ]
 
 /** Link the founder's Instagram business account or Facebook Page, so the

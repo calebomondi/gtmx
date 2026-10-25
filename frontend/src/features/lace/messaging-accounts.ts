@@ -9,6 +9,7 @@ export type AccountKey = "all" | OutreachChannel
 
 export const CHANNEL_PLATFORM: Record<OutreachChannel, Platform> = {
   email: "gmail", linkedin: "linkedin", x: "x", instagram: "instagram", facebook: "facebook", tiktok: "tiktok",
+  telegram: "telegram",
 }
 
 /** Platforms Messaging offers to connect, in order: the ones outreach goes through. */

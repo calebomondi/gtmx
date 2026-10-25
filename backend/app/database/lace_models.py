@@ -412,6 +412,8 @@ class LaceChannel(Base):
     account_name: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
     # Newest message time seen, so a sync only reads conversations updated since.
     synced_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Telegram: the last update read, so the next read starts after it (Telegram keeps a day of updates).
+    sync_cursor: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
                                                  default=_now, server_default=func.now())
 

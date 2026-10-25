@@ -352,7 +352,7 @@ export function setLaceAccountStatus(laceId: string, accountId: string, status: 
   return apiFetch(`/api/v1/laces/${laceId}/accounts/${accountId}`, { method: "PATCH", body: JSON.stringify({ status }) })
 }
 
-export type OutreachChannel = "email" | "linkedin" | "x" | "instagram" | "facebook" | "tiktok"
+export type OutreachChannel = "email" | "linkedin" | "x" | "instagram" | "facebook" | "tiktok" | "telegram"
 
 export interface LaceOutreachDto {
   id: string
@@ -401,7 +401,7 @@ export function markLaceOutreachSent(laceId: string, messageId: string): Promise
   return apiFetch(`/api/v1/laces/${laceId}/outreach/${messageId}/mark-sent`, { method: "POST" })
 }
 
-export type InboxPlatform = "instagram" | "facebook"
+export type InboxPlatform = "instagram" | "facebook" | "telegram"
 
 export interface LaceChannelDto {
   id: string

@@ -1,5 +1,5 @@
-"""A founder's Instagram business account or Facebook Page, linked to the Lace
-that reads its inbound DMs. Only accounts managed by the live connection the
+"""A founder's Instagram business account, Facebook Page or Telegram bot,
+linked to the Lace that reads its inbound messages. Only accounts managed by the live connection the
 Lace uses (its own, else the founder's shared one) can be linked, and each to
 one Lace."""
 
@@ -18,8 +18,9 @@ from backend.app.services.errors import ConflictError, InvalidInputError, NotFou
 _ACCOUNT_TOOLS = {
     "instagram": ("INSTAGRAM_GET_USER_INFO", {"ig_user_id": "me"}),
     "facebook": ("FACEBOOK_LIST_MANAGED_PAGES", {}),
+    "telegram": ("TELEGRAM_GET_ME", {}),
 }
-LABELS = {"instagram": "Instagram", "facebook": "Facebook"}
+LABELS = {"instagram": "Instagram", "facebook": "Facebook", "telegram": "Telegram"}
 
 
 def items(data) -> list[dict]:
@@ -49,8 +50,12 @@ async def available(db: AsyncSession, lace: Lace, platform: str) -> list[dict]:
                                      connection.id)
     if result.get("error"):
         raise ConflictError(f"{LABELS[platform]} didn't list your accounts. Reconnect it in this Lace's settings.")
-    return [{"id": str(r["id"]), "name": r.get("username") or r.get("name") or str(r["id"])}
-            for r in items(result.get("data"))]
+    data = result.get("data")
+    # A Telegram bot is one record under the Bot API's "result".
+    records = items(data) or (items(data.get("result")) if isinstance(data, dict) else [])
+    return [{"id": str(r["id"]), "name": ("@" if platform == "telegram" else "") + str(
+                r.get("username") or r.get("name") or r["id"])}
+            for r in records]
 
 
 async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID) -> list[LaceChannel]:

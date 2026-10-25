@@ -33,7 +33,7 @@ const PROBLEMS: Partial<Record<LaceOutreachDto["status"], string>> = {
 }
 // lucide has no brand marks for most networks: a short wordmark instead.
 const CHANNEL_MARKS: Record<Exclude<OutreachChannel, "email">, string> = {
-  linkedin: "in", x: "X", instagram: "IG", facebook: "f", tiktok: "TT",
+  linkedin: "in", x: "X", instagram: "IG", facebook: "f", tiktok: "TT", telegram: "TG",
 }
 
 export interface ThreadActions {

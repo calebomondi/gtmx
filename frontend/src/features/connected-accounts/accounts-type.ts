@@ -60,6 +60,7 @@ const CAPABILITIES: Record<Platform, Connection['capabilities']> = {
     { label: 'Reply or post for you (TikTok\'s API allows neither)', allowed: false },
   ],
   telegram: [
+    { label: 'Read messages to your bot (and group mentions), with answers you send', allowed: true },
     { label: 'Send your brief to a chat or group you choose', allowed: true },
     { label: 'Post to your channel when you approve', allowed: true },
     { label: 'Start chats with people (Telegram bots can only answer)', allowed: false },

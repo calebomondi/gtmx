@@ -3,7 +3,8 @@ import type { ContactDto, LaceOutreachDto, OutreachChannel } from "@/lib/api"
 import { isUnread } from "./outreach-threads"
 
 /** Where a person can be written to, best first. */
-const REACH_ORDER: OutreachChannel[] = ["email", "linkedin", "x", "instagram", "facebook", "tiktok"]
+// The ways a contact's record holds to reach them; Telegram isn't one (a bot can't start a chat).
+const REACH_ORDER: Exclude<OutreachChannel, "telegram">[] = ["email", "linkedin", "x", "instagram", "facebook", "tiktok"]
 
 export interface Reach {
   channel: OutreachChannel
