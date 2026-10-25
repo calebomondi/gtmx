@@ -6,41 +6,43 @@ import { PlatformIcon } from "@/components/platform-icon"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
-import { beginConnection, PLATFORM_LABEL, type Platform } from "@/lib/platforms"
+import { ConnectSteps } from "@/components/connect-steps"
+import { CONNECT_STEPS, beginConnection, PLATFORM_LABEL, type Platform } from "@/lib/platforms"
 import { cn } from "@/lib/utils"
 
 import { LaceChannels } from "./lace-channels"
 import { MESSAGING_PLATFORMS, type AccountKey, type MessagingAccount } from "./messaging-accounts"
 import type { Connections } from "./use-connections"
 
-const STATE_DOT: Record<MessagingAccount["state"], string> = {
-  connected: "bg-emerald-500", attention: "bg-amber-500", none: "border border-muted-foreground/50",
-}
 const STATE_TEXT: Record<MessagingAccount["state"], string> = {
   connected: "Connected", attention: "Needs you to sign in again", none: "Not connected: you send these yourself",
 }
 
-function Count({ n }: { n: number }) {
-  if (n === 0) return null
-  return (
-    <span className="grid h-5 min-w-5 place-items-center rounded-full bg-theme px-1.5 text-[11px] font-medium text-neutral-900 tabular-nums">
-      {n}
-    </span>
-  )
-}
-
-function Pill({ active, onClick, children, title }: {
+/** One account as a round icon: what waits on it as a badge on its corner,
+ * an amber dot when it needs signing in again; its name in the tooltip. */
+function AccountIcon({ active, onClick, label, waiting, attention, children }: {
   active: boolean
   onClick: () => void
+  label: string
+  waiting: number
+  attention?: boolean
   children: React.ReactNode
-  title?: string
 }) {
   return (
-    <button type="button" onClick={onClick} aria-pressed={active} title={title}
-            className={cn("flex shrink-0 cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors",
-                          active ? "border-theme/60 bg-theme/15 text-foreground shadow-sm"
-                                 : "border-border bg-background/60 text-muted-foreground hover:border-theme/40 hover:text-foreground")}>
+    <button type="button" onClick={onClick} aria-pressed={active} title={label}
+            aria-label={waiting ? `${label}, ${waiting} waiting` : label}
+            className={cn("relative grid size-9 shrink-0 cursor-pointer place-items-center rounded-full border transition-colors",
+                          active ? "border-theme/70 bg-theme/15 shadow-sm"
+                                 : "border-border bg-background/60 hover:border-theme/40")}>
       {children}
+      {waiting > 0 && (
+        <span className="absolute -top-1.5 -right-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-theme px-1 text-[10px] font-semibold text-neutral-900 tabular-nums ring-2 ring-background">
+          {waiting}
+        </span>
+      )}
+      {attention && !waiting && (
+        <span aria-hidden className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full bg-amber-500 ring-2 ring-background" />
+      )}
     </button>
   )
 }
@@ -56,6 +58,8 @@ function ConnectDialog({ laceId, name, connections, open, onOpenChange }: {
 }) {
   const [starting, setStarting] = useState<Platform | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // An app shown its steps first (Telegram's bot token), waiting for Continue.
+  const [stepsFor, setStepsFor] = useState<Platform | null>(null)
   const connect = async (platform: Platform) => {
     setStarting(platform)
     setError(null)
@@ -81,7 +85,7 @@ function ConnectDialog({ laceId, name, connections, open, onOpenChange }: {
             const connection = connections.connections.find((c) => c.platform === platform)
             const ready = connections.channels.some((c) => c.platform === platform && c.available)
             return (
-              <li key={platform} className="flex items-center gap-3 rounded-xl border px-3 py-2.5">
+              <li key={platform} className="flex flex-wrap items-center gap-3 rounded-xl border px-3 py-2.5">
                 <PlatformIcon platform={platform} className="size-6" />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="text-sm font-medium">{PLATFORM_LABEL[platform]}</span>
@@ -94,9 +98,15 @@ function ConnectDialog({ laceId, name, connections, open, onOpenChange }: {
                 {connection ? (
                   <Button size="sm" variant="ghost" render={<Link to="/accounts" />}>Manage</Button>
                 ) : (
-                  <Button size="sm" onClick={() => void connect(platform)} disabled={!ready || starting !== null}>
-                    {starting === platform ? <Loader2 className="animate-spin" /> : <Plus />} Connect
+                  <Button size="sm" disabled={!ready || starting !== null}
+                          onClick={() => (CONNECT_STEPS[platform] && stepsFor !== platform
+                            ? setStepsFor(platform) : void connect(platform))}>
+                    {starting === platform ? <Loader2 className="animate-spin" /> : <Plus />}
+                    {stepsFor === platform ? " Continue" : " Connect"}
                   </Button>
+                )}
+                {stepsFor === platform && !connection && (
+                  <div className="basis-full"><ConnectSteps platform={platform} /></div>
                 )}
               </li>
             )
@@ -129,22 +139,17 @@ export function LaceAccountSwitcher({ laceId, name, accounts, value, onChange, t
   const [connecting, setConnecting] = useState(false)
   return (
     <div className="flex items-center gap-2">
-      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none]" role="group" aria-label="Accounts">
-      <Pill active={value === "all"} onClick={() => onChange("all")}>
-        <Layers className="size-4" /> All accounts <Count n={totalWaiting} />
-      </Pill>
+      {/* Room around each icon for its badge, which sits over the edge. */}
+      <div className="flex min-w-0 flex-1 items-center gap-2.5 overflow-x-auto px-1.5 py-1.5 [scrollbar-width:none]" role="group" aria-label="Accounts">
+      <AccountIcon active={value === "all"} onClick={() => onChange("all")} label="All accounts" waiting={totalWaiting}>
+        <Layers className="size-4" />
+      </AccountIcon>
       {accounts.map((account) => (
-        <Pill key={account.key} active={value === account.key} onClick={() => onChange(account.key)}
-              title={`${account.label}: ${STATE_TEXT[account.state]}`}>
-          <PlatformIcon platform={account.platform} className="size-4" />
-          <span>{account.label}</span>
-          {/* Who it is only on the chosen one, so every account fits in a row. */}
-          {account.detail && value === account.key && (
-            <span className="max-w-40 truncate text-xs text-muted-foreground">{account.detail}</span>
-          )}
-          <span aria-hidden className={cn("size-1.5 rounded-full", STATE_DOT[account.state])} />
-          <Count n={account.waiting} />
-        </Pill>
+        <AccountIcon key={account.key} active={value === account.key} onClick={() => onChange(account.key)}
+                     label={[account.label, account.detail, STATE_TEXT[account.state]].filter(Boolean).join(" · ")}
+                     waiting={account.waiting} attention={account.state === "attention"}>
+          <PlatformIcon platform={account.platform} className="size-5" />
+        </AccountIcon>
       ))}
       </div>
       <Button size="sm" variant="outline" className="shrink-0 rounded-full" onClick={() => setConnecting(true)}>
