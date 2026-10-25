@@ -59,6 +59,11 @@ const CAPABILITIES: Record<Platform, Connection['capabilities']> = {
     { label: 'Read your public videos, how they did and their comments (from your handle, no connection needed)', allowed: true },
     { label: 'Reply or post for you (TikTok\'s API allows neither)', allowed: false },
   ],
+  telegram: [
+    { label: 'Send your brief to a chat or group you choose', allowed: true },
+    { label: 'Post to your channel when you approve', allowed: true },
+    { label: 'Start chats with people (Telegram bots can only answer)', allowed: false },
+  ],
   x: [
     { label: 'Read your public posts and how they did (from your handle, no connection needed)', allowed: true },
     { label: 'Send DMs you approve', allowed: true },

@@ -58,6 +58,8 @@ APPS = (
     App("tiktok", "tiktok", "TikTok", "channels", False),
     App("x", "twitter", "X", "channels", False),
     App("whatsapp", "whatsapp", "WhatsApp Business", "channels", True),
+    # A bot, connected by the token @BotFather gives (an API-key auth config of ours).
+    App("telegram", "telegram", "Telegram", "channels", False),
     App("zoho", "zoho", "Zoho CRM", "crm", True),
     App("hubspot", "hubspot", "HubSpot", "crm", True),
     App("googlesheets", "googlesheets", "Google Sheets", "docs", True),
@@ -171,6 +173,7 @@ _IDENTITY = {
     "instagram": ("INSTAGRAM_GET_USER_INFO", {}, lambda d: _handle(d.get("username"))),
     "facebook": ("FACEBOOK_GET_CURRENT_USER", {}, lambda d: d.get("name")),
     "x": ("TWITTER_USER_LOOKUP_ME", {}, lambda d: _handle((d.get("data") or {}).get("username"))),
+    "telegram": ("TELEGRAM_GET_ME", {}, lambda d: _handle((d.get("result") or d).get("username"))),
 }
 _IDENTITY_TIMEOUT_S = 15.0
 

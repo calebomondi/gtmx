@@ -10,6 +10,9 @@ const DESTINATIONS = [
     missing: "post the brief in a Slack channel" },
   { platform: "notion", setting: "brief_page", label: "Save it in Notion, under", placeholder: "Notion page link",
     prefix: "", missing: "save each brief as a Notion page" },
+  { platform: "telegram", setting: "brief_chat", label: "Send it on Telegram to", placeholder: "@yourgroup or a chat number",
+    prefix: "", missing: "send the brief on Telegram",
+    hint: "A group or channel your bot is in, by its @name. For a chat with you alone, its number: send /start to your bot, then ask @userinfobot for your id." },
 ] as const
 
 function Destination({ apps, destination }: { apps: LaceApps; destination: (typeof DESTINATIONS)[number] }) {
@@ -22,8 +25,13 @@ function Destination({ apps, destination }: { apps: LaceApps; destination: (type
       </p>
     )
   }
-  return <AppSettingField apps={apps} app={app} setting={destination.setting} label={destination.label}
-                          placeholder={destination.placeholder} prefix={destination.prefix} clearLabel="Stop" />
+  return (
+    <div className="flex flex-col gap-1">
+      <AppSettingField apps={apps} app={app} setting={destination.setting} label={destination.label}
+                       placeholder={destination.placeholder} prefix={destination.prefix} clearLabel="Stop" />
+      {"hint" in destination && <p className="text-xs text-muted-foreground">{destination.hint}</p>}
+    </div>
+  )
 }
 
 /** Where else each brief goes, beside the chat and email: a Slack channel

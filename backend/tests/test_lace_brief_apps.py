@@ -16,10 +16,11 @@ from config import settings
 BODY = "**3 replies** this week.\n- Samir asked about pricing"
 
 
-def _setup(slack: str | None = None, notion: str | None = None) -> uuid.UUID:
+def _setup(slack: str | None = None, notion: str | None = None, telegram: str | None = None) -> uuid.UUID:
     lace = _lace()
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
-        for platform, key, value in [("slack", "brief_channel", slack), ("notion", "brief_page", notion)]:
+        for platform, key, value in [("slack", "brief_channel", slack), ("notion", "brief_page", notion),
+                                     ("telegram", "brief_chat", telegram)]:
             if value:
                 conn.execute("INSERT INTO lace_apps (id, lace_id, platform, enabled, settings) VALUES (%s, %s, %s, true, %s)",
                              (uuid.uuid4(), lace, platform, json.dumps({key: value})))
@@ -69,3 +70,14 @@ def test_a_long_brief_is_cut_for_slack():
         name = "Ada"
     text = lace_brief_apps._slack_text(Lace(), "x" * 5000)
     assert len(text) == lace_brief_apps.SLACK_CHARS and text.endswith("…the rest is in Thalace.")
+
+
+async def test_a_brief_goes_to_a_telegram_chat_as_plain_text(composio, monkeypatch):  # noqa: F811
+    stub_accounts(monkeypatch, {"telegram"})
+    composio["answers"] = {"TELEGRAM_SEND_MESSAGE": {"ok": True, "result": {"message_id": 42}}}
+    brief = _setup(telegram="@shanga_team")
+    await lace_brief_apps.deliver(brief)
+    assert _actions(brief) == [("telegram", "done", "Brief sent to @shanga_team on Telegram")]
+    sent = composio["calls"][0][1]
+    assert sent["chat_id"] == "@shanga_team" and sent["text"].startswith("Ada's brief\n\n**3 replies**")
+    assert "parse_mode" not in sent

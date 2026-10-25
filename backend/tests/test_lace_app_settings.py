@@ -71,3 +71,10 @@ def test_settings_are_checked_per_app(client, lace, lace_runtime, connected):  #
         assert client.put(f"{API}/laces/{lace}/apps/{platform}", json={"settings": settings}).status_code == 422, settings
     # An empty value clears the setting.
     assert client.put(f"{API}/laces/{lace}/apps/notion", json={"settings": {"brief_page": ""}}).json()["settings"] == {}
+
+
+def test_the_telegram_brief_chat_is_checked(client, lace, lace_runtime, connected):  # noqa: F811
+    saved = client.put(f"{API}/laces/{lace}/apps/telegram", json={"settings": {"brief_chat": "https://t.me/shanga_team"}})
+    assert saved.json()["settings"] == {"brief_chat": "@shanga_team"}
+    refused = client.put(f"{API}/laces/{lace}/apps/telegram", json={"settings": {"brief_chat": "my group"}})
+    assert refused.status_code == 422 and "t.me link" in refused.json()["detail"]

@@ -57,7 +57,7 @@ from backend.app.schemas.laces import (
 )
 # Registers the social actions' runners, which approving app actions runs.
 from backend.app.services import (  # noqa: F401 -- registers their runners
-    asana_actions, crm_actions, notion_actions, sheet_actions, slack_actions, social_actions,
+    asana_actions, crm_actions, notion_actions, sheet_actions, slack_actions, social_actions, telegram_actions,
 )
 from backend.app.services import email, inbox, lace_app_actions, lace_app_settings, lace_accounts, lace_briefs, lace_cards, lace_documents, lace_activity, lace_contacts, lace_members, lace_search, lace_channels, lace_competitors, lace_opportunities, lace_outreach
 from backend.app.services import connections as connection_service
