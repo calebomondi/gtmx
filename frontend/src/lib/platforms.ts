@@ -5,7 +5,7 @@ import { startConnection, startLaceConnection } from "@/lib/api"
 
 export type Platform =
   | 'gmail' | 'outlook' | 'googlecalendar' | 'linkedin' | 'instagram' | 'facebook' | 'tiktok' | 'x' | 'whatsapp'
-  | 'zoho' | 'hubspot' | 'googlesheets' | 'notion' | 'slack' | 'asana' | 'calendly'
+  | 'zoho' | 'hubspot' | 'googlesheets' | 'notion' | 'slack' | 'asana' | 'calendly' | 'telegram'
 
 export const PLATFORM_LABEL: Record<Platform, string> = {
   gmail: 'Gmail',
@@ -24,6 +24,7 @@ export const PLATFORM_LABEL: Record<Platform, string> = {
   slack: 'Slack',
   asana: 'Asana',
   calendly: 'Calendly',
+  telegram: 'Telegram',
 }
 
 /** Empty string means "no icon asset" — the tile renders the name's first letter instead. */
@@ -44,6 +45,7 @@ export const PLATFORM_ICON: Record<Platform, string> = {
   slack: '/slack.svg',
   asana: '/asana.svg',
   calendly: '/calendly.svg',
+  telegram: '/telegram.svg',
 }
 
 /** Icons drawn in black, inverted on dark themes so they stay visible. */
@@ -54,7 +56,7 @@ export type AppGroup = 'channels' | 'crm' | 'docs' | 'team' | 'meetings'
 /** The apps by what a Lace does with them, in display order. */
 export const APP_GROUPS: { key: AppGroup; label: string; blurb: string; platforms: Platform[] }[] = [
   { key: 'channels', label: 'Channels', blurb: 'Where your Lace reaches people and reads their replies.',
-    platforms: ['gmail', 'outlook', 'linkedin', 'x', 'instagram', 'facebook', 'tiktok', 'whatsapp'] },
+    platforms: ['gmail', 'outlook', 'linkedin', 'x', 'instagram', 'facebook', 'tiktok', 'telegram', 'whatsapp'] },
   { key: 'crm', label: 'CRM', blurb: 'Your pipeline: who is already a lead, and what your deals add up to.',
     platforms: ['zoho', 'hubspot'] },
   { key: 'docs', label: 'Sheets & docs', blurb: 'Lists to import and export, and pages to read and write.',

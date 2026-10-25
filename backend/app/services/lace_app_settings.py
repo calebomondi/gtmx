@@ -19,6 +19,7 @@ from functools import partial
 
 from agents.lace.notion_tools import page_id
 from agents.lace.slack_tools import channel_name
+from agents.lace.telegram_tools import chat_target
 from backend.app.services.errors import InvalidInputError, NotFoundError
 from data_sources.socials.profiles import profile_handle
 
@@ -29,10 +30,12 @@ SETTINGS = {
     # The founder's own public account, read by handle with nothing connected.
     "x": {"handle": partial(profile_handle, "x")},
     "tiktok": {"handle": partial(profile_handle, "tiktok")},
+    "telegram": {"brief_chat": chat_target},
 }
 _INVALID = {"brief_channel": "That isn't a Slack channel name, e.g. #sales.",
             "brief_page": "That isn't a Notion page link.",
-            "handle": "That isn't a handle or a profile link, e.g. @acme."}
+            "handle": "That isn't a handle or a profile link, e.g. @acme.",
+            "brief_chat": "That isn't a Telegram chat: give @name, a t.me link, or the chat's number."}
 
 
 def _app(platform: str) -> connection_service.App:

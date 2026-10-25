@@ -31,7 +31,9 @@ and what has to be set up first. The registry in code is
   ("managed"). For TikTok and X it doesn't: we need our own developer app,
   registered with Composio as an auth config and listed in
   `COMPOSIO_AUTH_CONFIGS` (e.g. `{"tiktok": "ac_…", "twitter": "ac_…"}`).
-  Until then, Connect for those apps is refused.
+  Telegram connects a bot by its token, so it needs a bot-token (API key) auth
+  config of ours, with no developer app (`{"telegram": "ac_…"}`). Until an
+  app's auth config is set, Connect for it is refused.
 
 ## Reading public profiles needs no connection
 
@@ -118,6 +120,21 @@ latest posts. Websites are read with **Firecrawl** (`FIRECRAWL_API_KEY`).
 - **Limits:** no API (official or not) posts a reply to a TikTok comment, so
   replies are drafted for the founder to paste. TikTok's official API doesn't
   give comments either; they come from public pages.
+
+#### Telegram
+- **Connects a bot, not the founder's account.** The founder creates a bot
+  with Telegram's @BotFather (`/newbot`) and pastes its token when connecting.
+- **Does:** sends each brief to a chat or group they choose (under Brief in the
+  Lace's settings: a group or channel by @name, or a chat's number); posts to
+  the startup's Telegram channel when they approve a post the Lace proposed.
+- **Why:** many founders and their communities live on Telegram rather than
+  Slack.
+- **Setup:** a bot-token auth config of ours in Composio (no developer app),
+  listed in `COMPOSIO_AUTH_CONFIGS`. The bot must be in the group, or an admin
+  of the channel, it sends to.
+- **Limits:** a Telegram bot can't start a chat with someone; it can only
+  answer people who messaged it, and post where it was added. Briefs go as
+  plain text (Telegram's markdown rejects much of what a brief contains).
 
 #### WhatsApp Business (Soon)
 - **Planned:** start chats with the founder's approved templates and answer

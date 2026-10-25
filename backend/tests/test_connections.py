@@ -85,6 +85,7 @@ def test_lists_only_the_users_connections(client, composio):
         # Every second-wave app's sign-in is managed by Composio.
         "outlook": True, "whatsapp": True, "zoho": True, "hubspot": True, "googlesheets": True, "notion": True,
         "slack": True, "asana": True, "calendly": True,
+        "telegram": False,  # a bot token needs our own API-key auth config
     }
     rows = {(c["id"], c["platform"], c["status"], c["display_name"]) for c in body["connections"]}
     # The live account is labelled from the provider's own profile.
