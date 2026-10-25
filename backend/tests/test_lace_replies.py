@@ -137,6 +137,23 @@ def test_one_run_reads_every_reply_that_came_in(client, lace, lace_runtime, user
     client.portal.call(_wait_for_turns, lace, 1)
 
 
+def test_several_messages_in_one_conversation_get_one_answer(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    _sent(lace, user.id, thread="t_1")
+    _inbox(monkeypatch, _reply("m_1", text="Interesting."), _reply("m_2", text="What does it cost?"))
+    _reader(monkeypatch)
+    lace_runtime.append(AIMessage(content="Samir wrote twice; one answer is ready."))
+    assert client.portal.call(scheduler.sync_inboxes) == 2
+    [run] = client.portal.call(_runs, lace, "lace_reply")
+    assert client.portal.call(_wait_for_status, run.id, {"completed"}).progress == {"replies": 1}
+    client.portal.call(_wait_for_turns, lace, 1)
+    with psycopg.connect(settings.database_url) as conn:
+        drafts = conn.execute("SELECT count(*) FROM lace_outreach WHERE lace_id = %s AND status = 'draft'",
+                              (lace,)).fetchone()[0]
+        unread = conn.execute("SELECT count(*) FROM lace_outreach WHERE lace_id = %s AND direction = 'inbound'"
+                              " AND intent IS NULL", (lace,)).fetchone()[0]
+    assert (drafts, unread) == (1, 0)  # one answer; both messages read
+
+
 def test_a_bounce_marks_the_lace_send(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
     _sent(lace, user.id)
     _inbox(monkeypatch, {"messageId": "b_1", "threadId": "t_1", "sender": "Mail Delivery Subsystem <mailer-daemon@googlemail.com>",

@@ -392,8 +392,10 @@ def competitors_update(found: list, new: int, refreshed: int) -> str:
 async def reply_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
     """Read each reply that came in and draft the answer through v1's reply
     pipeline (classify, consult, write, check), offering free calendar slots.
-    The answer waits as a draft in the same thread; nothing is sent. Loops
-    until no reply is left unread, so ones arriving mid-run are not missed."""
+    The answer waits as a draft in the same thread; nothing is sent. Several
+    messages in one conversation (three quick DMs) get one answer, to the
+    latest, which reads the whole thread. Loops until no reply is left
+    unread, so ones arriving mid-run are not missed."""
     store = DbLaceStore(AsyncSessionLocal, lace_id)
     profile, facts, rivals = await asyncio.gather(
         store.profile(), store.facts(None, BRIEF_FACTS), store.competitors(COMPETITORS_FOR_DRAFTS))
@@ -410,15 +412,16 @@ async def reply_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None
             user_id = pending[0].user_id
             slots, timezone = await calendar_service.free_slots(db, await db.get(models.Lace, lace_id))
             work = []
-            for reply in pending:
+            for reply, earlier in latest_per_conversation(pending):
                 conversation = await lace_outreach.thread(db, reply)
                 account = await db.get(LaceAccount, reply.account_id) if reply.account_id else None
                 # A DM to the founder's own account may come from someone who is
                 # no target account yet.
                 who = reply.recipient_company or f"{reply.recipient_name or 'Someone'} on {reply.channel}"
-                work.append((reply.id, reply.recipient_name, conversation, account.record if account else None, who))
+                work.append((reply.id, earlier, reply.recipient_name, conversation, account.record if account else None,
+                             who))
         sender = await outreach_service.sender_for_user(user_id)
-        for reply_id, contact, conversation, record, company in work:
+        for reply_id, earlier, contact, conversation, record, company in work:
             brief = gtm_replies.ReplyBrief(
                 sender_name=sender, contact_name=contact, offer=offer,
                 account=record_brief(AccountRecord.model_validate(record)) if record else company,
@@ -431,6 +434,9 @@ async def reply_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None
                 reply = await db.get(LaceOutreach, reply_id)
                 draft = await lace_outreach.record_reading(
                     db, reply, result.analysis.intent, result.draft.body if result.draft else None, run_id)
+                for earlier_id in earlier:  # read with it, answered by the one draft
+                    await lace_outreach.record_reading(db, await db.get(LaceOutreach, earlier_id),
+                                                       result.analysis.intent, None, run_id)
                 handled.append(reply_update_line(reply, result.analysis, draft is not None))
                 await lace_activity.add(db, lace_id, "reply_received", f"{company} replied ({result.analysis.intent})",
                                         result.analysis.summary, ref=("outreach", reply.id))
@@ -440,6 +446,16 @@ async def reply_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None
     await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
                          progress={"replies": len(handled)})
     await events.publish(run_id, "complete", {"replies": len(handled)})
+
+
+def latest_per_conversation(pending: list[LaceOutreach]) -> list[tuple[LaceOutreach, list[uuid.UUID]]]:
+    """Each conversation's latest unread message, with the ids of the earlier
+    unread ones in it; a message with no thread is its own conversation.
+    `pending` is oldest first, and so is the result."""
+    by_thread: dict[str, list[LaceOutreach]] = {}
+    for reply in pending:
+        by_thread.setdefault(reply.thread_id or str(reply.id), []).append(reply)
+    return [(replies[-1], [r.id for r in replies[:-1]]) for replies in by_thread.values()]
 
 
 def reply_update_line(reply: LaceOutreach, analysis, drafted: bool) -> str:
