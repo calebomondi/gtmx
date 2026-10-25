@@ -44,6 +44,8 @@ BATCH_PAGE_TOKEN_CAP = 1_200
 MAX_BATCH_PAGES = 8
 MAX_MAP_LINKS = 60
 SEARCH_RESULTS = 8
+# The most TikTok videos one comment read covers.
+TIKTOK_VIDEOS_MAX = 5
 HIGHLIGHTS_PER_RESULT = 3
 FACTS_PER_READ = 50
 COMPETITORS_PER_READ = 50
@@ -435,5 +437,19 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
             return ToolResult.failure(str(exc))
         return ToolResult.success("Started looking for opportunities. You will get an update here when it finishes.")
 
+    @tool(parse_docstring=True)
+    @guarded
+    async def read_tiktok_comments(videos: int = 3) -> ToolResult:
+        """Read the comments on the founder's recent TikTok videos, from their public profile (the handle saved in your settings; nothing needs connecting), to find people worth reaching out to. Slow, so it runs in the background; you get an update with the comments when it is done. Replies can't be posted for them: draft one for the founder to paste into TikTok.
+
+        Args:
+            videos: How many of their newest videos with comments to read (at most 5).
+        """
+        try:
+            await jobs.start("read_tiktok_comments", {"videos": max(1, min(videos, TIKTOK_VIDEOS_MAX))})
+        except JobRefused as exc:
+            return ToolResult.failure(str(exc))
+        return ToolResult.success("Started reading their TikTok comments. You will get an update here when it's done.")
+
     return [*tools, find_competitors, check_competitors, find_accounts, define_icp, find_contacts, draft_outreach,
-            find_opportunities]
+            find_opportunities, read_tiktok_comments]

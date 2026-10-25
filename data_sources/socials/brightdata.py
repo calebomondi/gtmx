@@ -29,6 +29,15 @@ def get_client(config: Settings | None = None) -> SyncBrightDataClient | None:
     return _client(cfg.brightdata_api_key, threading.get_ident())
 
 
+def parse_count(value) -> int | None:
+    """A scraped count ("1,204", 3.0) as a number; None when missing or hidden."""
+    try:
+        n = int(float(str(value).replace(",", "")))
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None  # scrapers report 0 when a count is hidden
+
+
 def fetch_record(
     platform: str,
     method: str,
@@ -40,6 +49,20 @@ def fetch_record(
     when it found nothing (a missing, private or dead page). Raises
     SocialsError when the scrape itself failed. Without `timeout_s` the SDK's
     own wait applies (180 s)."""
+    records = fetch_records(platform, method, url, config, timeout_s)
+    return records[0] if records else None
+
+
+def fetch_records(
+    platform: str,
+    method: str,
+    url: str,
+    config: Settings | None = None,
+    timeout_s: float | None = None,
+) -> list[dict]:
+    """Every record one scraper method returns (a profile's posts, a video's
+    comments), leaving out error-only ones; [] when it found nothing. Raises
+    SocialsError when the scrape itself failed."""
     cfg = config or get_settings()
     if not cfg.brightdata_api_key:
         raise SocialsError("Bright Data is not configured (no API key).")
@@ -57,20 +80,17 @@ def fetch_record(
     if getattr(results, "success", True) is False:
         status = getattr(results, "status", None) or "error"
         raise SocialsError(f"the {platform} scraper stopped ({status}: {results.error or 'no detail'})")
-    if isinstance(results, (list, dict)):
-        record = results
-    else:
-        record = getattr(results, "data", None) or getattr(results, "result", None)
-    if isinstance(record, list):
-        record = record[0] if record else None
-    if not isinstance(record, dict):
-        logger.info("Bright Data %s.%s returned no record for %s", platform, method, url)
-        return None
+    data = results if isinstance(results, (list, dict)) else (
+        getattr(results, "data", None) or getattr(results, "result", None))
+    rows = [r for r in (data if isinstance(data, list) else [data]) if isinstance(r, dict)]
     # A missing or dead page comes back as a record carrying only the error.
-    if record.get("error"):
-        logger.info("Bright Data %s.%s: %s for %s", platform, method, record.get("error_code") or record["error"], url)
-        return None
-    return record
+    for row in rows:
+        if row.get("error"):
+            logger.info("Bright Data %s.%s: %s for %s", platform, method, row.get("error_code") or row["error"], url)
+    found = [r for r in rows if not r.get("error")]
+    if not found:
+        logger.info("Bright Data %s.%s returned no record for %s", platform, method, url)
+    return found
 
 
 def scrape_resource(

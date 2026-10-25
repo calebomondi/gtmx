@@ -6,5 +6,6 @@ from typing import Literal, get_args
 RunKind = Literal[
     "discovery", "competitors", "accounts", "competitor_research", "chat", "outreach_drafts", "outreach_reply",
     "monitor", "account_fit", "lace_onboarding", "lace_turn", "lace_competitors", "lace_monitor", "lace_accounts", "lace_contacts", "lace_drafts", "lace_reply", "lace_opportunities", "lace_icp",
+    "lace_comments",
 ]
 RUN_KINDS: tuple[str, ...] = get_args(RunKind)

@@ -55,6 +55,7 @@ def default_daily_cap(kind: str) -> int:
         "lace_reply": settings.max_outreach_sends_per_day,
         "lace_opportunities": settings.max_account_runs_per_day,
         "lace_icp": settings.max_account_runs_per_day,
+        "lace_comments": settings.max_account_runs_per_day,
     }[kind]
 
 

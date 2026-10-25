@@ -56,10 +56,11 @@ const CAPABILITIES: Record<Platform, Connection['capabilities']> = {
     { label: 'Cold messages (Facebook only allows replies within 24 hours)', allowed: false },
   ],
   tiktok: [
-    { label: 'Publish content you approve', allowed: true },
-    { label: 'Send without your approval', allowed: false },
+    { label: 'Read your public videos, how they did and their comments (from your handle, no connection needed)', allowed: true },
+    { label: 'Reply or post for you (TikTok\'s API allows neither)', allowed: false },
   ],
   x: [
+    { label: 'Read your public posts and how they did (from your handle, no connection needed)', allowed: true },
     { label: 'Send DMs you approve', allowed: true },
     { label: 'Post, reply, like and repost when you approve', allowed: true },
     { label: 'Send without your approval', allowed: false },

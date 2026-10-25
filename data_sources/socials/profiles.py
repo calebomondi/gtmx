@@ -15,6 +15,7 @@ import httpx
 
 from config import Settings
 from data_sources.socials import instagram, linkedin, tiktok, x
+from data_sources.socials.brightdata import parse_count
 from utils.log import logger
 
 PLATFORMS = ("linkedin", "x", "instagram", "tiktok")
@@ -51,6 +52,13 @@ def _handle(platform: str, text: str) -> str | None:
     return match.group(1) if match else None
 
 
+def profile_handle(platform: str, value: str) -> str | None:
+    """The handle in a profile URL or a bare handle ("@acme" or "acme"); None
+    for anything else."""
+    url = profile_url(platform, value)
+    return _handle(platform, url) if url else None
+
+
 def profile_url(platform: str, value: str) -> str | None:
     """A profile URL from a URL or a bare handle; None for share links etc."""
     value = (value or "").strip()
@@ -82,14 +90,6 @@ def find_on_site(website: str, name: str, timeout_s: float = 15) -> dict[str, st
         logger.info("Could not read socials off %s: %s", website, exc)
         return {}
     return find_on_page(response.text, name)
-
-
-def parse_count(value) -> int | None:
-    try:
-        n = int(float(str(value).replace(",", "")))
-    except (TypeError, ValueError):
-        return None
-    return n if n > 0 else None  # scrapers report 0 when a count is hidden
 
 
 def _post(text, url, date, likes=None) -> dict:

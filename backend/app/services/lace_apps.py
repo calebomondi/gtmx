@@ -10,11 +10,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agents.lace.apps import AppError, CommentsOn, XRecord
-from backend.app.database.lace_models import Lace, LaceChannel
+from backend.app.database.lace_models import Lace, LaceApp, LaceChannel
 from backend.app.services import connections as connection_service
 from backend.app.services import crm, lace_app_settings
 from backend.app.services.lace_channels import items
+from config import settings
 from data_sources.socials import x_api
+from data_sources.socials.brightdata import SocialsError
+from data_sources.socials.tiktok import recent_videos as tiktok_videos
+from data_sources.socials.x import recent_posts as x_posts
 from utils.log import logger
 
 # Composio tools, verified against the live catalog.
@@ -224,6 +228,25 @@ class DbLaceApps:
                 {"name": i.get("name"), "email": i.get("email")}
                 for i in invitees.get("collection") or [] if isinstance(i, dict)]})
         return meetings
+
+    async def my_posts(self, platform: str) -> list[dict] | None:
+        handle = await self.handle(platform)
+        if handle is None:
+            return None
+        read = x_posts if platform == "x" else tiktok_videos
+        try:
+            return await asyncio.to_thread(read, handle, settings, settings.social_read_timeout_s)
+        except SocialsError as exc:
+            logger.warning("Reading %s's %s posts failed: %s", handle, platform, exc)
+            raise AppError(f"Couldn't read @{handle} on {connection_service.label(platform)} just now; try again later.") \
+                from exc
+
+    async def handle(self, platform: str) -> str | None:
+        """The founder's own handle on `platform`, as saved in the Lace's settings."""
+        async with self._sessions() as session:
+            saved = await session.scalar(select(LaceApp.settings).where(
+                LaceApp.lace_id == self._lace_id, LaceApp.platform == platform))
+        return (saved or {}).get("handle")
 
     async def my_comments(self, platform: CommentsOn, posts: int) -> list[dict] | None:
         live = await self._live(platform)

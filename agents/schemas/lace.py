@@ -293,6 +293,7 @@ CONTACT_SOURCES: tuple[str, ...] = ContactSource.__args__
 ActivityKind = Literal[
     "brief", "competitors_found", "competitor_moves", "accounts_found", "contacts_found",
     "drafts_ready", "reply_received", "opportunities_found", "job_failed", "app_action", "access_requested",
+    "comments_read",
 ]
 ACTIVITY_KINDS: tuple[str, ...] = ActivityKind.__args__
 # What an activity is about, when it is one thing the founder can open.

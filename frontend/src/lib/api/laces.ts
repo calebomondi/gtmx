@@ -534,6 +534,7 @@ export type ActivityKind =
   | "job_failed"
   | "app_action"
   | "access_requested"
+  | "comments_read"
 
 /** Something the Lace did or found, for its Feed. */
 export interface ActivityDto {

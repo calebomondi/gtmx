@@ -31,6 +31,7 @@ export const ACTIVITY_ACTIONS: Record<ActivityKind, { label: string; target: Fee
   opportunities_found: { label: "See opportunities", target: { tab: "feed", section: "opportunities" } },
   job_failed: { label: "Talk it through", target: { tab: "chat" } },
   app_action: { label: "Talk it through", target: { tab: "chat" } },
+  comments_read: { label: "See who commented", target: { tab: "chat" } },
   access_requested: { label: "Open People", target: { tab: "feed", people: true } },
 }
 
