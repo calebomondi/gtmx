@@ -58,7 +58,11 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
   // Refetched as new activity arrives (an opportunity search finished).
   const opps = useLaceOpportunities(laceId, activity.items[0]?.id ?? "")
   // Back from connecting an app from the settings: open them again there.
-  const [settingsOpen, setSettingsOpen] = useState(() => new URLSearchParams(window.location.search).has("connected"))
+  // Open on coming back from connecting an app, or when sent here to change a setting (?settings).
+  const [settingsOpen, setSettingsOpen] = useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    return params.has("connected") || params.has("settings")
+  })
   // The apps load with the settings and the chat, whose quick asks come from them.
   const apps = useLaceApps(laceId, settingsOpen || tab === "chat")
   const asks = quickAsks(apps.apps)

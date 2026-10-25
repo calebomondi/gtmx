@@ -70,6 +70,7 @@ async def list_for_lace(db: AsyncSession, lace: Lace) -> list[dict]:
         row, live = rows.get(app.platform), connected.get(app.platform)
         out.append({
             "platform": app.platform, "label": app.label, "group": app.group,
+            "available": connection_service.available(app.platform),
             "connected": live is not None and live.status == "live", "status": live.status if live else None,
             "account": None if live is None else "own" if live.own else "shared",
             "account_name": live.display_name if live else None, "connection_id": live.id if live else None,

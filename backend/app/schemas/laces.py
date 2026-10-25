@@ -372,6 +372,7 @@ class LaceAppResponse(BaseModel):
     platform: str
     label: str
     group: Literal["channels", "crm", "docs", "team", "meetings"]
+    available: bool = Field(default=True, description="It can be connected (its sign-in is set up)")
     connected: bool = Field(description="The account this Lace uses for it is live")
     status: str | None = Field(description="The connection's status (live, pending, needs_attention), if connected")
     account: Literal["own", "shared"] | None = Field(
