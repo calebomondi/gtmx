@@ -4,6 +4,25 @@ export function isValidEmail(value: string): boolean {
   return EMAIL_RE.test(value.trim())
 }
 
+// A website address: a domain with a real ending (acme.com, shop.acme.co.ke),
+// with or without http(s)://, a port and a path.
+const WEBSITE_RE = /^(https?:\/\/)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}(:\d{2,5})?(\/\S*)?$/i
+
+export function isWebsite(value: string): boolean {
+  return WEBSITE_RE.test(value.trim())
+}
+
+/** A web link: a website address, or any http(s) URL. */
+export function isUrl(value: string): boolean {
+  const text = value.trim()
+  if (isWebsite(text)) return true
+  try {
+    return ["http:", "https:"].includes(new URL(text).protocol)
+  } catch {
+    return false
+  }
+}
+
 export interface PasswordRule {
   label: string
   test: (v: string) => boolean

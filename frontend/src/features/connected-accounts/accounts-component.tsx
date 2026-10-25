@@ -71,7 +71,7 @@ export function AccountsComponent() {
     connections?.filter((c) => c.status === "needs_attention").length ?? 0
 
   return (
-    <div className="h-full overflow-y-auto bg-muted">
+    <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-5xl px-6 py-8">
         {/* header */}
         <div className="flex flex-wrap items-end justify-between gap-3">

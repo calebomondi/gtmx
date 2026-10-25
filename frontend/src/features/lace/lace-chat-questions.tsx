@@ -4,11 +4,12 @@ import { Check } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field"
+import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import type { BlockAnswerDto, ChecklistBlockDto, ChoicesBlockDto, FormBlockDto, FormFieldDto, QuestionBlockDto } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { isUrl, isValidEmail } from "@/lib/validation"
 
 /** open: it can be answered now. answered: the founder answered it. closed:
  * the conversation moved on without an answer. */
@@ -108,9 +109,19 @@ function Form({ block, state, answer, onAnswer }: {
   const [values, setValues] = useState<Record<string, string>>(
     () => answer?.values ?? Object.fromEntries(block.fields.map((f) => [f.name, f.value ?? ""])))
   const shown = answer?.values ?? values
+  // Fields whose value isn't the kind they ask for: said under each, and the answer waits.
+  const [problems, setProblems] = useState<Record<string, string>>({})
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    onAnswer({ block_id: block.id, chosen: [], values })
+    const found = Object.fromEntries(block.fields.flatMap((f) => {
+      const value = (values[f.name] ?? "").trim()
+      if (!value) return []
+      if (f.kind === "email" && !isValidEmail(value)) return [[f.name, "Enter an email address, e.g. name@acme.com"]]
+      if (f.kind === "url" && !isUrl(value)) return [[f.name, "Enter a link, e.g. https://acme.com"]]
+      return []
+    }))
+    setProblems(found)
+    if (Object.keys(found).length === 0) onAnswer({ block_id: block.id, chosen: [], values })
   }
   return (
     <Panel question={block.question} state={state}>
@@ -125,7 +136,9 @@ function Form({ block, state, answer, onAnswer }: {
             return (
               <Field key={field.name}>
                 <FieldLabel htmlFor={id}>{field.label}{!field.required && <span className="text-muted-foreground"> (optional)</span>}</FieldLabel>
-                {field.kind === "long_text" ? <Textarea rows={3} {...props} /> : <Input type={INPUT_TYPE[field.kind]} {...props} />}
+                {field.kind === "long_text" ? <Textarea rows={3} {...props} />
+                  : <Input type={INPUT_TYPE[field.kind]} aria-invalid={!!problems[field.name]} {...props} />}
+                {problems[field.name] && <FieldError>{problems[field.name]}</FieldError>}
               </Field>
             )
           })}
