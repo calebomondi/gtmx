@@ -14,6 +14,7 @@ import { APP_GROUPS, COMING_SOON, PLATFORM_LABEL, beginConnection, beginLaceConn
 import { cn } from "@/lib/utils"
 
 import { capabilitiesFor } from "../connected-accounts/accounts-type"
+import { AppSettingField } from "./app-setting-field"
 import { ActionCard } from "./lace-action-card"
 import type { LaceApps } from "./use-lace-apps"
 import type { LaceChat } from "./use-lace-chat"
@@ -69,8 +70,15 @@ function AccountChoice({ app, name, onConnectOwn, onDisconnectOwn }: {
 /** One app: what it is to this Lace, a switch once connected, what the Lace
  * does with it, which account it uses, and a way to connect one without
  * leaving the Lace. */
-function AppRow({ app, laceId, name, onToggle, onDisconnectOwn }: {
+// Apps whose public profile the Lace reads by the founder's handle, with nothing connected.
+const READ_BY_HANDLE: Partial<Record<LaceAppDto["platform"], string>> = {
+  x: "your recent posts and how they did",
+  tiktok: "your recent videos, how they did, and their comments",
+}
+
+function AppRow({ app, apps, laceId, name, onToggle, onDisconnectOwn }: {
   app: LaceAppDto
+  apps: LaceApps
   laceId: string
   name: string
   onToggle: (enabled: boolean) => void
@@ -121,6 +129,15 @@ function AppRow({ app, laceId, name, onToggle, onDisconnectOwn }: {
             </li>
           ))}
         </ul>
+        {READ_BY_HANDLE[app.platform] && (
+          <div className="flex flex-col gap-1 border-t px-3 py-2.5">
+            <AppSettingField apps={apps} app={app} setting="handle" label="Your public profile" prefix="@"
+                             placeholder="@yourhandle or a profile link" />
+            <p className="text-xs text-muted-foreground">
+              {name} reads {READ_BY_HANDLE[app.platform]} from it, with nothing connected.
+            </p>
+          </div>
+        )}
         <AccountChoice app={app} name={name} onConnectOwn={connectOwn} onDisconnectOwn={onDisconnectOwn} />
       </CollapsibleContent>
     </Collapsible>
@@ -185,7 +202,7 @@ export function LaceAppsSection({ laceId, name, apps }: { laceId: string; name: 
           </div>
           {apps.apps
             ? apps.apps.filter((a) => a.group === group.key).map((app) => (
-                <AppRow key={app.platform} app={app} laceId={laceId} name={name}
+                <AppRow key={app.platform} app={app} apps={apps} laceId={laceId} name={name}
                         onToggle={(enabled) => void apps.setEnabled(app.platform, enabled)}
                         onDisconnectOwn={() => void apps.disconnectOwn(app)} />
               ))

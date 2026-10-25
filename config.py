@@ -90,6 +90,8 @@ class Settings(BaseSettings):
     # One social profile or post read in a Lace turn; inside lace_turn_timeout_s with
     # room for the rest of the turn. Background pipelines keep the SDK's 180 s.
     social_read_timeout_s: float = 150.0
+    # Reading a founder's TikTok comments runs in the background: the scraper is slow.
+    tiktok_comments_timeout_s: float = 600.0
     composio_api_key: str = ""
     # Composio auth config per toolkit, for toolkits Composio does not manage
     # auth for (verified 2026-10-10: tiktok, twitter). JSON object, e.g.

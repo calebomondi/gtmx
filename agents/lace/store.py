@@ -111,7 +111,7 @@ class LaceStore(Protocol):
 
 
 JobKind = Literal["find_competitors", "check_competitors", "find_accounts", "find_contacts", "draft_outreach",
-                  "find_opportunities", "define_icp"]
+                  "find_opportunities", "define_icp", "read_tiktok_comments"]
 
 
 class JobRefused(Exception):

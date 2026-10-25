@@ -8,6 +8,8 @@ to `build_lace_graph`, as it does the store: `agents/` never imports
 from typing import Literal, Protocol
 
 XRecord = Literal["profile", "post"]
+# The founder's public accounts a Lace reads by handle, with no app to connect.
+PublicFeed = Literal["x", "tiktok"]
 # The CRMs a Lace can read and add leads to.
 CrmApp = Literal["zoho", "hubspot"]
 # The founder's own accounts whose post comments a Lace can read.
@@ -84,6 +86,13 @@ class LaceApps(Protocol):
         """Meetings booked on the founder's Calendly in that window, soonest
         first, bounded: [{name, start, invitees: [{name, email}]}]. None when
         Calendly isn't connected or is switched off; AppError when a call fails."""
+        ...
+
+    async def my_posts(self, platform: PublicFeed) -> list[dict] | None:
+        """The founder's recent public posts on X or videos on TikTok, read by
+        the handle saved in the Lace's settings (no app connected), newest
+        first: [{url, text, date, views, likes, ...}]. None when no handle is
+        saved; AppError when the read fails."""
         ...
 
     async def my_comments(self, platform: CommentsOn, posts: int) -> list[dict] | None:

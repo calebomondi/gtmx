@@ -61,7 +61,7 @@ CONTACTS_CONCURRENCY = 4
 MONITOR_BATCH = 15
 MONITOR_CONCURRENCY = 4
 
-async def _report_failure(lace_id: uuid.UUID, what: str, exc: Exception) -> None:
+async def report_failure(lace_id: uuid.UUID, what: str, exc: Exception) -> None:
     """Tell the Lace and the founder's Feed that a search failed, and why."""
     reason = _failure(exc)
     async with AsyncSessionLocal() as db, db.begin():
@@ -85,7 +85,7 @@ async def competitors_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -
         with events.reporting_steps(run_id):
             found = await asyncio.to_thread(find_competitors, profile, facts, params.get("focus"))
     except Exception as exc:
-        await _report_failure(lace_id, "competitor search", exc)
+        await report_failure(lace_id, "competitor search", exc)
         raise
     async with AsyncSessionLocal() as db, db.begin():
         new, refreshed = await lace_competitors.upsert_found(db, lace_id, run_id, found)
@@ -164,7 +164,7 @@ async def icp_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
         with events.reporting_steps(run_id):
             icp = await _define_icp(store, params.get("guidance"))
     except Exception as exc:
-        await _report_failure(lace_id, "work out the ideal customer profile", exc)
+        await report_failure(lace_id, "work out the ideal customer profile", exc)
         raise
     async with AsyncSessionLocal() as db, db.begin():
         await lace_events.add(db, lace_id, "The ideal customer profile is saved. Its gist:\n" + render_icp(icp)
@@ -189,7 +189,7 @@ async def accounts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> N
                 icp = await _define_icp(store, None)
             found = await asyncio.to_thread(find_accounts, profile, facts, icp, exclude, params.get("country"))
     except Exception as exc:
-        await _report_failure(lace_id, "search for target accounts", exc)
+        await report_failure(lace_id, "search for target accounts", exc)
         raise
     async with AsyncSessionLocal() as db, db.begin():
         new, refreshed = await lace_accounts.upsert_found(db, lace_id, run_id, found)
@@ -464,7 +464,7 @@ async def opportunities_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict)
             report("Looking for " + ", ".join(kinds) + " opportunities")
             found = await asyncio.to_thread(find_opportunities, profile, facts, icp, settings, kinds)
     except Exception as exc:
-        await _report_failure(lace_id, "opportunity search", exc)
+        await report_failure(lace_id, "opportunity search", exc)
         raise
     async with AsyncSessionLocal() as db, db.begin():
         new, refreshed = await lace_opportunities.upsert_found(db, lace_id, run_id, found)

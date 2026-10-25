@@ -15,17 +15,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database.lace_models import Lace, LaceApp
 from backend.app.services import connections as connection_service
+from functools import partial
+
 from agents.lace.notion_tools import page_id
 from agents.lace.slack_tools import channel_name
 from backend.app.services.errors import InvalidInputError, NotFoundError
+from data_sources.socials.profiles import profile_handle
 
 # The settings each app takes, and how each value is read (None: not a valid one).
 SETTINGS = {
     "slack": {"brief_channel": channel_name},
     "notion": {"brief_page": page_id},
+    # The founder's own public account, read by handle with nothing connected.
+    "x": {"handle": partial(profile_handle, "x")},
+    "tiktok": {"handle": partial(profile_handle, "tiktok")},
 }
 _INVALID = {"brief_channel": "That isn't a Slack channel name, e.g. #sales.",
-            "brief_page": "That isn't a Notion page link."}
+            "brief_page": "That isn't a Notion page link.",
+            "handle": "That isn't a handle or a profile link, e.g. @acme."}
 
 
 def _app(platform: str) -> connection_service.App:
