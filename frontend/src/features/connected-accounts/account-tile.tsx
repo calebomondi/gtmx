@@ -1,7 +1,7 @@
 import { motion, useReducedMotion } from "motion/react"
 
 import { PlatformIcon } from "@/components/platform-icon"
-import { COMING_SOON, PLATFORM_LABEL, type Platform } from "@/lib/platforms"
+import { COMING_SOON, HANDLE_READS, PLATFORM_LABEL, type Platform } from "@/lib/platforms"
 import { cn } from "@/lib/utils"
 
 import type { Connection } from "./accounts-type"
@@ -87,7 +87,8 @@ export function AccountTile({
             <>
                 <p className="truncate text-center text-xs font-medium">{PLATFORM_LABEL[platform]}</p>
                 <p className="text-center text-xs text-muted-foreground transition-colors group-hover:text-[#FEA853]">
-                    {item.kind === "available" && !item.ready ? "Setup required" : "Connect"}
+                    {item.kind !== "available" || item.ready ? "Connect"
+                      : HANDLE_READS[platform] ? "Read by handle" : "Not available yet"}
                 </p>
             </>
             )}

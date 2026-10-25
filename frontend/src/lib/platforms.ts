@@ -70,6 +70,22 @@ export const APP_GROUPS: { key: AppGroup; label: string; blurb: string; platform
 /** Every app the user can connect, in display order. */
 export const ALL_PLATFORMS: Platform[] = APP_GROUPS.flatMap((group) => group.platforms)
 
+/** Apps whose public profile a Lace reads by the founder's handle (saved per
+ * Lace, since a handle is a startup's), with nothing connected; what it reads. */
+export const HANDLE_READS: Partial<Record<Platform, string>> = {
+  x: 'your recent posts and how they did',
+  tiktok: 'your recent videos, how they did, and their comments',
+}
+
+/** What to do before connecting an app that needs something from the founder first. */
+export const CONNECT_STEPS: Partial<Record<Platform, string[]>> = {
+  telegram: [
+    'In Telegram, open @BotFather and send /newbot.',
+    'Give your bot a name, then a username ending in "bot" (e.g. shanga_bot).',
+    'Copy the token BotFather sends you: you paste it on the next page.',
+  ],
+}
+
 /** Apps a Lace can't use yet: they connect now, and their skills arrive one by one. */
 export const COMING_SOON: ReadonlySet<Platform> = new Set([
   'whatsapp',

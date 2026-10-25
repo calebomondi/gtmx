@@ -1,16 +1,20 @@
 import { useState } from "react"
-import { ChevronDown, Loader2, Plus } from "lucide-react"
+import { ChevronDown, Loader2, Lock, Plus } from "lucide-react"
 
+import { ConnectSteps } from "@/components/connect-steps"
 import { PlatformIcon } from "@/components/platform-icon"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import type { AppActionDto, LaceAppDto } from "@/lib/api"
 import { formatRelativeTime } from "@/lib/format"
-import { APP_GROUPS, COMING_SOON, PLATFORM_LABEL, beginConnection, beginLaceConnection } from "@/lib/platforms"
+import {
+  APP_GROUPS, COMING_SOON, CONNECT_STEPS, HANDLE_READS, PLATFORM_LABEL, beginConnection, beginLaceConnection,
+} from "@/lib/platforms"
 import { cn } from "@/lib/utils"
 
 import { capabilitiesFor } from "../connected-accounts/accounts-type"
@@ -23,7 +27,13 @@ const HISTORY_SHOWN = 10
 const SAID: Record<string, string> = { done: "Done", failed: "Didn’t go through", declined: "Declined", running: "Running" }
 
 function statusLine(app: LaceAppDto, name: string): string {
-  if (!app.connected) return app.status === "needs_attention" ? "Needs attention: reconnect it" : "Not connected"
+  if (!app.connected) {
+    if (HANDLE_READS[app.platform]) {
+      return app.settings.handle ? `Reading @${app.settings.handle}` : "Add your handle below"
+    }
+    if (!app.available) return "Not available yet"
+    return app.status === "needs_attention" ? "Needs attention: reconnect it" : "Not connected"
+  }
   const whose = app.account === "own" ? `${name}'s own` : "Shared"
   const who = app.account_name ? `${whose} · ${app.account_name}` : whose
   return app.enabled ? who : `${who} · switched off for ${name}`
@@ -69,13 +79,9 @@ function AccountChoice({ app, name, onConnectOwn, onDisconnectOwn }: {
 
 /** One app: what it is to this Lace, a switch once connected, what the Lace
  * does with it, which account it uses, and a way to connect one without
- * leaving the Lace. */
-// Apps whose public profile the Lace reads by the founder's handle, with nothing connected.
-const READ_BY_HANDLE: Partial<Record<LaceAppDto["platform"], string>> = {
-  x: "your recent posts and how they did",
-  tiktok: "your recent videos, how they did, and their comments",
-}
-
+ * leaving the Lace (after any steps the app needs first, like Telegram's bot
+ * token). X and TikTok are also read by the founder's handle, with nothing
+ * connected. */
 function AppRow({ app, apps, laceId, name, onToggle, onDisconnectOwn }: {
   app: LaceAppDto
   apps: LaceApps
@@ -85,6 +91,8 @@ function AppRow({ app, apps, laceId, name, onToggle, onDisconnectOwn }: {
   onDisconnectOwn: () => void
 }) {
   const [connecting, setConnecting] = useState(false)
+  // The connection waiting on the app's steps (shared, or this Lace's own).
+  const [steps, setSteps] = useState<"shared" | "own" | null>(null)
   const go = async (begin: () => Promise<void>) => {
     setConnecting(true)
     try {
@@ -93,8 +101,11 @@ function AppRow({ app, apps, laceId, name, onToggle, onDisconnectOwn }: {
       setConnecting(false)
     }
   }
-  const connect = () => go(() => beginConnection(app.platform, `/lace/${laceId}`))
-  const connectOwn = () => void go(() => beginLaceConnection(laceId, app.platform))
+  const begin = (which: "shared" | "own") => void go(() => which === "own"
+    ? beginLaceConnection(laceId, app.platform)
+    : beginConnection(app.platform, `/lace/${laceId}`))
+  const start = (which: "shared" | "own") => (CONNECT_STEPS[app.platform] ? setSteps(which) : begin(which))
+  const reads = HANDLE_READS[app.platform]
   return (
     <Collapsible className="rounded-xl border bg-card">
       <div className="flex items-center gap-3 p-3">
@@ -104,15 +115,22 @@ function AppRow({ app, apps, laceId, name, onToggle, onDisconnectOwn }: {
             {PLATFORM_LABEL[app.platform]}
             {COMING_SOON.has(app.platform) && <Badge variant="outline" className="text-[10px]">Soon</Badge>}
           </p>
-          <p className={cn("truncate text-xs", app.connected && app.enabled ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground")}>
+          <p className={cn("truncate text-xs", (app.connected && app.enabled) || (reads && app.settings.handle)
+            ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground")}>
             {statusLine(app, name)}
           </p>
         </div>
         {app.connected ? (
           <Switch checked={app.enabled} onCheckedChange={onToggle} aria-label={`Let ${name} use ${PLATFORM_LABEL[app.platform]}`} />
-        ) : (
-          <Button size="sm" variant="outline" onClick={() => void connect()} disabled={connecting}>
+        ) : app.available ? (
+          <Button size="sm" variant="outline" onClick={() => start("shared")} disabled={connecting}>
             {connecting ? <Loader2 className="animate-spin" /> : <Plus />} Connect
+          </Button>
+        ) : (
+          <Button size="sm" variant="outline" disabled
+                  title={reads ? "Posting and messages need developer access, which isn't set up yet."
+                    : `${PLATFORM_LABEL[app.platform]} isn't available yet.`}>
+            <Lock /> Connect
           </Button>
         )}
         <CollapsibleTrigger render={
@@ -121,6 +139,13 @@ function AppRow({ app, apps, laceId, name, onToggle, onDisconnectOwn }: {
           <ChevronDown className="transition-transform group-data-[panel-open]/more:rotate-180" />
         </CollapsibleTrigger>
       </div>
+      {reads && (
+        <div className="flex flex-col gap-1 border-t px-3 py-2.5">
+          <AppSettingField apps={apps} app={app} setting="handle" label="Your public profile" prefix="@"
+                           placeholder="@yourhandle or a profile link" />
+          <p className="text-xs text-muted-foreground">{name} reads {reads} from it, with nothing connected.</p>
+        </div>
+      )}
       <CollapsibleContent>
         <ul className="flex flex-col gap-1 border-t px-3 py-2.5 text-xs">
           {capabilitiesFor(app.platform).map((cap) => (
@@ -129,17 +154,26 @@ function AppRow({ app, apps, laceId, name, onToggle, onDisconnectOwn }: {
             </li>
           ))}
         </ul>
-        {READ_BY_HANDLE[app.platform] && (
-          <div className="flex flex-col gap-1 border-t px-3 py-2.5">
-            <AppSettingField apps={apps} app={app} setting="handle" label="Your public profile" prefix="@"
-                             placeholder="@yourhandle or a profile link" />
-            <p className="text-xs text-muted-foreground">
-              {name} reads {READ_BY_HANDLE[app.platform]} from it, with nothing connected.
-            </p>
-          </div>
+        {app.available && (
+          <AccountChoice app={app} name={name} onConnectOwn={() => start("own")} onDisconnectOwn={onDisconnectOwn} />
         )}
-        <AccountChoice app={app} name={name} onConnectOwn={connectOwn} onDisconnectOwn={onDisconnectOwn} />
       </CollapsibleContent>
+      <Dialog open={steps !== null} onOpenChange={(open) => !open && setSteps(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Connect {PLATFORM_LABEL[app.platform]}</DialogTitle>
+            <DialogDescription>
+              {steps === "own" ? `An account just for ${name}.` : "A shared account, for all your Laces."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 px-4 pb-4">
+            <ConnectSteps platform={app.platform} />
+            <Button disabled={connecting} onClick={() => steps && begin(steps)}>
+              {connecting && <Loader2 className="animate-spin" />} Continue to connect
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Collapsible>
   )
 }

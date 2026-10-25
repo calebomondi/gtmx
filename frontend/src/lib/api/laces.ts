@@ -638,6 +638,8 @@ export interface LaceAppDto {
   platform: Platform
   label: string
   group: AppGroup
+  /** It can be connected: its sign-in is set up. */
+  available: boolean
   /** The account this Lace uses for it is live. */
   connected: boolean
   status: string | null

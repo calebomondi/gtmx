@@ -7,7 +7,11 @@ import { PlatformIcon } from "@/components/platform-icon"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
-import { PLATFORM_LABEL, beginConnection, type Platform } from "@/lib/platforms"
+import { useNavigate } from "react-router-dom"
+
+import { ConnectSteps } from "@/components/connect-steps"
+import { useLaces } from "@/lib/laces-store"
+import { HANDLE_READS, PLATFORM_LABEL, beginConnection, type Platform } from "@/lib/platforms"
 import { cn } from "@/lib/utils"
 
 import { REPLY_ONLY_NOTE, capabilitiesFor, type Connection } from "./accounts-type"
@@ -62,6 +66,8 @@ export function ConnectionDialog({
   /** Whether this channel can be connected now (app-level OAuth exists). */
   ready: boolean
 }) {
+  const navigate = useNavigate()
+  const { laces } = useLaces()
   const reduceMotion = useReducedMotion()
   const [working, setWorking] = React.useState(false)
 
@@ -112,7 +118,9 @@ export function ConnectionDialog({
                         connection?.username ?? PLATFORM_LABEL[platform]
                       }.`
                     : isConnect
-                      ? "You'll be redirected to sign in with the platform."
+                      ? ready
+                        ? "You'll be redirected to sign in with the platform."
+                        : HANDLE_READS[platform] ? "Read by your handle; connecting isn't set up yet." : "Not available yet."
                       : connection
                         ? [
                             connection.username,
@@ -156,11 +164,26 @@ export function ConnectionDialog({
                 </div>
               ) : isConnect ? (
                 <div className="space-y-3 text-sm">
-                  <p className="text-muted-foreground">
-                    The agent will be able to use this channel for outreach
-                    once you've signed in. Nothing is ever sent without your
-                    approval.
-                  </p>
+                  {ready ? (
+                    <p className="text-muted-foreground">
+                      Your Lace will be able to use it once you've signed in. Nothing is ever sent without your
+                      approval.
+                    </p>
+                  ) : HANDLE_READS[platform] ? (
+                    <div className="space-y-2 rounded-lg border bg-muted/40 p-3">
+                      <p>
+                        Reading {HANDLE_READS[platform]} works now, from your handle: add it under Apps &amp; accounts →{" "}
+                        {PLATFORM_LABEL[platform]} in each Lace's settings (each startup has its own).
+                      </p>
+                      <p className="text-muted-foreground">
+                        Posting and messages through {PLATFORM_LABEL[platform]} need developer access, which isn't set
+                        up yet.
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground">{PLATFORM_LABEL[platform]} isn't available yet.</p>
+                  )}
+                  {ready && <ConnectSteps platform={platform} />}
                   {REPLY_ONLY_NOTE[platform] && (
                     <div className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-foreground">
                       <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
@@ -172,12 +195,6 @@ export function ConnectionDialog({
                       <CapabilityRow key={cap.label} label={cap.label} allowed={cap.allowed} />
                     ))}
                   </ul>
-                  {!ready && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400">
-                      {PLATFORM_LABEL[platform]} needs a one-time app setup by
-                      the Thalace team before it can be connected.
-                    </p>
-                  )}
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -241,18 +258,18 @@ export function ConnectionDialog({
               ) : isConnect ? (
                 <>
                   <Button variant="outline" size="sm" onClick={onClose}>
-                    Cancel
+                    {ready ? "Cancel" : "Close"}
                   </Button>
-                  <Button
-                    size="sm"
-                    disabled={working || !ready}
-                    onClick={() => void connect()}
-                  >
-                    {working && (
-                      <RefreshCw className="mr-1.5 size-3.5 animate-spin" />
-                    )}
-                    Continue with {PLATFORM_LABEL[platform]}
-                  </Button>
+                  {ready ? (
+                    <Button size="sm" disabled={working} onClick={() => void connect()}>
+                      {working && <RefreshCw className="mr-1.5 size-3.5 animate-spin" />}
+                      Continue with {PLATFORM_LABEL[platform]}
+                    </Button>
+                  ) : HANDLE_READS[platform] && laces.length === 1 ? (
+                    <Button size="sm" onClick={() => navigate(`/lace/${laces[0].id}?settings=apps`)}>
+                      Add it in {laces[0].name}'s settings
+                    </Button>
+                  ) : null}
                 </>
               ) : (
                 <>
