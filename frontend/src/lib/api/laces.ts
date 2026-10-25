@@ -532,6 +532,8 @@ export type ActivityKind =
   | "reply_received"
   | "opportunities_found"
   | "job_failed"
+  | "app_action"
+  | "access_requested"
 
 /** Something the Lace did or found, for its Feed. */
 export interface ActivityDto {
@@ -539,7 +541,7 @@ export interface ActivityDto {
   kind: ActivityKind
   title: string
   summary: string | null
-  ref_type: "brief" | "outreach" | null
+  ref_type: "brief" | "outreach" | "app_action" | null
   ref_id: string | null
   created_at: string
   /** When the founder saw it in the Feed; null while unseen. */

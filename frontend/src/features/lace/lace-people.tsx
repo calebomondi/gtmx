@@ -111,10 +111,16 @@ function InviteForm({ me, people }: { me: LaceRole; people: LacePeople }) {
 /** The people on a Lace, as faces in its header; opening them lists
  * everyone, with what the person looking may do: invite, let in, change
  * roles, remove, or leave. */
-export function LacePeopleButton({ name, me, people }: { name: string; me: LaceRole; people: LacePeople }) {
+export function LacePeopleButton({ name, me, people, open, onOpenChange }: {
+  name: string
+  me: LaceRole
+  people: LacePeople
+  /** The people dialog, opened from here or from a Feed item. */
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const [open, setOpen] = useState(false)
   const active = (people.people ?? []).filter((p) => p.status === "active")
   const asking = (people.people ?? []).filter((p) => p.status === "requested").length
   const manages = me === "owner" || me === "admin"
@@ -126,7 +132,7 @@ export function LacePeopleButton({ name, me, people }: { name: string; me: LaceR
   }
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} aria-label={`People on ${name}`}
+      <button type="button" onClick={() => onOpenChange(true)} aria-label={`People on ${name}`}
               className="relative flex cursor-pointer items-center rounded-full p-0.5 hover:bg-muted">
         {/* A light overlap: initials stay readable. */}
         <AvatarGroup className="-space-x-1">
@@ -140,7 +146,7 @@ export function LacePeopleButton({ name, me, people }: { name: string; me: LaceR
           <span className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-theme" aria-label={`${asking} asked to join`} />
         )}
       </button>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>People on {name}</DialogTitle>

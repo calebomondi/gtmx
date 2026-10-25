@@ -15,6 +15,8 @@ export type LaceSection = FeedSection | MessagingSection
 export interface FeedTarget {
   tab: LaceTab
   section?: LaceSection
+  /** Also open the Lace's people (someone asked to join). */
+  people?: boolean
 }
 
 /** Where each kind of activity takes the founder, and what the button says. */
@@ -28,6 +30,14 @@ export const ACTIVITY_ACTIONS: Record<ActivityKind, { label: string; target: Fee
   reply_received: { label: "Read the reply", target: { tab: "messaging", section: "conversations" } },
   opportunities_found: { label: "See opportunities", target: { tab: "feed", section: "opportunities" } },
   job_failed: { label: "Talk it through", target: { tab: "chat" } },
+  app_action: { label: "Talk it through", target: { tab: "chat" } },
+  access_requested: { label: "Open People", target: { tab: "feed", people: true } },
+}
+
+/** A kind's action; a kind this app doesn't know yet (the server added it
+ * first) opens the chat rather than breaking the Feed. */
+export function activityAction(kind: string): { label: string; target: FeedTarget } {
+  return ACTIVITY_ACTIONS[kind as ActivityKind] ?? { label: "Talk it through", target: { tab: "chat" } }
 }
 
 export interface NeedsYouItem {
