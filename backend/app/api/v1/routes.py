@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from backend.app.api.deps import rate_limited
-from backend.app.api.v1.endpoints import activity, admin, connections, lace_finds, lace_members, laces, runs, users, waitlist
+from backend.app.api.v1.endpoints import activity, admin, connections, feedback, lace_finds, lace_members, laces, runs, users, waitlist
 
 api_router = APIRouter()
 # Every REST router is rate limited per user.
@@ -12,6 +12,7 @@ api_router.include_router(waitlist.router, prefix="/waitlist", tags=["waitlist"]
 api_router.include_router(runs.router, prefix="/runs", tags=["runs"], dependencies=_LIMITED)
 api_router.include_router(activity.router, prefix="/activity", tags=["activity"], dependencies=_LIMITED)
 api_router.include_router(users.router, prefix="/users", tags=["users"], dependencies=_LIMITED)
+api_router.include_router(feedback.router, prefix="/feedback", tags=["feedback"], dependencies=_LIMITED)
 api_router.include_router(connections.router, prefix="/connections", tags=["connections"], dependencies=_LIMITED)
 # Before the Lace routes: /laces/invites is not a Lace id.
 api_router.include_router(lace_members.router, prefix="/laces", tags=["laces"], dependencies=_LIMITED)

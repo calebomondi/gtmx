@@ -812,6 +812,33 @@ class AppSession(Base):
     )
 
 
+class Feedback(Base):
+    """A suggestion or a problem a user sent from the app's feedback button,
+    with where they were when they sent it, for the team to read."""
+
+    __tablename__ = "feedback"
+    __table_args__ = (
+        CheckConstraint("status IN ('new', 'read')", name="ck_feedback_status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # A Supabase user: no FK (Supabase owns users).
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    # As it was when they sent it, so the list needs no Supabase lookup.
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    # The Lace they had open, when they were on one of theirs.
+    lace_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("laces.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(8), nullable=False, default="new", server_default="new", index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), server_default=func.now(), index=True,
+    )
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class WorkspaceActivity(Base):
     """Active time and visits per workspace per UTC day."""
 
