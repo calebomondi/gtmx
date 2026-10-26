@@ -11,6 +11,8 @@ import {
 import { useAuth } from "@/lib/auth"
 import { useLaces } from "@/lib/laces-store"
 import { useActivityHeartbeat } from "@/lib/use-activity-heartbeat"
+import { usePilotAccess } from "@/lib/use-pilot-access"
+import { NotInPilot } from "@/components/not-in-pilot"
 
 import { ThemeProvider } from "@/components/theme-provider"
 import { AccountsComponent } from "@/features/connected-accounts/accounts-component"
@@ -33,13 +35,23 @@ function AppLayout() {
   const { user } = useAuth()
   const { laces } = useLaces()
   const location = useLocation()
-  useActivityHeartbeat(Boolean(user))
+  const pilot = usePilotAccess(Boolean(user))
+  useActivityHeartbeat(Boolean(user) && pilot.access === "in")
 
   // Every app route needs a session; send visitors to sign in and back here.
   if (!user) {
     const next = encodeURIComponent(location.pathname + location.search)
     return <Navigate to={`/auth/login?next=${next}`} replace />
   }
+  // The app's calls would all be refused: say why instead, and how to get in.
+  if (pilot.access === "out") {
+    return (
+      <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+        <NotInPilot email={user.email ?? null} onRecheck={pilot.recheck} />
+      </ThemeProvider>
+    )
+  }
+  if (pilot.access === "checking") return null
 
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">

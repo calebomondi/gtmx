@@ -812,6 +812,27 @@ class AppSession(Base):
     )
 
 
+class PilotAccess(Base):
+    """An email an admin let into the closed pilot (settings.pilot_invite_only_since),
+    typed in or approved from the waitlist."""
+
+    __tablename__ = "pilot_access"
+    __table_args__ = (
+        CheckConstraint("source IN ('admin', 'waitlist')", name="ck_pilot_access_source"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Lowercased: the natural key, matched against the signed-in user's email.
+    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True)
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
+    # The admin who let them in: a Supabase user, no FK.
+    granted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    granted_by_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), server_default=func.now(), index=True,
+    )
+
+
 class Feedback(Base):
     """A suggestion or a problem a user sent from the app's feedback button,
     with where they were when they sent it, for the team to read."""

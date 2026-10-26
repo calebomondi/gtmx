@@ -8,6 +8,7 @@ Someone else's Lace is a 404, indistinguishable from a missing one."""
 
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Annotated, Optional
 
 from fastapi import Depends, HTTPException, status
@@ -19,6 +20,7 @@ from backend.app.database.connect import get_db
 from backend.app.database.lace_models import Lace, LaceMember
 from backend.app.services import lace_members
 from backend.app.services import limits
+from backend.app.services import pilot
 from utils.log import current_user_id
 
 _bearer = HTTPBearer(auto_error=False)
@@ -32,6 +34,8 @@ class AuthUser:
     avatar_url: Optional[str]
     # From Supabase app_metadata.role, which only the service key can write.
     is_admin: bool = False
+    # When the account was made: ones made before the pilot closed stay in.
+    created_at: Optional[datetime] = None
 
 
 async def user_from_token(token: str) -> Optional[AuthUser]:
@@ -59,7 +63,18 @@ async def user_from_token(token: str) -> Optional[AuthUser]:
         name=supabase_admin.name_of(suser),
         avatar_url=supabase_admin.avatar_of(suser),
         is_admin=supabase_admin.is_admin(getattr(suser, "app_metadata", None)),
+        created_at=_when(getattr(suser, "created_at", None)),
     )
+
+
+def _when(value) -> Optional[datetime]:
+    """Supabase gives a datetime or an ISO string, depending on the client."""
+    if isinstance(value, datetime) or value is None:
+        return value
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 async def require_user(
@@ -119,6 +134,15 @@ async def require_admin(user: CurrentUser) -> AuthUser:
 
 
 AdminUser = Annotated[AuthUser, Depends(require_admin)]
+
+
+async def in_pilot(user: CurrentUser, db: DbSession) -> AuthUser:
+    """Router-level guard on the customer API while the pilot is closed: only
+    people let in may use it (services.pilot)."""
+    if not await pilot.may_use(db, user.id, user.email, user.created_at, user.is_admin):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Thalace is in a closed pilot. You'll hear from us when you're in.")
+    return user
 
 
 async def rate_limited(user: CurrentUser) -> AuthUser:

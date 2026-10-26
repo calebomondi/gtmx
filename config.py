@@ -9,7 +9,7 @@ case-insensitively (`exa_api_key` <- EXA_API_KEY).
 """
 
 import json
-from datetime import date
+from datetime import date, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
@@ -156,6 +156,10 @@ class Settings(BaseSettings):
     # Days after signup the team reaches out to pilot opt-ins (said in the email).
     waitlist_pilot_contact_days: int = 14
     waitlist_signups_per_ip_per_hour: int = 5
+    # The closed pilot. When set, only these may use the app: admins, emails an
+    # admin approved (pilot_access), people invited onto a Lace, and accounts
+    # made before this moment (so nobody already in is locked out). Unset: open.
+    pilot_invite_only_since: datetime | None = None
     # Salt for the stored IP hash (rate limiting without keeping raw IPs).
     waitlist_ip_salt: str = "gtmx-waitlist"
     # The header the proxy in front of the backend puts the visitor's IP in:
