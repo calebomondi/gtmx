@@ -43,7 +43,8 @@ async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, status: str, limit
                         today: date | None = None) -> list[LaceOpportunity]:
     """Open or suggested ones only while they have not closed; the soonest
     deadline first."""
-    query = select(LaceOpportunity).where(LaceOpportunity.lace_id == lace_id, LaceOpportunity.status == status)
+    query = select(LaceOpportunity).where(LaceOpportunity.lace_id == lace_id, LaceOpportunity.team(),
+                                          LaceOpportunity.status == status)
     if status != "dismissed":
         today = today or datetime.now(UTC).date()
         query = query.where(or_(LaceOpportunity.deadline.is_(None), LaceOpportunity.deadline >= today),
@@ -57,7 +58,7 @@ async def set_status(db: AsyncSession, lace_id: uuid.UUID, opportunity_id: uuid.
                      actor_id: uuid.UUID | None) -> LaceOpportunity:
     """404 for an opportunity that is not this Lace's."""
     row = await db.scalar(select(LaceOpportunity).where(LaceOpportunity.id == opportunity_id,
-                                                        LaceOpportunity.lace_id == lace_id))
+                                                        LaceOpportunity.lace_id == lace_id, LaceOpportunity.team()))
     if row is None:
         raise NotFoundError("Opportunity not found")
     if status == "open" and row.status != status:
@@ -74,7 +75,7 @@ async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
     so a dismissed one stays dismissed. Returns (new, refreshed)."""
     keys = [url_key(o.url) for o in found]
     known = set((await db.scalars(select(LaceOpportunity.url_key).where(
-        LaceOpportunity.lace_id == lace_id, LaceOpportunity.url_key.in_(keys)))).all())
+        LaceOpportunity.lace_id == lace_id, LaceOpportunity.team(), LaceOpportunity.url_key.in_(keys)))).all())
     now = datetime.now(UTC)
     for o, key in zip(found, keys):
         stmt = insert(LaceOpportunity).values(
@@ -86,7 +87,7 @@ async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
         refresh = {c: stmt.excluded[c] for c in ("kind", "title", "organiser", "url", "deadline", "event_date",
                                                  "location", "why_it_fits", "how_to_act", "found_by_run_id",
                                                  "last_seen_at")}
-        await db.execute(stmt.on_conflict_do_update(constraint="uq_lace_opportunities_lace_id_url_key", set_=refresh))
+        await db.execute(stmt.on_conflict_do_update(constraint="uq_lace_opportunities_lace_id_owner_id_url_key", set_=refresh))
     refreshed = len(set(keys) & known)
     return len(set(keys)) - refreshed, refreshed
 

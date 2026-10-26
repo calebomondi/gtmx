@@ -29,6 +29,21 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+class _Find:
+    """Something a Lace's search turned up: the team's (owner_id NULL), or,
+    found in one member's private chat, theirs alone until they push it to
+    the team. Keys are unique per owner, NULL counting as one owner."""
+
+    # Indexed by the per-owner unique constraint, which leads with lace_id.
+    # Supabase owns users: no FK.
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+    @classmethod
+    def team(cls):
+        """Where-clause for the team's finds: what everyone on the Lace sees."""
+        return cls.owner_id.is_(None)
+
+
 class Lace(Base):
     """One startup's agent. Its LangGraph thread id is its own id."""
 
@@ -135,7 +150,7 @@ class LaceSource(Base):
                                                  default=_now, server_default=func.now())
 
 
-class LaceCompetitor(Base):
+class LaceCompetitor(_Find, Base):
     """A real company competing with the Lace's startup. One row per firm per
     Lace, keyed by its host, so a later hunt refreshes rather than duplicates.
     The researched profile is an opaque agent blob; what is filtered or sorted
@@ -143,7 +158,8 @@ class LaceCompetitor(Base):
 
     __tablename__ = "lace_competitors"
     __table_args__ = (
-        UniqueConstraint("lace_id", "domain_key", name="uq_lace_competitors_lace_id_domain_key"),
+        UniqueConstraint("lace_id", "owner_id", "domain_key", name="uq_lace_competitors_lace_id_owner_id_domain_key",
+                         postgresql_nulls_not_distinct=True),
         CheckConstraint(_one_of("status", COMPETITOR_STATUSES), name="status"),
         CheckConstraint(_one_of("origin", COMPETITOR_ORIGINS), name="origin"),
         Index("ix_lace_competitors_lace_id_status", "lace_id", "status"),
@@ -258,7 +274,7 @@ class LaceEvent(Base):
 FIT_STRENGTHS = ("strong", "moderate", "weak")
 
 
-class LaceAccount(Base):
+class LaceAccount(_Find, Base):
     """A target account for the Lace's startup: a company (or a community,
     event or creator for consumer offers) with a current trigger. One row per
     `key` (its domain, or its name when it has no site) per Lace, so a later
@@ -267,7 +283,8 @@ class LaceAccount(Base):
 
     __tablename__ = "lace_accounts"
     __table_args__ = (
-        UniqueConstraint("lace_id", "key", name="uq_lace_accounts_lace_id_key"),
+        UniqueConstraint("lace_id", "owner_id", "key", name="uq_lace_accounts_lace_id_owner_id_key",
+                         postgresql_nulls_not_distinct=True),
         CheckConstraint(_one_of("status", ACCOUNT_STATUSES), name="status"),
         CheckConstraint(f"fit_strength IS NULL OR {_one_of('fit_strength', FIT_STRENGTHS)}", name="fit_strength"),
         CheckConstraint(f"contact_status IS NULL OR {_one_of('contact_status', CONTACT_STATUSES)}",
@@ -421,7 +438,7 @@ class LaceChannel(Base):
                                                  default=_now, server_default=func.now())
 
 
-class LaceOpportunity(Base):
+class LaceOpportunity(_Find, Base):
     """A place to showcase, a buyer to sell to, or a partner, found for the
     Lace's startup. One row per source page per Lace; a later search refreshes
     it and keeps the founder's dismissal. Deadlines and dates are real dates,
@@ -429,7 +446,8 @@ class LaceOpportunity(Base):
 
     __tablename__ = "lace_opportunities"
     __table_args__ = (
-        UniqueConstraint("lace_id", "url_key", name="uq_lace_opportunities_lace_id_url_key"),
+        UniqueConstraint("lace_id", "owner_id", "url_key", name="uq_lace_opportunities_lace_id_owner_id_url_key",
+                         postgresql_nulls_not_distinct=True),
         CheckConstraint(_one_of("kind", OPPORTUNITY_KINDS), name="kind"),
         CheckConstraint(_one_of("status", OPPORTUNITY_STATUSES), name="status"),
         Index("ix_lace_opportunities_lace_id_status_deadline", "lace_id", "status", "deadline"),

@@ -70,17 +70,19 @@ async def search(db: AsyncSession, user_id: uuid.UUID, term: str, per_kind: int)
                         [LaceFact.claim], LaceFact.superseded_by_id.is_(None), LaceFact.retracted_at.is_(None))
     hits += await _hits(db, user_id, term, per_kind, "competitor", LaceCompetitor, LaceCompetitor.name,
                         LaceCompetitor.website, [LaceCompetitor.name, LaceCompetitor.website, LaceCompetitor.summary],
-                        LaceCompetitor.status != "dismissed")
+                        LaceCompetitor.team(), LaceCompetitor.status != "dismissed")
     hits += await _hits(db, user_id, term, per_kind, "account", LaceAccount, LaceAccount.name,
                         func.concat_ws(" · ", LaceAccount.geo, LaceAccount.website),
-                        [LaceAccount.name, LaceAccount.website, LaceAccount.geo], LaceAccount.status != "dismissed")
+                        [LaceAccount.name, LaceAccount.website, LaceAccount.geo], LaceAccount.team(),
+                        LaceAccount.status != "dismissed")
     hits += await _hits(db, user_id, term, per_kind, "contact", LaceContact,
                         func.coalesce(LaceContact.name, LaceContact.email, LaceContact.linkedin),
                         func.concat_ws(" · ", LaceContact.title, LaceContact.email),
                         [LaceContact.name, LaceContact.email, LaceContact.title])
     hits += await _hits(db, user_id, term, per_kind, "opportunity", LaceOpportunity, LaceOpportunity.title,
                         func.concat_ws(" · ", LaceOpportunity.kind, LaceOpportunity.organiser),
-                        [LaceOpportunity.title, LaceOpportunity.organiser], LaceOpportunity.status != "dismissed")
+                        [LaceOpportunity.title, LaceOpportunity.organiser], LaceOpportunity.team(),
+                        LaceOpportunity.status != "dismissed")
     hits += await _hits(db, user_id, term, per_kind, "conversation", LaceOutreach,
                         func.coalesce(LaceOutreach.recipient_name, LaceOutreach.recipient_address,
                                       LaceOutreach.recipient_company),

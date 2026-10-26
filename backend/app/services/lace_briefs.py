@@ -79,13 +79,13 @@ async def digest(db: AsyncSession, lace_id: uuid.UUID, since: datetime, today: d
         LaceFact.lace_id == lace_id, LaceFact.origin == "monitor", LaceFact.recorded_at >= since,
         LaceFact.superseded_by_id.is_(None)).order_by(LaceFact.recorded_at.desc()))
     rivals, n_rivals = await _rows(db, select(LaceCompetitor).where(
-        LaceCompetitor.lace_id == lace_id, LaceCompetitor.status != "dismissed",
+        LaceCompetitor.lace_id == lace_id, LaceCompetitor.team(), LaceCompetitor.status != "dismissed",
         LaceCompetitor.first_seen_at >= since).order_by(LaceCompetitor.first_seen_at.desc()))
     accounts, n_accounts = await _rows(db, select(LaceAccount).where(
-        LaceAccount.lace_id == lace_id, LaceAccount.status != "dismissed",
+        LaceAccount.lace_id == lace_id, LaceAccount.team(), LaceAccount.status != "dismissed",
         LaceAccount.first_seen_at >= since).order_by(LaceAccount.first_seen_at.desc()))
     reached, n_reached = await _rows(db, select(LaceAccount).where(
-        LaceAccount.lace_id == lace_id, LaceAccount.contact_status == "person",
+        LaceAccount.lace_id == lace_id, LaceAccount.team(), LaceAccount.contact_status == "person",
         LaceAccount.contacts_checked_at >= since))
     replies, n_replies = await _rows(db, select(LaceOutreach).where(
         LaceOutreach.lace_id == lace_id, LaceOutreach.direction == "inbound", LaceOutreach.status == "received",
@@ -94,10 +94,10 @@ async def digest(db: AsyncSession, lace_id: uuid.UUID, since: datetime, today: d
         LaceOutreach.lace_id == lace_id, LaceOutreach.direction == "outbound", LaceOutreach.status == "draft",
     ).order_by(LaceOutreach.created_at.desc()))
     new_opps, n_new_opps = await _rows(db, select(LaceOpportunity).where(
-        LaceOpportunity.lace_id == lace_id, LaceOpportunity.status != "dismissed",
+        LaceOpportunity.lace_id == lace_id, LaceOpportunity.team(), LaceOpportunity.status != "dismissed",
         LaceOpportunity.first_seen_at >= since).order_by(LaceOpportunity.first_seen_at.desc()))
     closing, n_closing = await _rows(db, select(LaceOpportunity).where(
-        LaceOpportunity.lace_id == lace_id, LaceOpportunity.status != "dismissed",
+        LaceOpportunity.lace_id == lace_id, LaceOpportunity.team(), LaceOpportunity.status != "dismissed",
         LaceOpportunity.deadline >= today, LaceOpportunity.deadline <= today + timedelta(days=CLOSING_SOON_DAYS),
     ).order_by(LaceOpportunity.deadline))
 
@@ -127,7 +127,7 @@ async def suggestion_counts(db: AsyncSession, lace_id: uuid.UUID) -> dict[str, i
     counts = {}
     for kind, model in (("competitors", LaceCompetitor), ("accounts", LaceAccount), ("opportunities", LaceOpportunity)):
         counts[kind] = int(await db.scalar(select(func.count()).select_from(model).where(
-            model.lace_id == lace_id, model.status == "suggested")) or 0)
+            model.lace_id == lace_id, model.team(), model.status == "suggested")) or 0)
     return counts
 
 

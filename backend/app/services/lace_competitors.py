@@ -23,7 +23,7 @@ MOVE_TITLE_CHARS = 200
 async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, status: str, limit: int) -> list[LaceCompetitor]:
     rows = await db.scalars(
         select(LaceCompetitor)
-        .where(LaceCompetitor.lace_id == lace_id, LaceCompetitor.status == status)
+        .where(LaceCompetitor.lace_id == lace_id, LaceCompetitor.team(), LaceCompetitor.status == status)
         .order_by(LaceCompetitor.last_seen_at.desc()).limit(limit)
     )
     return list(rows.all())
@@ -33,7 +33,7 @@ async def set_status(db: AsyncSession, lace_id: uuid.UUID, competitor_id: uuid.U
                      actor_id: uuid.UUID | None) -> LaceCompetitor:
     """404 for a competitor that is not this Lace's."""
     row = await db.scalar(select(LaceCompetitor).where(
-        LaceCompetitor.id == competitor_id, LaceCompetitor.lace_id == lace_id))
+        LaceCompetitor.id == competitor_id, LaceCompetitor.lace_id == lace_id, LaceCompetitor.team()))
     if row is None:
         raise NotFoundError("Competitor not found")
     if status == "tracked" and row.status != status:
@@ -65,7 +65,7 @@ async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
         # Returns whether the row was inserted: xmax is 0 on a row this
         # statement inserted, and set on one it updated.
         stmt = stmt.on_conflict_do_update(
-            constraint="uq_lace_competitors_lace_id_domain_key",
+            constraint="uq_lace_competitors_lace_id_owner_id_domain_key",
             set_={"name": stmt.excluded.name, "summary": stmt.excluded.summary, "profile": stmt.excluded.profile,
                   "found_by_run_id": stmt.excluded.found_by_run_id, "last_seen_at": stmt.excluded.last_seen_at},
         ).returning(literal_column("xmax = 0"))
@@ -77,15 +77,16 @@ async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
 
 
 async def all_domains(db: AsyncSession, lace_id: uuid.UUID) -> list[str]:
-    """Every competitor domain on file, tracked or dismissed."""
-    return list((await db.scalars(select(LaceCompetitor.domain_key).where(LaceCompetitor.lace_id == lace_id))).all())
+    """Every competitor domain on the team's file, tracked or dismissed."""
+    return list((await db.scalars(select(LaceCompetitor.domain_key).where(
+        LaceCompetitor.lace_id == lace_id, LaceCompetitor.team()))).all())
 
 
 async def due_for_check(db: AsyncSession, lace_id: uuid.UUID, limit: int) -> list[LaceCompetitor]:
     """Tracked competitors, never-checked first, then the longest unchecked."""
     rows = await db.scalars(
         select(LaceCompetitor)
-        .where(LaceCompetitor.lace_id == lace_id, LaceCompetitor.status == "tracked")
+        .where(LaceCompetitor.lace_id == lace_id, LaceCompetitor.team(), LaceCompetitor.status == "tracked")
         .order_by(LaceCompetitor.last_checked_at.asc().nulls_first()).limit(limit)
     )
     return list(rows.all())
@@ -106,7 +107,7 @@ async def list_moves(db: AsyncSession, lace_id: uuid.UUID, limit: int) -> list[t
     rows = await db.execute(
         select(LaceCompetitorMove, LaceCompetitor.name)
         .join(LaceCompetitor, LaceCompetitor.id == LaceCompetitorMove.competitor_id)
-        .where(LaceCompetitorMove.lace_id == lace_id)
+        .where(LaceCompetitorMove.lace_id == lace_id, LaceCompetitor.team())
         .order_by(LaceCompetitorMove.detected_at.desc()).limit(limit))
     return [(move, name) for move, name in rows.all()]
 
@@ -128,7 +129,7 @@ async def laces_due_for_monitoring(db: AsyncSession) -> list[tuple[uuid.UUID, uu
     rows = await db.execute(
         select(Lace.id, Lace.user_id).distinct()
         .join(LaceCompetitor, LaceCompetitor.lace_id == Lace.id)
-        .where(Lace.status == "active", LaceCompetitor.status == "tracked",
+        .where(Lace.status == "active", LaceCompetitor.team(), LaceCompetitor.status == "tracked",
                or_(LaceCompetitor.last_checked_at.is_(None), LaceCompetitor.last_checked_at < cutoff),
                Lace.id.not_in(in_flight))
     )
