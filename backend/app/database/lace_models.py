@@ -37,6 +37,10 @@ class _Find:
     # Indexed by the per-owner unique constraint, which leads with lace_id.
     # Supabase owns users: no FK.
     owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # A private find its owner pushed to the team, waiting for another member
+    # to approve it; and, when one sent it back instead, why.
+    proposed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     @classmethod
     def team(cls):
@@ -171,6 +175,7 @@ class LaceCompetitor(_Find, Base):
     __table_args__ = (
         UniqueConstraint("lace_id", "owner_id", "domain_key", name="uq_lace_competitors_lace_id_owner_id_domain_key",
                          postgresql_nulls_not_distinct=True),
+        Index("ix_lace_competitors_proposed", "lace_id", postgresql_where=text("proposed_at IS NOT NULL")),
         CheckConstraint(_one_of("status", COMPETITOR_STATUSES), name="status"),
         CheckConstraint(_one_of("origin", COMPETITOR_ORIGINS), name="origin"),
         Index("ix_lace_competitors_lace_id_status", "lace_id", "status"),
@@ -299,6 +304,7 @@ class LaceAccount(_Find, Base):
     __table_args__ = (
         UniqueConstraint("lace_id", "owner_id", "key", name="uq_lace_accounts_lace_id_owner_id_key",
                          postgresql_nulls_not_distinct=True),
+        Index("ix_lace_accounts_proposed", "lace_id", postgresql_where=text("proposed_at IS NOT NULL")),
         CheckConstraint(_one_of("status", ACCOUNT_STATUSES), name="status"),
         CheckConstraint(f"fit_strength IS NULL OR {_one_of('fit_strength', FIT_STRENGTHS)}", name="fit_strength"),
         CheckConstraint(f"contact_status IS NULL OR {_one_of('contact_status', CONTACT_STATUSES)}",
@@ -462,6 +468,7 @@ class LaceOpportunity(_Find, Base):
     __table_args__ = (
         UniqueConstraint("lace_id", "owner_id", "url_key", name="uq_lace_opportunities_lace_id_owner_id_url_key",
                          postgresql_nulls_not_distinct=True),
+        Index("ix_lace_opportunities_proposed", "lace_id", postgresql_where=text("proposed_at IS NOT NULL")),
         CheckConstraint(_one_of("kind", OPPORTUNITY_KINDS), name="kind"),
         CheckConstraint(_one_of("status", OPPORTUNITY_STATUSES), name="status"),
         Index("ix_lace_opportunities_lace_id_status_deadline", "lace_id", "status", "deadline"),

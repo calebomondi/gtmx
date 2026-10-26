@@ -38,8 +38,11 @@ def contact_key(contact: ContactRecord) -> str | None:
 async def sync(db: AsyncSession, lace_id: uuid.UUID, account_id: uuid.UUID, contacts: Iterable[ContactRecord],
                source: ContactSource) -> None:
     """Upsert an account's people. A person already on file keeps what they
-    had where the new sighting is blank, and moves to this account."""
+    had where the new sighting is blank, and moves to this account; unless
+    it is a member's private account, which never takes a person from the
+    team's (they move when it is approved for the team)."""
     now = datetime.now(UTC)
+    private = await db.scalar(select(LaceAccount.owner_id).where(LaceAccount.id == account_id)) is not None
     for contact in contacts:
         key = contact_key(contact)
         if key is None:
@@ -53,7 +56,8 @@ async def sync(db: AsyncSession, lace_id: uuid.UUID, account_id: uuid.UUID, cont
         await db.execute(stmt.on_conflict_do_update(
             constraint="uq_lace_contacts_lace_id_key",
             set_={**{c: func.coalesce(stmt.excluded[c], getattr(LaceContact, c)) for c in values},
-                  "account_id": stmt.excluded.account_id, "last_seen_at": now},
+                  "account_id": LaceContact.account_id if private else stmt.excluded.account_id,
+                  "last_seen_at": now},
         ))
 
 
