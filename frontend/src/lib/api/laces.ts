@@ -252,8 +252,16 @@ export function correctLaceFact(laceId: string, factId: string, claim: string): 
   return apiFetch(`/api/v1/laces/${laceId}/facts/${factId}/correction`, { method: "POST", body: JSON.stringify({ claim }) })
 }
 
-export function listLaceMessages(laceId: string): Promise<LaceMessageDto[]> {
-  return apiFetch<LaceMessageDto[]>(`/api/v1/laces/${laceId}/messages`)
+/** Which conversation with a Lace: the team's, or the user's own private
+ * one (only on a Lace with a team). */
+export type ChatThread = "team" | "mine"
+
+function messagesPath(laceId: string, thread: ChatThread): string {
+  return `/api/v1/laces/${laceId}/${thread === "mine" ? "private/messages" : "messages"}`
+}
+
+export function listLaceMessages(laceId: string, thread: ChatThread = "team"): Promise<LaceMessageDto[]> {
+  return apiFetch<LaceMessageDto[]>(messagesPath(laceId, thread))
 }
 
 /** A turn: follow its run for the reply. While the Lace is busy the message
@@ -264,14 +272,14 @@ export interface LaceTurnDto {
 }
 
 /** Answer a question under the Lace's latest reply; 409 once it was answered. */
-export function answerLaceQuestion(laceId: string, answer: BlockAnswerDto): Promise<LaceTurnDto> {
-  return apiFetch(`/api/v1/laces/${laceId}/messages`, { method: "POST", body: JSON.stringify({ answer }) })
+export function answerLaceQuestion(laceId: string, answer: BlockAnswerDto, thread: ChatThread = "team"): Promise<LaceTurnDto> {
+  return apiFetch(messagesPath(laceId, thread), { method: "POST", body: JSON.stringify({ answer }) })
 }
 
 /** A message to the Lace; with `draftId`, about that unsent draft (the Lace can rewrite it). */
 export function sendLaceMessage(laceId: string, text: string, documentIds: string[] = [],
-                                draftId?: string): Promise<LaceTurnDto> {
-  return apiFetch(`/api/v1/laces/${laceId}/messages`, {
+                                draftId?: string, thread: ChatThread = "team"): Promise<LaceTurnDto> {
+  return apiFetch(messagesPath(laceId, thread), {
     method: "POST", body: JSON.stringify({ text, document_ids: documentIds, ...(draftId ? { draft_id: draftId } : {}) }),
   })
 }

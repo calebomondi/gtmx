@@ -15,6 +15,8 @@ export interface RunDto {
   status: RunStatus
   /** Who started it: on a shared Lace, which of its people. */
   user_id: string
+  /** Set when it works in that member's private chat (only they see it). */
+  owner_id: string | null
   workspace_id: string | null
   lace_id: string | null
   progress: Record<string, unknown> | null

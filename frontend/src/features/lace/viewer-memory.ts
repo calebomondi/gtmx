@@ -1,5 +1,7 @@
 import { useCallback, useState } from "react"
 
+import type { ChatThread } from "@/lib/api"
+
 /** What this browser remembers for the founder (what they opened, what they
  * have seen), a convenience only: storage can be blocked or cleared, and the
  * app then simply treats everything as not yet seen. */
@@ -18,6 +20,18 @@ function write(key: string, value: unknown): void {
   } catch {
     // Blocked or full: remembered for this visit only.
   }
+}
+
+/** Which chat with the Lace the founder last had open: the team's or their
+ * own private one. */
+export function useChatThread(scope: string): [ChatThread, (thread: ChatThread) => void] {
+  const key = `lace.chat.${scope}`
+  const [thread, setThread] = useState<ChatThread>(() => read<ChatThread>(key, "team") === "mine" ? "mine" : "team")
+  const choose = useCallback((next: ChatThread) => {
+    write(key, next)
+    setThread(next)
+  }, [key])
+  return [thread, choose]
 }
 
 // Opened activity items kept per Lace; the oldest are forgotten past this.
