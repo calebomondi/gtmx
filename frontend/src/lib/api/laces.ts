@@ -542,6 +542,11 @@ export type ActivityKind =
   | "app_action"
   | "access_requested"
   | "comments_read"
+  | "member_joined"
+  | "message_sent"
+  | "competitor_saved"
+  | "account_saved"
+  | "opportunity_saved"
 
 /** Something the Lace did or found, for its Feed. */
 export interface ActivityDto {
@@ -554,6 +559,8 @@ export interface ActivityDto {
   created_at: string
   /** When the founder saw it in the Feed; null while unseen. */
   read_at: string | null
+  /** Who on the team did it or asked for it; only on a Lace with a team. */
+  actor: { id: string; name: string | null; avatar_url: string | null } | null
 }
 
 /** Newest first; `before` (an item's created_at) pages back. */

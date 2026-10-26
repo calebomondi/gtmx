@@ -49,7 +49,7 @@ def lace(client, lace_runtime):  # noqa: F811
     return body["lace"]["id"]
 
 
-def test_hunt_saves_competitors_and_the_lace_reports_back(client, lace, lace_runtime, monkeypatch):  # noqa: F811
+def test_hunt_saves_competitors_and_the_lace_reports_back(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
     monkeypatch.setattr(lace_jobs, "find_competitors", lambda profile, facts, focus: [RIVAL])
     lace_runtime.extend([_call("find_competitors", {"focus": "local"}), AIMessage(content="On it."),
                          AIMessage(content="I found Rival, who sells payroll to vets.")])
@@ -58,7 +58,7 @@ def test_hunt_saves_competitors_and_the_lace_reports_back(client, lace, lace_run
     client.portal.call(_wait_for_turns, lace, 2)
 
     [job] = client.portal.call(_runs, lace, "lace_competitors")
-    assert job.status == "completed" and job.input == {"focus": "local"} and job.progress["new"] == 1
+    assert job.status == "completed" and job.input == {"focus": "local", "actor_id": str(user.id)} and job.progress["new"] == 1
     with psycopg.connect(settings.database_url) as conn:
         assert conn.execute("SELECT name, domain_key, origin, status FROM lace_competitors").fetchall() == [
             ("Rival", "rival.test", "found", "suggested")]

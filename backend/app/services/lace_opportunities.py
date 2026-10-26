@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agents.schemas.opportunities import Opportunity, OpportunitySummary
 from backend.app.database import models
 from backend.app.database.lace_models import Lace, LaceOpportunity
+from backend.app.services import lace_activity
 from backend.app.services.errors import NotFoundError
 from backend.app.services.laces import watch_interval
 from backend.app.services.runs import TERMINAL_STATUSES
@@ -52,12 +53,15 @@ async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, status: str, limit
                                   .limit(limit))).all())
 
 
-async def set_status(db: AsyncSession, lace_id: uuid.UUID, opportunity_id: uuid.UUID, status: str) -> LaceOpportunity:
+async def set_status(db: AsyncSession, lace_id: uuid.UUID, opportunity_id: uuid.UUID, status: str,
+                     actor_id: uuid.UUID | None) -> LaceOpportunity:
     """404 for an opportunity that is not this Lace's."""
     row = await db.scalar(select(LaceOpportunity).where(LaceOpportunity.id == opportunity_id,
                                                         LaceOpportunity.lace_id == lace_id))
     if row is None:
         raise NotFoundError("Opportunity not found")
+    if status == "open" and row.status != status:
+        await lace_activity.note(db, lace_id, actor_id, "opportunity_saved", f"Saved {row.title} as an opportunity")
     row.status = status
     await db.commit()
     return row

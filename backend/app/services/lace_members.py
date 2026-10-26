@@ -9,6 +9,7 @@ not yet in, sees it as missing (404), so its existence can't be probed.
 
 import asyncio
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -63,6 +64,22 @@ async def team_size(db: AsyncSession, lace_id: uuid.UUID) -> int:
     """How many people are on the Lace now."""
     return await db.scalar(select(func.count()).select_from(LaceMember).where(
         LaceMember.lace_id == lace_id, LaceMember.status == "active")) or 0
+
+
+async def actors(db: AsyncSession, items: Iterable[tuple[uuid.UUID, uuid.UUID]]) -> dict[tuple[uuid.UUID, uuid.UUID], dict]:
+    """Who did each (lace_id, user_id) pair's thing, as {id, name, avatar_url},
+    for the Laces with a team only: on a Lace of one it is always its founder."""
+    items = set(items)
+    if not items:
+        return {}
+    teams = set((await db.scalars(select(LaceMember.lace_id).where(
+        LaceMember.lace_id.in_({lace_id for lace_id, _ in items}), LaceMember.status == "active")
+        .group_by(LaceMember.lace_id).having(func.count() > 1))).all())
+    ids = list({user_id for lace_id, user_id in items if lace_id in teams})
+    users = dict(zip(ids, await asyncio.gather(*(_user(i) for i in ids))))
+    return {(lace_id, user_id): {"id": user_id, "avatar_url": supabase_admin.avatar_of(users[user_id]),
+                                 "name": supabase_admin.name_of(users[user_id]) or getattr(users[user_id], "email", None)}
+            for lace_id, user_id in items if lace_id in teams}
 
 
 def add_owner(db: AsyncSession, lace: Lace) -> None:
@@ -197,6 +214,7 @@ async def _invited(db: AsyncSession, lace_id: uuid.UUID, user_id: uuid.UUID) -> 
 async def accept(db: AsyncSession, lace_id: uuid.UUID, user_id: uuid.UUID) -> LaceMember:
     row = await _invited(db, lace_id, user_id)
     row.status, row.responded_at = "active", datetime.now(UTC)
+    await lace_activity.note(db, lace_id, user_id, "member_joined", "Joined the team")
     await db.commit()
     return row
 
@@ -233,4 +251,5 @@ async def let_in(db: AsyncSession, lace: Lace, user_id: uuid.UUID) -> None:
     if row is None or row.status != "requested":
         raise NotFoundError("No request to join from them.")
     row.status, row.responded_at = "active", datetime.now(UTC)
+    await lace_activity.note(db, lace.id, user_id, "member_joined", "Joined the team")
     await db.commit()

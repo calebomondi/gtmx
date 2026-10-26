@@ -37,10 +37,20 @@ def plural(count: int, one: str, many: str | None = None) -> str:
 
 
 async def add(db: AsyncSession, lace_id: uuid.UUID, kind: ActivityKind, title: str, summary: str | None = None,
-              ref: tuple[ActivityRef, uuid.UUID] | None = None) -> None:
+              ref: tuple[ActivityRef, uuid.UUID] | None = None, actor_id: uuid.UUID | None = None) -> None:
+    """Something the Lace did or found; `actor_id` is who asked for it."""
     ref_type, ref_id = ref if ref else (None, None)
     db.add(LaceActivity(lace_id=lace_id, kind=kind, title=title[:TITLE_CHARS], summary=summary,
-                        ref_type=ref_type, ref_id=ref_id))
+                        ref_type=ref_type, ref_id=ref_id, actor_id=actor_id))
+
+
+async def note(db: AsyncSession, lace_id: uuid.UUID, actor_id: uuid.UUID | None, kind: ActivityKind, title: str,
+               summary: str | None = None) -> None:
+    """Something done at a person's hand or word (`actor_id`; None when the
+    Lace did it on its own), for the Feed's history. Already read: the Feed's
+    seen state is shared, and nobody needs telling what they did themselves."""
+    db.add(LaceActivity(lace_id=lace_id, kind=kind, title=title[:TITLE_CHARS], summary=summary,
+                        actor_id=actor_id, read_at=datetime.now(UTC)))
 
 
 async def fill_ref(db: AsyncSession, ref_type: ActivityRef, ref_id: uuid.UUID, summary: str) -> bool:

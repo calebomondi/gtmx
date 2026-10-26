@@ -61,12 +61,18 @@ CONTACTS_CONCURRENCY = 4
 MONITOR_BATCH = 15
 MONITOR_CONCURRENCY = 4
 
-async def report_failure(lace_id: uuid.UUID, what: str, exc: Exception) -> None:
+def actor_of(params: dict) -> uuid.UUID | None:
+    """Who asked for a job (start_lace_job's params), for its Feed items;
+    None for the Lace's own scheduled work."""
+    return uuid.UUID(params["actor_id"]) if params.get("actor_id") else None
+
+
+async def report_failure(lace_id: uuid.UUID, what: str, exc: Exception, actor_id: uuid.UUID | None) -> None:
     """Tell the Lace and the founder's Feed that a search failed, and why."""
     reason = _failure(exc)
     async with AsyncSessionLocal() as db, db.begin():
         await lace_events.add(db, lace_id, f"The {what} failed: {reason}")
-        await lace_activity.add(db, lace_id, "job_failed", f"The {what} failed", reason)
+        await lace_activity.add(db, lace_id, "job_failed", f"The {what} failed", reason, actor_id=actor_id)
 
 
 def _failure(exc: Exception) -> str:
@@ -85,14 +91,14 @@ async def competitors_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -
         with events.reporting_steps(run_id):
             found = await asyncio.to_thread(find_competitors, profile, facts, params.get("focus"))
     except Exception as exc:
-        await report_failure(lace_id, "competitor search", exc)
+        await report_failure(lace_id, "competitor search", exc, actor_of(params))
         raise
     async with AsyncSessionLocal() as db, db.begin():
         new, refreshed = await lace_competitors.upsert_found(db, lace_id, run_id, found)
         await lace_events.add(db, lace_id, competitors_update(found, new, refreshed))
         if new:
             await lace_activity.add(db, lace_id, "competitors_found", f"Found {plural(new, 'new competitor')}",
-                                    names([p.name for p in found]))
+                                    names([p.name for p in found]), actor_id=actor_of(params))
     await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
                          progress={"found": len(found), "new": new, "refreshed": refreshed})
     await events.publish(run_id, "complete", {"found": len(found)})
@@ -134,7 +140,7 @@ async def monitor_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> No
         async with AsyncSessionLocal() as db, db.begin():
             await lace_events.add(db, lace_id, monitor_update(moves))
             await lace_activity.add(db, lace_id, "competitor_moves", f"{plural(len(moves), 'competitor move')} that matter",
-                                    "\n".join(f"{name}: {c.title}" for name, c in moves))
+                                    "\n".join(f"{name}: {c.title}" for name, c in moves), actor_id=actor_of(params))
     await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
                          progress={"checked": len(due), "changes": len(moves)})
     await events.publish(run_id, "complete", {"checked": len(due), "changes": len(moves)})
@@ -164,7 +170,7 @@ async def icp_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
         with events.reporting_steps(run_id):
             icp = await _define_icp(store, params.get("guidance"))
     except Exception as exc:
-        await report_failure(lace_id, "work out the ideal customer profile", exc)
+        await report_failure(lace_id, "work out the ideal customer profile", exc, actor_of(params))
         raise
     async with AsyncSessionLocal() as db, db.begin():
         await lace_events.add(db, lace_id, "The ideal customer profile is saved. Its gist:\n" + render_icp(icp)
@@ -189,14 +195,14 @@ async def accounts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> N
                 icp = await _define_icp(store, None)
             found = await asyncio.to_thread(find_accounts, profile, facts, icp, exclude, params.get("country"))
     except Exception as exc:
-        await report_failure(lace_id, "search for target accounts", exc)
+        await report_failure(lace_id, "search for target accounts", exc, actor_of(params))
         raise
     async with AsyncSessionLocal() as db, db.begin():
         new, refreshed = await lace_accounts.upsert_found(db, lace_id, run_id, found)
         await lace_events.add(db, lace_id, accounts_update(found, new, refreshed, params.get("country")))
         if new:
             await lace_activity.add(db, lace_id, "accounts_found", f"Found {plural(new, 'new target account')}",
-                                    names([record.name for record, _ in found]))
+                                    names([record.name for record, _ in found]), actor_id=actor_of(params))
     await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
                          progress={"found": len(found), "new": new, "refreshed": refreshed})
     await events.publish(run_id, "complete", {"found": len(found)})
@@ -228,7 +234,7 @@ async def contacts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> N
         await lace_events.add(db, lace_id, contacts_update(results))
         if reachable:
             await lace_activity.add(db, lace_id, "contacts_found",
-                                    f"Found people to contact at {plural(len(reachable), 'account')}", names(reachable))
+                                    f"Found people to contact at {plural(len(reachable), 'account')}", names(reachable), actor_id=actor_of(params))
     counts = {s: sum(contact_status(r) == s for r in results) for s in ("person", "organisation", "none")}
     await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
                          progress={"searched": len(results), **counts})
@@ -300,7 +306,7 @@ async def drafts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> Non
         await lace_events.add(db, lace_id, drafts_update(drafts, unreachable, failed, awaiting))
         if drafts:
             await lace_activity.add(db, lace_id, "drafts_ready", f"{plural(len(drafts), 'message')} drafted for you to send",
-                                    names([d.recipient_company for d in drafts]))
+                                    names([d.recipient_company for d in drafts]), actor_id=actor_of(params))
     await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
                          progress={"drafted": len(drafts), "unreachable": len(unreachable)})
     await events.publish(run_id, "complete", {"drafted": len(drafts)})
@@ -480,7 +486,7 @@ async def opportunities_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict)
             report("Looking for " + ", ".join(kinds) + " opportunities")
             found = await asyncio.to_thread(find_opportunities, profile, facts, icp, settings, kinds)
     except Exception as exc:
-        await report_failure(lace_id, "opportunity search", exc)
+        await report_failure(lace_id, "opportunity search", exc, actor_of(params))
         raise
     async with AsyncSessionLocal() as db, db.begin():
         new, refreshed = await lace_opportunities.upsert_found(db, lace_id, run_id, found)
@@ -488,7 +494,7 @@ async def opportunities_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict)
             await lace_events.add(db, lace_id, opportunities_update(found, new))
         if new:
             await lace_activity.add(db, lace_id, "opportunities_found", f"Found {plural(new, 'new opportunity', 'new opportunities')}",
-                                    names([o.title for o in found]))
+                                    names([o.title for o in found]), actor_id=actor_of(params))
     await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
                          progress={"found": len(found), "new": new, "refreshed": refreshed})
     await events.publish(run_id, "complete", {"found": len(found)})

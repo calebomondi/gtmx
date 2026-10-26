@@ -128,8 +128,15 @@ async def search_laces(user: CurrentUser, db: DbSession,
 async def list_all_activity(user: CurrentUser, db: DbSession, before: datetime | None = None,
                             limit: int = Query(default=30, ge=1, le=MAX_ACTIVITY_PER_PAGE)):
     """What all the founder's Laces did or found, newest first."""
-    return [LaceActivityItem(**ActivityResponse.model_validate(a).model_dump(), lace_id=lace.id, lace_name=lace.name)
-            for a, lace in await lace_activity.list_for_user(db, user.id, limit, before)]
+    rows = await lace_activity.list_for_user(db, user.id, limit, before)
+    actors = await lace_members.actors(db, [(a.lace_id, a.actor_id) for a, _ in rows if a.actor_id])
+    return [_activity(LaceActivityItem, a, actors, lace_id=lace.id, lace_name=lace.name) for a, lace in rows]
+
+
+def _activity(shape: type[ActivityResponse], item, actors: dict, **extra) -> ActivityResponse:
+    """An activity row as the API shows it, with who did it (lace_members.actors)."""
+    return shape(**ActivityResponse.model_validate(item).model_dump(exclude={"actor"}),
+                 actor=actors.get((item.lace_id, item.actor_id)), **extra)
 
 
 @router.get("/{lace_id}", response_model=LaceResponse)
@@ -198,8 +205,11 @@ async def correct_fact(lace: MemberLace, fact_id: uuid.UUID, payload: FactCorrec
 @router.get("/{lace_id}/activity", response_model=list[ActivityResponse])
 async def list_activity(lace: MemberLace, db: DbSession, before: datetime | None = None,
                         limit: int = Query(default=30, ge=1, le=MAX_ACTIVITY_PER_PAGE)):
-    """What the Lace did or found, newest first; `before` pages back."""
-    return await lace_activity.list_for_lace(db, lace.id, limit, before)
+    """What the Lace did or found, newest first; `before` pages back. Each
+    item names who on the team did it or asked for it, on a Lace with a team."""
+    rows = await lace_activity.list_for_lace(db, lace.id, limit, before)
+    actors = await lace_members.actors(db, [(a.lace_id, a.actor_id) for a in rows if a.actor_id])
+    return [_activity(ActivityResponse, a, actors) for a in rows]
 
 
 @router.post("/{lace_id}/activity/read", response_model=ActivityReadResponse)
@@ -246,7 +256,7 @@ async def draft_to_contact(lace: MemberLace, contact_id: uuid.UUID, payload: Con
     account_id, person = await lace_contacts.person_to_draft(db, lace.id, contact_id, payload.channel)
     try:
         run = await manager.start_lace_job("lace_drafts", user.id, lace.id, {
-            "account_ids": [str(account_id)], "person": person, "note": payload.note})
+            "account_ids": [str(account_id)], "person": person, "note": payload.note, "actor_id": str(user.id)})
     except JobRefused as exc:
         raise ConflictError(str(exc)) from None
     return JobStartedResponse(run_id=run.id)
@@ -322,8 +332,9 @@ async def list_moves(lace: MemberLace, db: DbSession, limit: int = Query(default
 
 
 @router.patch("/{lace_id}/competitors/{competitor_id}", response_model=CompetitorResponse)
-async def update_competitor(lace: MemberLace, competitor_id: uuid.UUID, payload: CompetitorUpdateRequest, db: DbSession):
-    return await lace_competitors.set_status(db, lace.id, competitor_id, payload.status)
+async def update_competitor(lace: MemberLace, competitor_id: uuid.UUID, payload: CompetitorUpdateRequest,
+                            user: CurrentUser, db: DbSession):
+    return await lace_competitors.set_status(db, lace.id, competitor_id, payload.status, user.id)
 
 
 @router.get("/{lace_id}/accounts", response_model=list[AccountResponse])
@@ -333,8 +344,9 @@ async def list_accounts(lace: MemberLace, db: DbSession, shown: AccountStatus = 
 
 
 @router.patch("/{lace_id}/accounts/{account_id}", response_model=AccountResponse)
-async def update_account(lace: MemberLace, account_id: uuid.UUID, payload: AccountUpdateRequest, db: DbSession):
-    return lace_accounts.response(await lace_accounts.set_status(db, lace.id, account_id, payload.status))
+async def update_account(lace: MemberLace, account_id: uuid.UUID, payload: AccountUpdateRequest,
+                         user: CurrentUser, db: DbSession):
+    return lace_accounts.response(await lace_accounts.set_status(db, lace.id, account_id, payload.status, user.id))
 
 
 @router.post("/{lace_id}/accounts/{account_id}/find-contacts", response_model=JobStartedResponse,
@@ -344,7 +356,8 @@ async def find_account_contacts(lace: MemberLace, account_id: uuid.UUID, user: C
     chat. The Lace reports back when it is done."""
     await lace_accounts.get_in_lace(db, lace.id, account_id)
     try:
-        run = await manager.start_lace_job("lace_contacts", user.id, lace.id, {"account_ids": [str(account_id)]})
+        run = await manager.start_lace_job("lace_contacts", user.id, lace.id, {"account_ids": [str(account_id)],
+                                                                             "actor_id": str(user.id)})
     except JobRefused as exc:
         raise ConflictError(str(exc)) from None
     return JobStartedResponse(run_id=run.id)
@@ -367,16 +380,16 @@ async def delete_outreach(lace: MemberLace, message_id: uuid.UUID, db: DbSession
 
 
 @router.post("/{lace_id}/outreach/{message_id}/send", response_model=OutreachResponse)
-async def send_outreach(lace: MemberLace, message_id: uuid.UUID, db: DbSession):
+async def send_outreach(lace: MemberLace, message_id: uuid.UUID, user: CurrentUser, db: DbSession):
     """Send an email draft through your Gmail. The Lace never sends: this
     request, made by you, is the approval."""
-    return await lace_outreach.send(db, await lace_outreach.get_in_lace(db, lace.id, message_id))
+    return await lace_outreach.send(db, await lace_outreach.get_in_lace(db, lace.id, message_id), user.id)
 
 
 @router.post("/{lace_id}/outreach/{message_id}/mark-sent", response_model=OutreachResponse)
-async def mark_outreach_sent(lace: MemberLace, message_id: uuid.UUID, db: DbSession):
+async def mark_outreach_sent(lace: MemberLace, message_id: uuid.UUID, user: CurrentUser, db: DbSession):
     """Record a LinkedIn message you sent by hand."""
-    return await lace_outreach.mark_sent(db, await lace_outreach.get_in_lace(db, lace.id, message_id))
+    return await lace_outreach.mark_sent(db, await lace_outreach.get_in_lace(db, lace.id, message_id), user.id)
 
 
 @router.post("/{lace_id}/outreach/read", response_model=ActivityReadResponse)
@@ -423,7 +436,7 @@ async def list_app_actions(lace: MemberLace, db: DbSession, status: AppActionSta
 @router.post("/{lace_id}/app-actions/{action_id}/approve", response_model=AppActionResponse)
 async def approve_app_action(lace: MemberLace, action_id: uuid.UUID, user: CurrentUser, db: DbSession):
     """Run a proposed action from the Lace's account. This request, made by the founder, is the approval."""
-    row = await lace_app_actions.approve(db, await lace_app_actions.get_in_lace(db, lace.id, action_id))
+    row = await lace_app_actions.approve(db, await lace_app_actions.get_in_lace(db, lace.id, action_id), user.id)
     await manager.wake_lace(user.id, lace.id)
     return row
 
@@ -465,8 +478,8 @@ async def list_opportunities(lace: MemberLace, db: DbSession,
 
 @router.patch("/{lace_id}/opportunities/{opportunity_id}", response_model=OpportunityResponse)
 async def update_opportunity(lace: MemberLace, opportunity_id: uuid.UUID, payload: OpportunityUpdateRequest,
-                             db: DbSession):
-    return await lace_opportunities.set_status(db, lace.id, opportunity_id, payload.status)
+                             user: CurrentUser, db: DbSession):
+    return await lace_opportunities.set_status(db, lace.id, opportunity_id, payload.status, user.id)
 
 
 def _brief_settings(lace) -> BriefSettings:

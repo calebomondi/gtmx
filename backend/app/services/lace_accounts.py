@@ -11,7 +11,7 @@ from agents.schemas.accounts import AccountFit, AccountRecord, TriggerEvent
 from agents.lace.contacts import contact_status
 from agents.schemas.lace import AccountSummary
 from backend.app.database.lace_models import LaceAccount
-from backend.app.services import lace_contacts
+from backend.app.services import lace_activity, lace_contacts
 from backend.app.services.competitors import domain_key
 from backend.app.services.errors import NotFoundError
 
@@ -66,8 +66,11 @@ async def get_in_lace(db: AsyncSession, lace_id: uuid.UUID, account_id: uuid.UUI
     return row
 
 
-async def set_status(db: AsyncSession, lace_id: uuid.UUID, account_id: uuid.UUID, status: str) -> LaceAccount:
+async def set_status(db: AsyncSession, lace_id: uuid.UUID, account_id: uuid.UUID, status: str,
+                     actor_id: uuid.UUID | None) -> LaceAccount:
     row = await get_in_lace(db, lace_id, account_id)
+    if status == "target" and row.status != status:
+        await lace_activity.note(db, lace_id, actor_id, "account_saved", f"Saved {row.name} as a target account")
     row.status = status
     await db.commit()
     return row

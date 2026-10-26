@@ -12,6 +12,7 @@ from agents.schemas.monitor import CompetitorChange
 from backend.app.database import models
 from backend.app.database.lace_models import Lace, LaceCompetitor, LaceCompetitorMove
 from backend.app.services.competitors import domain_key, normalize_website
+from backend.app.services import lace_activity
 from backend.app.services.errors import NotFoundError
 from backend.app.services.laces import watch_interval
 from backend.app.services.runs import TERMINAL_STATUSES
@@ -28,12 +29,15 @@ async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, status: str, limit
     return list(rows.all())
 
 
-async def set_status(db: AsyncSession, lace_id: uuid.UUID, competitor_id: uuid.UUID, status: str) -> LaceCompetitor:
+async def set_status(db: AsyncSession, lace_id: uuid.UUID, competitor_id: uuid.UUID, status: str,
+                     actor_id: uuid.UUID | None) -> LaceCompetitor:
     """404 for a competitor that is not this Lace's."""
     row = await db.scalar(select(LaceCompetitor).where(
         LaceCompetitor.id == competitor_id, LaceCompetitor.lace_id == lace_id))
     if row is None:
         raise NotFoundError("Competitor not found")
+    if status == "tracked" and row.status != status:
+        await lace_activity.note(db, lace_id, actor_id, "competitor_saved", f"Saved {row.name} as a competitor")
     row.status = status
     await db.commit()
     return row

@@ -146,7 +146,7 @@ async def start_next_queued(lace_id: uuid.UUID) -> bool:
             logger.exception("Waiting message %s could not be started", run_id)
             reason = user_facing_error(exc)
         else:
-            _spawn_turn(run_id, user_id, lace_id, message)
+            _spawn_turn(run_id, user_id, lace_id, message, actor_id=user_id)
             return True
         await set_run_fields(models.Run, run_id, status="failed", error=reason, finished_at=datetime.now(UTC))
         await events.publish(run_id, "error", {"message": reason})
@@ -188,7 +188,7 @@ async def start_lace_turn(user_id: uuid.UUID, lace_id: uuid.UUID, text: str, aut
         return await _queue_turn(user_id, lace_id, {**params, "draft": draft, "author": author,
                                                      "name_for_lace": name_for_lace}), True
     message = lace_runs.signed(lace_runs.founder_message(text, attachments, draft), author, name_for_lace)
-    _spawn_turn(run.id, user_id, lace_id, message)
+    _spawn_turn(run.id, user_id, lace_id, message, actor_id=user_id)
     return run, False
 
 
@@ -203,12 +203,15 @@ async def start_lace_answer(user_id: uuid.UUID, lace_id: uuid.UUID, answer: Bloc
     except LaceBusy:
         return await _queue_turn(user_id, lace_id, {"answer": answer.model_dump(), "author": author,
                                                      "name_for_lace": name_for_lace}), True
-    _spawn_turn(run.id, user_id, lace_id, message)
+    _spawn_turn(run.id, user_id, lace_id, message, actor_id=user_id)
     return run, False
 
 
-def _spawn_turn(run_id: uuid.UUID, user_id: uuid.UUID, lace_id: uuid.UUID, message) -> None:
-    turn = lace_runs.turn_segment(run_id, lace_id, message, jobs=_LaceJobs(user_id, lace_id))
+def _spawn_turn(run_id: uuid.UUID, user_id: uuid.UUID, lace_id: uuid.UUID, message,
+                actor_id: uuid.UUID | None) -> None:
+    """`actor_id`: the person the turn answers, None for a turn of updates."""
+    turn = lace_runs.turn_segment(run_id, lace_id, message, jobs=_LaceJobs(user_id, lace_id, actor_id),
+                                  actor_id=actor_id)
     _spawn(run_id, user_id, _then_wake(turn, user_id, lace_id), settings.lace_turn_timeout_s,
            then=_next_queued(lace_id))
 
@@ -248,7 +251,7 @@ async def wake_lace(user_id: uuid.UUID, lace_id: uuid.UUID) -> None:
         if "uq_runs_one_active_per_lace" not in str(exc):
             raise
         return  # rolled back: the updates stay queued for the running turn to pick up
-    _spawn_turn(run.id, user_id, lace_id, lace_runs.event_message(updates))
+    _spawn_turn(run.id, user_id, lace_id, lace_runs.event_message(updates), actor_id=None)
 
 
 async def post_brief(user_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UUID, request: str) -> bool:
@@ -266,7 +269,7 @@ async def post_brief(user_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UUID
         if "uq_runs_one_active_per_lace" not in str(exc):
             raise
         return False
-    brief = lace_runs.brief_segment(run.id, lace_id, brief_id, request, jobs=_LaceJobs(user_id, lace_id))
+    brief = lace_runs.brief_segment(run.id, lace_id, brief_id, request, jobs=_LaceJobs(user_id, lace_id, None))
     _spawn(run.id, user_id, _then_wake(brief, user_id, lace_id), settings.lace_turn_timeout_s,
            then=_next_queued(lace_id))
     return True
@@ -332,12 +335,14 @@ async def _job_then_wake(job: Coroutine, user_id: uuid.UUID, lace_id: uuid.UUID)
 
 
 class _LaceJobs:
-    """The jobs a Lace's tools start, for one Lace."""
+    """The jobs a Lace's tools start, for one Lace, on behalf of the person
+    the turn answers (`actor_id`; None when the Lace acts on its own)."""
 
-    def __init__(self, user_id: uuid.UUID, lace_id: uuid.UUID):
-        self._user_id, self._lace_id = user_id, lace_id
+    def __init__(self, user_id: uuid.UUID, lace_id: uuid.UUID, actor_id: uuid.UUID | None):
+        self._user_id, self._lace_id, self._actor_id = user_id, lace_id, actor_id
 
     async def start(self, kind: str, params: dict) -> str:
+        params = {**params, "actor_id": str(self._actor_id) if self._actor_id else None}
         run = await start_lace_job(_TOOL_JOB_RUN_KINDS[kind], self._user_id, self._lace_id, params)
         return str(run.id)
 
