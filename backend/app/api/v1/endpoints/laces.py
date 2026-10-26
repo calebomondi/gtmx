@@ -62,6 +62,7 @@ from backend.app.services import (  # noqa: F401 -- registers their runners
 from backend.app.services import email, inbox, lace_app_actions, lace_app_settings, lace_accounts, lace_briefs, lace_cards, lace_documents, lace_activity, lace_contacts, lace_members, lace_search, lace_channels, lace_competitors, lace_opportunities, lace_outreach
 from backend.app.services import connections as connection_service
 from backend.app.services import laces as lace_service
+from backend.app.services import runs as run_service
 from backend.app.schemas.connections import ConnectStartResponse
 from agents.lace.store import JobRefused
 from backend.app.services.errors import ConflictError
@@ -261,8 +262,10 @@ async def approve_account_contacts(lace: MemberLace, account_id: uuid.UUID, db: 
 @router.get("/{lace_id}/messages", response_model=list[LaceMessage], response_model_exclude_none=True)
 async def list_messages(lace: MemberLace, db: DbSession,
                         limit: int = Query(default=100, ge=1, le=MAX_MESSAGES_PER_PAGE)):
-    """The conversation, each card marked with its item's status now."""
-    return await lace_cards.with_status(db, lace.id, await lace_runs.history(lace.id, limit))
+    """The conversation, each card marked with its item's status now, then
+    the messages still waiting for the Lace to be free."""
+    shown = await lace_cards.with_status(db, lace.id, await lace_runs.history(lace.id, limit))
+    return [*shown, *await run_service.waiting_messages(db, lace.id)]
 
 
 @router.post("/{lace_id}/messages", response_model=LaceTurnResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -274,13 +277,13 @@ async def send_message(lace: MemberLace, payload: LaceMessageRequest, user: Curr
     # With a team on the Lace, it reads each message as from its sender.
     name_for_lace = author["name"] if await lace_members.team_size(db, lace.id) > 1 else None
     if payload.answer is not None:
-        return LaceTurnResponse(run_id=(await manager.start_lace_answer(
-            user.id, lace.id, payload.answer, author, name_for_lace)).id)
+        run, queued = await manager.start_lace_answer(user.id, lace.id, payload.answer, author, name_for_lace)
+        return LaceTurnResponse(run_id=run.id, queued=queued)
     docs = await lace_documents.attachments(db, lace.id, payload.document_ids)
     attached = [{"id": str(d.id), "filename": d.filename} for d in docs]
     draft = await lace_outreach.unsent_draft(db, lace.id, payload.draft_id) if payload.draft_id else None
-    run = await manager.start_lace_turn(user.id, lace.id, payload.text, author, name_for_lace, attached, draft)
-    return LaceTurnResponse(run_id=run.id)
+    run, queued = await manager.start_lace_turn(user.id, lace.id, payload.text, author, name_for_lace, attached, draft)
+    return LaceTurnResponse(run_id=run.id, queued=queued)
 
 
 @router.post("/{lace_id}/documents", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)

@@ -161,6 +161,8 @@ export interface LaceMessageDto {
   draft_id?: string
   /** Who on the founding team sent a founder message. */
   author?: { id: string; name: string | null; avatar_url: string | null }
+  /** Waiting for the Lace to finish what it is doing. */
+  queued?: boolean
 }
 
 /** A document shared with a Lace, kept as its text. Mirrors DocumentResponse. */
@@ -254,16 +256,21 @@ export function listLaceMessages(laceId: string): Promise<LaceMessageDto[]> {
   return apiFetch<LaceMessageDto[]>(`/api/v1/laces/${laceId}/messages`)
 }
 
-/** Starts a turn; follow its run for the reply. */
-/** A message to the Lace; `documentIds` are documents uploaded to it first. */
+/** A turn: follow its run for the reply. While the Lace is busy the message
+ * is `queued` and its run starts when the turns before it end. */
+export interface LaceTurnDto {
+  run_id: string
+  queued: boolean
+}
+
 /** Answer a question under the Lace's latest reply; 409 once it was answered. */
-export function answerLaceQuestion(laceId: string, answer: BlockAnswerDto): Promise<{ run_id: string }> {
+export function answerLaceQuestion(laceId: string, answer: BlockAnswerDto): Promise<LaceTurnDto> {
   return apiFetch(`/api/v1/laces/${laceId}/messages`, { method: "POST", body: JSON.stringify({ answer }) })
 }
 
 /** A message to the Lace; with `draftId`, about that unsent draft (the Lace can rewrite it). */
 export function sendLaceMessage(laceId: string, text: string, documentIds: string[] = [],
-                                draftId?: string): Promise<{ run_id: string }> {
+                                draftId?: string): Promise<LaceTurnDto> {
   return apiFetch(`/api/v1/laces/${laceId}/messages`, {
     method: "POST", body: JSON.stringify({ text, document_ids: documentIds, ...(draftId ? { draft_id: draftId } : {}) }),
   })

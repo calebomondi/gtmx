@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
-import { AlertTriangle, ArrowDown, ChevronRight, FileText, PenLine } from "lucide-react"
+import { AlertTriangle, ArrowDown, ChevronRight, Clock, FileText, PenLine } from "lucide-react"
 
 import { PromptInputWithActions } from "@/components/chat-input"
 import { Markdown } from "@/components/ui/markdown"
@@ -73,7 +73,13 @@ function Message({ message, sender, children }: {
           </ul>
         )}
         {message.content && (
-          <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl bg-muted px-4 py-2 text-sm">{message.content}</div>
+          <div className={cn("max-w-[85%] whitespace-pre-wrap rounded-2xl bg-muted px-4 py-2 text-sm",
+                             message.queued && "opacity-60")}>{message.content}</div>
+        )}
+        {message.queued && (
+          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Clock className="size-3" /> Waiting its turn
+          </span>
         )}
       </div>
     )
@@ -106,7 +112,7 @@ const LATEST_SLACK_PX = 120
 /** The founder's conversation with their Lace: the messages, what it is
  * doing now, the reply as it streams in, and the input. Scrolled back, a
  * button returns to the latest and counts what arrived meanwhile. */
-export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill, starters, team = false }: {
+export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill, starters, team = false, talking }: {
   chat: LaceChat
   name: string
   onOpenMessaging: () => void
@@ -118,6 +124,8 @@ export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill, s
   starters?: React.ReactNode
   /** The Lace has several people: each founder message shows who sent it. */
   team?: boolean
+  /** Someone else on the team the Lace is answering now: a message sent meanwhile waits its turn. */
+  talking?: string | null
 }) {
   const { user } = useAuth()
   const senderOf = (message: LaceMessageDto): Sender | undefined => {
@@ -128,14 +136,18 @@ export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill, s
              avatarUrl: meta.avatar_url ?? meta.picture ?? null }
   }
   const end = useRef<HTMLDivElement>(null)
-  const lastIndex = chat.messages.length - 1
-  const answers = answersByBlock(chat.messages)
+  // Messages waiting their turn come after what the Lace is doing now, and
+  // the latest reply's questions stay live under it.
+  const said = chat.messages.filter((m) => !m.queued)
+  const waiting = chat.messages.filter((m) => m.queued)
+  const lastIndex = said.length - 1
+  const answers = answersByBlock(said)
   // Whether the founder is reading the latest, and how many messages there
   // were when they scrolled up: what arrived since is "new".
   const [atLatest, setAtLatest] = useState(true)
   const [countWhenLeft, setCountWhenLeft] = useState(0)
   const unseen = atLatest ? 0 : Math.max(0, chat.messages.length - countWhenLeft)
-  const lastIsFounder = chat.messages[lastIndex]?.role === "founder"
+  const lastIsFounder = chat.messages[chat.messages.length - 1]?.role === "founder"
   const toLatest = () => end.current?.scrollIntoView({ behavior: "smooth", block: "end" })
 
   // Follow the conversation while they are at the latest, and always when
@@ -180,7 +192,7 @@ export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill, s
               {starters}
             </div>
           )}
-          {foldDraftExchanges(chat.messages).map((item, i) => item.kind === "draft" ? (
+          {foldDraftExchanges(said).map((item, i) => item.kind === "draft" ? (
             <DraftExchange key={`draft:${i}`} messages={item.messages}
                            to={chat.outreach.find((m) => m.id === item.draftId)?.recipient_name ?? null} />
           ) : (
@@ -194,8 +206,12 @@ export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill, s
           {chat.draft && <Streaming text={chat.draft} />}
           {chat.working && !chat.draft && (
             <LaceWorkTrail steps={chat.steps}
-                           fallback={chat.lace?.status === "onboarding" ? "Getting to know your startup" : "Thinking"} />
+                           fallback={chat.lace?.status === "onboarding" ? "Getting to know your startup"
+                             : talking ? `Answering ${talking}` : "Thinking"} />
           )}
+          {waiting.map((message, i) => (
+            <Message key={`waiting:${i}`} message={message} sender={senderOf(message)} />
+          ))}
           {chat.error && (
             <div className="flex items-center gap-2 text-sm text-destructive" role="alert">
               <AlertTriangle className="size-4 shrink-0" /> {chat.error}
@@ -207,13 +223,18 @@ export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill, s
       </div>
       <div className="flex min-w-0 flex-col items-center gap-2 px-4 py-3">
         {dock}
+        {chat.working && talking && (
+          <p className="text-xs text-muted-foreground">
+            {talking} is talking to {name}. Anything you send waits its turn.
+          </p>
+        )}
         <PromptInputWithActions
           // A new topic remounts the input with its text in place.
           key={prefill?.key ?? "chat"}
           defaultValue={prefill?.text}
           onSubmit={(text, files) => void chat.send(text, files)}
           accept={DOCUMENT_ACCEPT}
-          isLoading={chat.working}
+          isLoading={chat.working && !talking}
           disabled={chat.loading}
           placeholder={`Message ${name}`}
         />

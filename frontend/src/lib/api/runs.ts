@@ -1,6 +1,7 @@
 import { apiFetch, apiStream } from "./http"
 
 export type RunStatus =
+  | "queued"
   | "pending"
   | "running"
   | "awaiting_input"
@@ -12,6 +13,8 @@ export interface RunDto {
   id: string
   kind: string
   status: RunStatus
+  /** Who started it: on a shared Lace, which of its people. */
+  user_id: string
   workspace_id: string | null
   lace_id: string | null
   progress: Record<string, unknown> | null

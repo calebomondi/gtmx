@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import {
-  ApiError,
   answerLaceQuestion,
   followRunEvents,
   findLaceAccountContacts,
@@ -81,6 +80,8 @@ export interface LaceChat {
   error: string | null
   /** True while the Lace is working on a run (onboarding or a turn). */
   working: boolean
+  /** Who the Lace's turn is for (a user id), while it has one. */
+  turnBy: string | null
   /** What the Lace is doing right now, e.g. "Reading https://…/pricing". */
   step: string | null
   /** Everything it has done this turn, oldest first; the last is `step`. */
@@ -154,6 +155,7 @@ export function useLaceChat(laceId: string): LaceChat {
   const [step, setStep] = useState<string | null>(null)
   const [steps, setSteps] = useState<string[]>([])
   const [jobs, setJobs] = useState<RunDto[]>([])
+  const [turnBy, setTurnBy] = useState<string | null>(null)
   const [draft, setDraft] = useState("")
   const abort = useRef<AbortController | null>(null)
   // What the last look saw: the background jobs running, and the newest
@@ -253,7 +255,9 @@ export function useLaceChat(laceId: string): LaceChat {
     newestActivity.current = newest
     // Drafts and replies land without a turn the page follows: load them now.
     if (jobEnded || reported) void refresh().catch(() => undefined)
-    const turn = mine.find(isTurn)
+    // A waiting message has no run to follow yet.
+    const turn = mine.find((run) => isTurn(run) && run.status !== "queued")
+    setTurnBy(turn?.user_id ?? null)
     if (turn && !busy.current) void follow(turn.id)
   }, [laceId, follow, refresh])
 
@@ -464,10 +468,12 @@ export function useLaceChat(laceId: string): LaceChat {
       return
     }
     try {
-      const { run_id } = await sendLaceMessage(laceId, text, documentIds, draftId)
-      await follow(run_id)
+      const { run_id, queued } = await sendLaceMessage(laceId, text, documentIds, draftId)
+      // A waiting message shows as waiting; checkRuns follows it once it starts.
+      if (queued) await refresh()
+      else await follow(run_id)
     } catch (err) {
-      setError(err instanceof ApiError && err.status === 409 ? "Your Lace is still working on the last message." : message(err))
+      setError(message(err))
       await refresh().catch(() => undefined)  // the send error is already shown
     }
   }, [laceId, follow, refresh])
@@ -476,10 +482,11 @@ export function useLaceChat(laceId: string): LaceChat {
     setError(null)
     setMessages((prev) => [...prev, { role: "founder", content: answerLine(block, given), answer: given }])
     try {
-      const { run_id } = await answerLaceQuestion(laceId, given)
-      await follow(run_id)
+      const { run_id, queued } = await answerLaceQuestion(laceId, given)
+      if (queued) await refresh()
+      else await follow(run_id)
     } catch (err) {
-      setError(err instanceof ApiError && err.status === 409 ? "That question was already answered." : message(err))
+      setError(message(err))
       await refresh().catch(() => undefined)  // the error is already shown
     }
   }, [laceId, follow, refresh])
@@ -498,7 +505,7 @@ export function useLaceChat(laceId: string): LaceChat {
   return {
     lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, waiting, drafting, findingOpportunities,
     loading, error,
-    working, step, steps, jobs, draft, send, answer, reload, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, sendingSoon,
+    working, turnBy, step, steps, jobs, draft, send, answer, reload, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, sendingSoon,
     undoSend, markSent, markRead, decideAction, findContacts, draftToContact, contacts, approveContact, approveAccountContacts, saveCompetitor, saveAccount, decideOpportunity, suggestedCompetitors,
     suggestedAccounts,
   }

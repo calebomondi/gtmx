@@ -3,6 +3,7 @@ import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom"
 import { RotateCcw, Settings2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { useAuth } from "@/lib/auth"
 import { ensureLacesLoaded, useLaces } from "@/lib/laces-store"
 
 import { JOB_INFO } from "./background-jobs"
@@ -69,6 +70,10 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
   // Shared by the header's faces and the chat, which shows who sent what in a team.
   const people = useLacePeople(laceId)
   const team = (people.people ?? []).filter((p) => p.status === "active").length > 1
+  const { user } = useAuth()
+  const talker = chat.turnBy && chat.turnBy !== user?.id
+    ? people.people?.find((p) => p.user_id === chat.turnBy) : undefined
+  const talking = talker ? (talker.name ?? talker.email ?? "Someone on your team") : null
   const [seenAt, markSeen] = useSeenAt<FoundSection["key"]>(laceId)
   const name = chat.lace?.name ?? "Lace"
   const subtitle = chat.lace?.startup_name ?? chat.lace?.website
@@ -129,7 +134,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
         </aside>
         <main className={tab === "chat" ? "flex min-h-0 min-w-0 flex-1 flex-col" : "min-h-0 min-w-0 flex-1 overflow-y-auto"}>
           {tab === "chat" && (
-            <LaceConversation chat={chat} name={name} onOpenMessaging={() => select("messaging")} prefill={prefill} team={team}
+            <LaceConversation chat={chat} name={name} onOpenMessaging={() => select("messaging")} prefill={prefill} team={team} talking={talking}
                               starters={<QuickAskChips asks={asks} onAsk={(text) => void chat.send(text)} disabled={chat.working} />}
                               dock={
               <>
