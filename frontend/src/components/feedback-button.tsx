@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { matchPath, useLocation } from "react-router-dom"
-import { MessageSquareText } from "lucide-react"
+import { MessageSquare } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -13,15 +13,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
-import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
+import { Field, FieldLabel } from "@/components/ui/field"
 import { Textarea } from "@/components/ui/textarea"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { FEEDBACK_MAX_CHARS, sendFeedback } from "@/lib/api"
 
 const LABEL = "Suggestions & feedback"
 
 /** The sidebar's way to tell the team what works, what doesn't and what to
- * add. It goes with the page you were on, so it can be read in context. */
+ * add: a square icon button like the theme toggle, named on hover. It goes
+ * with the page you were on, so it can be read in context. */
 export function FeedbackButton() {
   const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
@@ -44,11 +45,13 @@ export function FeedbackButton() {
   }
 
   return (
-    <SidebarMenuItem>
-      <SidebarMenuButton tooltip={LABEL} onClick={() => setOpen(true)}>
-        <MessageSquareText />
-        <span>{LABEL}</span>
-      </SidebarMenuButton>
+    <>
+      <Tooltip>
+        <TooltipTrigger render={<Button variant="outline" size="icon" type="button" aria-label={LABEL} onClick={() => setOpen(true)} />}>
+          <MessageSquare className="h-[1.2rem] w-[1.2rem]" />
+        </TooltipTrigger>
+        <TooltipContent side="right">{LABEL}</TooltipContent>
+      </Tooltip>
       <Dialog open={open} onOpenChange={(next) => !sending && setOpen(next)}>
         <DialogContent>
           <DialogHeader>
@@ -62,7 +65,6 @@ export function FeedbackButton() {
             <FieldLabel htmlFor="feedback-text" className="sr-only">Your feedback</FieldLabel>
             <Textarea id="feedback-text" value={text} onChange={(e) => setText(e.target.value)} rows={6}
                       maxLength={FEEDBACK_MAX_CHARS} placeholder="What should we know?" autoFocus />
-            <FieldDescription>We'll see the page you're on with it.</FieldDescription>
           </Field>
           <DialogFooter className="sm:flex-row sm:justify-end">
             <DialogClose render={<Button variant="outline" disabled={sending} />}>Cancel</DialogClose>
@@ -72,6 +74,6 @@ export function FeedbackButton() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </SidebarMenuItem>
+    </>
   )
 }
