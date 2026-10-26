@@ -8,11 +8,11 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.schemas.lace import ActivityKind, LaceRole, SavedKind
-from backend.app.database.lace_models import LaceAccount, LaceCompetitor, LaceContact, LaceOpportunity, LaceOutreach
+from backend.app.database.lace_models import LaceAccount, LaceCompetitor, LaceContact, LaceEvent, LaceOpportunity, LaceOutreach
 from backend.app.services import lace_activity, lace_events
 from backend.app.services.errors import ForbiddenError, NotFoundError
 
@@ -92,6 +92,16 @@ async def push(db: AsyncSession, lace_id: uuid.UUID, owner_id: uuid.UUID,
     return len(pushed)
 
 
+async def forget_private(db: AsyncSession, lace_id: uuid.UUID, owner_id: uuid.UUID) -> None:
+    """Someone left the Lace: what only they could see goes (their unpushed
+    finds, their chat's queued updates). What they pushed stays for the
+    team to review. The caller commits."""
+    for spec in KINDS.values():
+        await db.execute(delete(spec.model).where(
+            spec.model.lace_id == lace_id, spec.model.owner_id == owner_id, spec.model.proposed_at.is_(None)))
+    await db.execute(delete(LaceEvent).where(LaceEvent.lace_id == lace_id, LaceEvent.owner_id == owner_id))
+
+
 async def to_review(db: AsyncSession, lace_id: uuid.UUID, limit: int) -> list[Find]:
     """Finds pushed to the team and not yet reviewed, oldest first."""
     found: list[Find] = []
@@ -122,9 +132,10 @@ async def _pending(db: AsyncSession, lace_id: uuid.UUID, kind: SavedKind, find_i
 
 
 async def approve(db: AsyncSession, lace_id: uuid.UUID, kind: SavedKind, find_id: uuid.UUID,
-                  reviewer_id: uuid.UUID, role: LaceRole) -> None:
+                  reviewer_id: uuid.UUID, role: LaceRole, reviewer_name: str) -> None:
     """A pushed find becomes the team's, saved (merged into the team's own
-    copy when there is one). The team's Lace hears of it at its next turn."""
+    copy when there is one). The team's Lace hears of it, and who approved
+    it, at its next turn."""
     spec = KINDS[kind]
     row = await _pending(db, lace_id, kind, find_id, reviewer_id, role)
     name, owner_id = getattr(row, spec.name), row.owner_id
@@ -132,7 +143,7 @@ async def approve(db: AsyncSession, lace_id: uuid.UUID, kind: SavedKind, find_id
     await lace_activity.add(db, lace_id, spec.saved_kind, f"Saved {name} as {spec.label}", "Approved for the team",
                             actor_id=owner_id)
     await lace_events.add(db, lace_id, f"{name} ({spec.noun}), found in a private chat, was approved for the team "
-                          "and is now saved on its file.")
+                          f"by {reviewer_name} and is now saved on its file.")
     await db.commit()
 
 
