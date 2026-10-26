@@ -8,6 +8,7 @@ import {
   getLace,
   listLaceContacts,
   approveLaceAccountContacts,
+  removeLaceContact,
   setLaceContactApproved,
   type ContactDto,
   deleteLaceOutreach,
@@ -122,6 +123,8 @@ export interface LaceChat {
   approveContact: (contactId: string, approved: boolean) => Promise<void>
   /** Clear everyone at one account for outreach. */
   approveAccountContacts: (accountId: string) => Promise<void>
+  /** Take a person off the contacts. */
+  removeContact: (contactId: string) => Promise<void>
   saveCompetitor: (competitorId: string) => Promise<void>
   /** Approve (run it now, as the founder) or decline an action the Lace proposed. */
   decideAction: (actionId: string, verdict: "approve" | "decline") => Promise<boolean>
@@ -415,6 +418,15 @@ export function useLaceChat(laceId: string, thread: ChatThread = "team"): LaceCh
     }
   }, [laceId])
 
+  const removeContact = useCallback(async (contactId: string) => {
+    try {
+      await removeLaceContact(laceId, contactId)
+      setContacts((prev) => prev.filter((c) => c.id !== contactId))
+    } catch (err) {
+      setError(message(err))
+    }
+  }, [laceId])
+
   const approveAccountContacts = useCallback(async (accountId: string) => {
     try {
       await approveLaceAccountContacts(laceId, accountId)
@@ -519,7 +531,7 @@ export function useLaceChat(laceId: string, thread: ChatThread = "team"): LaceCh
     lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, waiting, drafting, findingOpportunities,
     loading: loading || conversation.thread !== thread, error,
     working, turnBy, step, steps, jobs, draft, send, answer, reload, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, sendingSoon,
-    undoSend, markSent, markRead, decideAction, findContacts, draftToContact, contacts, approveContact, approveAccountContacts, saveCompetitor, saveAccount, decideOpportunity, suggestedCompetitors,
+    undoSend, markSent, markRead, decideAction, findContacts, draftToContact, contacts, approveContact, approveAccountContacts, removeContact, saveCompetitor, saveAccount, decideOpportunity, suggestedCompetitors,
     suggestedAccounts,
   }
 }

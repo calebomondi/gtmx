@@ -28,24 +28,9 @@ export function filterContacts(contacts: ContactDto[], query: string): ContactDt
     .some((field) => field?.toLowerCase().includes(needle)))
 }
 
-export interface AccountContacts {
-  accountId: string
-  accountName: string
-  people: ContactDto[]
-  /** Not yet cleared for outreach. */
-  waiting: number
-}
-
-/** Contacts by account, in the order they come (by account, then name). */
-export function byAccount(contacts: ContactDto[]): AccountContacts[] {
-  const groups = new Map<string, AccountContacts>()
-  for (const c of contacts) {
-    const group = groups.get(c.account_id) ?? { accountId: c.account_id, accountName: c.account_name, people: [], waiting: 0 }
-    group.people.push(c)
-    if (!c.approved_at) group.waiting += 1
-    groups.set(c.account_id, group)
-  }
-  return [...groups.values()]
+/** What a person does and where, e.g. "Founder & CEO, Synnefa". */
+export function roleAt(contact: ContactDto): string {
+  return [contact.title?.trim(), contact.account_name].filter(Boolean).join(", ")
 }
 
 /** People at one account not yet cleared for outreach. */
@@ -75,11 +60,10 @@ export function unreadTotal(counts: Partial<Record<OutreachChannel, number>>): n
   return Object.values(counts).reduce((sum, n) => sum + (n ?? 0), 0)
 }
 
-/** People with new replies first, and their accounts before the rest; the
- * order is otherwise kept. */
-export function byNewReplies(groups: AccountContacts[],
-                             unread: ReadonlyMap<string, Partial<Record<OutreachChannel, number>>>): AccountContacts[] {
+/** People with new replies first; the order is otherwise kept (by account,
+ * then name, as the API lists them). */
+export function byNewReplies(contacts: ContactDto[],
+                             unread: ReadonlyMap<string, Partial<Record<OutreachChannel, number>>>): ContactDto[] {
   const fresh = (c: ContactDto) => unreadTotal(unread.get(c.id) ?? {}) > 0
-  const first = <T,>(items: T[], ahead: (item: T) => boolean) => [...items.filter(ahead), ...items.filter((i) => !ahead(i))]
-  return first(groups.map((g) => ({ ...g, people: first(g.people, fresh) })), (g) => g.people.some(fresh))
+  return [...contacts.filter(fresh), ...contacts.filter((c) => !fresh(c))]
 }

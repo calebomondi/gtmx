@@ -633,6 +633,11 @@ export function setLaceContactApproved(laceId: string, contactId: string, approv
   return apiFetch(`/api/v1/laces/${laceId}/contacts/${contactId}`, { method: "PATCH", body: JSON.stringify({ approved }) })
 }
 
+/** Take a person off the Lace's contacts; it no longer drafts to them. */
+export function removeLaceContact(laceId: string, contactId: string): Promise<void> {
+  return apiFetch(`/api/v1/laces/${laceId}/contacts/${contactId}`, { method: "DELETE" })
+}
+
 /** Ask the Lace to draft a first message to one person (approving them),
  * with the founder's note. The draft lands in Messaging. */
 export function draftToLaceContact(laceId: string, contactId: string, channel: OutreachChannel,
