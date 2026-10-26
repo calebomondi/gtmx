@@ -13,8 +13,10 @@ import {
 } from "@/components/ui/card"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { usePageTitle } from "@/lib/use-page-title"
 
 export default function UpdatePasswordPage() {
+  usePageTitle("Choose a new password")
   const navigate = useNavigate()
   const [password, setPassword] = useState("")
   const [confirm, setConfirm] = useState("")

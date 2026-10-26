@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { ApiError, askToJoinLace, checkLaceClaimed, createLace } from "@/lib/api"
 import { refetchLaces } from "@/lib/laces-store"
 import { isWebsite } from "@/lib/validation"
+import { usePageTitle } from "@/lib/use-page-title"
 
 import { useEyeTarget } from "./use-eye-target"
 
@@ -20,6 +21,7 @@ const NAME_PERK_MS = 900
 /** Name a Lace and give it the startup's website; it starts reading at once.
  * The mascot watches: the pointer, or the text as it is typed. */
 export default function NewLace() {
+  usePageTitle("New Lace")
   const navigate = useNavigate()
   const [name, setName] = useState("")
   // Back from a site that couldn't be read: its address, to check and fix.

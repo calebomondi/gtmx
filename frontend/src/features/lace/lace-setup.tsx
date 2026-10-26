@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { retryLaceOnboarding } from "@/lib/api"
 import { deleteLace } from "@/lib/laces-store"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { usePageTitle } from "@/lib/use-page-title"
 
 import { LaceFactReview } from "./lace-fact-review"
 import { LacePrint } from "./lace-print"
@@ -28,6 +29,7 @@ export default function LaceSetupPage() {
 function LaceSetup({ laceId, runId }: { laceId: string; runId: string | null }) {
   const navigate = useNavigate()
   const setup = useLaceSetup(laceId, runId)
+  usePageTitle(setup.lace ? `${setup.lace.name} • Setting up` : null)
   const name = setup.lace?.name ?? "your Lace"
   const startup = setup.lace?.startup_name ?? "your startup"
   // Into the chat, where the Lace's first message waits.
