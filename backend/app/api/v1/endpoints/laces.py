@@ -66,7 +66,7 @@ from backend.app.services import laces as lace_service
 from backend.app.services import runs as run_service
 from backend.app.schemas.connections import ConnectStartResponse
 from agents.lace.store import JobRefused
-from backend.app.services.errors import ConflictError
+from backend.app.services.errors import ConflictError, NotFoundError
 from agents.schemas.lace import AppActionStatus, AccountStatus, CompetitorStatus, FactTopic, InboxPlatform
 from backend.app.database.lace_models import Lace, LaceMember
 from agents.schemas.opportunities import OpportunityStatus
@@ -248,6 +248,14 @@ async def approve_contact(lace: MemberLace, contact_id: uuid.UUID, payload: Cont
     contact = await lace_contacts.set_approved(db, lace.id, contact_id, payload.approved)
     account = await lace_accounts.get_in_lace(db, lace.id, contact.account_id)
     return _contact(contact, account.name)
+
+
+@router.delete("/{lace_id}/contacts/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_contact(lace: MemberLace, contact_id: uuid.UUID, db: DbSession):
+    """Take a person off the Lace's contacts (and their account's record), so
+    it neither shows them nor drafts to them."""
+    if not await lace_contacts.remove(db, lace.id, [contact_id]):
+        raise NotFoundError("Contact not found.")
 
 
 @router.post("/{lace_id}/contacts/{contact_id}/draft", response_model=JobStartedResponse,

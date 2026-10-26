@@ -104,7 +104,7 @@ export function LaceMessaging({ laceId, name, chat }: { laceId: string; name: st
           <PanelIntro>The people {name} found at your saved accounts, in the chat or its searches. It drafts only to people you approve.</PanelIntro>
           <LaceContacts contacts={chat.contacts} outreach={chat.outreach}
                         onApprove={(id, approved) => void chat.approveContact(id, approved)}
-                        onApproveAccount={(id) => void chat.approveAccountContacts(id)}
+                        onRemove={(id) => void chat.removeContact(id)}
                         onOpen={(c, channel) => setPerson({ id: c.id, channel })} />
           {opened && (
             <LaceContactDialog key={opened.id} contact={opened} channel={person?.channel ?? null} name={name} chat={chat}

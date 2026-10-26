@@ -86,3 +86,16 @@ def test_dismissed_accounts_people_are_not_listed(client, lace):  # noqa: F811
     assert _contacts(client, lace) == []
     client.sign_in(make_user("Intruder"))
     assert client.get(f"{API}/laces/{lace}/contacts").status_code == 404
+
+
+def test_a_contact_can_be_removed(client, lace):  # noqa: F811
+    record, fit = _found("SunCulture", "strong")
+    client.portal.call(_search, lace, (record.model_copy(update={"key_contacts": [AMINA]}), fit))
+    _save_accounts(lace)
+    [amina] = _contacts(client, lace)
+    assert client.delete(f"{API}/laces/{lace}/contacts/{amina['id']}").status_code == 204
+    assert _contacts(client, lace) == []
+    with psycopg.connect(settings.database_url) as conn:
+        [(record,)] = conn.execute("SELECT record FROM lace_accounts WHERE lace_id = %s", (lace,)).fetchall()
+    assert record["key_contacts"] == []  # gone from the account's record too
+    assert client.delete(f"{API}/laces/{lace}/contacts/{amina['id']}").status_code == 404
