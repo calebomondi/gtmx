@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from backend.app.api.deps import in_pilot, rate_limited
 from backend.app.api.v1.endpoints import (
-    activity, admin, connections, feedback, lace_finds, lace_members, laces, pilot, runs, users, waitlist,
+    activity, admin, connections, events, feedback, lace_finds, lace_members, laces, pilot, runs, users, waitlist,
 )
 
 api_router = APIRouter()
@@ -19,6 +19,7 @@ api_router.include_router(runs.router, prefix="/runs", tags=["runs"], dependenci
 api_router.include_router(activity.router, prefix="/activity", tags=["activity"], dependencies=_PILOT)
 api_router.include_router(users.router, prefix="/users", tags=["users"], dependencies=_LIMITED)
 api_router.include_router(feedback.router, prefix="/feedback", tags=["feedback"], dependencies=_PILOT)
+api_router.include_router(events.router, prefix="/events", tags=["events"], dependencies=_PILOT)
 api_router.include_router(connections.router, prefix="/connections", tags=["connections"], dependencies=_PILOT)
 # Before the Lace routes: /laces/invites is not a Lace id.
 api_router.include_router(lace_members.router, prefix="/laces", tags=["laces"], dependencies=_PILOT)

@@ -17,6 +17,7 @@ import { Field, FieldLabel } from "@/components/ui/field"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { FEEDBACK_MAX_CHARS, sendFeedback } from "@/lib/api"
+import { track } from "@/lib/events"
 
 const LABEL = "Suggestions & feedback"
 
@@ -29,6 +30,10 @@ export function FeedbackButton() {
   const [text, setText] = useState("")
   const [sending, setSending] = useState(false)
   const laceId = matchPath("/lace/:lace_id/*", pathname)?.params.lace_id ?? null
+  const openDialog = () => {
+    track("feedback_opened", { laceId })
+    setOpen(true)
+  }
 
   const send = async () => {
     setSending(true)
@@ -47,7 +52,7 @@ export function FeedbackButton() {
   return (
     <>
       <Tooltip>
-        <TooltipTrigger render={<Button variant="outline" size="icon" type="button" aria-label={LABEL} onClick={() => setOpen(true)} />}>
+        <TooltipTrigger render={<Button variant="outline" size="icon" type="button" aria-label={LABEL} onClick={openDialog} />}>
           <MessageSquare className="h-[1.2rem] w-[1.2rem]" />
         </TooltipTrigger>
         <TooltipContent side="right">{LABEL}</TooltipContent>

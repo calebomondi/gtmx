@@ -1,5 +1,5 @@
 import { useNavigate, useParams, useSearchParams } from "react-router-dom"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { AlertTriangle, Loader2 } from "lucide-react"
 
 import { Lace } from "@/components/lace-mascot"
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { retryLaceOnboarding } from "@/lib/api"
 import { deleteLace } from "@/lib/laces-store"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { track } from "@/lib/events"
 import { usePageTitle } from "@/lib/use-page-title"
 
 import { LaceFactReview } from "./lace-fact-review"
@@ -29,6 +30,7 @@ export default function LaceSetupPage() {
 function LaceSetup({ laceId, runId }: { laceId: string; runId: string | null }) {
   const navigate = useNavigate()
   const setup = useLaceSetup(laceId, runId)
+  useSetupPhaseEvents(laceId, setup.phase)
   usePageTitle(setup.lace ? `${setup.lace.name} • Setting up` : null)
   const name = setup.lace?.name ?? "your Lace"
   const startup = setup.lace?.startup_name ?? "your startup"
@@ -167,4 +169,16 @@ function SetupFailed({ laceId, name, error, onOpen }: {
       </Card>
     </Shell>
   )
+}
+
+/** A setup_phase event each time a new Lace's setup reaches a new phase:
+ * where people wait, and where setups fail or stall. */
+function useSetupPhaseEvents(laceId: string, phase: string) {
+  // React runs effects twice in development; one phase is one event.
+  const last = useRef<string | null>(null)
+  useEffect(() => {
+    if (last.current === phase) return
+    last.current = phase
+    track("setup_phase", { detail: phase, laceId })
+  }, [laceId, phase])
 }

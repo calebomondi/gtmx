@@ -12,6 +12,7 @@ import { useAuth } from "@/lib/auth"
 import { useLaces } from "@/lib/laces-store"
 import { useActivityHeartbeat } from "@/lib/use-activity-heartbeat"
 import { usePilotAccess } from "@/lib/use-pilot-access"
+import { usePageViews } from "@/lib/use-page-views"
 import { NotInPilot } from "@/components/not-in-pilot"
 
 import { ThemeProvider } from "@/components/theme-provider"
@@ -37,6 +38,7 @@ function AppLayout() {
   const location = useLocation()
   const pilot = usePilotAccess(Boolean(user))
   useActivityHeartbeat(Boolean(user) && pilot.access === "in")
+  usePageViews(Boolean(user) && pilot.access === "in")
 
   // Every app route needs a session; send visitors to sign in and back here.
   if (!user) {

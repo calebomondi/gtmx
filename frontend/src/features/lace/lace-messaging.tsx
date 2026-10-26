@@ -2,7 +2,8 @@ import { useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { PenLine, Reply, Send, type LucideIcon } from "lucide-react"
 
-import type { OutreachChannel } from "@/lib/api"
+import type { ContactDto, OutreachChannel } from "@/lib/api"
+import { track } from "@/lib/events"
 
 import { MESSAGING_SECTIONS, type MessagingSection } from "./lace-activity-actions"
 import { LaceAccountSwitcher } from "./lace-account-switcher"
@@ -37,6 +38,10 @@ export function LaceMessaging({ laceId, name, chat }: { laceId: string; name: st
   const [params, setParams] = useSearchParams()
   // The person open in a dialog (by id, so it follows the list as it updates).
   const [person, setPerson] = useState<{ id: string; channel: OutreachChannel | null } | null>(null)
+  const openContact = (contact: ContactDto, channel: OutreachChannel | null) => {
+    track("contact_opened", { detail: channel ?? "none", laceId })
+    setPerson({ id: contact.id, channel })
+  }
   const opened = person ? chat.contacts.find((c) => c.id === person.id) : undefined
   const connections = useConnections()
   const accounts = messagingAccounts(connections.connections, chat.outreach)
@@ -105,7 +110,7 @@ export function LaceMessaging({ laceId, name, chat }: { laceId: string; name: st
           <LaceContacts contacts={chat.contacts} outreach={chat.outreach}
                         onApprove={(id, approved) => void chat.approveContact(id, approved)}
                         onRemove={(id) => void chat.removeContact(id)}
-                        onOpen={(c, channel) => setPerson({ id: c.id, channel })} />
+                        onOpen={openContact} />
           {opened && (
             <LaceContactDialog key={opened.id} contact={opened} channel={person?.channel ?? null} name={name} chat={chat}
                                onClose={() => setPerson(null)} />
