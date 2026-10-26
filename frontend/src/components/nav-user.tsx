@@ -41,7 +41,9 @@ export function NavUser({
     .join('') || 'U'
   return (
     <SidebarMenu>
-      <FeedbackButton />
+      <SidebarMenuItem className={`mt-2 ${state === "expanded" ? "px-2" : "px-0"}`}>
+        <FeedbackButton />
+      </SidebarMenuItem>
       <SidebarMenuItem className={`my-2 ${state === "expanded" ? "px-2" : "px-0"}`}>
         <ModeToggle />
       </SidebarMenuItem>
