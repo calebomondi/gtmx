@@ -4,6 +4,8 @@ import { ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 import { LaceActionsWaiting } from "./lace-apps"
+import { FindReviewsCard } from "./find-reviews"
+import { useFindReviews } from "./use-lace-finds"
 import { FEED_SECTIONS, needsYou, type FeedSection, type FeedTarget, type NeedsYouItem } from "./lace-activity-actions"
 import { LaceActivityList } from "./lace-activity"
 import { accountItem, competitorItem, opportunityItem } from "./feed-review"
@@ -93,16 +95,19 @@ export function LaceFeed({ laceId, name, chat, activity, opps, apps, onOpen, onD
     setMovesOf(competitorId)
     document.getElementById("competitor-moves")?.scrollIntoView({ behavior: "smooth", block: "start" })
   }
+  // Teammates' pushes, loaded again as activity arrives (a push is a Feed item).
+  const reviews = useFindReviews(laceId, activity.items[0]?.id ?? "")
   const needs = needsYou(chat.waiting, activity.items.filter((a) => a.kind === "job_failed" && activity.isNew(a)), {
     opportunities: opps.suggested.length, accounts: chat.suggestedAccounts.length,
     competitors: chat.suggestedCompetitors.length,
-  }, chat.contacts.filter((c) => !c.approved_at).length)
+  }, chat.contacts.filter((c) => !c.approved_at).length, (reviews.items ?? []).filter((f) => f.can_review).length)
 
   const tabs: PanelTab<FeedSection>[] = [
     {
       value: "activity", label: "Activity", waiting: activity.unread,
       content: (
         <>
+          <FindReviewsCard reviews={reviews} />
           <LaceLatestBrief brief={brief} name={name} onDiscuss={() => brief && onDiscuss(discussBrief(brief))} />
           <PanelIntro>What {name} did and found, newest first.</PanelIntro>
           <LaceActivityList activity={activity} name={name} onOpen={onOpen} />

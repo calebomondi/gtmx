@@ -555,6 +555,8 @@ export type ActivityKind =
   | "competitor_saved"
   | "account_saved"
   | "opportunity_saved"
+  | "finds_proposed"
+  | "finds_returned"
 
 /** Something the Lace did or found, for its Feed. */
 export interface ActivityDto {

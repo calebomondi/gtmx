@@ -38,6 +38,8 @@ export const ACTIVITY_ACTIONS: Record<ActivityKind, { label: string; target: Fee
   competitor_saved: { label: "See competitors", target: { tab: "feed", section: "competitors" } },
   account_saved: { label: "See accounts", target: { tab: "feed", section: "accounts" } },
   opportunity_saved: { label: "See opportunities", target: { tab: "feed", section: "opportunities" } },
+  finds_proposed: { label: "Review", target: { tab: "feed", section: "activity" } },
+  finds_returned: { label: "Open your chat", target: { tab: "chat" } },
 }
 
 /** A kind's action; a kind this app doesn't know yet (the server added it
@@ -57,8 +59,13 @@ export interface NeedsYouItem {
  * that stopped for something only the founder can give (unseen until this
  * visit). */
 export function needsYou(waiting: number, failedSearches: ActivityDto[],
-                         suggestions: Partial<Record<FeedSection, number>> = {}, toApprove = 0): NeedsYouItem[] {
+                         suggestions: Partial<Record<FeedSection, number>> = {}, toApprove = 0,
+                         pushed = 0): NeedsYouItem[] {
   const items: NeedsYouItem[] = []
+  if (pushed > 0) {
+    items.push({ label: `${pushed} ${pushed === 1 ? "teammate's find" : "teammates' finds"} to approve`,
+                 target: { tab: "feed", section: "activity" } })
+  }
   if (toApprove > 0) {
     items.push({ label: `${toApprove} ${toApprove === 1 ? "person" : "people"} to approve for outreach`,
                  target: { tab: "messaging", section: "contacts" } })

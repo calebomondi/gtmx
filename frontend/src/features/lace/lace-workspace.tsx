@@ -13,6 +13,8 @@ import { LaceBackgroundWork } from "./lace-background-work"
 import { LaceConversation } from "./lace-conversation"
 import { foundSections, type FoundSection } from "./found-model"
 import { useChatThread, useSeenAt } from "./viewer-memory"
+import { MyFindsPanel } from "./my-finds-panel"
+import { useMyFinds } from "./use-lace-finds"
 import { LaceFeed } from "./lace-feed"
 import { LaceFindsDock } from "./lace-finds-dock"
 import { LaceInviteGate } from "./lace-invite-gate"
@@ -60,6 +62,8 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
   // One load of the Lace serves all three tabs, so the chat keeps following
   // its run while the founder looks at the Feed.
   const chat = useLaceChat(laceId, thread)
+  // Loaded again as turns and searches end, which is when finds arrive.
+  const myFinds = useMyFinds(laceId, thread === "mine", `${chat.working}:${chat.jobs.length}`)
   const activity = useLaceActivity(laceId, tab === "feed")
 
   // Refetched as new activity arrives (an opportunity search finished).
@@ -142,6 +146,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
                               starters={<QuickAskChips asks={asks} onAsk={(text) => void chat.send(text)} disabled={chat.working} />}
                               dock={
               <>
+                {thread === "mine" && <MyFindsPanel finds={myFinds} />}
                 <LaceBackgroundWork name={name} jobs={chat.jobs} />
                 <LaceFindsDock name={name} sections={found} seenAt={seenAt} onSeen={markSeen} busy={chat.working} searching={searching}
                                onAsk={(prompt) => void chat.send(prompt)} />
