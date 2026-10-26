@@ -280,10 +280,11 @@ async def mark_sent(db: AsyncSession, message: LaceOutreach, actor_id: uuid.UUID
 
 
 async def accounts_to_draft(db: AsyncSession, lace_id: uuid.UUID, ids: list[uuid.UUID] | None,
-                            limit: int) -> list[LaceAccount]:
+                            limit: int, member_id: uuid.UUID | None = None) -> list[LaceAccount]:
     """The accounts named, else the strongest-fit targets that nothing was
     written to yet. Whether someone there can be reached is the caller's check."""
-    query = select(LaceAccount).where(LaceAccount.lace_id == lace_id, LaceAccount.team(), LaceAccount.status == "target")
+    query = select(LaceAccount).where(LaceAccount.lace_id == lace_id, LaceAccount.seen_by(member_id),
+                                      LaceAccount.status == "target")
     if ids:
         query = query.where(LaceAccount.id.in_(ids))
     else:

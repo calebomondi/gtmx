@@ -67,11 +67,22 @@ def _draft(r: LaceOutreach) -> DraftSummary:
 
 class DbLaceStore:
     def __init__(self, sessions: async_sessionmaker[AsyncSession], lace_id: uuid.UUID,
-                 actor_id: uuid.UUID | None = None):
-        """`actor_id`: the person the Lace is working for, whom what it saves is put down to."""
+                 actor_id: uuid.UUID | None = None, owner_id: uuid.UUID | None = None):
+        """`actor_id`: the person the Lace is working for, whom what it saves
+        is put down to. `owner_id`: the member whose private chat this is
+        (None: the team's chat). There the Lace works with the team's saved
+        finds and the member's own, and its suggestions are theirs alone."""
         self._sessions = sessions
         self._lace_id = lace_id
         self._actor_id = actor_id
+        self._owner_id = owner_id
+
+    async def _saved(self, session: AsyncSession, kind: SavedKind, limit: int) -> list:
+        """The team's saved finds of a kind, then (in a private chat) the member's own."""
+        rows = await _LIST[kind](session, self._lace_id, _SAVED_STATUS[kind], limit)
+        if self._owner_id is not None:
+            rows += await _LIST[kind](session, self._lace_id, _SAVED_STATUS[kind], limit, self._owner_id)
+        return rows
 
     async def profile(self) -> LaceProfile:
         async with self._sessions() as session:
@@ -136,24 +147,25 @@ class DbLaceStore:
 
     async def accounts(self, limit: int = 50) -> list[AccountSummary]:
         async with self._sessions() as session:
-            rows = await lace_accounts.list_for_lace(session, self._lace_id, "target", limit)
+            rows = await self._saved(session, "account", limit)
         return [lace_accounts.summary(r) for r in rows]
 
     async def opportunities(self, limit: int = 50) -> list[OpportunitySummary]:
         async with self._sessions() as session:
-            rows = await lace_opportunities.list_for_lace(session, self._lace_id, "open", limit)
+            rows = await self._saved(session, "opportunity", limit)
         return [lace_opportunities.summary(r) for r in rows]
 
     async def competitors(self, limit: int = 50) -> list[CompetitorSummary]:
         async with self._sessions() as session:
-            rows = await lace_competitors.list_tracked(session, self._lace_id, limit)
+            rows = await self._saved(session, "competitor", limit)
         return [_competitor(r) for r in rows]
 
     async def suggestions(self, limit: int = 50) -> Suggestions:
         async with self._sessions() as session:
-            rivals = await lace_competitors.list_for_lace(session, self._lace_id, "suggested", limit)
-            accounts = await lace_accounts.list_for_lace(session, self._lace_id, "suggested", limit)
-            opportunities = await lace_opportunities.list_for_lace(session, self._lace_id, "suggested", limit)
+            rivals = await lace_competitors.list_for_lace(session, self._lace_id, "suggested", limit, self._owner_id)
+            accounts = await lace_accounts.list_for_lace(session, self._lace_id, "suggested", limit, self._owner_id)
+            opportunities = await lace_opportunities.list_for_lace(session, self._lace_id, "suggested", limit,
+                                                                   self._owner_id)
         return Suggestions(competitors=[_competitor(r) for r in rivals],
                            accounts=[lace_accounts.summary(r) for r in accounts],
                            opportunities=[lace_opportunities.summary(r) for r in opportunities])
@@ -188,7 +200,8 @@ class DbLaceStore:
                 try:
                     if item_id is None:
                         raise NotFoundError(raw)
-                    row = await _SET_STATUS[kind](session, self._lace_id, item_id, status, self._actor_id)
+                    row = await _SET_STATUS[kind](session, self._lace_id, item_id, status, self._actor_id,
+                                                  self._owner_id)
                 except NotFoundError:
                     result.missing.append(raw)
                     continue
@@ -197,7 +210,7 @@ class DbLaceStore:
 
     async def removed(self, kind: SavedKind, limit: int = 50) -> list[NamedItem]:
         async with self._sessions() as session:
-            rows = await _LIST[kind](session, self._lace_id, "dismissed", limit)
+            rows = await _LIST[kind](session, self._lace_id, "dismissed", limit, self._owner_id)
         return [NamedItem(id=str(r.id), name=_name(r)) for r in rows]
 
     async def retract_facts(self, ids: list[str]) -> ItemsChanged:

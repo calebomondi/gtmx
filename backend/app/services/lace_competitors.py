@@ -1,4 +1,7 @@
-"""A Lace's competitors: the firms its hunts found, kept one per host."""
+"""A Lace's competitors: the firms its hunts found, kept one per host (per
+owner: the team's, or a member's private ones; see lace_models._Find).
+`owner_id` picks one owner's; `member_id` acts in that member's private
+chat, which sees the team's and their own."""
 
 import uuid
 from datetime import UTC, datetime
@@ -20,23 +23,25 @@ from backend.app.services.runs import TERMINAL_STATUSES
 MOVE_TITLE_CHARS = 200
 
 
-async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, status: str, limit: int) -> list[LaceCompetitor]:
+async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, status: str, limit: int,
+                        owner_id: uuid.UUID | None = None) -> list[LaceCompetitor]:
     rows = await db.scalars(
         select(LaceCompetitor)
-        .where(LaceCompetitor.lace_id == lace_id, LaceCompetitor.team(), LaceCompetitor.status == status)
+        .where(LaceCompetitor.lace_id == lace_id, LaceCompetitor.owned_by(owner_id), LaceCompetitor.status == status)
         .order_by(LaceCompetitor.last_seen_at.desc()).limit(limit)
     )
     return list(rows.all())
 
 
 async def set_status(db: AsyncSession, lace_id: uuid.UUID, competitor_id: uuid.UUID, status: str,
-                     actor_id: uuid.UUID | None) -> LaceCompetitor:
-    """404 for a competitor that is not this Lace's."""
+                     actor_id: uuid.UUID | None, member_id: uuid.UUID | None = None) -> LaceCompetitor:
+    """404 for a competitor that is not this Lace's (or is another member's).
+    Saving the team's goes on the Feed; a private one stays private."""
     row = await db.scalar(select(LaceCompetitor).where(
-        LaceCompetitor.id == competitor_id, LaceCompetitor.lace_id == lace_id, LaceCompetitor.team()))
+        LaceCompetitor.id == competitor_id, LaceCompetitor.lace_id == lace_id, LaceCompetitor.seen_by(member_id)))
     if row is None:
         raise NotFoundError("Competitor not found")
-    if status == "tracked" and row.status != status:
+    if status == "tracked" and row.status != status and row.owner_id is None:
         await lace_activity.note(db, lace_id, actor_id, "competitor_saved", f"Saved {row.name} as a competitor")
     row.status = status
     await db.commit()
@@ -48,7 +53,7 @@ async def list_tracked(db: AsyncSession, lace_id: uuid.UUID, limit: int) -> list
 
 
 async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
-                       profiles: list[CompetitorProfile]) -> tuple[int, int]:
+                       profiles: list[CompetitorProfile], owner_id: uuid.UUID | None = None) -> tuple[int, int]:
     """Save a hunt's profiles. A new firm is a suggestion until the founder
     saves it. A firm already on file gets the fresh profile; its status and
     origin stay as they were, so a firm the founder dismissed is not brought
@@ -58,7 +63,7 @@ async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
     for profile in profiles:
         website = normalize_website(profile.website)
         stmt = insert(LaceCompetitor).values(
-            id=uuid.uuid4(), lace_id=lace_id, name=profile.name[:255], website=website,
+            id=uuid.uuid4(), lace_id=lace_id, owner_id=owner_id, name=profile.name[:255], website=website,
             domain_key=domain_key(website)[:255], summary=profile.description,
             profile=profile.model_dump(mode="json"), found_by_run_id=run_id, last_seen_at=now, status="suggested",
         )
@@ -76,10 +81,10 @@ async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
     return new, refreshed
 
 
-async def all_domains(db: AsyncSession, lace_id: uuid.UUID) -> list[str]:
-    """Every competitor domain on the team's file, tracked or dismissed."""
+async def all_domains(db: AsyncSession, lace_id: uuid.UUID, member_id: uuid.UUID | None = None) -> list[str]:
+    """Every competitor domain on file, tracked or dismissed."""
     return list((await db.scalars(select(LaceCompetitor.domain_key).where(
-        LaceCompetitor.lace_id == lace_id, LaceCompetitor.team()))).all())
+        LaceCompetitor.lace_id == lace_id, LaceCompetitor.seen_by(member_id)))).all())
 
 
 async def due_for_check(db: AsyncSession, lace_id: uuid.UUID, limit: int) -> list[LaceCompetitor]:

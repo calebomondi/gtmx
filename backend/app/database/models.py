@@ -558,7 +558,13 @@ class Run(Base):
         # here so two simultaneous messages cannot both start a turn. Background
         # jobs (a competitor hunt) run alongside and are not counted.
         Index("uq_runs_one_active_per_lace", "lace_id", unique=True,
-              postgresql_where=text("lace_id IS NOT NULL AND kind IN ('lace_onboarding', 'lace_turn')"
+              postgresql_where=text("lace_id IS NOT NULL AND owner_id IS NULL"
+                                    " AND kind IN ('lace_onboarding', 'lace_turn')"
+                                    " AND status IN ('pending', 'running', 'awaiting_input')")),
+        # Each member's private chat is a thread of its own: one turn at a
+        # time there, alongside the team's.
+        Index("uq_runs_one_private_turn", "lace_id", "owner_id", unique=True,
+              postgresql_where=text("owner_id IS NOT NULL AND kind = 'lace_turn'"
                                     " AND status IN ('pending', 'running', 'awaiting_input')")),
     )
 
@@ -573,6 +579,10 @@ class Run(Base):
     lace_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("laces.id", ondelete="SET NULL"), nullable=True, index=True,
     )
+    # The member whose private chat the run works in (its turn, or a job that
+    # turn started); NULL for the team's. Only they see it. No FK: Supabase
+    # owns users; indexed by uq_runs_one_private_turn's lace_id lead and here.
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
     # backend.app.runs.kinds.RunKind
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     # queued | pending | running | awaiting_input | completed | failed | cancelled

@@ -1,7 +1,7 @@
 """Run rows: status bookkeeping and the queries the API needs."""
 
 import uuid
-from sqlalchemy import or_, select, update
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import models
@@ -33,8 +33,10 @@ async def set_run_fields(model: type[models.Run], run_id: uuid.UUID, **fields) -
 
 def _visible_to(user_id: uuid.UUID):
     """Runs the user started, and every run of a Lace they are on (a
-    cofounder's turn, the scheduled brief)."""
-    return or_(models.Run.user_id == user_id, models.Run.lace_id.in_(lace_members.lace_ids_of(user_id)))
+    cofounder's turn, the scheduled brief) except what works in another
+    member's private chat."""
+    return or_(models.Run.user_id == user_id,
+               and_(models.Run.lace_id.in_(lace_members.lace_ids_of(user_id)), models.Run.owner_id.is_(None)))
 
 
 async def get_visible(db: AsyncSession, user_id: uuid.UUID, run_id: uuid.UUID) -> models.Run:
@@ -85,7 +87,8 @@ async def waiting_messages(db: AsyncSession, lace_id: uuid.UUID) -> list[dict]:
     """The Lace's messages waiting for it to be free, oldest first, as the
     conversation shows them (answers to its questions are left out)."""
     runs = (await db.scalars(select(models.Run).where(
-        models.Run.lace_id == lace_id, models.Run.kind == "lace_turn", models.Run.status == "queued",
+        models.Run.lace_id == lace_id, models.Run.owner_id.is_(None), models.Run.kind == "lace_turn",
+        models.Run.status == "queued",
     ).order_by(models.Run.created_at))).all()
     return [{"role": "founder", "content": run.input.get("text", ""), "author": run.input.get("author"),
              "queued": True, **({"documents": run.input["documents"]} if run.input.get("documents") else {})}

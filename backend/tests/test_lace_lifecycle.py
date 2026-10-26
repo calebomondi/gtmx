@@ -45,7 +45,7 @@ def test_a_working_lace_cannot_be_archived_or_deleted(client, lace):  # noqa: F8
 
 def test_delete_removes_the_lace_its_findings_and_its_conversation(client, lace, lace_runtime, monkeypatch):  # noqa: F811
     checkpointer = lace_runs.get_checkpointer()
-    config = lace_runs.thread_config(uuid.UUID(lace))
+    config = lace_runs.LaceThread(uuid.UUID(lace)).config
     assert client.portal.call(checkpointer.aget_tuple, config) is not None
     revoked = []
 

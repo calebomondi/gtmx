@@ -23,6 +23,7 @@ from backend.app.runs import events
 from agents.lace.store import JobRefused
 from agents.schemas.lace_ui import BlockAnswer
 from backend.app.runs import lace as lace_runs
+from backend.app.runs.lace import LaceThread
 from backend.app.runs import lace_jobs, social_jobs
 from backend.app.runs.errors import user_facing_error
 from backend.app.services import limits
@@ -85,20 +86,28 @@ class LaceBusy(ConflictError):
     """The Lace is in a conversation run (another message, its brief)."""
 
 
-async def _start_lace_run(kind: str, user_id: uuid.UUID, lace_id: uuid.UUID, params: dict | None) -> models.Run:
+def _busy(exc: IntegrityError, thread: LaceThread) -> ConflictError:
+    """The conflict a refused conversation run means: the team's chat is
+    busy (its message can wait), or the member's private one is."""
+    if thread.owner_id is None and "uq_runs_one_active_per_lace" in str(exc):
+        return LaceBusy("Your Lace is still working on the last message.")
+    if thread.owner_id is not None and "uq_runs_one_private_turn" in str(exc):
+        return ConflictError("I'm still answering your last message here.")
+    raise exc
+
+
+async def _start_lace_run(kind: str, user_id: uuid.UUID, thread: LaceThread, params: dict | None) -> models.Run:
     async with AsyncSessionLocal() as db:
-        if await _archived(db, lace_id):
+        if await _archived(db, thread.lace_id):
             raise ConflictError("This Lace is archived. Restore it first.")
         await limits.ensure_can_start(db, user_id, kind)
-        run = models.Run(user_id=user_id, lace_id=lace_id, kind=kind, status="running", input=params,
-                         started_at=datetime.now(UTC))
+        run = models.Run(user_id=user_id, lace_id=thread.lace_id, owner_id=thread.owner_id, kind=kind,
+                         status="running", input=params, started_at=datetime.now(UTC))
         db.add(run)
         try:
             await db.commit()
         except IntegrityError as exc:
-            if "uq_runs_one_active_per_lace" not in str(exc):
-                raise
-            raise LaceBusy("Your Lace is still working on the last message.") from None
+            raise _busy(exc, thread) from None
     return run
 
 
@@ -146,7 +155,7 @@ async def start_next_queued(lace_id: uuid.UUID) -> bool:
             logger.exception("Waiting message %s could not be started", run_id)
             reason = user_facing_error(exc)
         else:
-            _spawn_turn(run_id, user_id, lace_id, message, actor_id=user_id)
+            _spawn_turn(run_id, user_id, LaceThread(lace_id), message, actor_id=user_id)
             return True
         await set_run_fields(models.Run, run_id, status="failed", error=reason, finished_at=datetime.now(UTC))
         await events.publish(run_id, "error", {"message": reason})
@@ -156,64 +165,68 @@ async def _queued_message(lace_id: uuid.UUID, params: dict):
     author, name = params["author"], params.get("name_for_lace")
     if params.get("answer"):
         answer = BlockAnswer.model_validate(params["answer"])
-        return lace_runs.signed(await lace_runs.answer_message(lace_id, answer), author, name)
+        return lace_runs.signed(await lace_runs.answer_message(LaceThread(lace_id), answer), author, name)
     return lace_runs.signed(lace_runs.founder_message(params.get("text", ""), params.get("documents"),
                                                       params.get("draft")), author, name)
 
 
 async def start_lace_onboarding(user_id: uuid.UUID, lace_id: uuid.UUID) -> models.Run:
-    run = await _start_lace_run("lace_onboarding", user_id, lace_id, None)
-    _spawn(run.id, user_id, _then_wake(lace_runs.onboarding_segment(run.id, lace_id), user_id, lace_id),
+    run = await _start_lace_run("lace_onboarding", user_id, LaceThread(lace_id), None)
+    _spawn(run.id, user_id, _then_wake(lace_runs.onboarding_segment(run.id, lace_id), user_id, LaceThread(lace_id)),
            settings.lace_onboarding_timeout_s, then=_next_queued(lace_id))
     return run
 
 
-async def start_lace_turn(user_id: uuid.UUID, lace_id: uuid.UUID, text: str, author: dict,
+async def start_lace_turn(user_id: uuid.UUID, thread: LaceThread, text: str, author: dict,
                           name_for_lace: str | None, attachments: list[dict] | None = None,
                           draft: dict | None = None) -> tuple[models.Run, bool]:
-    """One founder message and the Lace's work on it, with any documents
-    attached ([{id, filename}], already checked to be the Lace's) and the
-    unsent draft it is about, if any (lace_outreach.unsent_draft). The caller
-    has already checked that the user is on the Lace. `author` and
-    `name_for_lace` sign the message (lace_runs.signed). While the Lace is
-    busy the message waits its turn: (run, True) for a queued one."""
+    """One founder message in a conversation (the team's, or the user's
+    private one) and the Lace's work on it, with any documents attached
+    ([{id, filename}], already checked to be the Lace's) and the unsent draft
+    it is about, if any (lace_outreach.unsent_draft). The caller has already
+    checked that the user is on the Lace. `author` and `name_for_lace` sign
+    the message (lace_runs.signed). While the team's chat is busy the message
+    waits its turn: (run, True) for a queued one."""
     text = text.strip()
     if not text and not attachments:
         raise InvalidInputError("Write a message first.")
     params = {"text": text, **({"documents": attachments} if attachments else {}),
               **({"draft_id": draft["id"]} if draft else {})}
     try:
-        run = await _start_lace_run("lace_turn", user_id, lace_id, params)
+        run = await _start_lace_run("lace_turn", user_id, thread, params)
     except LaceBusy:
-        return await _queue_turn(user_id, lace_id, {**params, "draft": draft, "author": author,
-                                                     "name_for_lace": name_for_lace}), True
+        return await _queue_turn(user_id, thread.lace_id, {**params, "draft": draft, "author": author,
+                                                            "name_for_lace": name_for_lace}), True
     message = lace_runs.signed(lace_runs.founder_message(text, attachments, draft), author, name_for_lace)
-    _spawn_turn(run.id, user_id, lace_id, message, actor_id=user_id)
+    _spawn_turn(run.id, user_id, thread, message, actor_id=user_id, who=author.get("name"))
     return run, False
 
 
-async def start_lace_answer(user_id: uuid.UUID, lace_id: uuid.UUID, answer: BlockAnswer, author: dict,
+async def start_lace_answer(user_id: uuid.UUID, thread: LaceThread, answer: BlockAnswer, author: dict,
                             name_for_lace: str | None) -> tuple[models.Run, bool]:
     """The founder's answer to a question under the Lace's latest reply (a
     choice, checklist or form), and the Lace's work on it; queued like a
-    message while the Lace is busy, and checked again when its turn comes."""
-    message = lace_runs.signed(await lace_runs.answer_message(lace_id, answer), author, name_for_lace)
+    message while the team's chat is busy, and checked again when its turn
+    comes."""
+    message = lace_runs.signed(await lace_runs.answer_message(thread, answer), author, name_for_lace)
     try:
-        run = await _start_lace_run("lace_turn", user_id, lace_id, {"answer": answer.model_dump()})
+        run = await _start_lace_run("lace_turn", user_id, thread, {"answer": answer.model_dump()})
     except LaceBusy:
-        return await _queue_turn(user_id, lace_id, {"answer": answer.model_dump(), "author": author,
-                                                     "name_for_lace": name_for_lace}), True
-    _spawn_turn(run.id, user_id, lace_id, message, actor_id=user_id)
+        return await _queue_turn(user_id, thread.lace_id, {"answer": answer.model_dump(), "author": author,
+                                                            "name_for_lace": name_for_lace}), True
+    _spawn_turn(run.id, user_id, thread, message, actor_id=user_id, who=author.get("name"))
     return run, False
 
 
-def _spawn_turn(run_id: uuid.UUID, user_id: uuid.UUID, lace_id: uuid.UUID, message,
-                actor_id: uuid.UUID | None) -> None:
-    """`actor_id`: the person the turn answers, None for a turn of updates."""
-    turn = lace_runs.turn_segment(run_id, lace_id, message, jobs=_LaceJobs(user_id, lace_id, actor_id),
-                                  actor_id=actor_id)
-    _spawn(run_id, user_id, _then_wake(turn, user_id, lace_id), settings.lace_turn_timeout_s,
-           then=_next_queued(lace_id))
+def _spawn_turn(run_id: uuid.UUID, user_id: uuid.UUID, thread: LaceThread, message,
+                actor_id: uuid.UUID | None, who: str | None = None) -> None:
+    """`actor_id`: the person the turn answers, None for a turn of updates;
+    `who` names them in their private chat. Only the team's chat has
+    messages waiting for it to be free."""
+    jobs = _LaceJobs(user_id, thread.lace_id, actor_id, thread.owner_id)
+    turn = lace_runs.turn_segment(run_id, thread, message, jobs=jobs, actor_id=actor_id, who=who)
+    _spawn(run_id, user_id, _then_wake(turn, user_id, thread), settings.lace_turn_timeout_s,
+           then=_next_queued(thread.lace_id) if thread.owner_id is None else None)
 
 
 def _next_queued(lace_id: uuid.UUID) -> Callable[[], Awaitable]:
@@ -222,36 +235,37 @@ def _next_queued(lace_id: uuid.UUID) -> Callable[[], Awaitable]:
     return lambda: start_next_queued(lace_id)
 
 
-async def _then_wake(segment: Coroutine, user_id: uuid.UUID, lace_id: uuid.UUID) -> None:
-    """Run a conversation segment, then pass on any updates that queued while
-    it was busy. Only after success: a failed turn leaves them queued for
-    the next message."""
+async def _then_wake(segment: Coroutine, user_id: uuid.UUID, thread: LaceThread) -> None:
+    """Run a conversation segment, then pass on any updates that queued for
+    its chat while it was busy. Only after success: a failed turn leaves them
+    queued for the next message."""
     await segment
-    await wake_lace(user_id, lace_id)
+    await wake_lace(user_id, thread.lace_id, thread.owner_id)
 
 
-async def wake_lace(user_id: uuid.UUID, lace_id: uuid.UUID) -> None:
-    """Start a turn carrying the Lace's queued updates, if it has any and is
-    not already in a conversation run; that run calls this again when it ends.
-    Not counted against the daily turn cap: updates come from jobs the founder
-    started, which are capped themselves."""
+async def wake_lace(user_id: uuid.UUID, lace_id: uuid.UUID, owner_id: uuid.UUID | None = None) -> None:
+    """Start a turn carrying the queued updates for one chat (the team's, or
+    `owner_id`'s private one), if it has any and is not already in a
+    conversation run; that run calls this again when it ends. Not counted
+    against the daily turn cap: updates come from jobs the founder started,
+    which are capped themselves."""
+    thread = LaceThread(lace_id, owner_id)
     try:
         async with AsyncSessionLocal() as db, db.begin():
             # Its updates stay queued for when it is restored.
             if await _archived(db, lace_id):
                 return
-            updates = await lace_events.take_pending(db, lace_id)
+            updates = await lace_events.take_pending(db, lace_id, owner_id)
             if not updates:
                 return
-            run = models.Run(user_id=user_id, lace_id=lace_id, kind="lace_turn", status="running",
-                             input={"updates": updates}, started_at=datetime.now(UTC))
+            run = models.Run(user_id=user_id, lace_id=lace_id, owner_id=owner_id, kind="lace_turn",
+                             status="running", input={"updates": updates}, started_at=datetime.now(UTC))
             db.add(run)
             await db.flush()
     except IntegrityError as exc:
-        if "uq_runs_one_active_per_lace" not in str(exc):
-            raise
+        _busy(exc, thread)
         return  # rolled back: the updates stay queued for the running turn to pick up
-    _spawn_turn(run.id, user_id, lace_id, lace_runs.event_message(updates), actor_id=None)
+    _spawn_turn(run.id, user_id, thread, lace_runs.event_message(updates), actor_id=None)
 
 
 async def post_brief(user_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UUID, request: str) -> bool:
@@ -269,8 +283,8 @@ async def post_brief(user_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UUID
         if "uq_runs_one_active_per_lace" not in str(exc):
             raise
         return False
-    brief = lace_runs.brief_segment(run.id, lace_id, brief_id, request, jobs=_LaceJobs(user_id, lace_id, None))
-    _spawn(run.id, user_id, _then_wake(brief, user_id, lace_id), settings.lace_turn_timeout_s,
+    brief = lace_runs.brief_segment(run.id, lace_id, brief_id, request, jobs=_LaceJobs(user_id, lace_id, None, None))
+    _spawn(run.id, user_id, _then_wake(brief, user_id, LaceThread(lace_id)), settings.lace_turn_timeout_s,
            then=_next_queued(lace_id))
     return True
 
@@ -302,8 +316,11 @@ _JOB_BUSY = {
 
 async def start_lace_job(run_kind: str, user_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> models.Run:
     """Start a Lace's background job. It runs alongside the conversation and,
-    when it ends (either way), wakes the Lace with whatever it queued. Raises
-    JobRefused while one of the same kind is running or past the daily cap."""
+    when it ends (either way), wakes the chat it was started from with
+    whatever it queued; one started from a member's private chat
+    (params["private_to"]) is theirs alone. Raises JobRefused while one of
+    the same kind is running or past the daily cap."""
+    owner_id = lace_jobs.private_to(params)
     async with AsyncSessionLocal() as db:
         if await _archived(db, lace_id):
             raise JobRefused("This Lace is archived. Restore it first.")
@@ -316,33 +333,37 @@ async def start_lace_job(run_kind: str, user_id: uuid.UUID, lace_id: uuid.UUID, 
             await limits.ensure_can_start(db, user_id, run_kind)
         except RateLimitedError as exc:
             raise JobRefused(str(exc)) from None
-        run = models.Run(user_id=user_id, lace_id=lace_id, kind=run_kind, status="running",
+        run = models.Run(user_id=user_id, lace_id=lace_id, owner_id=owner_id, kind=run_kind, status="running",
                          input=params, started_at=datetime.now(UTC))
         db.add(run)
         await db.commit()
-    _spawn(run.id, user_id, _job_then_wake(_JOB_SEGMENTS[run_kind](run.id, lace_id, params), user_id, lace_id),
+    job = _JOB_SEGMENTS[run_kind](run.id, lace_id, params)
+    _spawn(run.id, user_id, _job_then_wake(job, user_id, lace_id, owner_id),
            settings.background_run_timeout_s)
     return run
 
 
-async def _job_then_wake(job: Coroutine, user_id: uuid.UUID, lace_id: uuid.UUID) -> None:
+async def _job_then_wake(job: Coroutine, user_id: uuid.UUID, lace_id: uuid.UUID, owner_id: uuid.UUID | None) -> None:
     # Jobs queue an update even when they fail, so wake either way. A job run
     # is not a conversation run, so its own row never blocks the wake.
     try:
         await job
     finally:
-        await wake_lace(user_id, lace_id)
+        await wake_lace(user_id, lace_id, owner_id)
 
 
 class _LaceJobs:
     """The jobs a Lace's tools start, for one Lace, on behalf of the person
-    the turn answers (`actor_id`; None when the Lace acts on its own)."""
+    the turn answers (`actor_id`; None when the Lace acts on its own), from
+    the team's chat or (`owner_id`) a member's private one."""
 
-    def __init__(self, user_id: uuid.UUID, lace_id: uuid.UUID, actor_id: uuid.UUID | None):
-        self._user_id, self._lace_id, self._actor_id = user_id, lace_id, actor_id
+    def __init__(self, user_id: uuid.UUID, lace_id: uuid.UUID, actor_id: uuid.UUID | None,
+                 owner_id: uuid.UUID | None):
+        self._user_id, self._lace_id, self._actor_id, self._owner_id = user_id, lace_id, actor_id, owner_id
 
     async def start(self, kind: str, params: dict) -> str:
-        params = {**params, "actor_id": str(self._actor_id) if self._actor_id else None}
+        params = {**params, "actor_id": str(self._actor_id) if self._actor_id else None,
+                  **({"private_to": str(self._owner_id)} if self._owner_id else {})}
         run = await start_lace_job(_TOOL_JOB_RUN_KINDS[kind], self._user_id, self._lace_id, params)
         return str(run.id)
 

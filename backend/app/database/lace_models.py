@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, Integer, SmallInteger, ForeignKey, Index, String, Text, UUID, UniqueConstraint, false, func, text
+from sqlalchemy import or_, Boolean, CheckConstraint, Date, DateTime, Float, Integer, SmallInteger, ForeignKey, Index, String, Text, UUID, UniqueConstraint, false, func, text
 from sqlalchemy.dialects.postgresql import JSONB as JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -42,6 +42,17 @@ class _Find:
     def team(cls):
         """Where-clause for the team's finds: what everyone on the Lace sees."""
         return cls.owner_id.is_(None)
+
+    @classmethod
+    def owned_by(cls, owner_id: uuid.UUID | None):
+        """The finds of one owner: a member's private ones, or (None) the team's."""
+        return cls.team() if owner_id is None else cls.owner_id == owner_id
+
+    @classmethod
+    def seen_by(cls, owner_id: uuid.UUID | None):
+        """What a member's private chat works with: the team's finds and their
+        own; (None) the team's only."""
+        return cls.team() if owner_id is None else or_(cls.team(), cls.owner_id == owner_id)
 
 
 class Lace(Base):
@@ -260,11 +271,14 @@ class LaceEvent(Base):
 
     __tablename__ = "lace_events"
     __table_args__ = (
-        Index("ix_lace_events_pending", "lace_id", "created_at", postgresql_where=text("consumed_at IS NULL")),
+        Index("ix_lace_events_pending", "lace_id", "owner_id", "created_at", postgresql_where=text("consumed_at IS NULL")),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     lace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("laces.id", ondelete="CASCADE"), nullable=False, index=True)
+    # The member whose private chat it is for; NULL for the team's chat. No FK:
+    # Supabase owns users.
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
                                                  default=_now, server_default=func.now())

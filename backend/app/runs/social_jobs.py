@@ -11,8 +11,7 @@ from agents.lace.store import JobBlocked
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.runs import events
-from backend.app.runs.lace_jobs import actor_of, report_failure
-from backend.app.services import lace_activity, lace_events
+from backend.app.runs.lace_jobs import job_activity, job_update, report_failure
 from backend.app.services.lace_activity import plural
 from backend.app.services.lace_apps import DbLaceApps
 from backend.app.services.runs import set_run_fields
@@ -57,13 +56,13 @@ async def tiktok_comments_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dic
                                                settings.tiktok_comments_timeout_s)
             read.append({"url": video["url"], "caption": video["text"], "comments": comments[:COMMENTS_PER_VIDEO]})
     except Exception as exc:
-        await report_failure(lace_id, "TikTok comment read", exc, actor_of(params))
+        await report_failure(lace_id, "TikTok comment read", exc, params)
         raise
     total = sum(len(v["comments"]) for v in read)
     async with AsyncSessionLocal() as db, db.begin():
-        await lace_events.add(db, lace_id, comments_update(handle, read))
-        await lace_activity.add(db, lace_id, "comments_read", f"Read {plural(total, 'TikTok comment')}",
-                                f"On {plural(len(read), 'video')} of @{handle}" if read else "No comments yet", actor_id=actor_of(params))
+        await job_update(db, lace_id, params, comments_update(handle, read))
+        await job_activity(db, lace_id, params, "comments_read", f"Read {plural(total, 'TikTok comment')}",
+                           f"On {plural(len(read), 'video')} of @{handle}" if read else "No comments yet")
     await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
                          progress={"videos": len(read), "comments": total})
     await events.publish(run_id, "complete", {"comments": total})

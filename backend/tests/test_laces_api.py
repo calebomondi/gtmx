@@ -224,7 +224,7 @@ async def test_live_subscribers_see_the_reply_stream_in(lace_runtime, user):
 
     collector = asyncio.create_task(collect())
     await asyncio.sleep(0.05)  # subscribed before the turn starts
-    await lace_runs.turn_segment(run_id, lace_id, "who buys?")
+    await lace_runs.turn_segment(run_id, lace_runs.LaceThread(lace_id), "who buys?")
     await asyncio.wait_for(collector, 5)
 
     types = [f["type"] for f in frames]
@@ -304,7 +304,7 @@ async def _live_frames(lace_runtime, user, monkeypatch, model_step) -> list[dict
 
     collector = asyncio.create_task(collect())
     await asyncio.sleep(0.05)
-    await lace_runs.turn_segment(run_id, lace_id, "who buys?")
+    await lace_runs.turn_segment(run_id, lace_runs.LaceThread(lace_id), "who buys?")
     await asyncio.wait_for(collector, 5)
     return frames
 
