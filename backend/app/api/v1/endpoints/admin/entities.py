@@ -39,9 +39,10 @@ async def get_user(user_id: uuid.UUID, db: DbSession):
 
 @router.get("/laces", response_model=Page[AdminLaceRow])
 async def list_laces(db: DbSession, page: int = PageNo, per_page: int = PerPage, q: str | None = None,
-                     user_id: uuid.UUID | None = None):
-    """Every Lace, most recently active first; `q` matches name, website or startup."""
-    return await admin_laces.list_laces(db, page, per_page, q, user_id)
+                     user_id: uuid.UUID | None = None, clash: bool | None = None):
+    """Every Lace, most recently active first; `q` matches name, website or
+    startup, and `clash=true` keeps the duplicates of an older Lace's domain."""
+    return await admin_laces.list_laces(db, page, per_page, q, user_id, clash)
 
 
 @router.get("/laces/{lace_id}", response_model=AdminLaceDetail)
