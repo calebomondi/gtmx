@@ -180,7 +180,7 @@ class AdminLaceRow(BaseModel):
     user_id: uuid.UUID
     user_email: str | None = None
     created_at: datetime
-    domain_clash: bool = Field(default=False, description="Shares its domain with an older Lace: merge or delete it")
+    domain_clash: bool = Field(default=False, description="Shares its domain with an older Lace: fold it in or give it the domain")
     last_active_at: datetime = Field(description="Its latest run, or its creation")
     facts: int = 0
     competitors: int = Field(default=0, description="Saved (tracked)")
@@ -209,6 +209,16 @@ class AdminRunRow(BaseModel):
     cost_usd: float | None = Field(default=None, description="null when any of its usage is unpriced")
 
 
+class AdminLaceHolder(BaseModel):
+    """The Lace that holds a duplicate's domain."""
+    id: uuid.UUID
+    name: str
+    status: str
+    user_id: uuid.UUID
+    user_email: str | None = None
+    created_at: datetime
+
+
 class AdminLaceDetail(AdminLaceRow):
     suggestions: int = Field(description="Competitors, accounts and opportunities waiting for the founder")
     drafts_waiting: int
@@ -217,6 +227,8 @@ class AdminLaceDetail(AdminLaceRow):
     brief_frequency: str
     brief_email: bool
     recent_runs: list[AdminRunRow]
+    domain: str | None = Field(default=None, description="Its website's domain, when it holds it")
+    clashes_with: AdminLaceHolder | None = Field(default=None, description="For a duplicate: the Lace holding its domain")
 
 
 class AdminRunEvent(BaseModel):

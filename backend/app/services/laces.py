@@ -68,7 +68,7 @@ async def _ensure_room(db: AsyncSession, user_id: uuid.UUID) -> None:
         raise ConflictError(f"You can have up to {settings.max_laces_per_user} Laces.")
 
 
-async def _ensure_idle(db: AsyncSession, lace: Lace) -> None:
+async def ensure_idle(db: AsyncSession, lace: Lace) -> None:
     """Refuses while any run of the Lace's is unfinished: a run would keep
     writing to a Lace that was archived or deleted under it."""
     if await db.scalar(select(exists().where(Run.lace_id == lace.id, Run.status.not_in(TERMINAL_STATUSES)))):
@@ -77,7 +77,7 @@ async def _ensure_idle(db: AsyncSession, lace: Lace) -> None:
 
 async def archive(db: AsyncSession, lace: Lace) -> Lace:
     """Out of the sidebar, the Feed and the scheduled work; kept whole."""
-    await _ensure_idle(db, lace)
+    await ensure_idle(db, lace)
     lace.status = "archived"
     await db.commit()
     return lace
@@ -98,7 +98,7 @@ async def restore(db: AsyncSession, lace: Lace) -> Lace:
 async def delete_lace(db: AsyncSession, lace: Lace) -> None:
     """Gone with everything under it, its own app accounts revoked. Its runs
     stay, unlinked, as the record of what they cost."""
-    await _ensure_idle(db, lace)
+    await ensure_idle(db, lace)
     entity = connection_service.lace_entity(lace.id)
     await db.delete(lace)
     await db.commit()
@@ -110,7 +110,7 @@ async def prepare_onboarding_retry(db: AsyncSession, lace: Lace) -> None:
     doesn't record its facts twice. Only for a Lace that never finished."""
     if lace.status != "onboarding":
         raise ConflictError(f"{lace.name} has already read your site.")
-    await _ensure_idle(db, lace)
+    await ensure_idle(db, lace)
     await db.execute(delete(LaceFact).where(LaceFact.lace_id == lace.id, LaceFact.origin == "crawl"))
     await db.commit()
 
