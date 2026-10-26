@@ -107,6 +107,7 @@ class MessageAuthor(BaseModel):
 class LaceMessage(BaseModel):
     role: Literal["founder", "lace"]
     author: MessageAuthor | None = Field(default=None, description="Who sent a founder message")
+    queued: bool | None = Field(default=None, description="A message waiting for the Lace to be free")
     content: str
     ui: list[UiBlock] | None = Field(default=None, description="Cards and questions shown under a Lace reply")
     documents: list[Attachment] | None = Field(default=None, description="What the founder attached to the message")
@@ -149,6 +150,7 @@ class JobStartedResponse(BaseModel):
 
 class LaceTurnResponse(BaseModel):
     run_id: uuid.UUID = Field(description="The turn: follow it at /runs/{run_id}/events")
+    queued: bool = Field(default=False, description="The Lace was busy: the message waits its turn")
 
 
 class MoveResponse(BaseModel):

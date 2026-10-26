@@ -13,6 +13,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from agents.lace.graph import build_lace_graph
 from agents.schemas.lace import NewFact, OnboardingResult
 from backend.app.runs import lace as lace_runs
+from backend.app.runs import manager
 from backend.tests.helpers import make_user
 from backend.tests.test_runs import _wait_for_status
 from config import settings
@@ -105,15 +106,68 @@ def test_a_turn_streams_steps_and_the_reply(client, lace_runtime):
     assert [f["topic"] for f in client.get(f"{API}/laces/{lace_id}/facts?topic=icp").json()] == ["icp"]
 
 
-def test_one_unfinished_run_per_lace(client, lace_runtime, user):
+def _busy_lace(client, user) -> tuple[str, uuid.UUID]:
+    """A Lace in the middle of a turn: (its id, the turn's run id)."""
     body = _create(client).json()
     client.portal.call(_wait_for_status, uuid.UUID(body["run_id"]), {"completed"})
-    lace_id = body["lace"]["id"]
+    busy = uuid.uuid4()
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
         conn.execute("INSERT INTO runs (id, user_id, lace_id, kind, status) VALUES (%s, %s, %s, 'lace_turn', 'running')",
-                     (uuid.uuid4(), user.id, lace_id))
-    refused = client.post(f"{API}/laces/{lace_id}/messages", json={"text": "hello"})
-    assert refused.status_code == 409 and "still working" in refused.json()["detail"]
+                     (busy, user.id, body["lace"]["id"]))
+    return body["lace"]["id"], busy
+
+
+def _finish(run_id: uuid.UUID) -> None:
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        conn.execute("UPDATE runs SET status = 'completed' WHERE id = %s", (run_id,))
+
+
+def test_a_message_to_a_busy_lace_waits_its_turn(client, lace_runtime, user):
+    lace_id, busy = _busy_lace(client, user)
+    lace_runtime.append(AIMessage(content="Hello to you."))
+    sent = client.post(f"{API}/laces/{lace_id}/messages", json={"text": "hello"})
+    assert sent.status_code == 202 and sent.json()["queued"] is True
+    waiting = client.get(f"{API}/laces/{lace_id}/messages").json()[-1]
+    assert waiting["content"] == "hello" and waiting["queued"] is True and waiting["author"]["name"]
+
+    _finish(busy)
+    assert client.portal.call(manager.start_next_queued, uuid.UUID(lace_id)) is True
+    client.portal.call(_wait_for_status, uuid.UUID(sent.json()["run_id"]), {"completed"})
+    shown = client.get(f"{API}/laces/{lace_id}/messages").json()[-2:]
+    assert [(m["content"], m.get("queued")) for m in shown] == [("hello", None), ("Hello to you.", None)]
+
+
+def test_only_a_few_messages_can_wait(client, lace_runtime, user):
+    lace_id, _ = _busy_lace(client, user)
+    for n in range(manager.MAX_QUEUED_TURNS):
+        assert client.post(f"{API}/laces/{lace_id}/messages", json={"text": f"m{n}"}).json()["queued"]
+    refused = client.post(f"{API}/laces/{lace_id}/messages", json={"text": "one more"})
+    assert refused.status_code == 409 and "already waiting" in refused.json()["detail"]
+
+
+def test_waiting_messages_start_after_a_restart(client, lace_runtime, user):
+    lace_id, busy = _busy_lace(client, user)
+    lace_runtime.append(AIMessage(content="Back."))
+    sent = client.post(f"{API}/laces/{lace_id}/messages", json={"text": "still there?"}).json()
+    client.portal.call(manager.recover_after_restart)
+    client.portal.call(_wait_for_status, uuid.UUID(sent["run_id"]), {"completed"})
+    client.portal.call(_wait_for_status, busy, {"failed"})
+
+
+def test_a_waiting_answer_to_a_closed_question_fails_and_the_next_runs(client, lace_runtime, user):
+    lace_id, busy = _busy_lace(client, user)
+    stale = uuid.uuid4()
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        conn.execute("INSERT INTO runs (id, user_id, lace_id, kind, status, input) "
+                     "VALUES (%s, %s, %s, 'lace_turn', 'queued', %s)",
+                     (stale, user.id, lace_id, json.dumps({"answer": {"block_id": "gone", "chosen": ["a"]},
+                                                           "author": {"id": str(user.id), "name": "Ada"}})))
+    lace_runtime.append(AIMessage(content="Noted."))
+    sent = client.post(f"{API}/laces/{lace_id}/messages", json={"text": "next"}).json()
+    _finish(busy)
+    assert client.portal.call(manager.start_next_queued, uuid.UUID(lace_id)) is True
+    client.portal.call(_wait_for_status, uuid.UUID(sent["run_id"]), {"completed"})
+    client.portal.call(_wait_for_status, stale, {"failed"})
 
 
 def test_blank_message_is_refused(client, lace_runtime):

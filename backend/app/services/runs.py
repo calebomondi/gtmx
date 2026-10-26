@@ -79,3 +79,14 @@ async def claim_for_resume(db: AsyncSession, owner_id: uuid.UUID, run_id: uuid.U
     )
     await db.commit()
     return result.first() is not None
+
+
+async def waiting_messages(db: AsyncSession, lace_id: uuid.UUID) -> list[dict]:
+    """The Lace's messages waiting for it to be free, oldest first, as the
+    conversation shows them (answers to its questions are left out)."""
+    runs = (await db.scalars(select(models.Run).where(
+        models.Run.lace_id == lace_id, models.Run.kind == "lace_turn", models.Run.status == "queued",
+    ).order_by(models.Run.created_at))).all()
+    return [{"role": "founder", "content": run.input.get("text", ""), "author": run.input.get("author"),
+             "queued": True, **({"documents": run.input["documents"]} if run.input.get("documents") else {})}
+            for run in runs if run.input and not run.input.get("answer")]

@@ -11,7 +11,8 @@ class RunResponse(BaseModel):
 
     id: uuid.UUID
     kind: str
-    status: str = Field(description="pending | running | awaiting_input | completed | failed | cancelled")
+    status: str = Field(description="queued | pending | running | awaiting_input | completed | failed | cancelled")
+    user_id: uuid.UUID = Field(description="Who started it (on a shared Lace, which cofounder)")
     workspace_id: uuid.UUID | None = None
     lace_id: uuid.UUID | None = None
     progress: dict | None = None

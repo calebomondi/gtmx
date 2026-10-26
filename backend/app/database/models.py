@@ -575,7 +575,7 @@ class Run(Base):
     )
     # backend.app.runs.kinds.RunKind
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
-    # pending | running | awaiting_input | completed | failed | cancelled
+    # queued | pending | running | awaiting_input | completed | failed | cancelled
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
     # The request that started the run, kept for resume and for the admin view.
     input: Mapped[dict | None] = mapped_column(JSON, nullable=True)
