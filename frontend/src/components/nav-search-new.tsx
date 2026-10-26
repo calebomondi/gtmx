@@ -11,6 +11,7 @@ import { useLocation, useNavigate } from "react-router-dom"
 import { LaceSearch } from "@/features/lace/lace-search"
 import { useSearchShortcut } from "@/features/lace/use-lace-search"
 
+import { track } from "@/lib/events"
 import { isNavItemActive } from "@/lib/nav-active"
 
 export function NavSearchNew({
@@ -25,7 +26,11 @@ export function NavSearchNew({
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const [searchOpen, setSearchOpen] = useState(false)
-  const toggleSearch = useCallback(() => setSearchOpen((open) => !open), [])
+  const openSearch = useCallback(() => {
+    track("search_opened")
+    setSearchOpen(true)
+  }, [])
+  const toggleSearch = useCallback(() => (searchOpen ? setSearchOpen(false) : openSearch()), [searchOpen, openSearch])
   useSearchShortcut(toggleSearch)
 
   return (
@@ -55,7 +60,7 @@ export function NavSearchNew({
           </SidebarMenuButton>
         </SidebarMenuItem>
         <SidebarMenuItem>
-          <SidebarMenuButton tooltip="Search (Ctrl+K)" className="cursor-pointer" onClick={() => setSearchOpen(true)}>
+          <SidebarMenuButton tooltip="Search (Ctrl+K)" className="cursor-pointer" onClick={openSearch}>
             <Search />
             <span>Search</span>
             <kbd className="ml-auto text-xs text-muted-foreground">Ctrl K</kbd>

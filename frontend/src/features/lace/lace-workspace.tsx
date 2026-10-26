@@ -5,6 +5,7 @@ import { RotateCcw, Settings2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { useAuth } from "@/lib/auth"
+import { track } from "@/lib/events"
 import { ensureLacesLoaded, useLaces } from "@/lib/laces-store"
 import { usePageTitle } from "@/lib/use-page-title"
 
@@ -59,7 +60,11 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
   // team; with a team, the founder also has a private chat of their own.
   const people = useLacePeople(laceId)
   const team = (people.people ?? []).filter((p) => p.status === "active").length > 1
-  const [chosenThread, chooseThread] = useChatThread(laceId)
+  const [chosenThread, setThread] = useChatThread(laceId)
+  const chooseThread = (next: typeof chosenThread) => {
+    track("chat_thread_switched", { detail: next, laceId })
+    setThread(next)
+  }
   const thread = team ? chosenThread : "team"
   // One load of the Lace serves all three tabs, so the chat keeps following
   // its run while the founder looks at the Feed.
@@ -76,9 +81,17 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
     const params = new URLSearchParams(window.location.search)
     return params.has("connected") || params.has("settings")
   })
+  const openSettings = () => {
+    track("lace_settings_opened", { laceId })
+    setSettingsOpen(true)
+  }
   // The apps load with the settings and the chat, whose quick asks come from them.
   const apps = useLaceApps(laceId, settingsOpen || tab === "chat")
   const asks = quickAsks(apps.apps)
+  const askApp = (text: string) => {
+    track("quick_ask_used", { detail: asks.find((a) => a.text === text)?.label, laceId })
+    void chat.send(text)
+  }
   const { user } = useAuth()
   const talker = chat.turnBy && chat.turnBy !== user?.id
     ? people.people?.find((p) => p.user_id === chat.turnBy) : undefined
@@ -89,7 +102,11 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
   const subtitle = chat.lace?.startup_name ?? chat.lace?.website
   const select = (next: LaceTab) => navigate(`/lace/${laceId}/${next}`)
   // The sub-tab rides in the hash, which Feed and Messaging read.
-  const [peopleOpen, setPeopleOpen] = useState(false)
+  const [peopleOpen, setPeopleShown] = useState(false)
+  const setPeopleOpen = (next: boolean) => {
+    if (next && !peopleOpen) track("lace_people_opened", { laceId })
+    setPeopleShown(next)
+  }
   const open = ({ tab: next, section, people: toPeople }: FeedTarget) => {
     navigate(`/lace/${laceId}/${next}${section ? sectionHash(section) : ""}`)
     if (toPeople) setPeopleOpen(true)
@@ -128,7 +145,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
               <Separator orientation="vertical" className="mx-1.5 data-vertical:h-5 data-vertical:self-center" />
             </>
           )}
-          <Button variant="outline" size="icon-sm" onClick={() => setSettingsOpen(true)} disabled={chat.loading}
+          <Button variant="outline" size="icon-sm" onClick={openSettings} disabled={chat.loading}
                   aria-label={`${name}'s settings`} title="Settings">
             <Settings2 />
           </Button>
@@ -151,7 +168,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
           {tab === "chat" && (
             <LaceConversation chat={chat} name={name} onOpenMessaging={() => select("messaging")} prefill={prefill} team={team} talking={talking}
                               thread={team ? thread : undefined} onThread={team ? chooseThread : undefined}
-                              starters={<QuickAskChips asks={asks} onAsk={(text) => void chat.send(text)} disabled={chat.working} />}
+                              starters={<QuickAskChips asks={asks} onAsk={askApp} disabled={chat.working} />}
                               dock={
               <>
                 {thread === "mine" && <MyFindsPanel finds={myFinds} />}

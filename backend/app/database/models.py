@@ -833,6 +833,31 @@ class PilotAccess(Base):
     )
 
 
+class UserEvent(Base):
+    """One thing a user did in the customer app (a page opened, a panel
+    opened, a quick ask used), from a fixed list of names. For seeing how the
+    app is used and where people stop; never message text or contact details."""
+
+    __tablename__ = "user_events"
+    __table_args__ = (
+        Index("ix_user_events_name_created_at", "name", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # A Supabase user: no FK (Supabase owns users).
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    # The Lace it happened on, when it was one of theirs.
+    lace_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("laces.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    name: Mapped[str] = mapped_column(String(48), nullable=False)
+    # Which one, for names that have kinds: the page, the setup phase, the thread.
+    detail: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), server_default=func.now(), index=True,
+    )
+
+
 class Feedback(Base):
     """A suggestion or a problem a user sent from the app's feedback button,
     with where they were when they sent it, for the team to read."""

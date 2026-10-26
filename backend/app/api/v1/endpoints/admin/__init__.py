@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends
 
 from backend.app.api.deps import require_admin
-from backend.app.api.v1.endpoints.admin import actions, entities, feedback, me, metrics, pilot, waitlist
+from backend.app.api.v1.endpoints.admin import actions, entities, events, feedback, me, metrics, pilot, waitlist
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 router.include_router(me.router)
@@ -12,4 +12,5 @@ router.include_router(entities.router)
 router.include_router(actions.router)
 router.include_router(waitlist.router)
 router.include_router(feedback.router)
+router.include_router(events.router)
 router.include_router(pilot.router)
