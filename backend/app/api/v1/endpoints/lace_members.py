@@ -11,6 +11,8 @@ from backend.app.api.deps import AdminLace, CurrentUser, DbSession, LaceMembersh
 from backend.app.schemas.laces import (
     DomainClaim, InviteRequest, InviteResponse, JoinRequest, PersonResponse, RoleUpdate,
 )
+from backend.app.runs import lace as lace_runs
+from backend.app.runs.lace import LaceThread
 from backend.app.services import lace_members
 from backend.app.services.competitors import checked_website, domain_key
 
@@ -74,10 +76,15 @@ async def let_in(lace: AdminLace, user_id: uuid.UUID, db: DbSession):
 
 @router.delete("/{lace_id}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_member(lace: AdminLace, me: LaceMembership, user_id: uuid.UUID, db: DbSession):
-    """Take someone off the Lace, withdraw their invite, or turn down their request."""
+    """Take someone off the Lace, withdraw their invite, or turn down their
+    request. Their private chat goes with them."""
     await lace_members.remove(db, lace, me, user_id)
+    await lace_runs.forget_thread(LaceThread(lace.id, user_id))
 
 
 @router.post("/{lace_id}/leave", status_code=status.HTTP_204_NO_CONTENT)
 async def leave_lace(lace: MemberLace, me: LaceMembership, db: DbSession):
+    """Leave a Lace someone else owns; your private chat with it goes too."""
+    user_id = me.user_id
     await lace_members.leave(db, me)
+    await lace_runs.forget_thread(LaceThread(lace.id, user_id))

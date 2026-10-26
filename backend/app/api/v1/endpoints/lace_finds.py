@@ -43,9 +43,10 @@ async def list_reviews(lace: MemberLace, me: LaceMembership, db: DbSession,
 
 
 @router.post("/{lace_id}/reviews/{kind}/{find_id}/approve", status_code=status.HTTP_204_NO_CONTENT)
-async def approve_find(lace: MemberLace, me: LaceMembership, kind: SavedKind, find_id: uuid.UUID, db: DbSession):
+async def approve_find(lace: MemberLace, me: LaceMembership, user: CurrentUser, kind: SavedKind, find_id: uuid.UUID,
+                       db: DbSession):
     """Save a pushed find for the team."""
-    await lace_finds.approve(db, lace.id, kind, find_id, me.user_id, me.role)
+    await lace_finds.approve(db, lace.id, kind, find_id, me.user_id, me.role, user.name or user.email or "a teammate")
 
 
 @router.post("/{lace_id}/reviews/{kind}/{find_id}/send-back", status_code=status.HTTP_204_NO_CONTENT)

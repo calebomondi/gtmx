@@ -20,7 +20,7 @@ from agents.schemas.lace import LaceRole
 from backend.app import supabase_admin
 from backend.app.database.lace_models import Lace, LaceMember
 from backend.app.services import admin as admin_service
-from backend.app.services import lace_activity
+from backend.app.services import lace_activity, lace_finds
 from backend.app.services.errors import ConflictError, ForbiddenError, InvalidInputError, NotFoundError
 from utils.log import logger
 
@@ -186,6 +186,7 @@ async def remove(db: AsyncSession, lace: Lace, actor: LaceMember, user_id: uuid.
         raise InvalidInputError("The owner can't be removed.")
     if row.role == "admin" and actor.role != "owner":
         raise ForbiddenError("Only the owner can remove an admin.")
+    await lace_finds.forget_private(db, lace.id, user_id)
     await db.delete(row)
     await db.commit()
 
@@ -193,6 +194,7 @@ async def remove(db: AsyncSession, lace: Lace, actor: LaceMember, user_id: uuid.
 async def leave(db: AsyncSession, member: LaceMember) -> None:
     if member.role == "owner":
         raise InvalidInputError("The owner can't leave their Lace; archive or delete it instead.")
+    await lace_finds.forget_private(db, member.lace_id, member.user_id)
     await db.delete(member)
     await db.commit()
 
