@@ -43,6 +43,11 @@ BRIEF_FACTS = 80
 # Saved items read for the prompt's "on file" lines: enough to count and name a few.
 ON_FILE_SCAN = 50
 
+# What a member's private chat cannot do: change what the whole team's Lace
+# knows (facts, the ICP, contacts) or check the team's competitors.
+PRIVATE_WITHHELD = frozenset({"record_fact", "forget_facts", "define_icp", "check_competitors", "add_contact",
+                              "remove_contacts"})
+
 _OUT_OF_TOOL_CALLS = (
     "You have used this turn's tool calls. Answer the founder now with what you "
     "have, and say what you would look into next."
@@ -125,12 +130,16 @@ def build_lace_graph(
     model_step: ModelStep = _default_step,
     jobs: LaceJobs | None = None,
     apps: LaceApps | None = None,
+    withheld: frozenset[str] = frozenset(),
+    chat_note: str | None = None,
 ):
     """Compile the Lace for one startup. `store` scopes every tool to it;
     `jobs` runs the tools that take longer than a turn; `apps` reaches the
-    founder's connected apps."""
+    founder's connected apps. `withheld` names tools left out of this chat,
+    and `chat_note` is said after the system prompt (a member's private
+    chat: PRIVATE_WITHHELD and prompts.PRIVATE_CHAT_NOTE)."""
     settings = settings or get_settings()
-    tools = build_tools(store, settings, jobs, apps)
+    tools = [t for t in build_tools(store, settings, jobs, apps) if t.name not in withheld]
 
     async def agent(state: LaceState) -> dict:
         profile, facts, icp, documents, rivals, accounts, opportunities, suggestions = await asyncio.gather(
@@ -141,6 +150,8 @@ def build_lace_graph(
         messages = state["messages"]
         prompt: list[AnyMessage] = [SystemMessage(content=system_prompt(profile, facts, icp, documents=documents,
                                                                         on_file=on_file))]
+        if chat_note:
+            prompt.append(SystemMessage(content=chat_note))
         prompt += close_dangling_tool_calls(history_window(messages, settings.lace_history_token_budget))
         allowed = tools
         if tool_calls_this_turn(messages) >= settings.lace_max_tool_calls_per_turn:

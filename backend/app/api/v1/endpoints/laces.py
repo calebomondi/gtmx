@@ -10,6 +10,7 @@ from fastapi import APIRouter, File, Header, Query, UploadFile, status
 from backend.app.api.deps import AdminLace, CurrentUser, DbSession, LaceMembership, MemberLace, OwnerLace
 from backend.app.runs import lace as lace_runs
 from backend.app.runs import manager
+from backend.app.runs.lace import LaceThread
 from backend.app.schemas.laces import (
     ContactDraftRequest,
     MoveResponse,
@@ -170,15 +171,18 @@ async def restore_lace(lace: OwnerLace, me: LaceMembership, user: CurrentUser, d
 async def delete_lace(lace: OwnerLace, db: DbSession):
     """The Lace and everything it found or wrote, for good. 409 while it is working."""
     lace_id = lace.id
+    people = await lace_members.everyone(db, lace_id)
     await lace_service.delete_lace(db, lace)
-    await lace_runs.forget_thread(lace_id)
+    await lace_runs.forget_thread(LaceThread(lace_id))
+    for person in people:
+        await lace_runs.forget_thread(LaceThread(lace_id, person))
 
 
 @router.post("/{lace_id}/onboarding", response_model=LaceTurnResponse, status_code=status.HTTP_202_ACCEPTED)
 async def retry_onboarding(lace: MemberLace, user: CurrentUser, db: DbSession):
     """Read the site again after an onboarding that failed."""
     await lace_service.prepare_onboarding_retry(db, lace)
-    await lace_runs.forget_thread(lace.id)
+    await lace_runs.forget_thread(LaceThread(lace.id))
     run = await manager.start_lace_onboarding(user.id, lace.id)
     return LaceTurnResponse(run_id=run.id)
 
@@ -274,7 +278,7 @@ async def list_messages(lace: MemberLace, db: DbSession,
                         limit: int = Query(default=100, ge=1, le=MAX_MESSAGES_PER_PAGE)):
     """The conversation, each card marked with its item's status now, then
     the messages still waiting for the Lace to be free."""
-    shown = await lace_cards.with_status(db, lace.id, await lace_runs.history(lace.id, limit))
+    shown = await lace_cards.with_status(db, lace.id, await lace_runs.history(LaceThread(lace.id), limit))
     return [*shown, *await run_service.waiting_messages(db, lace.id)]
 
 
@@ -283,16 +287,36 @@ async def send_message(lace: MemberLace, payload: LaceMessageRequest, user: Curr
     """A message to the Lace, with documents uploaded to it first attached,
     and about one of its unsent drafts when `draft_id` is given; or the
     founder's answer to a question under its latest reply."""
+    return await _send(db, LaceThread(lace.id), payload, user)
+
+
+@router.get("/{lace_id}/private/messages", response_model=list[LaceMessage], response_model_exclude_none=True)
+async def list_private_messages(lace: MemberLace, user: CurrentUser, db: DbSession,
+                                limit: int = Query(default=100, ge=1, le=MAX_MESSAGES_PER_PAGE)):
+    """Your private chat with the Lace, which nobody else on the team sees."""
+    await lace_members.ensure_team(db, lace.id)
+    return await lace_cards.with_status(db, lace.id, await lace_runs.history(LaceThread(lace.id, user.id), limit))
+
+
+@router.post("/{lace_id}/private/messages", response_model=LaceTurnResponse, status_code=status.HTTP_202_ACCEPTED)
+async def send_private_message(lace: MemberLace, payload: LaceMessageRequest, user: CurrentUser, db: DbSession):
+    """A message in your private chat: what the Lace finds there is yours
+    until you push it to the team. 409 while it is still answering you."""
+    await lace_members.ensure_team(db, lace.id)
+    return await _send(db, LaceThread(lace.id, user.id), payload, user)
+
+
+async def _send(db: DbSession, thread: LaceThread, payload: LaceMessageRequest, user: CurrentUser) -> LaceTurnResponse:
     author = {"id": str(user.id), "name": user.name or user.email, "avatar_url": user.avatar_url}
     # With a team on the Lace, it reads each message as from its sender.
-    name_for_lace = author["name"] if await lace_members.team_size(db, lace.id) > 1 else None
+    name_for_lace = author["name"] if await lace_members.team_size(db, thread.lace_id) > 1 else None
     if payload.answer is not None:
-        run, queued = await manager.start_lace_answer(user.id, lace.id, payload.answer, author, name_for_lace)
+        run, queued = await manager.start_lace_answer(user.id, thread, payload.answer, author, name_for_lace)
         return LaceTurnResponse(run_id=run.id, queued=queued)
-    docs = await lace_documents.attachments(db, lace.id, payload.document_ids)
+    docs = await lace_documents.attachments(db, thread.lace_id, payload.document_ids)
     attached = [{"id": str(d.id), "filename": d.filename} for d in docs]
-    draft = await lace_outreach.unsent_draft(db, lace.id, payload.draft_id) if payload.draft_id else None
-    run, queued = await manager.start_lace_turn(user.id, lace.id, payload.text, author, name_for_lace, attached, draft)
+    draft = await lace_outreach.unsent_draft(db, thread.lace_id, payload.draft_id) if payload.draft_id else None
+    run, queued = await manager.start_lace_turn(user.id, thread, payload.text, author, name_for_lace, attached, draft)
     return LaceTurnResponse(run_id=run.id, queued=queued)
 
 
@@ -334,7 +358,7 @@ async def list_moves(lace: MemberLace, db: DbSession, limit: int = Query(default
 @router.patch("/{lace_id}/competitors/{competitor_id}", response_model=CompetitorResponse)
 async def update_competitor(lace: MemberLace, competitor_id: uuid.UUID, payload: CompetitorUpdateRequest,
                             user: CurrentUser, db: DbSession):
-    return await lace_competitors.set_status(db, lace.id, competitor_id, payload.status, user.id)
+    return await lace_competitors.set_status(db, lace.id, competitor_id, payload.status, user.id, user.id)
 
 
 @router.get("/{lace_id}/accounts", response_model=list[AccountResponse])
@@ -346,7 +370,8 @@ async def list_accounts(lace: MemberLace, db: DbSession, shown: AccountStatus = 
 @router.patch("/{lace_id}/accounts/{account_id}", response_model=AccountResponse)
 async def update_account(lace: MemberLace, account_id: uuid.UUID, payload: AccountUpdateRequest,
                          user: CurrentUser, db: DbSession):
-    return lace_accounts.response(await lace_accounts.set_status(db, lace.id, account_id, payload.status, user.id))
+    return lace_accounts.response(await lace_accounts.set_status(db, lace.id, account_id, payload.status, user.id,
+                                                                 user.id))
 
 
 @router.post("/{lace_id}/accounts/{account_id}/find-contacts", response_model=JobStartedResponse,
@@ -354,10 +379,12 @@ async def update_account(lace: MemberLace, account_id: uuid.UUID, payload: Accou
 async def find_account_contacts(lace: MemberLace, account_id: uuid.UUID, user: CurrentUser, db: DbSession):
     """Look for the people to contact at one account, from a card in the
     chat. The Lace reports back when it is done."""
-    await lace_accounts.get_in_lace(db, lace.id, account_id)
+    account = await lace_accounts.get_in_lace(db, lace.id, account_id, user.id)
+    # One of your private accounts is searched in your private chat.
+    private = {"private_to": str(account.owner_id)} if account.owner_id else {}
     try:
         run = await manager.start_lace_job("lace_contacts", user.id, lace.id, {"account_ids": [str(account_id)],
-                                                                             "actor_id": str(user.id)})
+                                                                             "actor_id": str(user.id), **private})
     except JobRefused as exc:
         raise ConflictError(str(exc)) from None
     return JobStartedResponse(run_id=run.id)
@@ -479,7 +506,7 @@ async def list_opportunities(lace: MemberLace, db: DbSession,
 @router.patch("/{lace_id}/opportunities/{opportunity_id}", response_model=OpportunityResponse)
 async def update_opportunity(lace: MemberLace, opportunity_id: uuid.UUID, payload: OpportunityUpdateRequest,
                              user: CurrentUser, db: DbSession):
-    return await lace_opportunities.set_status(db, lace.id, opportunity_id, payload.status, user.id)
+    return await lace_opportunities.set_status(db, lace.id, opportunity_id, payload.status, user.id, user.id)
 
 
 def _brief_settings(lace) -> BriefSettings:

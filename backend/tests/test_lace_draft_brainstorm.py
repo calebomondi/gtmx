@@ -33,7 +33,7 @@ def test_a_message_about_a_draft_carries_it_and_its_exchange_is_tagged(client, l
     assert turn.input["draft_id"] == draft
 
     # The Lace read the draft as it stood, and how to change it.
-    sent = [m for m in client.portal.call(lace_runs._thread, uuid.UUID(lace)) if isinstance(m, HumanMessage)][-1]
+    sent = [m for m in client.portal.call(lace_runs._thread, lace_runs.LaceThread(uuid.UUID(lace))) if isinstance(m, HumanMessage)][-1]
     assert "Hi Kaleb, long first draft." in sent.content and f"edit_draft (draft_id {draft})" in sent.content
     with psycopg.connect(settings.database_url) as conn:
         assert conn.execute("SELECT body FROM lace_outreach WHERE id = %s", (draft,)).fetchone()[0] == "Hi Kaleb, short one."

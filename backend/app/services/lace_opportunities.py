@@ -1,4 +1,5 @@
-"""A Lace's opportunities: what its searches found, one per source page."""
+"""A Lace's opportunities: what its searches found, one per source page (per
+owner; see lace_competitors for `owner_id` and `member_id`)."""
 
 import re
 import uuid
@@ -40,10 +41,10 @@ def summary(row: LaceOpportunity) -> OpportunitySummary:
 
 
 async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, status: str, limit: int,
-                        today: date | None = None) -> list[LaceOpportunity]:
+                        owner_id: uuid.UUID | None = None, today: date | None = None) -> list[LaceOpportunity]:
     """Open or suggested ones only while they have not closed; the soonest
     deadline first."""
-    query = select(LaceOpportunity).where(LaceOpportunity.lace_id == lace_id, LaceOpportunity.team(),
+    query = select(LaceOpportunity).where(LaceOpportunity.lace_id == lace_id, LaceOpportunity.owned_by(owner_id),
                                           LaceOpportunity.status == status)
     if status != "dismissed":
         today = today or datetime.now(UTC).date()
@@ -55,13 +56,14 @@ async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, status: str, limit
 
 
 async def set_status(db: AsyncSession, lace_id: uuid.UUID, opportunity_id: uuid.UUID, status: str,
-                     actor_id: uuid.UUID | None) -> LaceOpportunity:
-    """404 for an opportunity that is not this Lace's."""
+                     actor_id: uuid.UUID | None, member_id: uuid.UUID | None = None) -> LaceOpportunity:
+    """404 for an opportunity that is not this Lace's (or is another member's)."""
     row = await db.scalar(select(LaceOpportunity).where(LaceOpportunity.id == opportunity_id,
-                                                        LaceOpportunity.lace_id == lace_id, LaceOpportunity.team()))
+                                                        LaceOpportunity.lace_id == lace_id,
+                                                        LaceOpportunity.seen_by(member_id)))
     if row is None:
         raise NotFoundError("Opportunity not found")
-    if status == "open" and row.status != status:
+    if status == "open" and row.status != status and row.owner_id is None:
         await lace_activity.note(db, lace_id, actor_id, "opportunity_saved", f"Saved {row.title} as an opportunity")
     row.status = status
     await db.commit()
@@ -69,17 +71,18 @@ async def set_status(db: AsyncSession, lace_id: uuid.UUID, opportunity_id: uuid.
 
 
 async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
-                       found: list[Opportunity]) -> tuple[int, int]:
+                       found: list[Opportunity], owner_id: uuid.UUID | None = None) -> tuple[int, int]:
     """Save a search's opportunities. A new one is a suggestion until the
     founder saves it. One already on file is refreshed and keeps its status,
     so a dismissed one stays dismissed. Returns (new, refreshed)."""
     keys = [url_key(o.url) for o in found]
     known = set((await db.scalars(select(LaceOpportunity.url_key).where(
-        LaceOpportunity.lace_id == lace_id, LaceOpportunity.team(), LaceOpportunity.url_key.in_(keys)))).all())
+        LaceOpportunity.lace_id == lace_id, LaceOpportunity.owned_by(owner_id),
+        LaceOpportunity.url_key.in_(keys)))).all())
     now = datetime.now(UTC)
     for o, key in zip(found, keys):
         stmt = insert(LaceOpportunity).values(
-            id=uuid.uuid4(), lace_id=lace_id, kind=o.kind, title=o.title[:500], organiser=(o.organiser or None)
+            id=uuid.uuid4(), lace_id=lace_id, owner_id=owner_id, kind=o.kind, title=o.title[:500], organiser=(o.organiser or None)
             and o.organiser[:255], url=o.url, url_key=key, deadline=_date(o.deadline), event_date=_date(o.date),
             location=(o.location or None) and o.location[:255], why_it_fits=o.why_it_fits, how_to_act=o.how_to_act,
             found_by_run_id=run_id, last_seen_at=now, status="suggested",

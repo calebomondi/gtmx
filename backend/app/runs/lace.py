@@ -1,7 +1,8 @@
 """Lace run segments: onboarding, one founder turn, and the brief.
 
 Both run under the run manager (timeout, failure recording, restart recovery).
-The Lace's conversation lives on one LangGraph thread per Lace, in the shared
+The team's conversation with a Lace lives on one LangGraph thread per Lace,
+and each member's private chat on one of its own (LaceThread), in the shared
 Postgres checkpointer; the graph is compiled per run around that Lace's store.
 
 Frames: "step" (what the Lace is doing, for the progress line), "progress"
@@ -16,16 +17,17 @@ import json
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from pydantic import TypeAdapter
 
 from agents.lace.answers import AnswerError, describe
-from agents.lace.graph import BRIEF_FACTS, build_lace_graph
+from agents.lace.graph import BRIEF_FACTS, PRIVATE_WITHHELD, build_lace_graph
 from agents.lace.onboarding import Progress, onboard, opening_message
 from agents.lace.store import LaceJobs
-from agents.lace.prompts import system_prompt
+from agents.lace.prompts import PRIVATE_CHAT_NOTE, system_prompt
 from agents.schemas.lace_ui import BlockAnswer, UiBlock
 from backend.app.agents_runtime import get_checkpointer
 from backend.app.database import models
@@ -92,19 +94,35 @@ DRAFT_KEY = "draft_id"
 AUTHOR_KEY = "author"
 
 
-def thread_config(lace_id: uuid.UUID) -> dict:
-    return {"configurable": {"thread_id": f"lace:{lace_id}"}}
+@dataclass(frozen=True)
+class LaceThread:
+    """One conversation with a Lace: the team's (owner_id None), or one
+    member's private chat, which only they see."""
+    lace_id: uuid.UUID
+    owner_id: uuid.UUID | None = None
+
+    @property
+    def config(self) -> dict:
+        thread_id = f"lace:{self.lace_id}" + (f":member:{self.owner_id}" if self.owner_id else "")
+        return {"configurable": {"thread_id": thread_id}}
 
 
-async def forget_thread(lace_id: uuid.UUID) -> None:
-    """Drop the Lace's conversation from the checkpointer."""
-    await get_checkpointer().adelete_thread(thread_config(lace_id)["configurable"]["thread_id"])
+async def forget_thread(thread: LaceThread) -> None:
+    """Drop a conversation from the checkpointer."""
+    await get_checkpointer().adelete_thread(thread.config["configurable"]["thread_id"])
 
 
-def _graph(lace_id: uuid.UUID, jobs: LaceJobs | None = None, actor_id: uuid.UUID | None = None):
-    store = DbLaceStore(AsyncSessionLocal, lace_id, actor_id)
-    apps = DbLaceApps(AsyncSessionLocal, lace_id)
-    return build_lace_graph(store, checkpointer=get_checkpointer(), jobs=jobs, apps=apps), store
+def _graph(thread: LaceThread, jobs: LaceJobs | None = None, actor_id: uuid.UUID | None = None,
+           who: str | None = None):
+    """The Lace for one conversation. In a private chat (`who` is the
+    member's name) it works on their finds and cannot change the team's."""
+    store = DbLaceStore(AsyncSessionLocal, thread.lace_id, actor_id, thread.owner_id)
+    apps = DbLaceApps(AsyncSessionLocal, thread.lace_id)
+    if thread.owner_id is None:
+        return build_lace_graph(store, checkpointer=get_checkpointer(), jobs=jobs, apps=apps), store
+    note = PRIVATE_CHAT_NOTE.format(who=who or "this member")
+    return build_lace_graph(store, checkpointer=get_checkpointer(), jobs=jobs, apps=apps,
+                            withheld=PRIVATE_WITHHELD, chat_note=note), store
 
 
 def step_text(tool_call: dict) -> str:
@@ -146,7 +164,7 @@ async def _progress_frames(run_id: uuid.UUID) -> AsyncIterator[Progress]:
 
 
 async def onboarding_segment(run_id: uuid.UUID, lace_id: uuid.UUID) -> None:
-    graph, store = _graph(lace_id)
+    graph, store = _graph(LaceThread(lace_id))
     await events.publish(run_id, "step", {"text": "Reading your website"})
     async with _progress_frames(run_id) as progress:
         result = await onboard(store, settings, progress=progress)
@@ -158,7 +176,7 @@ async def onboarding_segment(run_id: uuid.UUID, lace_id: uuid.UUID) -> None:
     reply = await asyncio.to_thread(opening_message, system_prompt(profile, facts), result)
     # The opening is the Lace's own first message on its thread, so the next
     # turn's history starts with it.
-    await graph.aupdate_state(thread_config(lace_id), {"messages": [AIMessage(content=reply)]}, as_node="agent")
+    await graph.aupdate_state(LaceThread(lace_id).config, {"messages": [AIMessage(content=reply)]}, as_node="agent")
     async with AsyncSessionLocal() as db, db.begin():
         lace = await db.get(Lace, lace_id)
         if lace is not None and lace.status == "onboarding":
@@ -250,10 +268,12 @@ def _brief_message(request: str) -> HumanMessage:
     return HumanMessage(content=request, additional_kwargs={EVENT_FLAG: True})
 
 
-async def turn_segment(run_id: uuid.UUID, lace_id: uuid.UUID, message: HumanMessage,
-                       jobs: LaceJobs | None = None, actor_id: uuid.UUID | None = None) -> None:
-    """`actor_id`: the person the turn answers, whom what it saves is put down to."""
-    await _finish(run_id, await _converse(run_id, lace_id, message, jobs, actor_id))
+async def turn_segment(run_id: uuid.UUID, thread: LaceThread, message: HumanMessage,
+                       jobs: LaceJobs | None = None, actor_id: uuid.UUID | None = None,
+                       who: str | None = None) -> None:
+    """`actor_id`: the person the turn answers, whom what it saves is put
+    down to; `who` names them in their private chat."""
+    await _finish(run_id, await _converse(run_id, thread, message, jobs, actor_id, who))
 
 
 async def brief_segment(run_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UUID, request: str,
@@ -261,7 +281,7 @@ async def brief_segment(run_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UU
     """The turn in which the Lace writes its brief. The brief is saved, and
     emailed and sent to their Slack and Notion if they asked, before the run
     completes."""
-    reply = await _converse(run_id, lace_id, _brief_message(request), jobs, None)
+    reply = await _converse(run_id, LaceThread(lace_id), _brief_message(request), jobs, None)
     async with AsyncSessionLocal() as db, db.begin():
         await lace_briefs.mark_posted(db, brief_id, reply)
         # Its Feed item went up when the brief was due; one held back from an
@@ -274,14 +294,14 @@ async def brief_segment(run_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UU
     await _finish(run_id, reply)
 
 
-async def _converse(run_id: uuid.UUID, lace_id: uuid.UUID, message: HumanMessage, jobs: LaceJobs | None,
-                    actor_id: uuid.UUID | None) -> str:
+async def _converse(run_id: uuid.UUID, thread: LaceThread, message: HumanMessage, jobs: LaceJobs | None,
+                    actor_id: uuid.UUID | None, who: str | None = None) -> str:
     """Run one turn, streaming its frames; returns the Lace's reply."""
-    graph, _ = _graph(lace_id, jobs, actor_id)
+    graph, _ = _graph(thread, jobs, actor_id, who)
     relay = _TokenRelay(run_id)
     reply = ""
     blocks: list[dict] = []
-    async for mode, chunk in graph.astream({"messages": [message]}, thread_config(lace_id),
+    async for mode, chunk in graph.astream({"messages": [message]}, thread.config,
                                            stream_mode=["updates", "custom"]):
         if mode == "custom":
             if "token" in chunk:
@@ -309,7 +329,7 @@ async def _converse(run_id: uuid.UUID, lace_id: uuid.UUID, message: HumanMessage
                     await events.publish(run_id, "tool_result", _tool_summary(message))
                     blocks += _ui_blocks(message)
     if blocks:
-        await _attach_ui(graph, lace_id, blocks)
+        await _attach_ui(graph, thread, blocks)
     return reply
 
 
@@ -334,15 +354,15 @@ def _ui_blocks(message: ToolMessage) -> list[dict]:
     return list((result.get("data") or {}).get("ui") or []) if result.get("ok") else []
 
 
-async def _attach_ui(graph, lace_id: uuid.UUID, blocks: list[dict]) -> None:
+async def _attach_ui(graph, thread: LaceThread, blocks: list[dict]) -> None:
     """Keep the turn's cards and choices on its final reply, in the thread,
     so they show with it whenever the conversation is read."""
-    state = await graph.aget_state(thread_config(lace_id))
+    state = await graph.aget_state(thread.config)
     reply = next((m for m in reversed(state.values.get("messages", [])) if isinstance(m, AIMessage)), None)
     if reply is None:
         return
     updated = reply.model_copy(update={"additional_kwargs": {**reply.additional_kwargs, UI_KEY: blocks}})
-    await graph.aupdate_state(thread_config(lace_id), {"messages": [updated]}, as_node="agent")
+    await graph.aupdate_state(thread.config, {"messages": [updated]}, as_node="agent")
 
 
 def visible_messages(messages: list[AnyMessage]) -> list[dict]:
@@ -370,14 +390,14 @@ def visible_messages(messages: list[AnyMessage]) -> list[dict]:
     return out
 
 
-async def _thread(lace_id: uuid.UUID) -> list[AnyMessage]:
-    graph, _ = _graph(lace_id)
-    state = await graph.aget_state(thread_config(lace_id))
+async def _thread(thread: LaceThread) -> list[AnyMessage]:
+    graph, _ = _graph(thread)
+    state = await graph.aget_state(thread.config)
     return (state.values or {}).get("messages", []) if state else []
 
 
-async def history(lace_id: uuid.UUID, limit: int) -> list[dict]:
-    return visible_messages(await _thread(lace_id))[-limit:]
+async def history(thread: LaceThread, limit: int) -> list[dict]:
+    return visible_messages(await _thread(thread))[-limit:]
 
 
 def open_question(messages: list[AnyMessage], block_id: str):
@@ -392,11 +412,11 @@ def open_question(messages: list[AnyMessage], block_id: str):
     return None
 
 
-async def answer_message(lace_id: uuid.UUID, answer: BlockAnswer) -> HumanMessage:
+async def answer_message(thread: LaceThread, answer: BlockAnswer) -> HumanMessage:
     """The founder's answer to a question under the Lace's latest reply, as
     their next message. Raises ConflictError when that question is no longer
     open, InvalidInputError when the answer does not fit it."""
-    question = open_question(await _thread(lace_id), answer.block_id)
+    question = open_question(await _thread(thread), answer.block_id)
     if question is None:
         raise ConflictError("That question was already answered, or the conversation has moved on.")
     try:

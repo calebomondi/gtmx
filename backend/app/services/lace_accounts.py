@@ -1,4 +1,5 @@
-"""A Lace's target accounts: what its searches found, one per domain or name."""
+"""A Lace's target accounts: what its searches found, one per domain or name
+(per owner; see lace_competitors for `owner_id` and `member_id`)."""
 
 import uuid
 from datetime import UTC, datetime
@@ -50,27 +51,30 @@ def response(row: LaceAccount) -> dict:
             "first_seen_at": row.first_seen_at, "last_seen_at": row.last_seen_at}
 
 
-async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, status: str, limit: int) -> list[LaceAccount]:
+async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, status: str, limit: int,
+                        owner_id: uuid.UUID | None = None) -> list[LaceAccount]:
     rows = await db.scalars(
-        select(LaceAccount).where(LaceAccount.lace_id == lace_id, LaceAccount.team(), LaceAccount.status == status)
+        select(LaceAccount).where(LaceAccount.lace_id == lace_id, LaceAccount.owned_by(owner_id),
+                                  LaceAccount.status == status)
         .order_by(BY_FIT, LaceAccount.score.desc().nulls_last(), LaceAccount.last_seen_at.desc()).limit(limit)
     )
     return list(rows.all())
 
 
-async def get_in_lace(db: AsyncSession, lace_id: uuid.UUID, account_id: uuid.UUID) -> LaceAccount:
-    """404 for an account that is not this Lace's."""
+async def get_in_lace(db: AsyncSession, lace_id: uuid.UUID, account_id: uuid.UUID,
+                      member_id: uuid.UUID | None = None) -> LaceAccount:
+    """404 for an account that is not this Lace's (or is another member's)."""
     row = await db.scalar(select(LaceAccount).where(LaceAccount.id == account_id, LaceAccount.lace_id == lace_id,
-                                                    LaceAccount.team()))
+                                                    LaceAccount.seen_by(member_id)))
     if row is None:
         raise NotFoundError("Account not found")
     return row
 
 
 async def set_status(db: AsyncSession, lace_id: uuid.UUID, account_id: uuid.UUID, status: str,
-                     actor_id: uuid.UUID | None) -> LaceAccount:
-    row = await get_in_lace(db, lace_id, account_id)
-    if status == "target" and row.status != status:
+                     actor_id: uuid.UUID | None, member_id: uuid.UUID | None = None) -> LaceAccount:
+    row = await get_in_lace(db, lace_id, account_id, member_id)
+    if status == "target" and row.status != status and row.owner_id is None:
         await lace_activity.note(db, lace_id, actor_id, "account_saved", f"Saved {row.name} as a target account")
     row.status = status
     await db.commit()
@@ -90,19 +94,20 @@ def _merged(found: AccountRecord, stored: dict | None) -> AccountRecord:
 
 
 async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
-                       found: list[tuple[AccountRecord, AccountFit | None]]) -> tuple[int, int]:
+                       found: list[tuple[AccountRecord, AccountFit | None]],
+                       owner_id: uuid.UUID | None = None) -> tuple[int, int]:
     """Save a search's accounts. A new one is a suggestion until the founder
     saves it. One already on file gets the fresh record and case, keeping its
     contacts and its status, so an account the founder dismissed stays
     dismissed. Returns (new, refreshed)."""
     keys = [account_key(r) for r, _ in found]
     stored = dict((await db.execute(select(LaceAccount.key, LaceAccount.record).where(
-        LaceAccount.lace_id == lace_id, LaceAccount.team(), LaceAccount.key.in_(keys)))).all())
+        LaceAccount.lace_id == lace_id, LaceAccount.owned_by(owner_id), LaceAccount.key.in_(keys)))).all())
     now = datetime.now(UTC)
     for (found_record, fit), key in zip(found, keys):
         record = _merged(found_record, stored.get(key))
         stmt = insert(LaceAccount).values(
-            id=uuid.uuid4(), lace_id=lace_id, key=key, name=record.name[:255],
+            id=uuid.uuid4(), lace_id=lace_id, owner_id=owner_id, key=key, name=record.name[:255],
             account_type=record.account_type, website=record.website, geo=(record.geo or None) and record.geo[:120],
             score=record.score, fit_strength=fit.strength if fit else None, contact_status=contact_status(record),
             record=record.model_dump(mode="json"), fit=fit.model_dump(mode="json") if fit else None,
@@ -119,10 +124,11 @@ async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
 
 
 async def due_for_contacts(db: AsyncSession, lace_id: uuid.UUID, ids: list[uuid.UUID] | None,
-                           limit: int) -> list[LaceAccount]:
+                           limit: int, member_id: uuid.UUID | None = None) -> list[LaceAccount]:
     """The accounts to search contacts for: the ones named, else every target
     whose contacts were never searched, strongest fit first."""
-    query = select(LaceAccount).where(LaceAccount.lace_id == lace_id, LaceAccount.team(), LaceAccount.status == "target")
+    query = select(LaceAccount).where(LaceAccount.lace_id == lace_id, LaceAccount.seen_by(member_id),
+                                      LaceAccount.status == "target")
     if ids:
         query = query.where(LaceAccount.id.in_(ids))
     else:

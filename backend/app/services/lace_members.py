@@ -60,6 +60,17 @@ async def lace_for_domain(db: AsyncSession, domain: str) -> Lace | None:
     return await db.scalar(select(Lace).where(Lace.domain == domain))
 
 
+async def everyone(db: AsyncSession, lace_id: uuid.UUID) -> list[uuid.UUID]:
+    """Every person with a row on the Lace (on it, invited, asked, declined)."""
+    return list((await db.scalars(select(LaceMember.user_id).where(LaceMember.lace_id == lace_id))).all())
+
+
+async def ensure_team(db: AsyncSession, lace_id: uuid.UUID) -> None:
+    """Private chats are for a Lace with a team: alone on it, the team's chat is yours."""
+    if await team_size(db, lace_id) < 2:
+        raise ConflictError("Private chats are for a Lace with a team. Invite your cofounders first.")
+
+
 async def team_size(db: AsyncSession, lace_id: uuid.UUID) -> int:
     """How many people are on the Lace now."""
     return await db.scalar(select(func.count()).select_from(LaceMember).where(

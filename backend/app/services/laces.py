@@ -129,7 +129,9 @@ async def list_for_user(db: AsyncSession, user_id: uuid.UUID, limit: int) -> lis
     thinking while a run is unfinished, alert while something waits on the
     founder (a draft to send, a reply not yet read, activity not yet seen, a
     suggestion to save or dismiss)."""
-    working = exists().where(Run.lace_id == Lace.id, Run.status.not_in(TERMINAL_STATUSES))
+    # Someone else's private chat is none of the user's business.
+    working = exists().where(Run.lace_id == Lace.id, Run.status.not_in(TERMINAL_STATUSES),
+                             or_(Run.owner_id.is_(None), Run.owner_id == user_id))
     waiting = or_(
         exists().where(LaceOutreach.lace_id == Lace.id, or_(
             and_(LaceOutreach.direction == "outbound", LaceOutreach.status == "draft"),
