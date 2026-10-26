@@ -1,0 +1,200 @@
+"""The Lace's tools: typed results, failures reported not raised, store scoping."""
+
+import json
+
+import pytest
+
+from agents.lace import tools as lace_tools
+from agents.lace.tools import BATCH_PAGE_TOKEN_CAP, PAGE_TOKEN_CAP, build_tools
+from agents.context_budget import count_tokens
+from data_sources.scraping.firecrawl import FirecrawlError, Page, PageFailure
+from agents.lace.apps import AppError
+from data_sources.socials.brightdata import SocialsError
+from lace_fakes import MemoryStore, make_fact
+
+
+def _tools(store, settings):
+    return {t.name: t for t in build_tools(store, settings)}
+
+
+async def _run(tool, **args) -> dict:
+    return json.loads(await tool.ainvoke(args))
+
+
+async def test_read_page_saves_the_whole_page_but_returns_a_capped_one(monkeypatch, store, settings):
+    long = "Acme payroll for clinics. " * 4000
+    monkeypatch.setattr(lace_tools.firecrawl, "scrape_page",
+                        lambda url, cfg: Page(url=url, title="Home", markdown=long))
+    out = await _run(_tools(store, settings)["read_page"], url="https://acme.test")
+    assert out["ok"] and "truncated" in out["summary"]
+    assert count_tokens(out["data"]["markdown"]) <= PAGE_TOKEN_CAP + 5
+    assert store.sources["https://acme.test"].markdown == long
+
+
+async def test_unreadable_page_is_a_failure_result(monkeypatch, store, settings):
+    def down(url, cfg):
+        raise FirecrawlError("https://acme.test: HTTP 503")
+    monkeypatch.setattr(lace_tools.firecrawl, "scrape_page", down)
+    out = await _run(_tools(store, settings)["read_page"], url="https://acme.test")
+    assert out == {"ok": False, "summary": "https://acme.test: HTTP 503", "error": "https://acme.test: HTTP 503"}
+
+
+async def test_unexpected_error_is_reported_and_logged(monkeypatch, store, settings, caplog):
+    def bug(*a, **k):
+        raise ZeroDivisionError
+    monkeypatch.setattr(lace_tools.exa, "search_highlights", bug)
+    out = await _run(_tools(store, settings)["search_web"], query="clinic payroll")
+    assert not out["ok"] and "ZeroDivisionError" in out["error"]
+    assert "Lace tool search_web failed" in caplog.text
+
+
+async def test_read_pages_reports_each_failure_and_caps_each_page(monkeypatch, store, settings):
+    monkeypatch.setattr(lace_tools.firecrawl, "scrape_pages", lambda urls, cfg: (
+        [Page(url=urls[0], title="Pricing", markdown="Plans from $20. " * 2000)],
+        [PageFailure(urls[1], "HTTP 404")],
+    ))
+    out = await _run(_tools(store, settings)["read_pages"], urls=["https://acme.test/pricing", "https://acme.test/x"])
+    assert out["ok"] and out["summary"] == "Read 1 of 2 pages."
+    page, failure = out["data"]
+    assert page["truncated"] and count_tokens(page["markdown"]) <= BATCH_PAGE_TOKEN_CAP + 5
+    assert failure == {"url": "https://acme.test/x", "error": "HTTP 404"}
+
+
+async def test_read_pages_refuses_an_oversized_batch(store, settings):
+    out = await _run(_tools(store, settings)["read_pages"], urls=[f"https://acme.test/{i}" for i in range(9)])
+    assert not out["ok"] and "At most 8" in out["error"]
+
+
+async def test_search_trims_highlights(monkeypatch, store, settings):
+    monkeypatch.setattr(lace_tools.exa, "search_highlights", lambda q, cfg, **kw: [
+        {"url": "https://a.test", "title": "A", "highlights": ["1", "2", "3", "4"], "published_date": None}])
+    out = await _run(_tools(store, settings)["search_web"], query="clinic payroll", depth="fast")
+    assert out["data"][0]["highlights"] == ["1", "2", "3"]
+
+
+async def test_record_fact_needs_a_source_unless_the_founder_said_it(store, settings):
+    record = _tools(store, settings)["record_fact"]
+    refused = await _run(record, topic="pricing", claim="Plans start at $20 a month.")
+    assert not refused["ok"] and "source_url" in refused["error"]
+
+    saved = await _run(record, topic="pricing", claim="Plans start at $20 a month.", from_founder=True)
+    assert saved["ok"]
+    [fact] = await store.facts()
+    assert fact.origin == "user" and fact.source_url is None
+
+
+async def test_record_fact_supersedes_without_deleting(settings):
+    store = MemoryStore([make_fact("f1", "Plans start at $15.", topic="pricing")])
+    out = await _run(_tools(store, settings)["record_fact"], topic="pricing", claim="Plans start at $20.",
+                     source_url="https://acme.test/pricing", replaces_id="f1")
+    assert out["ok"]
+    assert [f.claim for f in await store.facts()] == ["Plans start at $20."]
+    assert "f1" in store.superseded
+
+
+async def test_record_fact_cannot_replace_an_unknown_fact(store, settings):
+    out = await _run(_tools(store, settings)["record_fact"], topic="offer", claim="x",
+                     source_url="https://acme.test", replaces_id="someone-elses")
+    assert not out["ok"] and "someone-elses" in out["error"]
+
+
+@pytest.mark.parametrize("topic, expected", [(None, 2), ("pricing", 1)])
+async def test_get_facts_filters_by_topic(settings, topic, expected):
+    store = MemoryStore([make_fact("f1", "a", topic="pricing"), make_fact("f2", "b", topic="offer")])
+    out = await _run(_tools(store, settings)["get_facts"], **({"topic": topic} if topic else {}))
+    assert len(out["data"]) == expected
+
+
+def test_tool_schemas_describe_their_arguments(store, settings):
+    for t in build_tools(store, settings):
+        assert t.description
+        for name, prop in t.args.items():
+            assert prop.get("description"), f"{t.name}.{name} has no description"
+
+
+# read_social
+
+async def test_read_social_returns_the_reading_with_the_turn_timeout(monkeypatch, store, settings):
+    seen = {}
+
+    def fake_read(link, cfg, timeout_s):
+        seen.update(link=link, timeout=timeout_s)
+        return {"platform": link.platform, "kind": link.kind, "url": link.url, "name": "Jane Doe", "details": {}}
+    monkeypatch.setattr(lace_tools.socials, "read", fake_read)
+    out = await _run(_tools(store, settings)["read_social"], url="https://www.linkedin.com/in/jane-doe")
+    assert out["ok"] and out["summary"] == "Read the linkedin person at https://www.linkedin.com/in/jane-doe."
+    assert out["data"]["name"] == "Jane Doe"
+    assert seen["timeout"] == settings.social_read_timeout_s and seen["link"].method == "profiles"
+
+
+async def test_read_social_refuses_a_link_it_cannot_read(store, settings):
+    out = await _run(_tools(store, settings)["read_social"], url="https://www.facebook.com/acme")
+    assert not out["ok"] and "Facebook posts" in out["error"]
+
+
+async def test_read_social_reports_a_failed_scrape(monkeypatch, store, settings):
+    def down(link, cfg, timeout_s):
+        raise SocialsError("the instagram scraper stopped (timeout: no snapshot)")
+    monkeypatch.setattr(lace_tools.socials, "read", down)
+    out = await _run(_tools(store, settings)["read_social"], url="https://www.instagram.com/acme")
+    assert out["error"] == ("Couldn't read https://www.instagram.com/acme: "
+                            "the instagram scraper stopped (timeout: no snapshot).")
+
+
+async def test_read_social_says_when_nothing_was_there(monkeypatch, store, settings):
+    monkeypatch.setattr(lace_tools.socials, "read", lambda link, cfg, timeout_s: None)
+    out = await _run(_tools(store, settings)["read_social"], url="https://www.instagram.com/p/gone")
+    assert not out["ok"] and "private or removed" in out["error"]
+
+
+async def test_read_social_drops_details_past_the_cap(monkeypatch, store, settings):
+    monkeypatch.setattr(lace_tools.socials, "read", lambda link, cfg, timeout_s: {
+        "kind": "post", "text": "Short post", "details": {"blob": "word " * 10_000}})
+    out = await _run(_tools(store, settings)["read_social"], url="https://x.com/acme/status/1")
+    assert out["ok"] and "left out" in out["summary"]
+    assert out["data"] == {"kind": "post", "text": "Short post", "source": "web"}
+
+
+# read_social on X: the founder's connected X first, the web as the fallback.
+
+class FakeApps:
+    def __init__(self, answer=None, error=None):
+        self.answer, self.error, self.calls = answer, error, []
+
+    async def x(self, record, key):
+        self.calls.append((record, key))
+        if self.error:
+            raise AppError(self.error)
+        return self.answer
+
+
+X_USER = {"data": {"id": "1", "name": "Acme", "username": "acme", "description": "Clinics",
+                   "public_metrics": {"followers_count": 1200, "following_count": 80, "tweet_count": 340}}}
+
+
+def _tools_with(store, settings, apps):
+    return {t.name: t for t in build_tools(store, settings, apps=apps)}
+
+
+async def test_an_x_profile_is_read_from_x_itself_when_connected(monkeypatch, store, settings):
+    apps = FakeApps(answer=X_USER)
+    monkeypatch.setattr(lace_tools.socials, "read", lambda *a: pytest.fail("the web was not needed"))
+    out = await _run(_tools_with(store, settings, apps)["read_social"], url="https://x.com/acme")
+    assert apps.calls == [("profile", "acme")]
+    assert out["ok"] and out["data"]["source"] == "x_api"
+    assert (out["data"]["name"], out["data"]["followers"], out["data"]["bio"]) == ("Acme", 1200, "Clinics")
+
+
+async def test_x_falls_back_to_the_web_when_refused_or_not_connected(monkeypatch, store, settings):
+    monkeypatch.setattr(lace_tools.socials, "read", lambda link, cfg, timeout: {"kind": "post", "text": "From the web"})
+    for apps in (FakeApps(error="429 Too Many Requests"), FakeApps(answer=None), None):
+        out = await _run(_tools_with(store, settings, apps)["read_social"], url="https://x.com/acme/status/42")
+        assert out["data"] == {"kind": "post", "text": "From the web", "source": "web"}
+    assert FakeApps(answer=X_USER).calls == []
+
+
+async def test_other_platforms_never_ask_x(monkeypatch, store, settings):
+    apps = FakeApps(answer=X_USER)
+    monkeypatch.setattr(lace_tools.socials, "read", lambda link, cfg, timeout: {"kind": "profile", "name": "Jane"})
+    out = await _run(_tools_with(store, settings, apps)["read_social"], url="https://www.instagram.com/jane")
+    assert out["data"]["source"] == "web" and apps.calls == []

@@ -6,7 +6,7 @@
    signup in reach. */
 @custom-variant short (@media (max-height: 30rem));
 
-/* An intelligence tool for African founders: warm off-white paper, strong
+/* An assistant for every startup: warm off-white paper, strong
    black type, and #FEA853 as the signature. On light surfaces orange is a
    fill behind black text (it is too light to be text there); orange text
    appears only on black, where it reads at ~9:1. */
@@ -125,6 +125,107 @@
 }
 
 /* The status dot blinking while the demo plays. */
+/* -- How it works: Lace's three scenes (how-it-works-scenes.tsx). -- */
+
+/* Printed bottom-up in eight layers over 2.6s, a nozzle line riding the top
+   layer; the part not yet printed shows as faint layer lines. */
+.print-fill {
+  clip-path: inset(100% 0 0 0);
+  animation: print-fill 2.6s steps(8, end) forwards;
+}
+@keyframes print-fill {
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+.print-ghost {
+  background: repeating-linear-gradient(to top, rgb(254 168 83 / 0.18) 0 2px, transparent 2px 14px);
+  outline: 1px dashed rgb(254 168 83 / 0.35);
+}
+.print-nozzle {
+  bottom: 0;
+  box-shadow: 0 0 12px 2px var(--color-brand);
+  animation: print-nozzle 2.6s steps(8, end) forwards;
+}
+@keyframes print-nozzle {
+  to {
+    bottom: 100%;
+  }
+}
+.pop-in {
+  animation: pop-in 0.45s cubic-bezier(0.3, 1.6, 0.5, 1);
+  clip-path: none;
+}
+@keyframes pop-in {
+  50% {
+    transform: scale(1.08);
+  }
+}
+/* Typed in, a character at a time, behind a blinking caret. */
+.type-in {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: bottom;
+  width: 0;
+  border-right: 2px solid var(--color-brand);
+  animation:
+    type-in 0.8s steps(var(--chars), end) 0.3s forwards,
+    type-caret 1s steps(1) infinite;
+}
+.type-in-late {
+  animation-delay: 1.3s, 0s;
+}
+@keyframes type-caret {
+  50% {
+    border-color: transparent;
+  }
+}
+@keyframes type-in {
+  to {
+    /* Room for the caret too: the box sizes border-inclusive. */
+    width: calc(var(--chars) * 1ch + 2px);
+  }
+}
+.spin-slow {
+  animation: spin-slow 14s linear infinite;
+}
+@keyframes spin-slow {
+  to {
+    transform: rotate(1turn);
+  }
+}
+/* A find popping out of Lace into the stack; hidden until its delay is up. */
+.find-in {
+  animation: find-in 0.5s cubic-bezier(0.2, 1.2, 0.4, 1) backwards;
+}
+@keyframes find-in {
+  from {
+    opacity: 0;
+    transform: translateX(-28px) scale(0.8);
+  }
+}
+/* Send, waiting: a slow ring, breathing. */
+.send-wait {
+  animation: send-wait 2.2s ease-in-out infinite;
+}
+@keyframes send-wait {
+  50% {
+    box-shadow: 0 0 0 5px rgb(254 168 83 / 0.55);
+  }
+}
+
+/* A word rising into place, for the hero's changing word. */
+@keyframes word-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.35em);
+  }
+}
+.word-in {
+  animation: word-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
 @keyframes caret {
   50% {
     opacity: 0;

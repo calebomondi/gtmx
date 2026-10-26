@@ -1,9 +1,8 @@
 // Connection model for the /accounts channel board, backed by the server's
 // Composio-held connections (/api/v1/connections).
 
-import { deleteConnection, listConnections, startConnection, type ConnectionDto } from '@/lib/api'
-
-export type Platform = 'gmail' | 'googlecalendar' | 'linkedin' | 'instagram' | 'facebook' | 'tiktok' | 'x'
+import { deleteConnection, listConnections, type ConnectionDto } from '@/lib/api'
+import { PLATFORM_LABEL, type Platform } from '@/lib/platforms'
 
 export type ConnectionStatus = 'live' | 'pending' | 'needs_attention'
 
@@ -21,30 +20,6 @@ export interface Connection {
   /** Outreach runs that used this channel. */
   usageCount: number
 }
-
-export const PLATFORM_LABEL: Record<Platform, string> = {
-  gmail: 'Gmail',
-  googlecalendar: 'Google Calendar',
-  linkedin: 'LinkedIn',
-  instagram: 'Instagram',
-  facebook: 'Facebook',
-  tiktok: 'TikTok',
-  x: 'X',
-}
-
-/** Empty string means "no icon asset" — the tile renders a glyph instead. */
-export const PLATFORM_ICON: Record<Platform, string> = {
-  gmail: '/gmail.svg',
-  googlecalendar: '/google-calendar.svg',
-  linkedin: '/linkedin.svg',
-  instagram: '/instagram.svg',
-  facebook: '/facebook.svg',
-  tiktok: '/tiktok.svg',
-  x: '',
-}
-
-/** Every channel the app can connect, in display order. */
-export const ALL_PLATFORMS: Platform[] = ['gmail', 'googlecalendar', 'linkedin', 'instagram', 'facebook', 'tiktok', 'x']
 
 /** What the agents do through each channel, as each provider allows it.
  *  Sending always needs the user's explicit click; agents draft, never send. */
@@ -81,12 +56,67 @@ const CAPABILITIES: Record<Platform, Connection['capabilities']> = {
     { label: 'Cold messages (Facebook only allows replies within 24 hours)', allowed: false },
   ],
   tiktok: [
-    { label: 'Publish content you approve', allowed: true },
-    { label: 'Send without your approval', allowed: false },
+    { label: 'Read your public videos, how they did and their comments (from your handle, no connection needed)', allowed: true },
+    { label: 'Reply or post for you (TikTok\'s API allows neither)', allowed: false },
+  ],
+  telegram: [
+    { label: 'Read messages to your bot (and group mentions), with answers you send', allowed: true },
+    { label: 'Send your brief to a chat or group you choose', allowed: true },
+    { label: 'Post to your channel when you approve', allowed: true },
+    { label: 'Start chats with people (Telegram bots can only answer)', allowed: false },
   ],
   x: [
+    { label: 'Read your public posts and how they did (from your handle, no connection needed)', allowed: true },
     { label: 'Send DMs you approve', allowed: true },
+    { label: 'Post, reply, like and repost when you approve', allowed: true },
     { label: 'Send without your approval', allowed: false },
+  ],
+  // The apps below connect now; their skills arrive one by one (COMING_SOON).
+  outlook: [
+    { label: 'Send emails you approve, and read their replies', allowed: true },
+    { label: 'Send without your approval', allowed: false },
+  ],
+  whatsapp: [
+    { label: 'Start chats with your approved templates, when you approve', allowed: true },
+    { label: 'Answer replies you approve', allowed: true },
+    { label: 'Message without your approval', allowed: false },
+  ],
+  zoho: [
+    { label: 'Summarise your pipeline: deals by stage, totals, stale deals', allowed: true },
+    { label: 'Check whether someone is already a lead', allowed: true },
+    { label: 'Add leads when you approve', allowed: true },
+    { label: 'Change your CRM without approval', allowed: false },
+  ],
+  hubspot: [
+    { label: 'Summarise your pipeline: deals by stage, totals, stale deals', allowed: true },
+    { label: 'Check whether a company or person is already in HubSpot', allowed: true },
+    { label: 'Add leads when you approve', allowed: true },
+    { label: 'Change your CRM without approval', allowed: false },
+  ],
+  googlesheets: [
+    { label: 'Read and summarise a sheet, or import a lead list', allowed: true },
+    { label: 'Export accounts and contacts when you approve', allowed: true },
+    { label: 'Change your sheets without approval', allowed: false },
+  ],
+  notion: [
+    { label: 'Search your workspace for context', allowed: true },
+    { label: 'Write the brief or a report as a page when you approve', allowed: true },
+    { label: 'Change your pages without approval', allowed: false },
+  ],
+  slack: [
+    { label: "Search your team's messages for context", allowed: true },
+    { label: 'Post messages you approve to a channel you choose', allowed: true },
+    { label: 'Message people without approval', allowed: false },
+  ],
+  asana: [
+    { label: 'Create follow-up tasks when you approve', allowed: true },
+    { label: 'Summarise open and overdue tasks', allowed: true },
+    { label: 'Change tasks without approval', allowed: false },
+  ],
+  calendly: [
+    { label: 'Put your booking links in drafts', allowed: true },
+    { label: 'See booked meetings, and who booked', allowed: true },
+    { label: 'Cancel or move meetings', allowed: false },
   ],
 }
 
@@ -122,12 +152,6 @@ export async function fetchConnectionState(): Promise<ConnectionState> {
 
 export async function fetchConnections(): Promise<Connection[]> {
   return (await fetchConnectionState()).connections
-}
-
-/** Sends the browser to the platform's sign-in (via Composio). */
-export async function beginConnection(platform: Platform): Promise<void> {
-  const { redirect_url } = await startConnection(platform)
-  window.location.assign(redirect_url)
 }
 
 export async function disconnectConnection(connectionId: string): Promise<void> {

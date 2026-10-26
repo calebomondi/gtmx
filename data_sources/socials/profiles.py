@@ -15,6 +15,7 @@ import httpx
 
 from config import Settings
 from data_sources.socials import instagram, linkedin, tiktok, x
+from data_sources.socials.brightdata import parse_count
 from utils.log import logger
 
 PLATFORMS = ("linkedin", "x", "instagram", "tiktok")
@@ -51,6 +52,13 @@ def _handle(platform: str, text: str) -> str | None:
     return match.group(1) if match else None
 
 
+def profile_handle(platform: str, value: str) -> str | None:
+    """The handle in a profile URL or a bare handle ("@acme" or "acme"); None
+    for anything else."""
+    url = profile_url(platform, value)
+    return _handle(platform, url) if url else None
+
+
 def profile_url(platform: str, value: str) -> str | None:
     """A profile URL from a URL or a bare handle; None for share links etc."""
     value = (value or "").strip()
@@ -84,41 +92,33 @@ def find_on_site(website: str, name: str, timeout_s: float = 15) -> dict[str, st
     return find_on_page(response.text, name)
 
 
-def _int(value) -> int | None:
-    try:
-        n = int(float(str(value).replace(",", "")))
-    except (TypeError, ValueError):
-        return None
-    return n if n > 0 else None  # scrapers report 0 when a count is hidden
-
-
 def _post(text, url, date, likes=None) -> dict:
-    return {"text": (text or "")[:_POST_CHARS], "url": url, "date": date, "likes": _int(likes)}
+    return {"text": (text or "")[:_POST_CHARS], "url": url, "date": date, "likes": parse_count(likes)}
 
 
 def normalize(platform: str, raw: dict, url: str) -> dict:
     """One shape for every platform: name, followers, posts_count, verified,
     bio, recent_posts (newest first) plus platform extras."""
     if platform == "linkedin":
-        profile = {"name": raw.get("name"), "followers": _int(raw.get("followers")),
+        profile = {"name": raw.get("name"), "followers": parse_count(raw.get("followers")),
                    "bio": raw.get("slogan") or (raw.get("about") or "")[:300],
                    "employees": raw.get("company_size"),
                    "posts": [_post(p.get("text"), p.get("post_url"), p.get("date"), p.get("likes_count"))
                              for p in raw.get("updates") or []]}
     elif platform == "x":
-        profile = {"name": raw.get("profile_name"), "followers": _int(raw.get("followers")),
-                   "posts_count": _int(raw.get("posts_count")), "bio": raw.get("biography"),
+        profile = {"name": raw.get("profile_name"), "followers": parse_count(raw.get("followers")),
+                   "posts_count": parse_count(raw.get("posts_count")), "bio": raw.get("biography"),
                    "posts": [_post(p.get("description"), p.get("post_url"), p.get("date_posted"), p.get("likes"))
                              for p in raw.get("posts") or []]}
     elif platform == "instagram":
-        profile = {"name": raw.get("full_name") or raw.get("profile_name"), "followers": _int(raw.get("followers")),
-                   "posts_count": _int(raw.get("posts_count")), "bio": raw.get("biography"),
+        profile = {"name": raw.get("full_name") or raw.get("profile_name"), "followers": parse_count(raw.get("followers")),
+                   "posts_count": parse_count(raw.get("posts_count")), "bio": raw.get("biography"),
                    "posts": [_post(p.get("caption"), p.get("url"), p.get("datetime"))
                              for p in raw.get("posts") or []]}
     else:  # tiktok
-        profile = {"name": raw.get("nickname"), "followers": _int(raw.get("followers")),
-                   "posts_count": _int(raw.get("videos_count")), "bio": raw.get("biography") or raw.get("signature"),
-                   "likes": _int(raw.get("likes")),
+        profile = {"name": raw.get("nickname"), "followers": parse_count(raw.get("followers")),
+                   "posts_count": parse_count(raw.get("videos_count")), "bio": raw.get("biography") or raw.get("signature"),
+                   "likes": parse_count(raw.get("likes")),
                    "posts": [_post(p.get("description"), p.get("post_url"), p.get("create_time"), p.get("likes"))
                              for p in raw.get("top_posts_data") or []]}
     posts = sorted((p for p in profile.pop("posts") if p["text"] or p["url"]),

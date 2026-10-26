@@ -1,5 +1,4 @@
 import { useEffect, useRef } from "react"
-import { useMatches } from "react-router-dom"
 
 import { sendHeartbeat } from "@/lib/api"
 
@@ -12,12 +11,8 @@ function isActive(lastInputAt: number, beatS: number): boolean {
 }
 
 /** Pings the API while the signed-in user is actively using the app, so the
- * admin console can report time in app and per workspace. Durations only. */
+ * admin console can report time in app. Durations only. */
 export function useActivityHeartbeat(enabled: boolean) {
-  const workspaceId =
-    useMatches()
-      .map((m) => m.params.workspace_id)
-      .find(Boolean) ?? null
   const lastInputAt = useRef(0)
   const beatS = useRef(DEFAULT_BEAT_S)
 
@@ -37,7 +32,7 @@ export function useActivityHeartbeat(enabled: boolean) {
     const beat = async () => {
       if (isActive(lastInputAt.current, beatS.current)) {
         try {
-          beatS.current = (await sendHeartbeat(workspaceId)).next_beat_s
+          beatS.current = (await sendHeartbeat()).next_beat_s
         } catch {
           // Best-effort telemetry: a missed ping only undercounts a minute,
           // and must never surface to the user.
@@ -45,12 +40,12 @@ export function useActivityHeartbeat(enabled: boolean) {
       }
       if (!stopped) timer = setTimeout(() => void beat(), beatS.current * 1000)
     }
-    // Ping on arrival and on every workspace switch, so the visit counts.
+    // Ping on arrival, so a short visit still counts.
     lastInputAt.current = Date.now()
     void beat()
     return () => {
       stopped = true
       clearTimeout(timer)
     }
-  }, [enabled, workspaceId])
+  }, [enabled])
 }

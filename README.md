@@ -1,9 +1,9 @@
-# GTMX
+# GTMX (Thalace)
 
-Go-to-market research for a product or service: a user describes an offer,
-answers a short interview, and gets offer, market, competition and ICP
-analysis. They can then track competitors, find target accounts and draft
-outreach.
+A startup assistant for founders. Each startup gets a Lace: one agent, made
+from a name and the startup's website, that learns what the startup sells,
+then spots opportunities, works out its ideal customers, finds the people
+there and gets the founder in touch, and finds and watches its competitors.
 
 | App | Where | Port |
 |---|---|---|

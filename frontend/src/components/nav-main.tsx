@@ -16,13 +16,16 @@ import {
 import { ChevronRightIcon, PinIcon, PinOffIcon } from "lucide-react"
 import { Link, useLocation } from "react-router-dom"
 
-import { isWorkspaceActive } from "@/lib/nav-active"
+import { isNavItemActive } from "@/lib/nav-active"
 
-export interface NavWorkspaceItem {
+export interface NavLaceItem {
   id: string
   title: string
   url: string
-  pinned: boolean
+  /** Absent for Laces that can't be pinned (archived ones). */
+  pinned?: boolean
+  /** Shown before the title: the Lace's mascot. */
+  icon: React.ReactNode
 }
 
 export function NavMain({
@@ -34,15 +37,15 @@ export function NavMain({
     url: string
     icon?: React.ReactNode
     isActive?: boolean
-    items?: NavWorkspaceItem[]
+    items?: NavLaceItem[]
   }[]
-  onTogglePin?: (workspaceId: string) => void
+  onTogglePin?: (laceId: string) => void
 }) {
   const location = useLocation()
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>Campaigns</SidebarGroupLabel>
+      <SidebarGroupLabel>Crew</SidebarGroupLabel>
       <SidebarMenu>
         {items.map((item) => (
           <Collapsible
@@ -67,18 +70,19 @@ export function NavMain({
                   >
                     <SidebarMenuSubButton
                       render={<Link to={subItem.url} />}
-                      isActive={isWorkspaceActive(location.pathname, subItem.id)}
+                      isActive={isNavItemActive(location.pathname, subItem.url)}
                       className="min-w-0 flex-1"
                     >
+                      {subItem.icon}
                       <span className="truncate">{subItem.title}</span>
-                      {onTogglePin && (
+                      {onTogglePin && subItem.pinned !== undefined && (
                         <button
                           type="button"
                           aria-label={
-                            subItem.pinned ? "Unpin workspace" : "Pin workspace"
+                            subItem.pinned ? "Unpin Lace" : "Pin Lace"
                           }
                           title={
-                            subItem.pinned ? "Unpin workspace" : "Pin workspace"
+                            subItem.pinned ? "Unpin Lace" : "Pin Lace"
                           }
                           onClick={(event) => {
                             event.preventDefault()

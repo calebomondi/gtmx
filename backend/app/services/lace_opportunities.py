@@ -1,0 +1,107 @@
+"""A Lace's opportunities: what its searches found, one per source page (per
+owner; see lace_competitors for `owner_id` and `member_id`)."""
+
+import re
+import uuid
+from datetime import UTC, date, datetime
+
+from sqlalchemy import func, or_, select
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from agents.schemas.opportunities import Opportunity, OpportunitySummary
+from backend.app.database import models
+from backend.app.database.lace_models import Lace, LaceOpportunity
+from backend.app.services import lace_activity
+from backend.app.services.errors import NotFoundError
+from backend.app.services.laces import watch_interval
+from backend.app.services.runs import TERMINAL_STATUSES
+
+_SCHEME = re.compile(r"^https?://(www\.)?", re.I)
+
+
+def url_key(url: str) -> str:
+    return _SCHEME.sub("", url.strip()).rstrip("/").lower()[:1024]
+
+
+def _date(value: str | None) -> date | None:
+    try:
+        return date.fromisoformat(value[:10]) if value else None
+    except ValueError:
+        return None
+
+
+def summary(row: LaceOpportunity) -> OpportunitySummary:
+    return OpportunitySummary(
+        id=str(row.id), kind=row.kind, title=row.title, organiser=row.organiser, url=row.url,
+        deadline=row.deadline.isoformat() if row.deadline else None,
+        date=row.event_date.isoformat() if row.event_date else None, location=row.location,
+        why_it_fits=row.why_it_fits, how_to_act=row.how_to_act,
+    )
+
+
+async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, status: str, limit: int,
+                        owner_id: uuid.UUID | None = None, today: date | None = None) -> list[LaceOpportunity]:
+    """Open or suggested ones only while they have not closed; the soonest
+    deadline first."""
+    query = select(LaceOpportunity).where(LaceOpportunity.lace_id == lace_id, LaceOpportunity.owned_by(owner_id),
+                                          LaceOpportunity.status == status)
+    if status != "dismissed":
+        today = today or datetime.now(UTC).date()
+        query = query.where(or_(LaceOpportunity.deadline.is_(None), LaceOpportunity.deadline >= today),
+                            or_(LaceOpportunity.event_date.is_(None), LaceOpportunity.event_date >= today))
+    order = func.coalesce(LaceOpportunity.deadline, LaceOpportunity.event_date)
+    return list((await db.scalars(query.order_by(order.asc().nulls_last(), LaceOpportunity.last_seen_at.desc())
+                                  .limit(limit))).all())
+
+
+async def set_status(db: AsyncSession, lace_id: uuid.UUID, opportunity_id: uuid.UUID, status: str,
+                     actor_id: uuid.UUID | None, member_id: uuid.UUID | None = None) -> LaceOpportunity:
+    """404 for an opportunity that is not this Lace's (or is another member's)."""
+    row = await db.scalar(select(LaceOpportunity).where(LaceOpportunity.id == opportunity_id,
+                                                        LaceOpportunity.lace_id == lace_id,
+                                                        LaceOpportunity.seen_by(member_id)))
+    if row is None:
+        raise NotFoundError("Opportunity not found")
+    if status == "open" and row.status != status and row.owner_id is None:
+        await lace_activity.note(db, lace_id, actor_id, "opportunity_saved", f"Saved {row.title} as an opportunity")
+    row.status = status
+    await db.commit()
+    return row
+
+
+async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
+                       found: list[Opportunity], owner_id: uuid.UUID | None = None) -> tuple[int, int]:
+    """Save a search's opportunities. A new one is a suggestion until the
+    founder saves it. One already on file is refreshed and keeps its status,
+    so a dismissed one stays dismissed. Returns (new, refreshed)."""
+    keys = [url_key(o.url) for o in found]
+    known = set((await db.scalars(select(LaceOpportunity.url_key).where(
+        LaceOpportunity.lace_id == lace_id, LaceOpportunity.owned_by(owner_id),
+        LaceOpportunity.url_key.in_(keys)))).all())
+    now = datetime.now(UTC)
+    for o, key in zip(found, keys):
+        stmt = insert(LaceOpportunity).values(
+            id=uuid.uuid4(), lace_id=lace_id, owner_id=owner_id, kind=o.kind, title=o.title[:500], organiser=(o.organiser or None)
+            and o.organiser[:255], url=o.url, url_key=key, deadline=_date(o.deadline), event_date=_date(o.date),
+            location=(o.location or None) and o.location[:255], why_it_fits=o.why_it_fits, how_to_act=o.how_to_act,
+            found_by_run_id=run_id, last_seen_at=now, status="suggested",
+        )
+        refresh = {c: stmt.excluded[c] for c in ("kind", "title", "organiser", "url", "deadline", "event_date",
+                                                 "location", "why_it_fits", "how_to_act", "found_by_run_id",
+                                                 "last_seen_at")}
+        await db.execute(stmt.on_conflict_do_update(constraint="uq_lace_opportunities_lace_id_owner_id_url_key", set_=refresh))
+    refreshed = len(set(keys) & known)
+    return len(set(keys)) - refreshed, refreshed
+
+
+async def laces_due_for_scan(db: AsyncSession) -> list[tuple[uuid.UUID, uuid.UUID]]:
+    """(lace_id, user_id) of active Laces with an ICP whose last opportunity
+    search is older than the Lace's watch interval (or never ran) and none is
+    running."""
+    recent = select(models.Run.id).where(
+        models.Run.kind == "lace_opportunities", models.Run.lace_id == Lace.id,
+        or_(models.Run.status.not_in(TERMINAL_STATUSES), models.Run.created_at >= func.now() - watch_interval()))
+    rows = await db.execute(select(Lace.id, Lace.user_id).where(
+        Lace.status == "active", Lace.icp.is_not(None), ~recent.exists()))
+    return [(lace_id, user_id) for lace_id, user_id in rows.all()]

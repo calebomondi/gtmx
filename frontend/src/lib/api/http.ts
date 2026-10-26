@@ -24,7 +24,8 @@ export async function apiFetch<T>(
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      // A FormData body (a file upload) sets its own multipart boundary.
+      ...(init.body && !(init.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...init.headers,
     },
@@ -43,4 +44,37 @@ export async function apiFetch<T>(
 
   if (response.status === 204) return undefined as T
   return (await response.json()) as T
+}
+
+/**
+ * Read a newline-delimited JSON stream (e.g. a run's events), calling `onItem`
+ * for each line until the server ends it or `signal` aborts. A streaming fetch
+ * rather than EventSource, because EventSource cannot send the auth header.
+ */
+export async function apiStream<T>(
+  path: string,
+  onItem: (item: T) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const token = await getAccessToken()
+  const response = await fetch(`${API_BASE}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    signal,
+  })
+  if (!response.ok || !response.body) {
+    throw new ApiError(response.status, `${response.status} ${response.statusText}`)
+  }
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
+  let buffered = ""
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffered += value
+    const lines = buffered.split("\n")
+    buffered = lines.pop() ?? ""
+    for (const line of lines) {
+      if (line.trim()) onItem(JSON.parse(line) as T)
+    }
+  }
+  if (buffered.trim()) onItem(JSON.parse(buffered) as T)
 }

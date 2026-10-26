@@ -13,8 +13,10 @@ import {
 } from "@/components/ui/card"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { usePageTitle } from "@/lib/use-page-title"
 
 export default function ForgotPasswordPage() {
+  usePageTitle("Reset your password")
   const [email, setEmail] = useState("")
   const [emailTouched, setEmailTouched] = useState(false)
   const [sent, setSent] = useState(false)

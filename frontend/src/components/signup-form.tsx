@@ -18,9 +18,10 @@ import {
   FieldSeparator,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { getPilotStatus } from "@/lib/api"
 import { supabase } from "@/lib/supabase"
 import { isValidEmail, passwordIssues } from "@/lib/validation"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
 export function SignupForm({
@@ -28,6 +29,7 @@ export function SignupForm({
   ...props
 }: React.ComponentProps<"div">) {
   const navigate = useNavigate()
+  const inviteOnly = useInviteOnly()
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -96,6 +98,12 @@ export function SignupForm({
           <CardDescription>
             Sign up with your Google account
           </CardDescription>
+          {inviteOnly && (
+            <p className="mt-2 rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+              Thalace is in a closed pilot. Sign up with the email you were invited with. Anyone else can create an
+              account and will get in when we open a spot.
+            </p>
+          )}
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit}>
@@ -187,4 +195,18 @@ export function SignupForm({
       </FieldDescription>
     </div>
   )
+}
+
+/** Whether sign-ups are for the closed pilot only; false until known. */
+function useInviteOnly(): boolean {
+  const [inviteOnly, setInviteOnly] = useState(false)
+  useEffect(() => {
+    let current = true
+    // Unknown (the API is down) shows no note: sign-up itself still works.
+    getPilotStatus().then((s) => current && setInviteOnly(s.invite_only), () => undefined)
+    return () => {
+      current = false
+    }
+  }, [])
+  return inviteOnly
 }

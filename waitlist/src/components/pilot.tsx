@@ -1,8 +1,9 @@
 import type { PilotSpots } from '../lib/api'
+import { pilotStart } from '../lib/pilot-start'
 import { stagger } from '../lib/stagger'
 import { Section } from './section'
 
-const GET = ['Thalace free for the whole pilot', 'A direct line to the team building it', 'A say in what we build next']
+const GET = ['Your own Lace, free for the whole pilot', 'A direct line to the team building it', 'A say in what Lace learns next']
 const ASK = ['A 20-minute feedback call every two weeks', 'Honest answers about what works and what doesn’t']
 
 function SpotDots({ pilot }: { pilot: PilotSpots }) {
@@ -40,6 +41,12 @@ function List({ title, items }: { title: string; items: string[] }) {
   )
 }
 
+function pilotTitle(pilot: PilotSpots | null): string {
+  if (!pilot) return 'A small group of founders, each with their own Lace.'
+  const { day, started } = pilotStart(pilot.starts_on)
+  return started ? `${pilot.total} founders, running since ${day}.` : `${pilot.total} founders, starting ${day}.`
+}
+
 export function Pilot({ pilot }: { pilot: PilotSpots | null }) {
   const full = pilot !== null && pilot.left === 0
   return (
@@ -47,8 +54,8 @@ export function Pilot({ pilot }: { pilot: PilotSpots | null }) {
       id="pilot"
       tone="brand"
       label="The pilot"
-      title={pilot ? `${pilot.total} founders, starting in two weeks.` : 'A small group of founders, starting in two weeks.'}
-      intro="Join the waitlist and tick “Join the pilot”. We’ll email pilots within two weeks of signing up to set up an account and a short kickoff call."
+      title={pilotTitle(pilot)}
+      intro="Join the waitlist and tick “Join the pilot”. We’ll email you to set up your Lace and a short kickoff call."
     >
       <div className="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
         <div data-reveal className="flex flex-col gap-6">

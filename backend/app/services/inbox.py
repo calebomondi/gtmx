@@ -1,9 +1,11 @@
-"""Replies and bounces for sent outreach, synced from the user's Gmail.
+"""Replies and bounces for sent outreach, synced from the mailboxes the
+user's Laces send from (Gmail or Outlook; see outreach.email_account).
 
-One mailbox search per user per sync (recent mail not from the user), matched
-to the threads of emails sent from Thalace. A reply becomes an inbound message
-in that thread; a delivery-failure notice marks the sent email bounced. Read
-only: syncing never sends, labels or deletes anything in the mailbox.
+One search per mailbox per sync (recent mail not from the user), matched
+to the threads of emails a Lace sent. A reply
+becomes an inbound message in that thread, in the same table as the email it
+answers; a delivery-failure notice marks the sent email bounced. Read only:
+syncing never sends, labels or deletes anything in the mailbox.
 """
 
 import asyncio
@@ -18,6 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import models
 from backend.app.services import connections as connection_service
+from backend.app.services import outlook
+from backend.app.services.outreach import email_account
 from config import settings
 from utils.log import logger
 
@@ -28,12 +32,27 @@ _BODY_CHARS = 20_000
 _BOUNCE_SENDERS = ("mailer-daemon", "postmaster")
 _BOUNCE_SUBJECTS = re.compile(r"delivery status notification|undeliverable|delivery failure|returned mail|failure notice", re.I)
 _ADDRESS_RE = re.compile(r"<?([^<>\s]+@[^<>\s]+)>?\s*$")
+# Where a reply's own words end and the mail it answers begins: Gmail's
+# "On <date>, <name> wrote:" (often wrapped over two lines), Outlook's
+# "-----Original Message-----" or "From: ... Sent: ..." header, or a run of
+# "> " quoted lines. Mirrored in migration 20261022_1200_strip_quotes_from_email_replies.
+_QUOTE_STARTS = (
+    re.compile(r"^[ \t]*On\b[^\n]{0,300}(?:\n[^\n]{0,300})?\bwrote:[ \t]*$", re.M),
+    re.compile(r"^[ \t]*-{2,}[ \t]*Original Message[ \t]*-{2,}", re.M | re.I),
+    re.compile(r"^[ \t]*From:[^\n]*\n[ \t]*(?:Sent|Date):", re.M),
+    re.compile(r"^[ \t]*>", re.M),
+)
+
+
+# Sent outreach the sync watches. v1 workspace outreach is no longer synced.
+_OUTREACH = (models.LaceOutreach,)
+Outreach = models.LaceOutreach
 
 
 @dataclass
 class SyncResult:
-    replies: list[models.OutreachMessage] = field(default_factory=list)
-    bounced: list[models.OutreachMessage] = field(default_factory=list)
+    replies: list[Outreach] = field(default_factory=list)
+    bounced: list[Outreach] = field(default_factory=list)
 
 
 def _address(sender: str) -> str:
@@ -46,11 +65,13 @@ def _display_name(sender: str) -> str | None:
     return name or None
 
 
-def _timestamp(raw) -> datetime:
+def timestamp(raw) -> datetime:
+    """A provider's timestamp as an aware UTC datetime; now when unreadable."""
     try:
-        return datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
     except ValueError:
         return datetime.now(UTC)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
 def is_bounce(message: dict) -> bool:
@@ -58,17 +79,17 @@ def is_bounce(message: dict) -> bool:
     return sender.split("@")[0] in _BOUNCE_SENDERS or bool(_BOUNCE_SUBJECTS.search(message.get("subject") or ""))
 
 
-def _fetch_recent(user_id: uuid.UUID, connection_id: str, days: int) -> list[dict]:
-    """Recent mail not sent by the user, newest first, bounded."""
+def _fetch_recent(gmail: connection_service.ConnectionInfo, days: int) -> list[dict]:
+    """Recent mail not sent by the account's owner, newest first, bounded."""
     messages: list[dict] = []
     page_token = None
     for _ in range(_MAX_PAGES):
         arguments = {"query": f"newer_than:{days}d -from:me", "max_results": _PAGE_SIZE, "include_payload": False}
         if page_token:
             arguments["page_token"] = page_token
-        result = connection_service.execute_tool(user_id, _FETCH_TOOL, arguments, connection_id)
+        result = connection_service.execute_tool(gmail.entity, _FETCH_TOOL, arguments, gmail.id)
         if result["error"] or not isinstance(result["data"], dict):
-            logger.info("Gmail fetch for user %s failed: %s", user_id, result["error"])
+            logger.info("Gmail fetch for %s failed: %s", gmail.entity, result["error"])
             break
         messages.extend(result["data"].get("messages") or [])
         page_token = result["data"].get("nextPageToken")
@@ -77,18 +98,30 @@ def _fetch_recent(user_id: uuid.UUID, connection_id: str, days: int) -> list[dic
     return messages
 
 
-async def _sent_threads(db: AsyncSession, user_id: uuid.UUID, since: datetime) -> dict[str, models.OutreachMessage]:
+def check_minutes() -> int:
+    """How often replies to sent messages are looked for; 0 when never."""
+    return round(settings.inbox_sync_interval_s / 60) if settings.inbox_sync_enabled else 0
+
+
+async def _sent_threads(db: AsyncSession, user_id: uuid.UUID, since: datetime) -> dict[str, Outreach]:
     """thread_id -> the latest email the user sent in it, within the window."""
-    rows = (await db.execute(
-        select(models.OutreachMessage).where(
-            models.OutreachMessage.user_id == user_id,
-            models.OutreachMessage.channel == "email",
-            models.OutreachMessage.direction == "outbound",
-            models.OutreachMessage.thread_id.is_not(None),
-            models.OutreachMessage.sent_at >= since,
-        ).order_by(models.OutreachMessage.sent_at)
-    )).scalars().all()
-    return {row.thread_id: row for row in rows}
+    threads: dict[str, Outreach] = {}
+    for model in _OUTREACH:
+        rows = (await db.execute(
+            select(model).where(
+                model.user_id == user_id, model.channel == "email", model.direction == "outbound",
+                model.thread_id.is_not(None), model.sent_at >= since,
+            ).order_by(model.sent_at)
+        )).scalars().all()
+        threads.update((row.thread_id, row) for row in rows)
+    return threads
+
+
+def reply_only(text: str) -> str:
+    """The reply without the earlier mail it quotes. A message that is
+    nothing but a quote is kept whole, so no reply ever reads as empty."""
+    cut = min((m.start() for pattern in _QUOTE_STARTS if (m := pattern.search(text))), default=len(text))
+    return text[:cut].rstrip() or text.strip()
 
 
 def _text(message: dict) -> str:
@@ -101,21 +134,22 @@ def _text(message: dict) -> str:
     return ""
 
 
-def _inbound(sent: models.OutreachMessage, message: dict, status: str) -> models.OutreachMessage:
+def _inbound(sent: Outreach, message: dict, status: str) -> Outreach:
+    """The received message, in the same table as the email it answers."""
     sender = message.get("sender") or ""
-    return models.OutreachMessage(
-        workspace_id=sent.workspace_id, user_id=sent.user_id, account_id=sent.account_id,
+    return type(sent)(
+        lace_id=sent.lace_id, user_id=sent.user_id, account_id=sent.account_id,
         channel="email", direction="inbound", status=status, thread_id=sent.thread_id,
         provider_message_id=message.get("messageId"),
         recipient_name=_display_name(sender) or sent.recipient_name,
         recipient_company=sent.recipient_company, recipient_address=_address(sender) or None,
         subject=(message.get("subject") or "")[:255] or None,
-        body=_text(message)[:_BODY_CHARS],
-        sent_at=_timestamp(message.get("messageTimestamp")),
+        body=reply_only(_text(message))[:_BODY_CHARS],
+        sent_at=timestamp(message.get("messageTimestamp")),
     )
 
 
-def _bounced_send(message: dict, threads: dict[str, models.OutreachMessage]) -> models.OutreachMessage | None:
+def _bounced_send(message: dict, threads: dict[str, Outreach]) -> Outreach | None:
     """The sent email a bounce notice is about: same thread, or the bounce
     text names its recipient."""
     if message.get("threadId") in threads:
@@ -124,24 +158,54 @@ def _bounced_send(message: dict, threads: dict[str, models.OutreachMessage]) -> 
     return next((s for s in threads.values() if s.recipient_address and s.recipient_address.lower() in text), None)
 
 
+async def _by_mailbox(db: AsyncSession, threads: dict[str, Outreach]
+                      ) -> list[tuple[connection_service.ConnectionInfo, dict[str, Outreach]]]:
+    """The sent threads grouped by the mailbox their Lace sends from: a
+    Lace's own account, or the founder's shared one for the Laces without one."""
+    groups: dict[str, tuple[connection_service.ConnectionInfo, dict[str, Outreach]]] = {}
+    for lace_id in {sent.lace_id for sent in threads.values()}:
+        lace = await db.get(models.Lace, lace_id)
+        mailbox = await email_account(db, lace) if lace else None
+        if mailbox is None:
+            continue
+        mine = {thread: sent for thread, sent in threads.items() if sent.lace_id == lace_id}
+        groups.setdefault(mailbox.id, (mailbox, {}))[1].update(mine)
+    return list(groups.values())
+
+
+def _fetch(mailbox: connection_service.ConnectionInfo, days: int) -> list[dict]:
+    if mailbox.platform == "outlook":
+        return outlook.recent(mailbox, (datetime.now(UTC) - timedelta(days=days)).isoformat())
+    return _fetch_recent(mailbox, days)
+
+
 async def sync_user(db: AsyncSession, user_id: uuid.UUID) -> SyncResult:
-    """Store new replies and bounces for the user's recent sends."""
+    """Store new replies and bounces for the user's recent sends, reading
+    each Gmail account their Laces send from."""
     result = SyncResult()
     since = datetime.now(UTC) - timedelta(days=settings.inbox_sync_window_days)
     threads = await _sent_threads(db, user_id, since)
     if not threads:
         return result
-    gmail = next((c for c in await connection_service.list_for_user(db, user_id)
-                  if c.platform == "gmail" and c.status == "live"), None)
-    if gmail is None:
-        return result
+    known: set[str] = set()
+    for model in _OUTREACH:
+        known |= set((await db.execute(select(model.provider_message_id).where(
+            model.user_id == user_id, model.provider_message_id.is_not(None),
+        ))).scalars())
+    for mailbox, sent_threads in await _by_mailbox(db, threads):
+        fetched = await asyncio.to_thread(_fetch, mailbox, settings.inbox_sync_window_days)
+        _store(db, fetched, sent_threads, known, result)
+    try:
+        await db.commit()
+    except IntegrityError:  # a concurrent sync stored the same messages first
+        await db.rollback()
+        return SyncResult()
+    return result
 
-    fetched = await asyncio.to_thread(_fetch_recent, user_id, gmail.id, settings.inbox_sync_window_days)
-    known = set((await db.execute(
-        select(models.OutreachMessage.provider_message_id).where(
-            models.OutreachMessage.user_id == user_id, models.OutreachMessage.provider_message_id.is_not(None),
-        )
-    )).scalars())
+
+def _store(db: AsyncSession, fetched: list[dict], threads: dict[str, Outreach], known: set[str],
+           result: SyncResult) -> None:
+    """Add the replies and bounces among `fetched` that answer `threads`."""
     for message in fetched:
         if not message.get("messageId") or message["messageId"] in known:
             continue
@@ -157,21 +221,14 @@ async def sync_user(db: AsyncSession, user_id: uuid.UUID) -> SyncResult:
             db.add(reply)
             result.replies.append(reply)
         known.add(message["messageId"])
-    try:
-        await db.commit()
-    except IntegrityError:  # a concurrent sync stored the same messages first
-        await db.rollback()
-        return SyncResult()
-    return result
 
 
 async def users_to_sync(db: AsyncSession) -> list[uuid.UUID]:
-    """Users with an email sent from Thalace inside the sync window."""
+    """Users with an email a Lace sent inside the sync window."""
     since = datetime.now(UTC) - timedelta(days=settings.inbox_sync_window_days)
-    return list((await db.execute(
-        select(models.OutreachMessage.user_id).where(
-            models.OutreachMessage.direction == "outbound",
-            models.OutreachMessage.thread_id.is_not(None),
-            models.OutreachMessage.sent_at >= since,
-        ).distinct()
-    )).scalars())
+    users: set[uuid.UUID] = set()
+    for model in _OUTREACH:
+        users |= set((await db.execute(select(model.user_id).where(
+            model.direction == "outbound", model.thread_id.is_not(None), model.sent_at >= since,
+        ).distinct())).scalars())
+    return sorted(users)

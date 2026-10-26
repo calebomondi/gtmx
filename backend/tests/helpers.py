@@ -41,3 +41,22 @@ class FakeSupabase:
 def supabase_user(uid, email, app_metadata=None):
     return SimpleNamespace(id=str(uid), email=email, app_metadata=app_metadata or {}, user_metadata={},
                            created_at=None, last_sign_in_at=None, banned_until=None)
+
+
+def stub_accounts(monkeypatch, shared, own=(), name=None) -> None:
+    """Composio's connected accounts, live: the founder's shared ones for the
+    platforms in `shared` and every Lace's own for those in `own` (either
+    may be a set the test changes later). Ids are ca_<platform> and
+    ca_own_<platform>."""
+    from backend.app.services import connections as connection_service
+    from backend.app.services.connections import ConnectionInfo
+
+    async def listed(db, user_id, entities):
+        now = datetime.now(UTC)
+        found = []
+        for entity in entities:
+            mine = entity.startswith("lace:")
+            found += [ConnectionInfo(f"ca_own_{p}" if mine else f"ca_{p}", p, "live", name, now, now, entity)
+                      for p in sorted(own if mine else shared)]
+        return found
+    monkeypatch.setattr(connection_service, "_list", listed)

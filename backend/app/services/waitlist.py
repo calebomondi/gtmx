@@ -14,6 +14,7 @@ from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.schemas.waitlist import PilotSpots, WaitlistDetails, WaitlistSource
 from backend.app.services import email, waitlist_emails
+from backend.app.services.competitors import checked_website
 from backend.app.services.errors import NotFoundError, RateLimitedError
 from config import settings
 from utils.log import logger
@@ -84,6 +85,8 @@ async def save_details(db: AsyncSession, token: str, details: WaitlistDetails) -
     for field in ("name", "company", "role", "expectations"):
         if field in changes:
             changes[field] = (changes[field] or "").strip() or None
+    if "website" in changes:
+        changes["website"] = checked_website(changes["website"]) if (changes["website"] or "").strip() else None
     if "countries" in changes:
         changes["countries"] = [c.strip() for c in changes["countries"] or [] if c and c.strip()]
     for field, value in changes.items():
@@ -98,7 +101,7 @@ async def pilot_spots(db: AsyncSession) -> PilotSpots:
         select(func.count()).select_from(models.WaitlistSignup).where(models.WaitlistSignup.wants_pilot.is_(True))
     ) or 0
     total = settings.waitlist_pilot_spots
-    return PilotSpots(total=total, taken=taken, left=max(total - taken, 0))
+    return PilotSpots(total=total, taken=taken, left=max(total - taken, 0), starts_on=settings.waitlist_pilot_starts_on)
 
 
 async def send_joined_email(signup_id: uuid.UUID) -> None:

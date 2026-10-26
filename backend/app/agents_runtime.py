@@ -1,6 +1,7 @@
-"""App-lifetime runtime for the discovery agent: compiles the top-level graph
-once with a durable AsyncPostgresSaver (same database as the app) so
-discovery interrupts and phase progress survive per thread_id."""
+"""App-lifetime runtime for the Lace graphs: one durable AsyncPostgresSaver
+(same database as the app) that every Lace's conversation thread is
+checkpointed in. The graphs themselves compile per run around one Lace's
+store."""
 
 import enum
 import importlib
@@ -14,14 +15,12 @@ from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel
 
 import agents.schemas
-from agents.discovery_agent import build_discovery_agent
 
 from config import settings
 from utils.log import logger
 
-# Session state is mostly plain dicts and strings, but the specialist team, the
-# market/competition extractions and the ICP are pydantic models that get
-# written into every checkpoint. LangGraph's msgpack decoder refuses
+# A Lace's thread carries messages, but our own pydantic models can reach a
+# checkpoint too. LangGraph's msgpack decoder refuses
 # unregistered types: today it only logs a warning, but it is scheduled to
 # become a hard failure. Allowlisting the modules' models keeps checkpoints
 # readable across that change. Nested models (Competitor, Pricing, Specialist,
@@ -55,16 +54,15 @@ _CHECKPOINT_TYPES = [
 
 
 
-_agent = None
 _pool: AsyncConnectionPool | None = None
+_saver: AsyncPostgresSaver | None = None
 
 
-async def start_agent_runtime(database_url: str):
-    """Open the checkpointer pool, ensure its tables, compile the agent.
-    Idempotent."""
-    global _agent, _pool
-    if _agent is not None:
-        return _agent
+async def start_agent_runtime(database_url: str) -> AsyncPostgresSaver:
+    """Open the checkpointer pool and ensure its tables. Idempotent."""
+    global _pool, _saver
+    if _saver is not None:
+        return _saver
 
     pool = AsyncConnectionPool(
         conninfo=database_url,
@@ -96,20 +94,20 @@ async def start_agent_runtime(database_url: str):
         raise
 
     _pool = pool
-    _agent = build_discovery_agent(checkpointer=saver)
-    logger.info("Discovery agent runtime ready (checkpointer=postgres)")
-    return _agent
+    _saver = saver
+    logger.info("Agent runtime ready (checkpointer=postgres)")
+    return saver
 
 
 async def stop_agent_runtime():
-    global _agent, _pool
+    global _pool, _saver
     if _pool is not None:
         await _pool.close()
         _pool = None
-    _agent = None
+    _saver = None
 
 
-def get_agent():
-    if _agent is None:
+def get_checkpointer() -> AsyncPostgresSaver:
+    if _saver is None:
         raise RuntimeError("Agent runtime not started — lifespan did not run")
-    return _agent
+    return _saver

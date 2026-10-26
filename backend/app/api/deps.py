@@ -1,27 +1,26 @@
 """Auth and ownership dependencies -- the only place either is enforced.
 
-Identity: verify the Supabase access token from the Authorization header (or a
-`?token=` query param for WebSockets, which cannot send headers). Supabase owns
-identity (no local users table): a verified token IS the user.
+Identity: verify the Supabase access token from the Authorization header.
+Supabase owns identity (no local users table): a verified token IS the user.
 
-Ownership: every workspace- or project-scoped route resolves its resource
-through OwnedWorkspace / OwnedProject. Someone else's resource is a 404,
-indistinguishable from a missing one."""
+Access: every Lace-scoped route resolves its Lace through MemberLace, AdminLace or OwnerLace.
+Someone else's Lace is a 404, indistinguishable from a missing one."""
 
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Annotated, Optional
 
-from fastapi import Depends, HTTPException, WebSocket, status
+from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app import supabase_admin
-from backend.app.database import models
 from backend.app.database.connect import get_db
+from backend.app.database.lace_models import Lace, LaceMember
+from backend.app.services import lace_members
 from backend.app.services import limits
-from backend.app.services import projects as project_service
-from backend.app.services import workspaces as workspace_service
+from backend.app.services import pilot
 from utils.log import current_user_id
 
 _bearer = HTTPBearer(auto_error=False)
@@ -35,6 +34,8 @@ class AuthUser:
     avatar_url: Optional[str]
     # From Supabase app_metadata.role, which only the service key can write.
     is_admin: bool = False
+    # When the account was made: ones made before the pilot closed stay in.
+    created_at: Optional[datetime] = None
 
 
 async def user_from_token(token: str) -> Optional[AuthUser]:
@@ -56,14 +57,24 @@ async def user_from_token(token: str) -> Optional[AuthUser]:
     except (ValueError, AttributeError, TypeError):
         return None
 
-    metadata = getattr(suser, "user_metadata", None) or {}
     return AuthUser(
         id=uid,
         email=getattr(suser, "email", None),
-        name=metadata.get("full_name") or metadata.get("name"),
-        avatar_url=metadata.get("avatar_url") or metadata.get("picture"),
+        name=supabase_admin.name_of(suser),
+        avatar_url=supabase_admin.avatar_of(suser),
         is_admin=supabase_admin.is_admin(getattr(suser, "app_metadata", None)),
+        created_at=_when(getattr(suser, "created_at", None)),
     )
+
+
+def _when(value) -> Optional[datetime]:
+    """Supabase gives a datetime or an ISO string, depending on the client."""
+    if isinstance(value, datetime) or value is None:
+        return value
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 async def require_user(
@@ -84,41 +95,35 @@ async def require_user(
     return user
 
 
-async def require_matching_user(
-    user_id: uuid.UUID,
-    current_user: Annotated[AuthUser, Depends(require_user)],
-) -> AuthUser:
-    """For `/user/{user_id}/...` routes: the caller must BE that user."""
-    if current_user.id != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot access another user's resources",
-        )
-    return current_user
-
-
-async def websocket_user(websocket: WebSocket) -> Optional[AuthUser]:
-    token = websocket.query_params.get("token")
-    if not token:
-        return None
-    return await user_from_token(token)
-
-
 CurrentUser = Annotated[AuthUser, Depends(require_user)]
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 
 
-async def get_owned_workspace(workspace_id: uuid.UUID, user: CurrentUser, db: DbSession) -> models.Workspace:
-    return await workspace_service.get_owned(db, user.id, workspace_id)
+async def get_member_lace(lace_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Lace:
+    """A Lace the user is on, in any role; 404 otherwise."""
+    return (await lace_members.open_lace(db, lace_id, user.id, "member"))[0]
 
 
-async def get_owned_project(project_id: uuid.UUID, user: CurrentUser, db: DbSession) -> models.Project:
-    return await project_service.get_owned(db, user.id, project_id)
+async def get_admin_lace(lace_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Lace:
+    """A Lace the user manages (admin or owner); 403 for a member, 404 for anyone else."""
+    return (await lace_members.open_lace(db, lace_id, user.id, "admin"))[0]
 
 
-OwnedWorkspace = Annotated[models.Workspace, Depends(get_owned_workspace)]
-OwnedProject = Annotated[models.Project, Depends(get_owned_project)]
-MatchingUser = Annotated[AuthUser, Depends(require_matching_user)]
+async def get_owner_lace(lace_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Lace:
+    """A Lace the user owns; 403 for its admins and members, 404 for anyone else."""
+    return (await lace_members.open_lace(db, lace_id, user.id, "owner"))[0]
+
+
+async def get_lace_membership(lace_id: uuid.UUID, user: CurrentUser, db: DbSession) -> LaceMember:
+    """The user's place on a Lace they are on (their role, their pin); 404 otherwise."""
+    return (await lace_members.open_lace(db, lace_id, user.id, "member"))[1]
+
+
+# Every route under a Lace takes one of these: the only place access to a Lace is decided.
+MemberLace = Annotated[Lace, Depends(get_member_lace)]
+AdminLace = Annotated[Lace, Depends(get_admin_lace)]
+OwnerLace = Annotated[Lace, Depends(get_owner_lace)]
+LaceMembership = Annotated[LaceMember, Depends(get_lace_membership)]
 
 
 async def require_admin(user: CurrentUser) -> AuthUser:
@@ -129,6 +134,15 @@ async def require_admin(user: CurrentUser) -> AuthUser:
 
 
 AdminUser = Annotated[AuthUser, Depends(require_admin)]
+
+
+async def in_pilot(user: CurrentUser, db: DbSession) -> AuthUser:
+    """Router-level guard on the customer API while the pilot is closed: only
+    people let in may use it (services.pilot)."""
+    if not await pilot.may_use(db, user.id, user.email, user.created_at, user.is_admin):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Thalace is in a closed pilot. You'll hear from us when you're in.")
+    return user
 
 
 async def rate_limited(user: CurrentUser) -> AuthUser:

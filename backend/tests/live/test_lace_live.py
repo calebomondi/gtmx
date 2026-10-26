@@ -1,0 +1,413 @@
+"""A Lace end to end against real services: the API creates it, it onboards
+from a real website, then answers a founder message that needs web research.
+Real Firecrawl, Exa, LLM ladder and Postgres checkpointer.
+
+    uv run pytest -m live backend/tests/live/test_lace_live.py -s
+"""
+
+import json
+import uuid
+
+import pytest
+
+from backend.app import agents_runtime
+from backend.tests.test_runs import _wait_for_status
+from config import settings
+
+pytestmark = pytest.mark.live
+
+API = "/api/v1"
+WEBSITE = "linear.app"
+ONBOARDING_TIMEOUT_S = 600
+TURN_TIMEOUT_S = 300
+
+
+@pytest.fixture
+def runtime(client):
+    client.portal.call(agents_runtime.start_agent_runtime, settings.database_url)
+    yield
+    client.portal.call(agents_runtime.stop_agent_runtime)
+
+
+def _frames(client, run_id: str) -> list[dict]:
+    with client.stream("GET", f"{API}/runs/{run_id}/events") as response:
+        return [json.loads(line) for line in response.iter_lines() if line]
+
+
+def test_lace_onboards_and_researches(client, runtime):
+    created = client.post(f"{API}/laces", json={"name": "Ada", "website": WEBSITE}).json()
+    lace_id, run_id = created["lace"]["id"], created["run_id"]
+    run = client.portal.call(_wait_for_status, uuid.UUID(run_id), {"completed", "failed"}, ONBOARDING_TIMEOUT_S)
+    assert run.status == "completed", run.error
+
+    lace = client.get(f"{API}/laces/{lace_id}").json()
+    facts = client.get(f"{API}/laces/{lace_id}/facts").json()
+    [opening] = client.get(f"{API}/laces/{lace_id}/messages").json()
+    print(f"\n--- {lace['startup_name']}: {len(facts)} facts\n--- OPENING\n{opening['content']}")
+    assert lace["status"] == "active" and len(facts) >= 5 and opening["role"] == "lace"
+
+    sent = client.post(f"{API}/laces/{lace_id}/messages", json={
+        "text": "Who are our three closest competitors? Look them up and note what you find."}).json()
+    run = client.portal.call(_wait_for_status, uuid.UUID(sent["run_id"]), {"completed", "failed"}, TURN_TIMEOUT_S)
+    assert run.status == "completed", run.error
+
+    frames = _frames(client, sent["run_id"])
+    steps = [f["text"] for f in frames if f["type"] == "step"]
+    reply = client.get(f"{API}/laces/{lace_id}/messages").json()[-1]
+    print("--- STEPS\n" + "\n".join(steps) + f"\n--- REPLY\n{reply['content']}")
+    assert steps and reply["role"] == "lace" and reply["content"].strip()
+    after = client.get(f"{API}/laces/{lace_id}/facts?topic=competition").json()
+    print(f"--- competition facts recorded: {len(after)}")
+
+
+HUNT_TIMEOUT_S = 1800
+
+
+def test_lace_hunts_competitors_and_reports_back(client, runtime, user):
+    import psycopg
+
+    from backend.app.runs import manager
+
+    created = client.post(f"{API}/laces", json={"name": "Ada", "website": WEBSITE}).json()
+    lace_id = uuid.UUID(created["lace"]["id"])
+    run = client.portal.call(_wait_for_status, uuid.UUID(created["run_id"]), {"completed", "failed"}, ONBOARDING_TIMEOUT_S)
+    assert run.status == "completed", run.error
+
+    job_id = client.portal.call(manager.start_lace_job, "lace_competitors", user.id, lace_id, {"focus": None}).id
+    job = client.portal.call(_wait_for_status, uuid.UUID(job_id), {"completed", "failed"}, HUNT_TIMEOUT_S)
+    assert job.status == "completed", job.error
+    # The wake turn starts just after the job marks itself completed.
+    wake = client.portal.call(_first_turn, lace_id)
+    with psycopg.connect(settings.database_url) as conn:
+        rows = conn.execute("SELECT name, website, summary FROM lace_competitors WHERE lace_id = %s", (lace_id,)).fetchall()
+    print(f"\n--- {len(rows)} competitors, job progress {job.progress}")
+    for name, website, summary in rows:
+        print(f"  {name} ({website}): {(summary or '')[:100]}")
+    assert rows and wake, "no competitors saved, or the Lace was not woken"
+    turn = client.portal.call(_wait_for_status, wake, {"completed", "failed"}, TURN_TIMEOUT_S)
+    assert turn.status == "completed", turn.error
+    print("--- THE LACE SAYS\n" + client.get(f"{API}/laces/{lace_id}/messages").json()[-1]["content"])
+
+
+async def _first_turn(lace_id: uuid.UUID, timeout: float = 30.0) -> uuid.UUID:
+    import asyncio
+
+    from sqlalchemy import select
+
+    from backend.app.database import models
+    from backend.app.database.connect import AsyncSessionLocal
+    async with asyncio.timeout(timeout):
+        while True:
+            async with AsyncSessionLocal() as db:
+                run_id = await db.scalar(select(models.Run.id).where(
+                    models.Run.lace_id == lace_id, models.Run.kind == "lace_turn"))
+            if run_id:
+                return run_id
+            await asyncio.sleep(0.2)
+
+
+MONITOR_TIMEOUT_S = 900
+
+
+def test_lace_monitors_competitors(client, runtime, user):
+    import psycopg
+
+    from backend.app.runs import manager
+
+    created = client.post(f"{API}/laces", json={"name": "Ada", "website": WEBSITE}).json()
+    lace_id = uuid.UUID(created["lace"]["id"])
+    run = client.portal.call(_wait_for_status, uuid.UUID(created["run_id"]), {"completed", "failed"}, ONBOARDING_TIMEOUT_S)
+    assert run.status == "completed", run.error
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        for name, site in (("Jira", "https://www.atlassian.com/software/jira"), ("ClickUp", "https://clickup.com")):
+            conn.execute("INSERT INTO lace_competitors (id, lace_id, name, website, domain_key) VALUES (%s, %s, %s, %s, %s)",
+                         (uuid.uuid4(), lace_id, name, site, name.lower()))
+
+    job = client.portal.call(manager.start_lace_job, "lace_monitor", user.id, lace_id, {})
+    job = client.portal.call(_wait_for_status, job.id, {"completed", "failed"}, MONITOR_TIMEOUT_S)
+    assert job.status == "completed", job.error
+    print(f"\n--- monitor: {job.progress}")
+    with psycopg.connect(settings.database_url) as conn:
+        for claim, url in conn.execute("SELECT claim, source_url FROM lace_facts WHERE origin = 'monitor'"):
+            print(f"  FACT {claim}  <- {url}")
+        checked = conn.execute("SELECT count(*) FROM lace_competitors WHERE monitor_state IS NOT NULL").fetchone()[0]
+    assert checked == 2
+    if job.progress["changes"]:
+        turn = client.portal.call(_wait_for_status, client.portal.call(_first_turn, lace_id), {"completed", "failed"},
+                                  TURN_TIMEOUT_S)
+        assert turn.status == "completed", turn.error
+        print("--- THE LACE SAYS\n" + client.get(f"{API}/laces/{lace_id}/messages").json()[-1]["content"])
+
+
+ACCOUNTS_TIMEOUT_S = 1800
+
+
+def test_lace_finds_customers_in_kenya(client, runtime, user):
+    import psycopg
+
+    from backend.app.runs import manager
+
+    created = client.post(f"{API}/laces", json={"name": "Ada", "website": "shangalabs.com"}).json()
+    lace_id = uuid.UUID(created["lace"]["id"])
+    run = client.portal.call(_wait_for_status, uuid.UUID(created["run_id"]), {"completed", "failed"}, ONBOARDING_TIMEOUT_S)
+    assert run.status == "completed", run.error
+
+    sent = client.post(f"{API}/laces/{lace_id}/messages", json={
+        "text": "Work out our ideal customer profile. We sell to companies in Kenya."}).json()
+    turn = client.portal.call(_wait_for_status, uuid.UUID(sent["run_id"]), {"completed", "failed"}, TURN_TIMEOUT_S)
+    assert turn.status == "completed", turn.error
+    with psycopg.connect(settings.database_url) as conn:
+        icp = conn.execute("SELECT icp FROM laces WHERE id = %s", (lace_id,)).fetchone()[0]
+    print(f"\n--- ICP industries {icp and icp.get('industries')}, geo {icp and icp.get('geo')}, beachhead {icp and icp.get('beachhead')}")
+    assert icp
+
+    job = client.portal.call(manager.start_lace_job, "lace_accounts", user.id, lace_id, {"country": "Kenya"})
+    job = client.portal.call(_wait_for_status, job.id, {"completed", "failed"}, ACCOUNTS_TIMEOUT_S)
+    assert job.status == "completed", job.error
+    accounts = client.get(f"{API}/laces/{lace_id}/accounts").json()
+    print(f"--- {len(accounts)} accounts, {job.progress}")
+    for a in accounts:
+        case = a["case"] or {}
+        print(f"  {a['name']} [{a['geo']}] ({a['website']}) {case.get('strength')}: WHY NOW {(a['trigger'] or {}).get('event')}"
+              f" | NEED {case.get('need')}")
+    assert accounts and all(a["trigger"] for a in accounts)
+
+
+CONTACTS_TIMEOUT_S = 1200
+KENYAN_ACCOUNTS = [("Enzi E-Mobility", "https://enzimotors.com"), ("SunCulture", "https://sunculture.com"),
+                   ("Reflex Technologies", "https://reflextechnologies.co.ke"), ("Synnefa", "https://synnefa.io")]
+
+
+def test_lace_finds_contacts_at_real_accounts(client, runtime, user):
+    import json
+
+    import psycopg
+
+    from agents.schemas.accounts import AccountRecord, TriggerEvent
+    from backend.app.runs import manager
+
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        lace_id = conn.execute(
+            "INSERT INTO laces (id, user_id, name, website, startup_name, status, icp) VALUES"
+            " (%s, %s, 'Ada', 'https://shangalabs.com', 'Shanga Labs', 'active', %s) RETURNING id",
+            (uuid.uuid4(), user.id, json.dumps({"buyer_type": "b2b", "geo": ["Kenya"],
+                                                "buyer_titles": ["CEO", "CTO", "Head of Engineering"]})),
+        ).fetchone()[0]
+        for name, site in KENYAN_ACCOUNTS:
+            record = AccountRecord(name=name, website=site, domain=site.split("//")[1], geo="Kenya",
+                                   trigger_event=TriggerEvent(event="Growing", signal_type="hiring_post", source=site))
+            conn.execute("INSERT INTO lace_accounts (id, lace_id, key, name, account_type, website, record)"
+                         " VALUES (%s, %s, %s, %s, 'company', %s, %s)",
+                         (uuid.uuid4(), lace_id, site.split("//")[1], name, site, json.dumps(record.model_dump(mode="json"))))
+
+    job = client.portal.call(manager.start_lace_job, "lace_contacts", user.id, lace_id, {})
+    job = client.portal.call(_wait_for_status, job.id, {"completed", "failed"}, CONTACTS_TIMEOUT_S)
+    assert job.status == "completed", job.error
+    print(f"\n--- contacts: {job.progress}")
+    for a in client.get(f"{API}/laces/{lace_id}/accounts").json():
+        people = [f"{c['name']} ({c['title']}) {c['email'] or c['linkedin']}" for c in a["contacts"] if c["name"]]
+        emails = [c["email"] for c in a["contacts"] if not c["name"] and c["email"]]
+        print(f"  {a['name']}: {a['contact_status']} | people {people} | emails {emails} | channels {a['channels']}")
+    assert job.progress["searched"] == len(KENYAN_ACCOUNTS)
+    # Wait for the Lace to report, so teardown never stops the loop mid-turn.
+    turn = client.portal.call(_wait_for_status, client.portal.call(_first_turn, lace_id), {"completed", "failed"},
+                              TURN_TIMEOUT_S)
+    assert turn.status == "completed", turn.error
+    print("--- THE LACE SAYS\n" + client.get(f"{API}/laces/{lace_id}/messages").json()[-1]["content"])
+
+
+DRAFTS_TIMEOUT_S = 900
+
+
+def test_lace_drafts_outreach_to_real_people(client, runtime, user):
+    import json
+
+    import psycopg
+
+    from agents.schemas.accounts import AccountRecord, ContactRecord, TriggerEvent
+    from backend.app.runs import manager
+
+    created = client.post(f"{API}/laces", json={"name": "Ada", "website": "shangalabs.com"}).json()
+    lace_id = uuid.UUID(created["lace"]["id"])
+    run = client.portal.call(_wait_for_status, uuid.UUID(created["run_id"]), {"completed", "failed"}, ONBOARDING_TIMEOUT_S)
+    assert run.status == "completed", run.error
+    seeds = [
+        ("SunCulture", "https://sunculture.com", "Raised a USD 27.5M Series B to scale IoT solar irrigation",
+         ContactRecord(name="Samir Ibrahim", title="CEO & Co-Founder", linkedin="https://linkedin.com/in/samiribrahim")),
+        ("Enzi E-Mobility", "https://enzimotors.com", "Grew headcount 58.8% to scale e-motorcycle production in Nairobi",
+         ContactRecord(name="George Muchai", title="Lead Engineer", linkedin="https://linkedin.com/in/george-muchai-3a27b5232")),
+    ]
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        for name, site, event, contact in seeds:
+            record = AccountRecord(name=name, website=site, geo="Kenya", key_contacts=[contact],
+                                   trigger_event=TriggerEvent(event=event, signal_type="funding_round", source=site))
+            conn.execute("INSERT INTO lace_accounts (id, lace_id, key, name, account_type, website, record, contact_status,"
+                         " fit_strength) VALUES (%s, %s, %s, %s, 'company', %s, %s, 'person', 'strong')",
+                         (uuid.uuid4(), lace_id, name.lower(), name, site, json.dumps(record.model_dump(mode="json"))))
+
+        # Nobody named: the organisation's own Instagram account gets the message.
+        record = AccountRecord(name="Synnefa", website="https://synnefa.io", geo="Kenya",
+                               socials={"instagram": "https://www.instagram.com/synnefa_"},
+                               trigger_event=TriggerEvent(event="Rolling out smart solar dryers to 7,000+ farmers",
+                                                          signal_type="product_listing", source="https://synnefa.io"))
+        conn.execute("INSERT INTO lace_accounts (id, lace_id, key, name, account_type, website, record, contact_status,"
+                     " fit_strength) VALUES (%s, %s, 'synnefa', 'Synnefa', 'company', 'https://synnefa.io', %s,"
+                     " 'organisation', 'strong')", (uuid.uuid4(), lace_id, json.dumps(record.model_dump(mode="json"))))
+
+    job = client.portal.call(manager.start_lace_job, "lace_drafts", user.id, lace_id, {})
+    job = client.portal.call(_wait_for_status, job.id, {"completed", "failed"}, DRAFTS_TIMEOUT_S)
+    assert job.status == "completed", job.error
+    drafts = client.get(f"{API}/laces/{lace_id}/outreach").json()
+    for d in drafts:
+        print(f"\n--- to {d['recipient_name'] or d['recipient_address']} at {d['recipient_company']} ({d['channel']})"
+              f"\n{d['body']}")
+    assert len(drafts) == 3 and all(d["status"] == "draft" for d in drafts)
+    instagram = next(d for d in drafts if d["recipient_company"] == "Synnefa")
+    assert instagram["channel"] == "instagram" and not instagram["subject"]
+    turn = client.portal.call(_wait_for_status, client.portal.call(_first_turn, lace_id, 60.0), {"completed", "failed"},
+                              TURN_TIMEOUT_S)
+    assert turn.status == "completed", turn.error
+
+
+def test_lace_reads_a_reply_and_drafts_the_answer(client, runtime, user, monkeypatch):
+    import json
+
+    import psycopg
+
+    from agents.schemas.accounts import AccountRecord, TriggerEvent
+    from backend.app.runs import lace_jobs, manager
+
+    async def slots(db, user_id):
+        return ["Thu 22 Oct, 10:00-10:30 (Africa/Nairobi)", "Thu 22 Oct, 14:00-14:30 (Africa/Nairobi)"], "Africa/Nairobi"
+    monkeypatch.setattr(lace_jobs.calendar_service, "free_slots", slots)
+
+    created = client.post(f"{API}/laces", json={"name": "Ada", "website": "shangalabs.com"}).json()
+    lace_id = uuid.UUID(created["lace"]["id"])
+    run = client.portal.call(_wait_for_status, uuid.UUID(created["run_id"]), {"completed", "failed"}, ONBOARDING_TIMEOUT_S)
+    assert run.status == "completed", run.error
+    record = AccountRecord(name="SunCulture", website="https://sunculture.com", geo="Kenya",
+                           trigger_event=TriggerEvent(event="Raised a Series B", signal_type="funding_round",
+                                                      source="https://sunculture.com"))
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        account = conn.execute("INSERT INTO lace_accounts (id, lace_id, key, name, account_type, record) VALUES"
+                               " (%s, %s, 'sunculture.com', 'SunCulture', 'company', %s) RETURNING id",
+                               (uuid.uuid4(), lace_id, json.dumps(record.model_dump(mode="json")))).fetchone()[0]
+        for direction, status, body in (
+            ("outbound", "sent", "Hi Samir, with SunCulture's Series B pushing fleet scale, keeping thousands of "
+                                 "connected pumps online off-grid becomes the bottleneck. Shanga Labs connects device "
+                                 "fleets with monitoring dashboards. Worth a 15-minute call?"),
+            ("inbound", "received", "Hi, this is timely. What would it cost for around 500 pumps, and could we talk "
+                                    "on Thursday?"),
+        ):
+            conn.execute("INSERT INTO lace_outreach (id, lace_id, user_id, account_id, channel, direction, status,"
+                         " recipient_name, recipient_company, recipient_address, body, thread_id, sent_at) VALUES"
+                         " (%s, %s, %s, %s, 'email', %s, %s, 'Samir Ibrahim', 'SunCulture', 'samir@sunculture.com',"
+                         " %s, 't_live', now())", (uuid.uuid4(), lace_id, user.id, account, direction, status, body))
+
+    job = client.portal.call(manager.start_lace_job, "lace_reply", user.id, lace_id, {})
+    job = client.portal.call(_wait_for_status, job.id, {"completed", "failed"}, TURN_TIMEOUT_S)
+    assert job.status == "completed", job.error
+    messages = client.get(f"{API}/laces/{lace_id}/outreach").json()
+    reply = next(m for m in messages if m["direction"] == "inbound")
+    answer = next(m for m in messages if m["status"] == "draft")
+    print(f"\n--- read as: {reply['intent']}\n--- ANSWER (thread {answer['thread_id']}):\n{answer['body']}")
+    assert reply["intent"] and answer["thread_id"] == "t_live"
+    turn = client.portal.call(_wait_for_status, client.portal.call(_first_turn, lace_id, 60.0), {"completed", "failed"},
+                              TURN_TIMEOUT_S)
+    assert turn.status == "completed", turn.error
+    print("--- THE LACE SAYS\n" + client.get(f"{API}/laces/{lace_id}/messages").json()[-1]["content"])
+
+
+OPPORTUNITIES_TIMEOUT_S = 900
+
+
+def test_lace_finds_open_opportunities(client, runtime, user):
+    from backend.app.runs import manager
+
+    created = client.post(f"{API}/laces", json={"name": "Ada", "website": "shangalabs.com"}).json()
+    lace_id = uuid.UUID(created["lace"]["id"])
+    run = client.portal.call(_wait_for_status, uuid.UUID(created["run_id"]), {"completed", "failed"}, ONBOARDING_TIMEOUT_S)
+    assert run.status == "completed", run.error
+    sent = client.post(f"{API}/laces/{lace_id}/messages", json={
+        "text": "Work out our ideal customer profile. We sell to companies in Kenya and East Africa."}).json()
+    turn = client.portal.call(_wait_for_status, uuid.UUID(sent["run_id"]), {"completed", "failed"}, TURN_TIMEOUT_S)
+    assert turn.status == "completed", turn.error
+
+    job = client.portal.call(manager.start_lace_job, "lace_opportunities", user.id, lace_id, {})
+    job = client.portal.call(_wait_for_status, job.id, {"completed", "failed"}, OPPORTUNITIES_TIMEOUT_S)
+    assert job.status == "completed", job.error
+    found = client.get(f"{API}/laces/{lace_id}/opportunities").json()
+    print(f"\n--- {len(found)} open opportunities, {job.progress}")
+    for o in found:
+        print(f"  [{o['kind']}] {o['title']} | deadline {o['deadline']} | date {o['event_date']} | {o['organiser']}"
+              f" | {o['url']}\n      fits: {o['why_it_fits']}\n      next: {o['how_to_act']}")
+    assert found
+
+
+def test_lace_writes_its_brief(client, runtime, user):
+    import psycopg
+
+    from backend.app.runs import scheduler
+    from backend.tests.test_lace_briefs import _due_now, _seed
+
+    created = client.post(f"{API}/laces", json={"name": "Ada", "website": "shangalabs.com",
+                                                "timezone": "Africa/Nairobi"}).json()
+    lace_id = created["lace"]["id"]
+    run = client.portal.call(_wait_for_status, uuid.UUID(created["run_id"]), {"completed", "failed"}, ONBOARDING_TIMEOUT_S)
+    assert run.status == "completed", run.error
+    _seed(uuid.UUID(lace_id), user.id)
+    _due_now(lace_id)
+    assert client.portal.call(scheduler.sweep_briefs) == 1
+    with psycopg.connect(settings.database_url) as conn:
+        [brief_run] = conn.execute("SELECT id FROM runs WHERE lace_id = %s AND input ? 'brief_id'", (lace_id,)).fetchone()
+    turn = client.portal.call(_wait_for_status, brief_run, {"completed", "failed"}, TURN_TIMEOUT_S)
+    assert turn.status == "completed", turn.error
+    with psycopg.connect(settings.database_url) as conn:
+        digest, body = conn.execute("SELECT digest, body FROM lace_briefs WHERE lace_id = %s", (lace_id,)).fetchone()
+    print(f"\n--- DIGEST\n{digest}\n--- BRIEF\n{body}")
+    assert body and "SunCulture" in body
+
+
+def test_lace_shows_cards_and_offers_choices(client, runtime, user):
+    import psycopg
+
+    created = client.post(f"{API}/laces", json={"name": "Ada", "website": "shangalabs.com"}).json()
+    lace_id = created["lace"]["id"]
+    run = client.portal.call(_wait_for_status, uuid.UUID(created["run_id"]), {"completed", "failed"}, ONBOARDING_TIMEOUT_S)
+    assert run.status == "completed", run.error
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        conn.execute("INSERT INTO lace_competitors (id, lace_id, name, website, domain_key, summary) VALUES"
+                     " (%s, %s, 'Fleetsmart', 'https://fleetsmart.test', 'fleetsmart.test', 'Fleet tracking for SMEs')",
+                     (uuid.uuid4(), lace_id))
+
+    def turn(text: str) -> dict:
+        sent = client.post(f"{API}/laces/{lace_id}/messages", json={"text": text}).json()
+        done = client.portal.call(_wait_for_status, uuid.UUID(sent["run_id"]), {"completed", "failed"}, TURN_TIMEOUT_S)
+        assert done.status == "completed", done.error
+        reply = client.get(f"{API}/laces/{lace_id}/messages").json()[-1]
+        print(f"\n--- {text}\n{reply['content']}\n--- ui: {reply.get('ui')}")
+        return reply
+
+    shown = turn("Which competitors are you tracking for us? Show them to me.")
+    assert any(b["type"] == "card" and b["kind"] == "competitor" for b in shown.get("ui") or [])
+    asked = turn("I want to pick our first market: Kenya, Uganda or Nigeria. Give me the options to choose from.")
+    assert any(b["type"] == "choices" for b in asked.get("ui") or [])
+
+
+def test_lace_puts_suggestions_in_front_of_the_founder(client, runtime, user):
+    import psycopg
+
+    created = client.post(f"{API}/laces", json={"name": "Ada", "website": "shangalabs.com"}).json()
+    lace_id = created["lace"]["id"]
+    run = client.portal.call(_wait_for_status, uuid.UUID(created["run_id"]), {"completed", "failed"}, ONBOARDING_TIMEOUT_S)
+    assert run.status == "completed", run.error
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        conn.execute("INSERT INTO lace_competitors (id, lace_id, name, website, domain_key, summary, status) VALUES"
+                     " (%s, %s, 'Particle', 'https://particle.test', 'particle.test',"
+                     " 'IoT hardware design and connectivity platform', 'suggested')", (uuid.uuid4(), lace_id))
+    sent = client.post(f"{API}/laces/{lace_id}/messages", json={"text": "Have you found anything I need to decide on?"}).json()
+    done = client.portal.call(_wait_for_status, uuid.UUID(sent["run_id"]), {"completed", "failed"}, TURN_TIMEOUT_S)
+    assert done.status == "completed", done.error
+    reply = client.get(f"{API}/laces/{lace_id}/messages").json()[-1]
+    print(f"\n--- REPLY\n{reply['content']}\n--- ui: {reply.get('ui')}")
+    assert any(b["type"] == "card" and b["title"] == "Particle" for b in reply.get("ui") or [])

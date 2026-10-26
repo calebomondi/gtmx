@@ -1,12 +1,6 @@
-"""Request/response models for customer-app activity heartbeats."""
-
-import uuid
+"""Response model for customer-app activity heartbeats."""
 
 from pydantic import BaseModel, Field
-
-
-class HeartbeatRequest(BaseModel):
-    workspace_id: uuid.UUID | None = Field(default=None, description="The workspace on screen, if any")
 
 
 class HeartbeatResponse(BaseModel):

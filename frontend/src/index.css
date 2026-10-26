@@ -38,6 +38,7 @@
     --color-popover: var(--popover);
     --color-card-foreground: var(--card-foreground);
     --color-card: var(--card);
+    --color-theme: var(--theme);
     --color-foreground: var(--foreground);
     --color-background: var(--background);
     --radius-sm: calc(var(--radius) * 0.6);
@@ -51,6 +52,8 @@
 
 :root {
     --theme: #FEA853;
+    /* The backdrop's mood line while a Lace is working. */
+    --mood-working: oklch(0.62 0.13 250);
     --background: #FCFCFB;
     --foreground: oklch(0.145 0 0);
     --card: oklch(1 0 0);
@@ -86,6 +89,7 @@
 }
 
 .dark {
+    --mood-working: oklch(0.74 0.11 250);
     --background: oklch(0.145 0 0);
     --foreground: oklch(0.985 0 0);
     --card: oklch(0.205 0 0);
@@ -308,3 +312,44 @@
   margin: 0 16px;
 }
 
+
+/* The page backdrop (components/page-backdrop.tsx). */
+.backdrop-mood {
+  --mood: color-mix(in oklab, var(--foreground) 22%, transparent);
+}
+
+.backdrop-mood[data-mood="alert"] {
+  --mood: var(--theme);
+}
+
+.backdrop-mood[data-mood="thinking"] {
+  --mood: var(--mood-working);
+}
+
+/* A woven texture you notice only if you look, warm in the middle, a touch
+   darker towards the edges. */
+.backdrop-linen {
+  background-image:
+    radial-gradient(ellipse 80% 70% at 50% 30%, color-mix(in oklab, var(--theme) 4%, transparent), transparent 70%),
+    radial-gradient(ellipse 90% 90% at 50% 50%, transparent 60%, color-mix(in oklab, var(--foreground) 4%, transparent) 100%),
+    repeating-linear-gradient(0deg, color-mix(in oklab, var(--foreground) 2.5%, transparent) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(90deg, color-mix(in oklab, var(--foreground) 2%, transparent) 0 1px, transparent 1px 5px);
+}
+
+.dark .backdrop-linen {
+  background-image:
+    radial-gradient(ellipse 80% 70% at 50% 30%, color-mix(in oklab, var(--theme) 5%, transparent), transparent 70%),
+    radial-gradient(ellipse 90% 90% at 50% 50%, transparent 55%, rgb(0 0 0 / 0.4) 100%),
+    repeating-linear-gradient(0deg, color-mix(in oklab, var(--foreground) 2.8%, transparent) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(90deg, color-mix(in oklab, var(--foreground) 2.2%, transparent) 0 1px, transparent 1px 5px);
+}
+
+.backdrop-horizon {
+  background: radial-gradient(ellipse 70% 100% at 50% 0%, color-mix(in oklab, var(--mood) 14%, transparent), transparent 75%);
+  transition: background 600ms ease;
+}
+
+.backdrop-mood-line {
+  background: linear-gradient(90deg, transparent, var(--mood) 30%, var(--mood) 70%, transparent);
+  transition: background 600ms ease;
+}

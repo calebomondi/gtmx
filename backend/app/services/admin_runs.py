@@ -5,10 +5,10 @@ import uuid
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from backend.app.database import models
-from backend.app.schemas.admin import AdminRunDetail, AdminRunEvent, AdminRunRow, AdminSignalRow, CostLine, Page
+from backend.app.database.lace_models import Lace
+from backend.app.schemas.admin import AdminRunDetail, AdminRunEvent, AdminRunRow, CostLine, Page
 from backend.app.services.admin_directory import emails_by_id
 from backend.app.services.admin_metrics import api_cost, llm_cost
 from backend.app.services.errors import NotFoundError
@@ -45,13 +45,15 @@ def _total(lines: list[CostLine]) -> float | None:
     return round(sum(line.cost_usd for line in lines), 4)
 
 
-def _row(run: models.Run, emails: dict, workspace_name: str | None, lines: tuple[list, list]) -> dict:
+def _row(run: models.Run, emails: dict, workspace_name: str | None, lace_name: str | None,
+         lines: tuple[list, list]) -> dict:
     duration = None
     if run.started_at and run.finished_at:
         duration = round((run.finished_at - run.started_at).total_seconds(), 1)
     return dict(
         id=run.id, kind=run.kind, status=run.status, user_id=run.user_id, user_email=emails.get(run.user_id),
-        workspace_id=run.workspace_id, workspace_name=workspace_name, error=run.error,
+        workspace_id=run.workspace_id, workspace_name=workspace_name, lace_id=run.lace_id, lace_name=lace_name,
+        error=run.error,
         created_at=run.created_at, started_at=run.started_at, finished_at=run.finished_at,
         duration_s=duration, cost_usd=_total(lines[0] + lines[1]),
     )
@@ -59,41 +61,44 @@ def _row(run: models.Run, emails: dict, workspace_name: str | None, lines: tuple
 
 async def list_runs(
     db: AsyncSession, page: int, per_page: int, *, status: str | None = None, kind: str | None = None,
-    user_id: uuid.UUID | None = None, workspace_id: uuid.UUID | None = None,
+    user_id: uuid.UUID | None = None, workspace_id: uuid.UUID | None = None, lace_id: uuid.UUID | None = None,
 ) -> Page[AdminRunRow]:
     r = models.Run
     filters = [col == value for col, value in
-               ((r.status, status), (r.kind, kind), (r.user_id, user_id), (r.workspace_id, workspace_id))
+               ((r.status, status), (r.kind, kind), (r.user_id, user_id), (r.workspace_id, workspace_id),
+                (r.lace_id, lace_id))
                if value is not None]
     total = await db.scalar(select(func.count()).select_from(r).where(*filters))
     rows = (await db.execute(
-        select(r, models.Workspace.name).outerjoin(models.Workspace, models.Workspace.id == r.workspace_id)
+        select(r, models.Workspace.name, Lace.name)
+        .outerjoin(models.Workspace, models.Workspace.id == r.workspace_id).outerjoin(Lace, Lace.id == r.lace_id)
         .where(*filters).order_by(r.created_at.desc()).offset((page - 1) * per_page).limit(per_page)
     )).all()
-    lines = await _cost_lines(db, [run.id for run, _ in rows])
+    lines = await _cost_lines(db, [run.id for run, _, _ in rows])
     emails = await emails_by_id() if rows else {}
     return Page(
-        items=[AdminRunRow(**_row(run, emails, name, lines[run.id])) for run, name in rows],
+        items=[AdminRunRow(**_row(run, emails, ws_name, lace_name, lines[run.id])) for run, ws_name, lace_name in rows],
         total=total or 0, page=page, per_page=per_page,
     )
 
 
 async def get_run(db: AsyncSession, run_id: uuid.UUID) -> AdminRunDetail:
     found = (await db.execute(
-        select(models.Run, models.Workspace.name)
+        select(models.Run, models.Workspace.name, Lace.name)
         .outerjoin(models.Workspace, models.Workspace.id == models.Run.workspace_id)
+        .outerjoin(Lace, Lace.id == models.Run.lace_id)
         .where(models.Run.id == run_id)
     )).first()
     if found is None:
         raise NotFoundError("Run not found.")
-    run, workspace_name = found
+    run, workspace_name, lace_name = found
     events = (await db.execute(
         select(models.RunEvent).where(models.RunEvent.run_id == run_id)
         .order_by(models.RunEvent.id).limit(MAX_EVENTS + 1)
     )).scalars().all()
     lines = (await _cost_lines(db, [run_id]))[run_id]
     return AdminRunDetail(
-        **_row(run, await emails_by_id(), workspace_name, lines),
+        **_row(run, await emails_by_id(), workspace_name, lace_name, lines),
         input=run.input, progress=run.progress,
         events=[AdminRunEvent(id=e.id, type=e.type, payload=e.payload, created_at=e.created_at)
                 for e in events[:MAX_EVENTS]],
@@ -108,21 +113,3 @@ async def user_spend(db: AsyncSession, user_id: uuid.UUID) -> float:
     run_ids = (await db.execute(select(models.Run.id).where(models.Run.user_id == user_id))).scalars().all()
     lines = await _cost_lines(db, list(run_ids))
     return round(sum(line.cost_usd or 0 for llm, api in lines.values() for line in llm + api), 4)
-
-
-async def list_signals(
-    db: AsyncSession, page: int, per_page: int, *, user_id: uuid.UUID | None = None,
-    category: str | None = None,
-) -> Page[AdminSignalRow]:
-    s = models.Signal
-    filters = [col == value for col, value in ((s.user_id, user_id), (s.category, category)) if value is not None]
-    total = await db.scalar(select(func.count()).select_from(s).where(*filters))
-    signals = (await db.execute(
-        select(s).options(selectinload(s.workspace)).where(*filters)
-        .order_by(s.created_at.desc()).offset((page - 1) * per_page).limit(per_page)
-    )).scalars().all()
-    emails = await emails_by_id() if signals else {}
-    items = [AdminSignalRow.from_signal(signal) for signal in signals]
-    for item in items:
-        item.user_email = emails.get(item.user_id)
-    return Page(items=items, total=total or 0, page=page, per_page=per_page)

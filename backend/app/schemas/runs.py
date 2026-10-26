@@ -11,17 +11,16 @@ class RunResponse(BaseModel):
 
     id: uuid.UUID
     kind: str
-    status: str = Field(description="pending | running | awaiting_input | completed | failed | cancelled")
+    status: str = Field(description="queued | pending | running | awaiting_input | completed | failed | cancelled")
+    user_id: uuid.UUID = Field(description="Who started it (on a shared Lace, which cofounder)")
+    owner_id: uuid.UUID | None = Field(default=None, description="Set when it works in that member's private chat")
     workspace_id: uuid.UUID | None = None
+    lace_id: uuid.UUID | None = None
     progress: dict | None = None
     error: str | None = None
     created_at: datetime
     started_at: datetime | None = None
     finished_at: datetime | None = None
-
-
-class RunAnswer(BaseModel):
-    answer: str = Field(min_length=1)
 
 
 class RunStepResponse(BaseModel):

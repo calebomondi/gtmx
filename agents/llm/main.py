@@ -29,9 +29,10 @@ class _ChatQwen(ChatQwen):
             # Base impl force-disables thinking on non-"thinking"-named models.
             self.enable_thinking = saved
 from langchain_openai import ChatOpenAI
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Protocol, Sequence
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
+from langchain_core.messages import AIMessage, message_chunk_to_message
 
 from utils.log import current_run_id, logger  # noqa: F401 -- current_run_id is re-exported for callers of agents.llm
 from config import get_settings
@@ -465,6 +466,8 @@ def _llm(
             # dead model); SDK-level retries would just multiply the wait.
             max_retries=0,
             max_tokens=MAX_OUTPUT_TOKENS,
+            # Streamed calls report token usage only when asked to.
+            stream_usage=True,
             **kwargs,
         )
     if provider == "openrouter":
@@ -477,6 +480,7 @@ def _llm(
             timeout=cfg.llm_call_timeout_s,
             max_retries=0,
             max_tokens=MAX_OUTPUT_TOKENS,
+            stream_usage=True,
         )
     raise ValueError(f"Unknown LLM provider {provider!r}")
 
@@ -491,10 +495,69 @@ def invoke_structured_with_fallback(
     thinking_budget: int | None = None,
     rate_limit_retries: int = 5,
 ):
+    """The model's answer: a `schema` instance when one is given, else its text.
+    See _invoke_ladder for the retry and fallback behaviour."""
+    result = _invoke_ladder(messages, schema, None, providers, log_label, max_retries,
+                            thinking, thinking_budget, rate_limit_retries)
+    if schema is None and hasattr(result, "content"):
+        return result.content
+    return result
+
+
+class TokenSink(Protocol):
+    """Receives an answer as it is written. `reset` means discard what came so
+    far: a retry or the next model in the ladder is starting over."""
+
+    def token(self, text: str) -> None: ...
+
+    def reset(self) -> None: ...
+
+
+def invoke_with_tools(
+    messages: Sequence[Any],
+    tools: Sequence[Any],
+    providers: list[tuple[str, list[str]]] | None = None,
+    log_label: str = "LLM call",
+    thinking: bool = False,
+    rate_limit_retries: int = 5,
+    sink: TokenSink | None = None,
+) -> AIMessage:
+    """One agent step: the model's full message, which may carry tool calls.
+    With `sink`, the text is streamed into it as it is generated; the full
+    message is still returned. Same ladder as structured calls; tool-call
+    arguments are validated by the tool, not here."""
+    return _invoke_ladder(messages, None, tools, providers, log_label, 2,
+                          thinking, None, rate_limit_retries, sink)
+
+
+def _stream(runnable, messages: Sequence[Any], config: dict, sink: TokenSink) -> AIMessage:
+    merged = None
+    for chunk in runnable.stream(messages, config=config):
+        if chunk.text:
+            sink.token(chunk.text)
+        merged = chunk if merged is None else merged + chunk
+    if merged is None:
+        raise ValueError("The model streamed nothing")
+    return message_chunk_to_message(merged)
+
+
+def _invoke_ladder(
+    messages: Sequence[Any],
+    schema: Any | None,
+    tools: Sequence[Any] | None,
+    providers: list[tuple[str, list[str]]] | None,
+    log_label: str,
+    max_retries: int,
+    thinking: bool,
+    thinking_budget: int | None,
+    rate_limit_retries: int,
+    sink: TokenSink | None = None,
+):
     """
     Invoke an LLM across a prioritized list of (provider, [models]) pairs,
     falling back on failure. Retries on 429/rate-limit errors with backoff.
-    If `schema` is provided, uses structured output; otherwise does a plain invoke.
+    With `tools`, the model may call them; with `schema`, structured output;
+    otherwise a plain invoke.
 
     `thinking` defaults to False, so a new call site is fast by default and has
     to argue for the latency. Measured on qwen3.6-27b with an identical prompt,
@@ -530,6 +593,7 @@ def invoke_structured_with_fallback(
         raise LlmProvidersExhaustedError(log_label, None)
 
     last_err = None
+    attempts_made = 0
     for provider, models in providers:
         for model in models:
             if (provider, model) in _DOWN_MODELS:
@@ -543,6 +607,10 @@ def invoke_structured_with_fallback(
 
             while attempt < budget:
                 attempt += 1
+                if sink is not None and attempts_made:
+                    # A retry or the next model starts the answer over.
+                    sink.reset()
+                attempts_made += 1
                 llm = None
                 usage = UsageMetadataCallbackHandler()
                 started = time.perf_counter()
@@ -558,7 +626,11 @@ def invoke_structured_with_fallback(
                         if schema is not None:
                             result = llm.with_structured_output(schema).invoke(messages, config=config)
                         else:
-                            result = llm.invoke(messages, config=config)
+                            runnable = llm.bind_tools(list(tools)) if tools else llm
+                            if sink is not None:
+                                result = _stream(runnable, messages, config, sink)
+                            else:
+                                result = runnable.invoke(messages, config=config)
                     _record_call_timing(
                         log_label, time.perf_counter() - started, model
                     )
@@ -570,8 +642,6 @@ def invoke_structured_with_fallback(
                     logger.info("%s succeeded with %s/%s", log_label, provider, model)
                     _DOWN_MODELS.discard((provider, model))
                     _note_throttle_outcome(True)
-                    if schema is None and hasattr(result, "content"):
-                        return result.content
                     return result
                 except Exception as e:
                     _report_usage(log_label, provider, model, usage, time.perf_counter() - started, ok=False)
