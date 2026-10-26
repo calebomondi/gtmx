@@ -7,10 +7,10 @@ from fastapi import APIRouter
 from backend.app.api.deps import AdminUser, DbSession
 from backend.app.api.v1.endpoints.admin.entities import PageNo, PerPage
 from backend.app.schemas.admin import (
-    AdminRunDetail, AdminUserRow, AuditRow, Page, QuotaRow, QuotaUpdate, SuspendRequest,
+    AdminLaceDetail, AdminRunDetail, AdminUserRow, AuditRow, Page, QuotaRow, QuotaUpdate, SuspendRequest,
 )
 from backend.app.services import admin as admin_service
-from backend.app.services import admin_actions, admin_directory, admin_runs
+from backend.app.services import admin_actions, admin_directory, admin_lace_actions, admin_laces, admin_runs
 
 router = APIRouter()
 
@@ -64,6 +64,20 @@ async def cancel_run(run_id: uuid.UUID, actor: AdminUser, db: DbSession):
     await admin_actions.cancel_run(db, actor, run_id)
     db.expire_all()
     return await admin_runs.get_run(db, run_id)
+
+
+@router.post("/laces/{lace_id}/fold", response_model=AdminLaceDetail)
+async def fold_lace(lace_id: uuid.UUID, actor: AdminUser, db: DbSession):
+    """A duplicate's people join the Lace holding its domain; it is archived."""
+    await admin_lace_actions.fold(db, actor, lace_id)
+    return await admin_laces.get_lace(db, lace_id)
+
+
+@router.post("/laces/{lace_id}/take-domain", response_model=AdminLaceDetail)
+async def take_lace_domain(lace_id: uuid.UUID, actor: AdminUser, db: DbSession):
+    """A duplicate becomes the startup's Lace, in place of the one holding its domain."""
+    await admin_lace_actions.take_domain(db, actor, lace_id)
+    return await admin_laces.get_lace(db, lace_id)
 
 
 @router.get("/audit-log", response_model=Page[AuditRow])

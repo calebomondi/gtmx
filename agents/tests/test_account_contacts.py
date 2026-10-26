@@ -199,3 +199,29 @@ def test_merge_keeps_the_address_but_not_a_persona_name():
     """KenGen's draft greeted "Hi Sovereign AI Integrator team": an ICP persona stored as a name."""
     [kept] = contacts.merge([ContactRecord(name="Sovereign AI Integrator", email="fochieng@acme.example")], [], limit=3)
     assert (kept.name, kept.email) == (None, "fochieng@acme.example")
+
+
+def test_people_search_tries_the_accounts_country_first(monkeypatch):
+    queries = []
+
+    def search(query, cfg, num_results):
+        queries.append(query)
+        return [] if "Kenya" in query else [{"url": "https://linkedin.com/in/x", "title": "X - CEO - Acme", "text": ""}]
+
+    monkeypatch.setattr(contacts, "search_and_scrape", search)
+    acc = _account()
+    acc.name, acc.geo = "Acme", "Kenya"
+    contacts.people_on_linkedin(acc, ["CEO"], None)
+    assert len(queries) == 2 and queries[0].endswith('"Kenya"') and "Kenya" not in queries[1]
+
+
+def test_person_socials_become_profile_urls_and_other_sites_are_dropped():
+    from agents.schemas.accounts import ContactRecord, social_profile_url
+    assert social_profile_url("instagram", "@big.chiano") == "https://www.instagram.com/big.chiano"
+    assert social_profile_url("tiktok", "enzi") == "https://www.tiktok.com/@enzi"
+    assert social_profile_url("x", "twitter.com/enzi") == "https://twitter.com/enzi"
+    assert social_profile_url("facebook", "https://m.facebook.com/enzi") == "https://m.facebook.com/enzi"
+    assert social_profile_url("x", "https://instagram.com/enzi") is None
+    assert social_profile_url("instagram", "not a handle!") is None
+    person = ContactRecord(name="Enzi", x="@enzi", tiktok="", linkedin="https://linkedin.com/in/enzi")
+    assert list(person.addresses()) == ["linkedin", "x"]

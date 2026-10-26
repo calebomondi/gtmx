@@ -44,21 +44,22 @@ accounts, contacts, opportunities, messages) is read and written through tools.
 
 ### Channels
 
-Sending a first message to a stranger through official APIs is mostly
-restricted. To confirm in Phase 0:
+Verified on 2026-10-18 against the live Composio catalogue (the actions and
+their documented limits), not from memory:
 
-| Channel | Expected |
-|---|---|
-| Email | Full send and receive through the founder's Gmail or Outlook (OAuth). |
-| LinkedIn | Messaging API limited to approved partners. |
-| Instagram, Facebook | Messages mostly only in reply to someone who wrote first, inside a time window. |
-| X | DMs need a paid API tier, with tight limits. |
-| TikTok | No general DM API. |
+| Channel | Composio messaging actions | Can start a conversation? | Lace's first touch |
+|---|---|---|---|
+| Email | `GMAIL_SEND_EMAIL`, `GMAIL_REPLY_TO_THREAD` | Yes | Sent from the founder's Gmail on their click |
+| X | `TWITTER_SEND_A_NEW_MESSAGE_TO_A_USER` (by user id; `TWITTER_USER_LOOKUP_BY_USERNAME` resolves a handle) | Yes, if the recipient accepts DMs | Sent from the founder's X on their click, once X is connected. X needs the owner's own developer app and a plan covering DMs (see docs/launch-plan.md, TODO); until then, a handoff |
+| Instagram | `INSTAGRAM_SEND_TEXT_MESSAGE` | **No**: only within an existing conversation, inside Meta's messaging window | Handoff |
+| Facebook | `FACEBOOK_SEND_MESSAGE` (Page to a person) | **No**: within 24 hours of the person's last message, or a narrow message tag | Handoff |
+| TikTok | none | No | Handoff |
+| LinkedIn | none | No | Handoff to a person's profile (a company page cannot be messaged) |
 
-So every channel goes **draft → approve → send where the API allows it**. Where
-it doesn't, the founder gets a one-tap handoff: the message is copied, the
-profile opened, and they mark it sent. Third-party providers (unofficial
-LinkedIn APIs, connector platforms) are the owner's call, with account-ban risk.
+A handoff is: the Lace drafts, the founder copies the message, opens the
+profile, sends it there and marks it sent. Instagram and Facebook can still
+*answer* people who message the founder's business account first, inside the
+window: that is the inbound half of Phase 9.
 
 ## 3. Phases
 
@@ -159,8 +160,10 @@ or a clear "couldn't find one".
 inbox.
 
 ### Phase 9: Social channels
-- One adapter per platform under `data_sources/`, send or handoff as decided in
-  Phase 0. Inbound messages where the API allows.
+- Drafts on every channel; first touch sent through the API on email and X,
+  a handoff elsewhere (see Channels above).
+- Inbound: Instagram and Facebook DMs to the founder's business accounts, read
+  and answered inside Meta's window.
 
 **Done when:** the founder reaches a contact on every channel through one
 approval flow.

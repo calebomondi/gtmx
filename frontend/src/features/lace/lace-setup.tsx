@@ -1,0 +1,184 @@
+import { useNavigate, useParams, useSearchParams } from "react-router-dom"
+import { useEffect, useRef, useState } from "react"
+import { AlertTriangle, Loader2 } from "lucide-react"
+
+import { Lace } from "@/components/lace-mascot"
+import { Button } from "@/components/ui/button"
+import { retryLaceOnboarding } from "@/lib/api"
+import { deleteLace } from "@/lib/laces-store"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { track } from "@/lib/events"
+import { usePageTitle } from "@/lib/use-page-title"
+
+import { LaceFactReview } from "./lace-fact-review"
+import { LacePrint } from "./lace-print"
+import { useLaceSetup } from "./use-lace-setup"
+
+const PRINT_PX = 128
+
+/** A new Lace being made: printed as it reads the site, then the founder
+ * checks what it learned before meeting it. Keyed on the Lace and the run,
+ * so trying again starts the print over. */
+export default function LaceSetupPage() {
+  // The route only renders this page with a lace_id.
+  const { lace_id: laceId = "" } = useParams()
+  const [params] = useSearchParams()
+  const runId = params.get("run")
+  return <LaceSetup key={`${laceId}:${runId}`} laceId={laceId} runId={runId} />
+}
+
+function LaceSetup({ laceId, runId }: { laceId: string; runId: string | null }) {
+  const navigate = useNavigate()
+  const setup = useLaceSetup(laceId, runId)
+  useSetupPhaseEvents(laceId, setup.phase)
+  usePageTitle(setup.lace ? `${setup.lace.name} • Setting up` : null)
+  const name = setup.lace?.name ?? "your Lace"
+  const startup = setup.lace?.startup_name ?? "your startup"
+  // Into the chat, where the Lace's first message waits.
+  const meet = () => navigate(`/lace/${laceId}/chat`)
+
+  if (setup.phase === "printing" || setup.phase === "waking") {
+    const awake = setup.phase === "waking"
+    return (
+      <Shell>
+        <Card className="w-full max-w-md shadow-lg">
+          <CardHeader className="justify-items-center gap-3 text-center">
+            <LacePrint progress={setup.progress} awake={awake} size={PRINT_PX} className="my-4" />
+            <CardTitle className="text-xl">{awake ? `${name} is ready` : `Building ${name}`}</CardTitle>
+            <CardDescription aria-live="polite">
+              {awake ? "Let's check what it learned." : `${setup.step}…`}
+            </CardDescription>
+            <p className="text-xs text-muted-foreground tabular-nums">{Math.round(setup.progress * 100)}%</p>
+          </CardHeader>
+        </Card>
+      </Shell>
+    )
+  }
+
+  if (setup.phase === "unreadable") return <SiteUnreadable laceId={laceId} name={name} website={setup.lace?.website ?? ""} />
+
+  if (setup.phase === "failed") return <SetupFailed laceId={laceId} name={name} error={setup.error} onOpen={meet} />
+
+  return (
+    <Shell>
+      <Card className="w-full max-w-2xl shadow-lg">
+        <CardHeader className="grid-cols-[auto_1fr] items-center gap-x-4">
+          <Lace state="alert" size={56} decorative className="row-span-2" />
+          <CardTitle className="text-xl">Here's what {name} learned about {startup}</CardTitle>
+          <CardDescription>Confirm what's right and fix what's off: {name} works from these.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <LaceFactReview facts={setup.facts} onReview={(id, verdict) => void setup.review(id, verdict)}
+                          onCorrect={(id, claim) => void setup.correct(id, claim)} />
+          {setup.error && <p className="mt-3 text-sm text-destructive" role="alert">{setup.error}</p>}
+        </CardContent>
+        <CardFooter>
+          <Button className="w-full" onClick={meet}>Looks right, meet {name}</Button>
+        </CardFooter>
+      </Card>
+    </Shell>
+  )
+}
+
+/** The page scrolls, so a long review keeps its button in reach; a card that
+ * fits stays centred. */
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="flex min-h-full items-center justify-center px-4 py-10">{children}</div>
+    </div>
+  )
+}
+
+
+/** The site couldn't be read: the founder checks the address and starts over
+ * (this Lace, which knows nothing, is removed). */
+function SiteUnreadable({ laceId, name, website }: { laceId: string; name: string; website: string }) {
+  const navigate = useNavigate()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const startOver = async () => {
+    setBusy(true)
+    try {
+      await deleteLace(laceId)
+      navigate(`/new?website=${encodeURIComponent(website)}`, { replace: true })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+      setBusy(false)
+    }
+  }
+  return (
+    <Shell>
+      <Card className="w-full max-w-md shadow-lg">
+        <CardHeader className="justify-items-center gap-3 text-center">
+          <Lace state="idle" size={72} decorative />
+          <CardTitle className="text-xl">{name} couldn't read your site</CardTitle>
+          <CardDescription className="text-balance">
+            Nothing could be read at {website || "that address"}. Check that the website address is right, then start
+            over.
+          </CardDescription>
+          {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
+        </CardHeader>
+        <CardFooter>
+          <Button className="w-full" onClick={() => void startOver()} disabled={busy}>
+            {busy && <Loader2 className="animate-spin" />} Check the address and start over
+          </Button>
+        </CardFooter>
+      </Card>
+    </Shell>
+  )
+}
+
+
+/** Onboarding stopped: read the site again, or open the Lace as it is. */
+function SetupFailed({ laceId, name, error, onOpen }: {
+  laceId: string
+  name: string
+  error: string | null
+  onOpen: () => void
+}) {
+  const navigate = useNavigate()
+  const [retrying, setRetrying] = useState(false)
+  const [retryError, setRetryError] = useState<string | null>(null)
+  const retry = async () => {
+    setRetrying(true)
+    setRetryError(null)
+    try {
+      const { run_id } = await retryLaceOnboarding(laceId)
+      navigate(`/lace/${laceId}/setup?run=${run_id}`, { replace: true })
+    } catch (err) {
+      setRetryError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setRetrying(false)
+    }
+  }
+  return (
+    <Shell>
+      <Card className="w-full max-w-md shadow-lg">
+        <CardHeader className="justify-items-center gap-3 text-center">
+          <AlertTriangle className="size-8 text-destructive" />
+          <CardTitle className="text-xl">{name} stopped before it finished</CardTitle>
+          <CardDescription>{retryError ?? error}</CardDescription>
+        </CardHeader>
+        <CardFooter className="gap-2">
+          <Button variant="outline" className="flex-1" onClick={onOpen}>Open {name}</Button>
+          <Button className="flex-1" onClick={() => void retry()} disabled={retrying}>
+            {retrying && <Loader2 className="animate-spin" />} Try again
+          </Button>
+        </CardFooter>
+      </Card>
+    </Shell>
+  )
+}
+
+/** A setup_phase event each time a new Lace's setup reaches a new phase:
+ * where people wait, and where setups fail or stall. */
+function useSetupPhaseEvents(laceId: string, phase: string) {
+  // React runs effects twice in development; one phase is one event.
+  const last = useRef<string | null>(null)
+  useEffect(() => {
+    if (last.current === phase) return
+    last.current = phase
+    track("setup_phase", { detail: phase, laceId })
+  }, [laceId, phase])
+}

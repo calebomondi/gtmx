@@ -3,20 +3,28 @@ import { Section } from './section'
 
 const QUESTIONS = [
   {
-    q: 'Will it email people on its own?',
-    a: 'No. Thalace drafts messages; you read, edit and send them from your own email. Nothing goes out without your click, and anyone who asks not to be contacted is never drafted to again.',
+    q: 'What is a Lace?',
+    a: 'Your startup’s own assistant. You name it and give it your website; it learns what you sell, and from then on finds customers, opportunities and partners, watches your competitors, and drafts your messages and replies. You talk to it in a chat, and see what it did in your Feed and Messaging.',
   },
   {
-    q: 'What if I don’t have a website?',
-    a: 'Describe what you sell in a few sentences. That’s enough for a first run, and you can add more later.',
+    q: 'Will it message people on its own?',
+    a: 'No. Lace only drafts. Email and X messages go out from your own accounts when you click send; on LinkedIn, Instagram, Facebook and TikTok you copy the message and send it there yourself. Anyone who asks not to be contacted is never drafted to again.',
   },
   {
-    q: 'Does it work for consumer products?',
-    a: 'Yes. For consumer offers it looks for the communities, creators and events your buyers follow, and pitches them a partnership rather than a sale.',
+    q: 'Can it find partners and tenders, not only customers?',
+    a: 'Yes. Besides customers, it looks for places to sell (tenders, RFPs, procurement calls), places to be seen (events, awards, podcasts, press) and partners who serve the same buyers, each with its deadline and why it fits.',
+  },
+  {
+    q: 'Does it work in my country?',
+    a: 'It works wherever you sell. Tell it the countries, and it researches buyers, rivals and news there, in the local language.',
+  },
+  {
+    q: 'One Lace per startup?',
+    a: 'Yes: each Lace learns one startup. If you run more than one, give each its own Lace.',
   },
   {
     q: 'What happens to my data?',
-    a: 'Your research stays in your workspace and is never shared with other users. We follow Kenya’s Data Protection Act, Nigeria’s NDPR and South Africa’s POPIA, and you can ask us to delete your data at any time.',
+    a: 'What your Lace learns stays in your account and is never shared with other users or used to work for anyone else. You can ask us to delete it at any time.',
   },
   {
     q: 'What will it cost?',

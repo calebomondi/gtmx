@@ -6,8 +6,6 @@ from typing import Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from backend.app.schemas.signals import SignalResponse
-
 T = TypeVar("T")
 
 
@@ -59,11 +57,11 @@ class AdminMetrics(BaseModel):
     api_costs: list[CostLine]
     unpriced: list[str] = Field(description="Models/operations with usage but no configured price")
     series: list[DayMetrics]
-    discovery_p50_s: float | None = Field(default=None, description="Median completed discovery duration")
-    discovery_p90_s: float | None = None
+    onboarding_p50_s: float | None = Field(default=None, description="Median completed Lace onboarding duration")
+    onboarding_p90_s: float | None = None
     spend_per_active_user_usd: float | None = Field(default=None, description="Priced spend / active users")
-    cost_per_completed_discovery_usd: float | None = Field(
-        default=None, description="Priced spend of completed discovery runs / their count",
+    cost_per_onboarded_lace_usd: float | None = Field(
+        default=None, description="Priced spend of completed onboarding runs / their count",
     )
     top_spenders: list[UserSpend] = Field(default_factory=list, description="Priced spend, highest first")
 
@@ -73,26 +71,24 @@ class EngagementDay(BaseModel):
     new_users: int = 0
     active_users: int = Field(default=0, description="Used the app or started a run")
     active_seconds: int = 0
-    workspaces_created: int = 0
-    products_created: int = 0
-    services_created: int = 0
-    projects_created: int = 0
-    workspaces_interacted: int = 0
-    chat_messages: int = 0
+    laces_created: int = 0
+    onboardings_completed: int = 0
+    onboardings_failed: int = 0
+    laces_active: int = Field(default=0, description="Laces with any run that day")
+    questions: int = Field(default=0, description="Messages founders sent their Laces")
     competitor_runs: int = 0
     account_runs: int = 0
     outreach_drafted: int = 0
     outreach_sent: int = 0
 
 
-class TopWorkspace(BaseModel):
+class TopLace(BaseModel):
     id: uuid.UUID
-    name: str | None
+    name: str
     user_id: uuid.UUID
     user_email: str | None = None
-    offer_type: str | None = None
-    active_seconds: int
-    visits: int
+    runs: int = Field(description="Runs in the window")
+    activity: int = Field(description="Feed items in the window")
 
 
 class EngagementMetrics(BaseModel):
@@ -108,14 +104,11 @@ class EngagementMetrics(BaseModel):
     total_active_seconds: int
     avg_active_seconds_per_user: float | None
     avg_session_seconds: float | None
-    workspaces_total: int
-    workspaces_created: int
-    projects_total: int
-    projects_created: int
-    avg_workspaces_per_user: float | None
-    avg_projects_per_user: float | None
-    offer_types: dict[str, int] = Field(description="All workspaces: product / service / unknown")
-    top_workspaces: list[TopWorkspace]
+    laces_total: int
+    laces_created: int
+    avg_laces_per_user: float | None
+    questions: int = Field(description="Messages founders sent their Laces in the window")
+    top_laces: list[TopLace] = Field(description="Most runs in the window, then most activity")
     series: list[EngagementDay]
 
 
@@ -123,11 +116,6 @@ class FunnelStep(BaseModel):
     key: str
     label: str
     users: int
-
-
-class InterviewDropOff(BaseModel):
-    question: str = Field(description="The interview step (interrupt type) the run stopped at")
-    runs: int
 
 
 class FailureReason(BaseModel):
@@ -139,9 +127,9 @@ class FailureReason(BaseModel):
 class FunnelMetrics(BaseModel):
     days: int
     steps: list[FunnelStep] = Field(description="All time: how many users reached each step")
-    discoveries_started: int
-    discoveries_completed: int
-    interview_dropoffs: list[InterviewDropOff] = Field(description="Abandoned discoveries in the window")
+    laces_created: int = Field(description="In the window")
+    onboardings_completed: int = Field(description="In the window")
+    onboardings_failed: int = Field(description="In the window")
     failure_reasons: list[FailureReason]
 
 
@@ -175,8 +163,7 @@ class AdminUserRow(BaseModel):
     last_sign_in_at: datetime | None = None
     is_admin: bool = False
     suspended: bool = False
-    workspaces: int = 0
-    projects: int = 0
+    laces: int = 0
     runs: int = 0
     last_run_at: datetime | None = None
     last_seen_at: datetime | None = Field(default=None, description="Last customer-app heartbeat")
@@ -184,18 +171,24 @@ class AdminUserRow(BaseModel):
     connections: int | None = Field(default=None, description="Live connected accounts; null if Composio failed")
 
 
-class AdminWorkspaceRow(BaseModel):
+class AdminLaceRow(BaseModel):
     id: uuid.UUID
-    name: str | None
-    offer_type: str | None = None
+    name: str
+    website: str
+    startup_name: str | None = None
+    status: str
     user_id: uuid.UUID
     user_email: str | None = None
-    archived: bool
-    date_created: datetime
-    last_activity: datetime
-    competitors: int = 0
-    accounts: int = 0
+    created_at: datetime
+    domain_clash: bool = Field(default=False, description="Shares its domain with an older Lace: fold it in or give it the domain")
+    last_active_at: datetime = Field(description="Its latest run, or its creation")
+    facts: int = 0
+    competitors: int = Field(default=0, description="Saved (tracked)")
+    accounts: int = Field(default=0, description="Saved targets")
+    contacts: int = 0
+    sent: int = Field(default=0, description="Outreach messages sent")
     runs: int = 0
+    cost_usd: float | None = Field(default=None, description="All its runs; null when any usage is unpriced")
 
 
 class AdminRunRow(BaseModel):
@@ -206,12 +199,36 @@ class AdminRunRow(BaseModel):
     user_email: str | None = None
     workspace_id: uuid.UUID | None = None
     workspace_name: str | None = None
+    lace_id: uuid.UUID | None = None
+    lace_name: str | None = None
     error: str | None = None
     created_at: datetime
     started_at: datetime | None = None
     finished_at: datetime | None = None
     duration_s: float | None = None
     cost_usd: float | None = Field(default=None, description="null when any of its usage is unpriced")
+
+
+class AdminLaceHolder(BaseModel):
+    """The Lace that holds a duplicate's domain."""
+    id: uuid.UUID
+    name: str
+    status: str
+    user_id: uuid.UUID
+    user_email: str | None = None
+    created_at: datetime
+
+
+class AdminLaceDetail(AdminLaceRow):
+    suggestions: int = Field(description="Competitors, accounts and opportunities waiting for the founder")
+    drafts_waiting: int
+    replies: int = Field(description="Inbound messages received")
+    opportunities: int = Field(description="Saved, still open")
+    brief_frequency: str
+    brief_email: bool
+    recent_runs: list[AdminRunRow]
+    domain: str | None = Field(default=None, description="Its website's domain, when it holds it")
+    clashes_with: AdminLaceHolder | None = Field(default=None, description="For a duplicate: the Lace holding its domain")
 
 
 class AdminRunEvent(BaseModel):
@@ -245,16 +262,11 @@ class ActivityDay(BaseModel):
 class AdminUserDetail(AdminUserRow):
     spend_usd: float
     recent_runs: list[AdminRunRow]
-    workspace_list: list[AdminWorkspaceRow]
+    lace_list: list[AdminLaceRow]
     connection_list: list[UserConnection] = Field(default_factory=list)
     connections_error: str | None = None
     activity: list[ActivityDay] = Field(default_factory=list, description="Last 30 days")
-    top_workspaces: list[TopWorkspace] = Field(default_factory=list, description="Most time, last 30 days")
-
-
-class AdminSignalRow(SignalResponse):
-    user_id: uuid.UUID
-    user_email: str | None = None
+    top_laces: list[TopLace] = Field(default_factory=list, description="Most runs, last 30 days")
 
 
 class QuotaRow(BaseModel):
@@ -283,4 +295,16 @@ class AuditRow(BaseModel):
     target_id: str | None
     before: dict | None
     after: dict | None
+    created_at: datetime
+
+
+class AdminQuestionRow(BaseModel):
+    """A message a founder sent their Lace."""
+    run_id: uuid.UUID
+    user_id: uuid.UUID
+    user_email: str | None = None
+    lace_id: uuid.UUID | None = None
+    lace_name: str | None = None
+    text: str
+    status: str = Field(description="How the Lace's turn on it ended (or that it is still running)")
     created_at: datetime

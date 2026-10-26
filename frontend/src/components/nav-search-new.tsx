@@ -4,12 +4,14 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { SquarePen, Search, Home, FolderClosed } from "lucide-react"
+import { SquarePen, Search, Home } from "lucide-react"
 import { useCallback, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 
-import { SearchDialog } from "@/features/search/search-dialog"
-import { useSearchShortcut } from "@/features/search/use-search-shortcut"
+import { LaceSearch } from "@/features/lace/lace-search"
+import { useSearchShortcut } from "@/features/lace/use-lace-search"
+
+import { track } from "@/lib/events"
 import { isNavItemActive } from "@/lib/nav-active"
 
 export function NavSearchNew({
@@ -24,12 +26,16 @@ export function NavSearchNew({
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const [searchOpen, setSearchOpen] = useState(false)
-  const toggleSearch = useCallback(() => setSearchOpen((open) => !open), [])
+  const openSearch = useCallback(() => {
+    track("search_opened")
+    setSearchOpen(true)
+  }, [])
+  const toggleSearch = useCallback(() => (searchOpen ? setSearchOpen(false) : openSearch()), [searchOpen, openSearch])
   useSearchShortcut(toggleSearch)
 
   return (
     <SidebarGroup>
-      <SearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
+      <LaceSearch open={searchOpen} onOpenChange={setSearchOpen} />
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton
@@ -44,35 +50,20 @@ export function NavSearchNew({
         </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton
-            tooltip="New"
+            tooltip="New Lace"
             isActive={isNavItemActive(pathname, "/new")}
             className="cursor-pointer"
             onClick={() => navigate("/new")}
           >
             <SquarePen />
-            <span>New Workspace</span>
+            <span>New Lace</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
         <SidebarMenuItem>
-          <SidebarMenuButton
-            tooltip="Search (Ctrl+K)"
-            className="cursor-pointer"
-            onClick={() => setSearchOpen(true)}
-          >
+          <SidebarMenuButton tooltip="Search (Ctrl+K)" className="cursor-pointer" onClick={openSearch}>
             <Search />
-            <span>Search Anything</span>
+            <span>Search</span>
             <kbd className="ml-auto text-xs text-muted-foreground">Ctrl K</kbd>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            tooltip="Projects"
-            isActive={isNavItemActive(pathname, "/projects")}
-            className="cursor-pointer"
-            onClick={() => navigate("/projects")}
-          >
-            <FolderClosed />
-            <span>Projects</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>

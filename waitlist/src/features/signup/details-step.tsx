@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from 'react'
 
 import { EXPECTATIONS_MAX_CHARS, type PilotSpots, type SellsTo, type Stage, type WaitlistDetails } from '../../lib/api'
-import { Choice, Pill } from './choice'
-import { HOME_MARKETS, SELLS_TO, STAGES } from './options'
+import { pilotStart } from '../../lib/pilot-start'
+import { Choice } from './choice'
+import { SELLS_TO, STAGES } from './options'
 
 const inputClass =
   'h-11 w-full rounded-md border border-line bg-panel px-3 text-base outline-none transition focus:border-ink'
@@ -27,27 +28,25 @@ export function DetailsStep({
   const [wantsPilot, setWantsPilot] = useState(pilotOpen)
   const [name, setName] = useState('')
   const [company, setCompany] = useState('')
+  const [website, setWebsite] = useState('')
   const [role, setRole] = useState('')
   const [stage, setStage] = useState<Stage | undefined>()
   const [sellsTo, setSellsTo] = useState<SellsTo | undefined>()
-  const [countries, setCountries] = useState<string[]>(HOME_MARKETS)
-  const [other, setOther] = useState('')
+  const [countries, setCountries] = useState('')
   const [expectations, setExpectations] = useState('')
-
-  const toggleCountry = (country: string) =>
-    setCountries((list) => (list.includes(country) ? list.filter((c) => c !== country) : [...list, country]))
+  const start = pilot ? pilotStart(pilot.starts_on) : null
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    const extra = other.split(',').map((c) => c.trim()).filter(Boolean)
     onSave({
       wants_pilot: wantsPilot,
       name: name || undefined,
       company: company || undefined,
+      website: website.trim() || undefined,
       role: role || undefined,
       stage,
       sells_to: sellsTo,
-      countries: [...countries, ...extra],
+      countries: countries.split(',').map((c) => c.trim()).filter(Boolean),
       expectations: expectations || undefined,
     })
   }
@@ -57,7 +56,7 @@ export function DetailsStep({
       <div>
         <p className="font-mono text-xs uppercase tracking-wider text-kept">On the list</p>
         <h2 className="mt-1 text-xl font-semibold text-balance">You're in, {email}.</h2>
-        <p className="mt-1 text-sm text-muted">Two minutes more helps us set up your pilot. Everything here is optional.</p>
+        <p className="mt-1 text-sm text-muted">Two minutes more and we can set up your Lace. Everything here is optional.</p>
       </div>
 
       <label
@@ -76,9 +75,9 @@ export function DetailsStep({
           <span className="font-semibold">Join the pilot</span>
           <span className="text-sm text-muted">
             {pilotOpen
-              ? `Free access, a direct line to the team, and a say in what we build. We contact pilots within two weeks.${
-                  pilot ? ` ${pilot.left} of ${pilot.total} spots left.` : ''
-                }`
+              ? `Your own Lace, free, with a direct line to the team.${
+                  start ? (start.started ? ` Running since ${start.day}; we'll set you up next.` : ` Starts ${start.day}.`) : ''
+                }${pilot ? ` ${pilot.left} of ${pilot.total} spots left.` : ''}`
               : 'All pilot spots are taken. You stay on the waitlist and hear first when we open more.'}
           </span>
         </span>
@@ -93,34 +92,33 @@ export function DetailsStep({
           Role
           <input className={inputClass} value={role} onChange={(e) => setRole(e.target.value)} placeholder="Founder, Head of Sales…" maxLength={120} />
         </label>
-        <label className="flex flex-col gap-1.5 text-sm font-medium sm:col-span-2">
-          Company or website
-          <input className={inputClass} value={company} onChange={(e) => setCompany(e.target.value)} autoComplete="organization" placeholder="acme.co.ke" maxLength={200} />
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
+          Company
+          <input className={inputClass} value={company} onChange={(e) => setCompany(e.target.value)} autoComplete="organization" placeholder="Acme" maxLength={200} />
+        </label>
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
+          Your startup’s website
+          <input className={inputClass} value={website} onChange={(e) => setWebsite(e.target.value)} autoComplete="url"
+                 inputMode="url" placeholder="acme.com" maxLength={500} />
         </label>
       </div>
 
       <Choice legend="What stage are you at?" options={STAGES} value={stage} onChange={setStage} />
       <Choice legend="Who do you sell to?" options={SELLS_TO} value={sellsTo} onChange={setSellsTo} />
 
-      <fieldset className="flex flex-col gap-2">
-        <legend className="mb-2 text-sm font-medium">Where do you sell?</legend>
-        <div className="flex flex-wrap gap-2">
-          {HOME_MARKETS.map((country) => (
-            <Pill key={country} pressed={countries.includes(country)} onClick={() => toggleCountry(country)}>
-              {country}
-            </Pill>
-          ))}
-        </div>
-        <input className={inputClass} value={other} onChange={(e) => setOther(e.target.value)} placeholder="Other countries, comma separated" aria-label="Other countries" maxLength={200} />
-      </fieldset>
+      <label className="flex flex-col gap-1.5 text-sm font-medium">
+        Where do you sell?
+        <input className={inputClass} value={countries} onChange={(e) => setCountries(e.target.value)}
+               placeholder="e.g. United States, Germany, Brazil" maxLength={400} />
+      </label>
 
       <label className="flex flex-col gap-1.5 text-sm font-medium">
-        What should Thalace do for you?
+        What should your Lace do for you?
         <textarea
           value={expectations}
           onChange={(e) => setExpectations(e.target.value.slice(0, EXPECTATIONS_MAX_CHARS))}
           rows={3}
-          placeholder="e.g. Find hospitals in Nairobi that need our scheduling tool, and tell me who to email."
+          placeholder="e.g. Find clinics that need our scheduling tool, and a conference to show it at."
           className="w-full resize-none rounded-md border border-line bg-panel px-3 py-2.5 text-base outline-none transition focus:border-ink"
         />
         <span className="self-end font-mono text-xs text-muted tabular-nums">

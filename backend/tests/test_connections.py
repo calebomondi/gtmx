@@ -5,8 +5,10 @@ import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+import psycopg
 import pytest
 
+from backend.app.database.connect import AsyncSessionLocal
 from backend.app.services import connections as svc
 from backend.tests.helpers import make_user
 from config import settings
@@ -75,11 +77,16 @@ def composio(monkeypatch, user):
     return fake
 
 
-def test_lists_only_the_users_connections(client, composio):
+def test_lists_only_the_users_connections(client, composio, monkeypatch):
+    monkeypatch.setattr(settings, "composio_auth_configs", {})  # as before any own auth config is set up
     body = client.get(API).json()
     assert {c["platform"]: c["available"] for c in body["channels"]} == {
         "gmail": True, "googlecalendar": True, "linkedin": True, "instagram": True, "facebook": True,
         "tiktok": False, "x": False,
+        # Every second-wave app's sign-in is managed by Composio.
+        "outlook": True, "whatsapp": True, "zoho": True, "hubspot": True, "googlesheets": True, "notion": True,
+        "slack": True, "asana": True, "calendly": True,
+        "telegram": False,  # a bot token needs our own API-key auth config
     }
     rows = {(c["id"], c["platform"], c["status"], c["display_name"]) for c in body["connections"]}
     # The live account is labelled from the provider's own profile.
@@ -135,7 +142,8 @@ async def test_live_by_user_pages_through_every_user(composio, user, monkeypatch
     other = uuid.uuid4()
     composio.accounts["ca_li"] = _account("ca_li", str(user.id), "linkedin", "ACTIVE")
     composio.accounts["ca_ig"] = _account("ca_ig", str(other), "instagram", "ACTIVE")
-    live = await svc.live_by_user()
+    async with AsyncSessionLocal() as db:
+        live = await svc.live_by_user(db)
     # "someone-else" isn't a user id of ours; expired/initiated aren't live.
     assert live == {user.id: {"gmail", "linkedin"}, other: {"instagram"}}
 
@@ -153,8 +161,76 @@ def test_connect_returns_to_the_origin_the_user_started_from(client, composio, m
         assert composio.authorized[-1][2] == f"{expected}/accounts?connected=linkedin"
 
 
+def test_connect_returns_to_an_app_page_only(client, composio, monkeypatch):
+    monkeypatch.setattr(settings, "frontend_base_url", "http://localhost:5173")
+    client.post(f"{API}/linkedin", params={"return_to": "/lace/abc/messaging"})
+    assert composio.authorized[-1][2] == "http://localhost:5173/lace/abc/messaging?connected=linkedin"
+    for bad in ["//evil.example/x", "https://evil.example", "/lace/../admin", "lace/x", "/x?y=1"]:
+        assert client.post(f"{API}/linkedin", params={"return_to": bad}).status_code == 422, bad
+
+
 def test_one_connection_per_app(client, composio):
     """Tools can't choose between two connections of the same app, so a second is refused."""
     refused = client.post(f"{API}/gmail")
-    assert refused.status_code == 409 and "already have a Gmail account" in refused.json()["detail"]
+    assert refused.status_code == 409 and "A Gmail account is already connected" in refused.json()["detail"]
     assert client.post(f"{API}/linkedin").status_code == 200  # another app is fine
+
+
+def _lace_of(user_id) -> SimpleNamespace:
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        lace_id = conn.execute("INSERT INTO laces (id, user_id, name, website) VALUES (%s, %s, 'Ada', 'https://acme.test')"
+                               " RETURNING id", (uuid.uuid4(), user_id)).fetchone()[0]
+    return SimpleNamespace(id=lace_id, user_id=user_id)
+
+
+async def test_a_lace_uses_its_own_account_else_the_shared_one(composio, user):
+    lace = _lace_of(user.id)
+    own = svc.lace_entity(lace.id)
+    composio.accounts["ca_own_li"] = _account("ca_own_li", own, "linkedin", "ACTIVE")
+    composio.accounts["ca_own_x"] = _account("ca_own_x", own, "twitter", "INITIATED")  # abandoned link
+    composio.accounts["ca_x2"] = _account("ca_x2", str(user.id), "twitter", "ACTIVE")
+    async with AsyncSessionLocal() as db:
+        uses = await svc.for_lace(db, lace)
+        assert {p: (i.id, i.own) for p, i in uses.items()} == {
+            "gmail": ("ca_live", False), "linkedin": ("ca_own_li", True), "x": ("ca_x2", False)}
+        # Another Lace of the founder's sees none of the first one's own accounts.
+        assert (await svc.connection_for(db, _lace_of(user.id), "linkedin")) is None
+
+        # Its own Gmail needing attention: never the founder's shared one instead.
+        composio.accounts["ca_own_gm"] = _account("ca_own_gm", own, "gmail", "EXPIRED")
+        assert (await svc.for_lace(db, lace))["gmail"].id == "ca_own_gm"
+        assert await svc.connection_for(db, lace, "gmail") is None
+
+
+async def test_a_laces_own_accounts_count_for_its_founder(composio, user):
+    lace = _lace_of(user.id)
+    composio.accounts["ca_own_ig"] = _account("ca_own_ig", svc.lace_entity(lace.id), "instagram", "ACTIVE")
+    composio.accounts["ca_gone"] = _account("ca_gone", svc.lace_entity(uuid.uuid4()), "notion", "ACTIVE")
+    async with AsyncSessionLocal() as db:
+        assert await svc.live_by_user(db) == {user.id: {"gmail", "instagram"}}
+
+
+def test_a_lace_connects_and_disconnects_its_own_accounts(client, user, composio):
+    lace = client.post("/api/v1/laces", json={"name": "Ada", "website": "acme.test"}).json()["lace"]["id"]
+    own = svc.lace_entity(uuid.UUID(lace))
+    assert client.post(f"/api/v1/laces/{lace}/connections/gmail",
+                       params={"return_to": f"/lace/{lace}"}).status_code == 200  # the founder's Gmail is no bar
+    assert composio.authorized[-1][0] == own and composio.authorized[-1][2].endswith(f"/lace/{lace}?connected=gmail")
+
+    composio.accounts["ca_own"] = _account("ca_own", own, "gmail", "ACTIVE")
+    assert client.delete(f"/api/v1/laces/{lace}/connections/ca_live").status_code == 404  # the shared one
+    assert client.delete(f"{API}/ca_own").status_code == 404  # not from the shared accounts either
+    assert client.delete(f"/api/v1/laces/{lace}/connections/ca_own").status_code == 204
+    assert composio.deleted == [("ca_own", True)]
+
+    client.sign_in(make_user("Intruder"))
+    assert client.post(f"/api/v1/laces/{lace}/connections/gmail").status_code == 404
+
+
+async def test_a_deleted_laces_own_accounts_are_revoked(composio, user):
+    own = svc.lace_entity(uuid.uuid4())
+    composio.accounts["ca_own"] = _account("ca_own", own, "gmail", "ACTIVE")
+    composio.list = lambda user_ids, **_: SimpleNamespace(
+        items=[a for a in composio.accounts.values() if a.user_id in user_ids])
+    await svc.remove_all(own)
+    assert composio.deleted == [("ca_own", True)]

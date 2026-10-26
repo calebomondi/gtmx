@@ -15,9 +15,10 @@ import {
   useSidebar,
   SidebarTrigger
 } from "@/components/ui/sidebar"
-import { Pin, Layers, LayoutGrid, Archive, LogInIcon, Sparkles } from "lucide-react"
+import { Pin, Archive, Layers, LayoutGrid, LogInIcon } from "lucide-react"
 import { Link } from "react-router-dom"
-import { getCurrentUser, workspaceDisplayName } from "@/lib/api"
+import { Lace } from "@/components/lace-mascot"
+import { getCurrentUser, type LaceListItemDto } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import {
   SidebarMenu,
@@ -25,24 +26,23 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import {
-  ensureWorkspacesLoaded,
-  toggleWorkspacePin,
-  useWorkspaces,
-} from "@/lib/workspaces-store"
+  ensureLacesLoaded,
+  refetchLaces,
+  sidebarMascot,
+  toggleLacePin,
+  useLaces,
+} from "@/lib/laces-store"
+
+// How often the sidebar refreshes each Lace's mood (working, waiting on you).
+const LACES_REFRESH_MS = 30_000
+// Sidebar mascots are drawn at this size, in their simplified small face.
+const MASCOT_PX = 16
 
 // Static sidebar section (Extras nav links).
 const data = {
   projects: [
     {
-      name: "Laces",
-      url: "/lace",
-      icon: (
-        <Sparkles
-        />
-      ),
-    },
-    {
-      name: "Accounts",
+      name: "Shared accounts",
       url: "/accounts",
       icon: (
         <LayoutGrid
@@ -65,14 +65,6 @@ const data = {
     //     />
     //   ),
     // },
-    {
-      name: "Archive",
-      url: "/archive",
-      icon: (
-        <Archive
-        />
-      ),
-    },
   ],
 }
 
@@ -80,7 +72,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { state, toggleSidebar, isMobile } = useSidebar()
   // On phones the sidebar is a slide-over, always shown in full.
   const expanded = state === "expanded" || isMobile
-  const { workspaces } = useWorkspaces()
+  const { laces, archived, invites } = useLaces()
   const { user: authUser } = useAuth()
   const [user, setUser] = React.useState<{
     name: string
@@ -89,7 +81,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   } | null>(null)
 
   React.useEffect(() => {
-    ensureWorkspacesLoaded()
+    if (!authUser) return
+    ensureLacesLoaded()
+    const timer = setInterval(() => void refetchLaces(), LACES_REFRESH_MS)
+    return () => clearInterval(timer)
+  }, [authUser])
+
+  React.useEffect(() => {
     let cancelled = false
     if (!authUser) {
       setUser(null)
@@ -120,11 +118,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     }
   }, [authUser])
 
-  const toNavItem = (workspace: (typeof workspaces)[number]) => ({
-    id: workspace.id,
-    title: workspaceDisplayName(workspace),
-    url: `/workspace/${workspace.id}`,
-    pinned: workspace.pinned,
+  const toNavItem = (section: "pinned" | "all") => (lace: LaceListItemDto, index: number) => ({
+    id: lace.id,
+    title: lace.name,
+    url: `/lace/${lace.id}`,
+    pinned: lace.pinned,
+    icon: <Lace state={sidebarMascot(lace, section, index)} size={MASCOT_PX} phase={index * 1.3} decorative />,
   })
 
   const navMain = [
@@ -133,15 +132,37 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       url: "#",
       icon: <Pin />,
       isActive: true,
-      items: workspaces.filter((workspace) => workspace.pinned).map(toNavItem),
+      items: laces.filter((lace) => lace.pinned).map(toNavItem("pinned")),
     },
     {
-      title: "Workspaces",
+      title: "Laces",
       url: "#",
       icon: <Layers />,
       isActive: true,
-      items: workspaces.map(toNavItem),
+      items: [
+        ...laces.map(toNavItem("all")),
+        // Invites open the Lace on its accept-or-decline page; they can't be pinned.
+        ...invites.map((invite) => ({
+          id: invite.lace_id,
+          title: `${invite.lace_name} · invited`,
+          url: `/lace/${invite.lace_id}`,
+          icon: <Lace state="alert" size={MASCOT_PX} decorative />,
+        })),
+      ],
     },
+    // Only when there are some, and closed: they do no work.
+    ...(archived.length > 0 ? [{
+      title: "Archived",
+      url: "#",
+      icon: <Archive />,
+      isActive: false,
+      items: archived.map((lace) => ({
+        id: lace.id,
+        title: lace.name,
+        url: `/lace/${lace.id}`,
+        icon: <Lace state="sleepy" size={MASCOT_PX} decorative />,
+      })),
+    }] : []),
   ]
 
   return (
@@ -166,7 +187,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavSearchNew projects={data.projects} />
         <NavMain
           items={navMain}
-          onTogglePin={(workspaceId) => void toggleWorkspacePin(workspaceId)}
+          // A failed pin is rolled back and kept as the store error.
+          onTogglePin={(laceId) => void toggleLacePin(laceId).catch(() => undefined)}
         />
         <NavProjects projects={data.projects} />
       </SidebarContent>

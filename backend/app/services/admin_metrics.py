@@ -140,9 +140,9 @@ async def _economics(db: AsyncSession, since: datetime, active_users: int) -> di
     )).all()) if top else {}
     emails = await emails_by_id() if top else {}
 
-    completed = (run.kind == "discovery", run.status == "completed", in_window)
+    completed = (run.kind == "lace_onboarding", run.status == "completed", in_window)
     n_completed = await db.scalar(select(func.count()).where(*completed)) or 0
-    discovery_spend = sum((await _priced_spend_by(db, run.kind, *completed)).values())
+    onboarding_spend = sum((await _priced_spend_by(db, run.kind, *completed)).values())
     duration = func.extract("epoch", run.finished_at - run.started_at)
     p50, p90 = (await db.execute(
         select(func.percentile_cont(0.5).within_group(duration), func.percentile_cont(0.9).within_group(duration))
@@ -150,10 +150,10 @@ async def _economics(db: AsyncSession, since: datetime, active_users: int) -> di
     )).one()
     total = sum(by_user.values())
     return {
-        "discovery_p50_s": round(p50, 1) if p50 is not None else None,
-        "discovery_p90_s": round(p90, 1) if p90 is not None else None,
+        "onboarding_p50_s": round(p50, 1) if p50 is not None else None,
+        "onboarding_p90_s": round(p90, 1) if p90 is not None else None,
         "spend_per_active_user_usd": round(total / active_users, 4) if active_users else None,
-        "cost_per_completed_discovery_usd": round(discovery_spend / n_completed, 4) if n_completed else None,
+        "cost_per_onboarded_lace_usd": round(onboarding_spend / n_completed, 4) if n_completed else None,
         "top_spenders": [
             UserSpend(user_id=u, email=emails.get(u), runs=runs_by_user.get(u, 0), cost_usd=round(cost, 4))
             for u, cost in top

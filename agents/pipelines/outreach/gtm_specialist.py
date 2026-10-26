@@ -32,12 +32,21 @@ from utils.log import logger
 
 _PAGE_CHARS = 6_000
 MAX_REWRITES = 2
-_WORD_LIMITS = {"email": (50, 140), "linkedin": (25, 90)}
+_WORD_LIMITS = {"email": (50, 140), "linkedin": (25, 90), "x": (20, 70), "instagram": (20, 80),
+                "facebook": (20, 80), "tiktok": (20, 70)}
 _SCRAPE_TIMEOUT_S = 25
+# Only these are fetched as source pages.
+_WEB_URL = re.compile(r"^https?://", re.I)
 
 CHANNEL_RULES = {
     "email": "A cold email: a subject under 8 words built on the hook (their name, event or number, not a generic benefit), and a body of 60-120 words in 3 short paragraphs after the greeting.",
     "linkedin": "A LinkedIn connection note or message: no subject, 40-80 words, conversational, one paragraph or two.",
+    "x": "An X direct message: no subject, 25-60 words, one short paragraph, plain and direct.",
+    "instagram": "An Instagram direct message to the organisation's account: no subject, 25-70 words, friendly, "
+                 "asking who handles this if it is not them.",
+    "facebook": "A message to the organisation's Facebook Page: no subject, 25-70 words, friendly, "
+                "asking who handles this if it is not them.",
+    "tiktok": "A TikTok direct message to the organisation's account: no subject, 25-60 words, friendly and short.",
 }
 
 @dataclass
@@ -66,9 +75,10 @@ class OutreachBrief:
 
 
 def _sources(brief: OutreachBrief) -> str:
-    """The account's own homepage and the page its trigger was seen on."""
+    """The account's own homepage and the page its trigger was seen on. A
+    trigger the founder told us about has no page ("founder")."""
     cfg = get_settings()
-    urls = [u for u in dict.fromkeys([brief.website, brief.trigger_source]) if u]
+    urls = [u for u in dict.fromkeys([brief.website, brief.trigger_source]) if u and _WEB_URL.match(u)]
     pages = []
     for url in urls:
         text = call_with_timeout(lambda u=url: scrape_url(u, cfg), _SCRAPE_TIMEOUT_S, default="",
@@ -166,14 +176,17 @@ OFFER
 {offer}"""
 
 _REVIEW_PROMPT = """Review this outreach {channel} against the checks. It FAILS if any is false:
-1. It greets the contact (or the account's team), then opens on a specific fact about the account that appears in the RESEARCH.
-2. No claim, number, customer or name appears that is not in the RESEARCH, PLAN or OFFER.
+1. It greets the RECIPIENT (or the account's team when there is no name), then opens on a specific fact about the account that appears in the RESEARCH.
+2. No claim, number, customer or name appears that is not in the RECIPIENT, RESEARCH, PLAN or OFFER.
 3. It names the offer and says what it does for THIS account (the plan's fit) AND the business payoff for them: lower cost, more revenue, time saved or less risk (the plan's outcome). Describing what the offer does without what it is worth to them FAILS, as does a message only about their news, or a feature list.
 4. It has exactly one clear, low-friction ask.
 5. No generic filler ("I hope this finds you well", "quick intro", "I came across", buzzwords), and it never asserts the account's internal problems as known fact.
 6. Length fits: {channel_rule}
 7. It is signed with "{sender}".
 8. (email) The subject is about THEM -- their name, event or number -- not a generic benefit.
+
+RECIPIENT
+{contact}
 
 RESEARCH
 {research}
@@ -239,7 +252,8 @@ def _write(brief: OutreachBrief, plan: OutreachPlan, notes: str, offer_name: str
         )), HumanMessage(content="Write the message now.")],
         OutreachDraft, log_label=f"outreach_write:{brief.channel}",
     )
-    return draft.model_copy(update={"subject": ""}) if brief.channel == "linkedin" else draft
+    # Only email has a subject line.
+    return draft.model_copy(update={"subject": ""}) if brief.channel != "email" else draft
 
 
 def lint(brief: OutreachBrief, draft: OutreachDraft, sources: str | None = None, offer_name: str = "") -> list[str]:
@@ -297,6 +311,7 @@ def review(brief: OutreachBrief, research: AccountResearch, plan: OutreachPlan, 
     return invoke_structured_with_fallback(
         [SystemMessage(content=_REVIEW_PROMPT.format(
             channel=brief.channel, channel_rule=CHANNEL_RULES[brief.channel], sender=brief.sender_name,
+            contact=_contact(brief),
             research=research.model_dump_json(indent=1), plan=plan.model_dump_json(indent=1, exclude={"consult"}),
             offer=brief.offer, subject=draft.subject or "(none)", body=draft.body,
         )), HumanMessage(content="Review it now.")],

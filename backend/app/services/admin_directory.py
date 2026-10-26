@@ -1,15 +1,16 @@
-"""Admin views of users and workspaces. Identity comes from Supabase (there
+"""Admin views of users. Identity comes from Supabase (there
 is no local users table); activity counts come from our own tables."""
 
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app import supabase_admin
 from backend.app.database import models
-from backend.app.schemas.admin import AdminUserRow, AdminWorkspaceRow, Page
+from backend.app.database.lace_models import Lace
+from backend.app.schemas.admin import AdminUserRow, Page
 from backend.app.services import admin as admin_service
 from backend.app.services.admin_connections import live_connections
 from backend.app.services.errors import NotFoundError
@@ -38,15 +39,9 @@ async def emails_by_id() -> dict[uuid.UUID, str | None]:
 async def _activity(db: AsyncSession, user_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict]:
     counts = {uid: {} for uid in user_ids}
     for uid, n in (await db.execute(
-        select(models.Workspace.user_id, func.count()).where(models.Workspace.user_id.in_(user_ids))
-        .group_by(models.Workspace.user_id)
+        select(Lace.user_id, func.count()).where(Lace.user_id.in_(user_ids)).group_by(Lace.user_id)
     )).all():
-        counts[uid]["workspaces"] = n
-    for uid, n in (await db.execute(
-        select(models.Project.user_id, func.count()).where(models.Project.user_id.in_(user_ids))
-        .group_by(models.Project.user_id)
-    )).all():
-        counts[uid]["projects"] = n
+        counts[uid]["laces"] = n
     for uid, n, last in (await db.execute(
         select(models.Run.user_id, func.count(), func.max(models.Run.created_at))
         .where(models.Run.user_id.in_(user_ids)).group_by(models.Run.user_id)
@@ -71,7 +66,7 @@ async def list_users(db: AsyncSession, page: int, per_page: int, q: str | None) 
     users.sort(key=lambda u: str(getattr(u, "created_at", "") or ""), reverse=True)
     window = users[(page - 1) * per_page: page * per_page]
     activity = await _activity(db, [uuid.UUID(str(u.id)) for u in window])
-    live, error = await live_connections() if window else ({}, None)
+    live, error = await live_connections(db) if window else ({}, None)
     for uid, counts in activity.items():
         counts["connections"] = None if error else len(live.get(uid, ()))
     return Page(
@@ -93,34 +88,3 @@ async def get_supabase_user(user_id: uuid.UUID):
 
 async def user_activity(db: AsyncSession, user_id: uuid.UUID) -> dict:
     return (await _activity(db, [user_id]))[user_id]
-
-
-async def list_workspaces(
-    db: AsyncSession, page: int, per_page: int, q: str | None = None, user_id: uuid.UUID | None = None,
-) -> Page[AdminWorkspaceRow]:
-    w = models.Workspace
-    filters = []
-    if q:
-        filters.append(or_(w.name.ilike(f"%{q.strip()}%")))
-    if user_id:
-        filters.append(w.user_id == user_id)
-    total = await db.scalar(select(func.count()).select_from(w).where(*filters))
-    competitors = select(func.count()).where(models.Competitor.workspace_id == w.id).scalar_subquery()
-    accounts = select(func.count()).where(models.Account.workspace_id == w.id).scalar_subquery()
-    runs = select(func.count()).where(models.Run.workspace_id == w.id).scalar_subquery()
-    rows = (await db.execute(
-        select(w, competitors, accounts, runs).where(*filters)
-        .order_by(w.last_activity.desc()).offset((page - 1) * per_page).limit(per_page)
-    )).all()
-    emails = await emails_by_id() if rows else {}
-    return Page(
-        items=[
-            AdminWorkspaceRow(
-                id=ws.id, name=ws.name, offer_type=ws.offer_type, user_id=ws.user_id, user_email=emails.get(ws.user_id),
-                archived=ws.archived, date_created=ws.date_created, last_activity=ws.last_activity,
-                competitors=nc, accounts=na, runs=nr,
-            )
-            for ws, nc, na, nr in rows
-        ],
-        total=total or 0, page=page, per_page=per_page,
-    )

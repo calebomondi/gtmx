@@ -554,10 +554,18 @@ class Run(Base):
     __tablename__ = "runs"
     __table_args__ = (
         # A Lace's conversation is one checkpoint thread, which takes one writer
-        # at a time: at most one unfinished run per Lace, enforced here so two
-        # simultaneous messages cannot both start a turn.
+        # at a time: at most one unfinished conversation run per Lace, enforced
+        # here so two simultaneous messages cannot both start a turn. Background
+        # jobs (a competitor hunt) run alongside and are not counted.
         Index("uq_runs_one_active_per_lace", "lace_id", unique=True,
-              postgresql_where=text("lace_id IS NOT NULL AND status IN ('pending', 'running', 'awaiting_input')")),
+              postgresql_where=text("lace_id IS NOT NULL AND owner_id IS NULL"
+                                    " AND kind IN ('lace_onboarding', 'lace_turn')"
+                                    " AND status IN ('pending', 'running', 'awaiting_input')")),
+        # Each member's private chat is a thread of its own: one turn at a
+        # time there, alongside the team's.
+        Index("uq_runs_one_private_turn", "lace_id", "owner_id", unique=True,
+              postgresql_where=text("owner_id IS NOT NULL AND kind = 'lace_turn'"
+                                    " AND status IN ('pending', 'running', 'awaiting_input')")),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -571,9 +579,13 @@ class Run(Base):
     lace_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("laces.id", ondelete="SET NULL"), nullable=True, index=True,
     )
+    # The member whose private chat the run works in (its turn, or a job that
+    # turn started); NULL for the team's. Only they see it. No FK: Supabase
+    # owns users; indexed by uq_runs_one_private_turn's lace_id lead and here.
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
     # backend.app.runs.kinds.RunKind
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
-    # pending | running | awaiting_input | completed | failed | cancelled
+    # queued | pending | running | awaiting_input | completed | failed | cancelled
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
     # The request that started the run, kept for resume and for the admin view.
     input: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -800,6 +812,79 @@ class AppSession(Base):
     )
 
 
+class PilotAccess(Base):
+    """An email an admin let into the closed pilot (settings.pilot_invite_only_since),
+    typed in or approved from the waitlist."""
+
+    __tablename__ = "pilot_access"
+    __table_args__ = (
+        CheckConstraint("source IN ('admin', 'waitlist')", name="ck_pilot_access_source"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Lowercased: the natural key, matched against the signed-in user's email.
+    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True)
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
+    # The admin who let them in: a Supabase user, no FK.
+    granted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    granted_by_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), server_default=func.now(), index=True,
+    )
+
+
+class UserEvent(Base):
+    """One thing a user did in the customer app (a page opened, a panel
+    opened, a quick ask used), from a fixed list of names. For seeing how the
+    app is used and where people stop; never message text or contact details."""
+
+    __tablename__ = "user_events"
+    __table_args__ = (
+        Index("ix_user_events_name_created_at", "name", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # A Supabase user: no FK (Supabase owns users).
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    # The Lace it happened on, when it was one of theirs.
+    lace_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("laces.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    name: Mapped[str] = mapped_column(String(48), nullable=False)
+    # Which one, for names that have kinds: the page, the setup phase, the thread.
+    detail: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), server_default=func.now(), index=True,
+    )
+
+
+class Feedback(Base):
+    """A suggestion or a problem a user sent from the app's feedback button,
+    with where they were when they sent it, for the team to read."""
+
+    __tablename__ = "feedback"
+    __table_args__ = (
+        CheckConstraint("status IN ('new', 'read')", name="ck_feedback_status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # A Supabase user: no FK (Supabase owns users).
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    # As it was when they sent it, so the list needs no Supabase lookup.
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    # The Lace they had open, when they were on one of theirs.
+    lace_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("laces.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(8), nullable=False, default="new", server_default="new", index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), server_default=func.now(), index=True,
+    )
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class WorkspaceActivity(Base):
     """Active time and visits per workspace per UTC day."""
 
@@ -859,6 +944,8 @@ class WaitlistSignup(Base):
     countries: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
     wants_pilot: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false(), index=True)
     expectations: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Their startup's website, so their Lace can be set up when they're let in.
+    website: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Where they came from: utm_source/medium/campaign and the referrer.
     source: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="new", server_default="new", index=True)
@@ -880,4 +967,4 @@ class WaitlistSignup(Base):
 
 
 # Registered with the rest so Base.metadata (migrations, test cleanup) sees them.
-from backend.app.database.lace_models import Lace, LaceFact, LaceSource  # noqa: E402,F401
+from backend.app.database.lace_models import Lace, LaceAccount, LaceActivity, LaceBrief, LaceChannel, LaceMember, LaceCompetitor, LaceCompetitorMove, LaceContact, LaceDocument, LaceEvent, LaceFact, LaceOpportunity, LaceOutreach, LaceSource  # noqa: E402,F401

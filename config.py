@@ -9,6 +9,7 @@ case-insensitively (`exa_api_key` <- EXA_API_KEY).
 """
 
 import json
+from datetime import date, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
@@ -86,6 +87,11 @@ class Settings(BaseSettings):
     firecrawl_timeout_s: float = 60.0
     firecrawl_batch_timeout_s: float = 180.0
     brightdata_api_key: str = ""
+    # One social profile or post read in a Lace turn; inside lace_turn_timeout_s with
+    # room for the rest of the turn. Background pipelines keep the SDK's 180 s.
+    social_read_timeout_s: float = 150.0
+    # Reading a founder's TikTok comments runs in the background: the scraper is slow.
+    tiktok_comments_timeout_s: float = 600.0
     composio_api_key: str = ""
     # Composio auth config per toolkit, for toolkits Composio does not manage
     # auth for (verified 2026-10-10: tiktok, twitter). JSON object, e.g.
@@ -98,9 +104,6 @@ class Settings(BaseSettings):
     # Threads for the event loop's default executor (sync graph nodes and
     # asyncio.to_thread). Each running discovery holds up to two for minutes.
     default_executor_workers: int = 256
-    # Wall-clock cap on one active segment of a run (time spent waiting for a
-    # user's answer does not count: no task is alive then).
-    discovery_segment_timeout_s: float = 1800.0
     # Wall-clock cap on a whole background run (competitors, accounts, ...).
     background_run_timeout_s: float = 1800.0
     # A Lace reading its site for the first time, and one founder turn.
@@ -108,13 +111,18 @@ class Settings(BaseSettings):
     lace_turn_timeout_s: float = 300.0
 
     # -- Usage limits (per user) --
-    max_active_discovery_runs: int = 1
     max_discovery_runs_per_day: int = 10
     max_competitor_runs_per_day: int = 20
     max_account_runs_per_day: int = 20
     max_requests_per_minute: int = 120
     max_chat_messages_per_day: int = 200
     max_laces_per_user: int = 5
+    # Documents a founder shares with a Lace: the largest upload, how much of
+    # its text is kept, how many a Lace holds, and how many go with a message.
+    lace_document_max_mb: int = 15
+    lace_document_max_chars: int = 400_000
+    max_documents_per_lace: int = 50
+    max_documents_per_message: int = 5
     max_lace_onboardings_per_day: int = 10
     max_lace_turns_per_day: int = 200
     max_outreach_sends_per_day: int = 50
@@ -143,9 +151,15 @@ class Settings(BaseSettings):
     resend_timeout_s: float = 15.0
     waitlist_from_email: str = ""
     waitlist_pilot_spots: int = 50
+    # When the current pilot cohort starts, shown on thalace.com. Set per cohort.
+    waitlist_pilot_starts_on: date = date(2026, 10, 24)
     # Days after signup the team reaches out to pilot opt-ins (said in the email).
     waitlist_pilot_contact_days: int = 14
     waitlist_signups_per_ip_per_hour: int = 5
+    # The closed pilot. When set, only these may use the app: admins, emails an
+    # admin approved (pilot_access), people invited onto a Lace, and accounts
+    # made before this moment (so nobody already in is locked out). Unset: open.
+    pilot_invite_only_since: datetime | None = None
     # Salt for the stored IP hash (rate limiting without keeping raw IPs).
     waitlist_ip_salt: str = "gtmx-waitlist"
     # The header the proxy in front of the backend puts the visitor's IP in:
@@ -190,10 +204,6 @@ class Settings(BaseSettings):
     # Grace period after boot before the first sweep, so a restart (or a local
     # dev reload) doesn't immediately fan out paid monitoring runs.
     monitor_initial_delay_s: float = 120.0
-    monitor_max_age_h: float = 24.0
-    # Social stats move slowly and every Bright Data scrape is paid, so a
-    # monitor run refreshes them only when they are older than this.
-    socials_max_age_h: float = 168.0
 
     # -- Agent tuning --
     # How far back (days) research may look for sources. Kept short so the
@@ -201,6 +211,8 @@ class Settings(BaseSettings):
     market_recency_days: int = 365
     competitor_search_timeout_s: float = 20.0
     competitor_scrape_timeout_s: float = 30.0
+    # Opening a new Lace's website before it is made: one that can't be read is refused.
+    website_check_timeout_s: float = 30.0
     competitor_profile_workers: int = 6
     account_search_timeout_s: float = 20.0
     account_scrape_timeout_s: float = 30.0

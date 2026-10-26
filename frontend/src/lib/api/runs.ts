@@ -1,6 +1,7 @@
 import { apiFetch, apiStream } from "./http"
 
 export type RunStatus =
+  | "queued"
   | "pending"
   | "running"
   | "awaiting_input"
@@ -12,6 +13,10 @@ export interface RunDto {
   id: string
   kind: string
   status: RunStatus
+  /** Who started it: on a shared Lace, which of its people. */
+  user_id: string
+  /** Set when it works in that member's private chat (only they see it). */
+  owner_id: string | null
   workspace_id: string | null
   lace_id: string | null
   progress: Record<string, unknown> | null
@@ -65,6 +70,10 @@ export interface RunFrame {
   tool?: string
   ok?: boolean
   summary?: string
+  /** "progress" frames: how far onboarding has got, 0 to 1. */
+  fraction?: number
+  /** "onboarded" frames: the pages onboarding could read. */
+  pages_read?: string[]
 }
 
 /** Every frame of a run after `after`: the backlog, then live, ending after

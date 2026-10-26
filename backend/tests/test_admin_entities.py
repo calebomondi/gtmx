@@ -1,5 +1,5 @@
-"""Admin entity views: paginated users (from Supabase), workspaces, runs with
-their timeline and cost, and signals -- all admin-only."""
+"""Admin entity views: paginated users (from Supabase), runs with their
+timeline and cost, and what founders ask their Laces -- all admin-only."""
 
 import json
 import uuid
@@ -25,7 +25,7 @@ def _supabase_user(uid, email, created, **extra):
 
 @pytest.fixture
 def directory(client, user, owned, monkeypatch):
-    """`user` owns the seeded workspace; two more accounts exist in Supabase."""
+    """`user` owns the seeded workspace and a Lace; two more accounts exist in Supabase."""
     people = [
         _supabase_user(user.id, "owner@example.com", "2026-10-01T00:00:00Z"),
         _supabase_user(uuid.uuid4(), "zed@example.com", "2026-10-03T00:00:00Z", banned_until="2999-01-01T00:00:00Z"),
@@ -42,6 +42,9 @@ def directory(client, user, owned, monkeypatch):
         raise NotFoundError("User not found.")
     monkeypatch.setattr(admin_service, "list_all_users", all_users)
     monkeypatch.setattr(admin_directory, "get_supabase_user", one_user)
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        conn.execute("INSERT INTO laces (id, user_id, name, website, status) VALUES (%s, %s, 'Owner Lace',"
+                     " 'https://owner.test', 'active')", (uuid.uuid4(), user.id))
     client.sign_in(make_user("Boss", is_admin=True))
     return people
 
@@ -51,10 +54,10 @@ def test_users_are_paginated_searchable_and_carry_activity(client, user, directo
     assert first["total"] == 3 and [u["email"] for u in first["items"]] == ["zed@example.com", "boss@example.com"]
     assert first["items"][0]["suspended"] and first["items"][1]["is_admin"]
     owner = client.get(f"{API}/users", params={"q": "OWNER"}).json()["items"]
-    assert len(owner) == 1 and owner[0]["workspaces"] == 1 and owner[0]["runs"] == 2
+    assert len(owner) == 1 and owner[0]["laces"] == 1 and owner[0]["runs"] == 2
 
     detail = client.get(f"{API}/users/{user.id}").json()
-    assert detail["workspace_list"][0]["user_email"] == "owner@example.com"
+    assert [(lace["name"], lace["user_email"]) for lace in detail["lace_list"]] == [("Owner Lace", "owner@example.com")]
     assert len(detail["recent_runs"]) == 2 and detail["spend_usd"] == 0
     assert client.get(f"{API}/users/{uuid.uuid4()}").status_code == 404
 
@@ -78,21 +81,35 @@ def test_run_detail_has_timeline_and_cost(client, owned, directory, monkeypatch)
     assert client.get(f"{API}/runs/{uuid.uuid4()}").status_code == 404
 
 
-def test_workspaces_and_signals_listing(client, owned, directory):
+def _ask(user_id, lace_id, text, status="completed"):
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
-        conn.execute(
-            "INSERT INTO signals (id, user_id, workspace_id, category, title, entity, summary, reason)"
-            " SELECT %s, user_id, id, 'competitor', 'Rival cut prices', '', '', '' FROM workspaces WHERE id = %s",
-            (uuid.uuid4(), owned["workspace"]),
-        )
-    workspaces = client.get(f"{API}/workspaces", params={"q": "owner"}).json()
-    assert workspaces["total"] == 1 and workspaces["items"][0]["competitors"] == 1
-    signals = client.get(f"{API}/signals").json()
-    assert signals["items"][0]["title"] == "Rival cut prices"
-    assert signals["items"][0]["user_email"] == "owner@example.com"
+        conn.execute("INSERT INTO runs (id, user_id, lace_id, kind, status, input) VALUES (%s, %s, %s, 'lace_turn', %s, %s)",
+                     (uuid.uuid4(), user_id, lace_id, status, json.dumps({"text": text})))
 
 
-@pytest.mark.parametrize("path", ["/users", "/workspaces", "/runs", "/signals"])
+def test_questions_are_listed_newest_first_and_filterable(client, user, directory):
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        lace = conn.execute("SELECT id FROM laces WHERE user_id = %s", (user.id,)).fetchone()[0]
+        conn.execute("INSERT INTO runs (id, user_id, lace_id, kind, status) VALUES (%s, %s, %s, 'lace_onboarding',"
+                     " 'completed')", (uuid.uuid4(), user.id, lace))
+    _ask(user.id, lace, "Who are my top competitors?")
+    _ask(user.id, lace, "Draft a note to 100% of Kenya leads", status="running")
+    _ask(uuid.uuid4(), None, "Someone else's question")
+
+    page = client.get(f"{API}/questions").json()
+    assert page["total"] == 3
+    assert [q["text"] for q in page["items"][:2]] == ["Someone else's question", "Draft a note to 100% of Kenya leads"]
+    mine = client.get(f"{API}/questions", params={"user_id": str(user.id)}).json()["items"]
+    assert [(q["lace_name"], q["user_email"], q["status"]) for q in mine] == [
+        ("Owner Lace", "owner@example.com", "running"), ("Owner Lace", "owner@example.com", "completed")]
+    assert client.get(f"{API}/questions", params={"lace_id": str(lace)}).json()["total"] == 2
+    # The search is a literal match: "%" is not a wildcard.
+    assert [q["text"] for q in client.get(f"{API}/questions", params={"q": "100%"}).json()["items"]] == [
+        "Draft a note to 100% of Kenya leads"]
+    assert client.get(f"{API}/questions", params={"q": "COMPETITORS"}).json()["total"] == 1
+
+
+@pytest.mark.parametrize("path", ["/users", "/runs", "/questions"])
 def test_entities_are_admin_only_and_bounded(client, path):
     assert client.get(f"{API}{path}").status_code == 403
     client.sign_in(make_user("Boss", is_admin=True))

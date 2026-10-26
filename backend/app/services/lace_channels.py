@@ -1,0 +1,86 @@
+"""A founder's Instagram business account, Facebook Page or Telegram bot,
+linked to the Lace that reads its inbound messages. Only accounts managed by the live connection the
+Lace uses (its own, else the founder's shared one) can be linked, and each to
+one Lace."""
+
+import asyncio
+import uuid
+
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.app.database.lace_models import Lace, LaceChannel
+from backend.app.services import connections as connection_service
+from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError
+
+# Verified against the live Composio catalog (docs/lace-plan.md, Channels).
+_ACCOUNT_TOOLS = {
+    "instagram": ("INSTAGRAM_GET_USER_INFO", {"ig_user_id": "me"}),
+    "facebook": ("FACEBOOK_LIST_MANAGED_PAGES", {}),
+    "telegram": ("TELEGRAM_GET_ME", {}),
+}
+LABELS = {"instagram": "Instagram", "facebook": "Facebook", "telegram": "Telegram"}
+
+
+def items(data) -> list[dict]:
+    """The records in a Composio Graph response: `{"data": [...]}`, or one
+    object for a single-record call."""
+    if isinstance(data, dict) and isinstance(data.get("data"), list):
+        return [d for d in data["data"] if isinstance(d, dict)]
+    if isinstance(data, dict) and data.get("id"):
+        return [data]
+    return []
+
+
+async def live_connection(db: AsyncSession, lace: Lace, platform: str) -> connection_service.ConnectionInfo:
+    connection = await connection_service.connection_for(db, lace, platform)
+    if connection is None:
+        raise ConflictError(f"Connect {'an' if platform == 'instagram' else 'a'} {LABELS[platform]} account first "
+                            "(this Lace's settings).")
+    return connection
+
+
+async def available(db: AsyncSession, lace: Lace, platform: str) -> list[dict]:
+    """The business accounts (Instagram) or Pages (Facebook) managed by the
+    connection the Lace uses: [{id, name}]."""
+    connection = await live_connection(db, lace, platform)
+    tool, arguments = _ACCOUNT_TOOLS[platform]
+    result = await asyncio.to_thread(connection_service.execute_tool, connection.entity, tool, arguments,
+                                     connection.id)
+    if result.get("error"):
+        raise ConflictError(f"{LABELS[platform]} didn't list your accounts. Reconnect it in this Lace's settings.")
+    data = result.get("data")
+    # A Telegram bot is one record under the Bot API's "result".
+    records = items(data) or (items(data.get("result")) if isinstance(data, dict) else [])
+    return [{"id": str(r["id"]), "name": ("@" if platform == "telegram" else "") + str(
+                r.get("username") or r.get("name") or r["id"])}
+            for r in records]
+
+
+async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID) -> list[LaceChannel]:
+    return list((await db.scalars(select(LaceChannel).where(LaceChannel.lace_id == lace_id)
+                                  .order_by(LaceChannel.created_at))).all())
+
+
+async def link(db: AsyncSession, lace: Lace, platform: str, account_id: str) -> LaceChannel:
+    account = next((a for a in await available(db, lace, platform) if a["id"] == account_id), None)
+    if account is None:
+        raise InvalidInputError(f"That {LABELS[platform]} account isn't one your connection manages.")
+    channel = LaceChannel(lace_id=lace.id, user_id=lace.user_id, platform=platform, account_id=account_id,
+                          account_name=account["name"][:255])
+    db.add(channel)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise ConflictError("That account is already linked to a Lace.") from None
+    return channel
+
+
+async def unlink(db: AsyncSession, lace_id: uuid.UUID, channel_id: uuid.UUID) -> None:
+    channel = await db.scalar(select(LaceChannel).where(LaceChannel.id == channel_id, LaceChannel.lace_id == lace_id))
+    if channel is None:
+        raise NotFoundError("Channel not found")
+    await db.delete(channel)
+    await db.commit()

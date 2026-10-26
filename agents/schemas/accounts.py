@@ -1,10 +1,35 @@
 """Target accounts found by account discovery."""
 
+import re
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import Field, field_validator
 
 from agents.schemas.coercion import coerce_json, LenientModel
+
+# A person's own accounts beyond email and LinkedIn, in the order a first
+# message tries them.
+PERSON_SOCIALS = ("x", "instagram", "facebook", "tiktok")
+_SOCIAL_HOSTS = {"x": ("x.com", "twitter.com"), "instagram": ("instagram.com",), "facebook": ("facebook.com",),
+                 "tiktok": ("tiktok.com",)}
+_SOCIAL_PROFILE = {"x": "https://x.com/{}", "instagram": "https://www.instagram.com/{}",
+                   "facebook": "https://www.facebook.com/{}", "tiktok": "https://www.tiktok.com/@{}"}
+_HANDLE = re.compile(r"^@?([A-Za-z0-9_.]{1,50})$")
+
+
+def social_profile_url(platform: str, value: str | None) -> str | None:
+    """A profile URL from a URL or a bare handle ("@acme"); None when it is
+    blank or a link to another site."""
+    value = (value or "").strip()
+    if not value:
+        return None
+    if "/" not in value:
+        handle = _HANDLE.match(value)
+        return _SOCIAL_PROFILE[platform].format(handle.group(1)) if handle else None
+    url = value if re.match(r"^https?://", value, re.I) else "https://" + value
+    host = (urlparse(url).hostname or "").lower()
+    return url if any(host == h or host.endswith("." + h) for h in _SOCIAL_HOSTS[platform]) else None
 
 
 class ContactRecord(LenientModel):
@@ -15,6 +40,21 @@ class ContactRecord(LenientModel):
     title: str | None = Field(default=None, description="Job title, if found")
     linkedin: str | None = Field(default=None, description="LinkedIn URL, if found")
     email: str | None = Field(default=None, description="Email address, if found")
+    x: str | None = Field(default=None, description="Their own X (Twitter) profile URL, if found")
+    instagram: str | None = Field(default=None, description="Their own Instagram profile URL, if found")
+    facebook: str | None = Field(default=None, description="Their own Facebook profile URL, if found")
+    tiktok: str | None = Field(default=None, description="Their own TikTok profile URL, if found")
+
+    @field_validator(*PERSON_SOCIALS)
+    @classmethod
+    def _profile_url(cls, v, info):
+        return social_profile_url(info.field_name, v)
+
+    def addresses(self) -> dict[str, str]:
+        """Each channel they can be reached on, best first: email, LinkedIn,
+        then their own social accounts."""
+        found = {"email": self.email, "linkedin": self.linkedin, **{p: getattr(self, p) for p in PERSON_SOCIALS}}
+        return {channel: address for channel, address in found.items() if address}
 
 
 class SourceRecord(LenientModel):
@@ -37,7 +77,9 @@ class TriggerEvent(LenientModel):
         "product_listing",
         "funding_round",
         "event_upcoming",
-    ] = Field(description="Which trigger signal type this event matches")
+        "founder_added",
+    ] = Field(description="Which trigger signal type this event matches (founder_added is set by the app for "
+                          "accounts the founder named, never by a search)")
     source: str = Field(description="URL/where the trigger was observed")
 
 

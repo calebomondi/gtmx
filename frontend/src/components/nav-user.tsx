@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/sidebar"
 import { ChevronsUpDownIcon, SparklesIcon, BadgeCheckIcon, CreditCardIcon, BellIcon, LogOutIcon } from "lucide-react"
 import { ModeToggle } from "@/components/mode-toggle"
+import { FeedbackButton } from "@/components/feedback-button"
 import { supabase } from "@/lib/supabase"
 
 export function NavUser({
@@ -40,6 +41,9 @@ export function NavUser({
     .join('') || 'U'
   return (
     <SidebarMenu>
+      <SidebarMenuItem className={`mt-2 ${state === "expanded" ? "px-2" : "px-0"}`}>
+        <FeedbackButton />
+      </SidebarMenuItem>
       <SidebarMenuItem className={`my-2 ${state === "expanded" ? "px-2" : "px-0"}`}>
         <ModeToggle />
       </SidebarMenuItem>

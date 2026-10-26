@@ -23,6 +23,7 @@ from backend.app.database.connect import AsyncSessionLocal, Base, get_db
 from backend.app.main import add_service_error_handlers
 from backend.app.runs import manager as run_manager
 from backend.app.services import connections as connection_service
+from backend.app.services import website_check
 from backend.tests.helpers import make_user
 from config import settings
 
@@ -55,6 +56,15 @@ def no_auto_monitoring(monkeypatch):
     that want it turn it back on."""
     monkeypatch.setattr(settings, "monitor_enabled", False)
     monkeypatch.setattr(settings, "inbox_sync_enabled", False)
+
+
+@pytest.fixture(autouse=True)
+def readable_websites(monkeypatch):
+    """Every new Lace's site reads (no scraping from tests); a test that
+    wants one refused patches website_check.readable itself."""
+    async def readable(website):
+        return True
+    monkeypatch.setattr(website_check, "readable", readable)
 
 
 @pytest.fixture(autouse=True)
@@ -100,6 +110,25 @@ def client(user: AuthUser):
     with TestClient(app, base_url="http://test") as test_client:
         test_client.sign_in = lambda who: signed_in.update(user=who)
         yield test_client
+        # Runs the test started (a Lace waking to report, say) live on this
+        # client's event loop. Let them finish before it closes: one frozen
+        # mid-transaction keeps its row locks, and every later test's cleanup
+        # then blocks on them.
+        test_client.portal.call(_finish_runs)
+
+
+# How long teardown waits for a test's background runs before cancelling them.
+_RUN_DRAIN_S = 15.0
+
+
+async def _finish_runs() -> None:
+    tasks = [t for t in run_manager._tasks.values() if not t.done()]
+    if not tasks:
+        return
+    _done, pending = await asyncio.wait(tasks, timeout=_RUN_DRAIN_S)
+    for task in pending:
+        task.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
 
 
 @pytest.fixture
@@ -118,15 +147,20 @@ def seed_workspace():
 
 @pytest.fixture
 def owned(client, user, seed_workspace):
-    """A workspace, project, competitor, account and one run of each kind, all
-    owned by `user`."""
+    """A v1 workspace, project, competitor, account and one run of each kind,
+    all owned by `user`, inserted directly (v1 has no API any more; the admin
+    views still read these tables)."""
     workspace_id = seed_workspace(user.id, "Owner Workspace")
-    project = client.post(f"{settings.api_v1_str}/projects/user/{user.id}", json={"name": "owner project"}).json()
-    competitor = client.post(
-        f"{settings.api_v1_str}/workspaces/{workspace_id}/competitors",
-        json={"website": "rival.example", "deep_research": False},
-    ).json()
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        project_id = conn.execute("INSERT INTO projects (id, user_id, name, name_key) VALUES"
+                                  " (%s, %s, 'owner project', 'owner project') RETURNING id",
+                                  (uuid.uuid4(), user.id)).fetchone()[0]
+        conn.execute("UPDATE workspaces SET project_id = %s WHERE id = %s", (project_id, workspace_id))
+        competitor_id = conn.execute(
+            "INSERT INTO competitors (id, workspace_id, name, website, domain_key, strengths, weaknesses, opportunities,"
+            " notable_customers, pain_signals, customer_sentiment, tracking_sources, unsourced_fields, source)"
+            " VALUES (%s, %s, 'Rival', 'https://rival.example', 'rival.example', '[]', '[]', '[]', '[]', '[]', '[]',"
+            " '[]', '[]', 'user') RETURNING id", (uuid.uuid4(), workspace_id)).fetchone()[0]
         account_id = conn.execute(
             "INSERT INTO accounts (id, workspace_id, name, account_type, tech_stack, recent_news, key_contacts,"
             " pain_signals, hiring_signals, sources, source_queries, why_selected, why_reach_out)"
@@ -143,8 +177,8 @@ def owned(client, user, seed_workspace):
         )
     return {
         "workspace": workspace_id,
-        "project": project["id"],
-        "competitor": competitor["id"],
+        "project": str(project_id),
+        "competitor": str(competitor_id),
         "account": str(account_id),
         "competitor_run": str(competitor_run_id),
         "account_run": str(account_run_id),

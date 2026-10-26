@@ -95,7 +95,7 @@ async def test_lace_records_a_fact_through_the_database(store):
             "topic": "pricing", "claim": "Plans start at $20.", "from_founder": True}}]),
         AIMessage(content="Noted."),
     ]
-    graph = build_lace_graph(store, model_step=lambda messages, tools: replies.pop(0))
+    graph = build_lace_graph(store, model_step=lambda messages, tools, sink: replies.pop(0))
     out = await graph.ainvoke({"messages": [HumanMessage(content="we charge $20")]})
     assert out["messages"][-1].content == "Noted."
     [fact] = await store.facts()
@@ -105,3 +105,10 @@ async def test_lace_records_a_fact_through_the_database(store):
 async def test_startup_name_is_stored(store):
     await store.set_startup_name("Acme Health")
     assert (await store.profile()).startup_name == "Acme Health"
+
+
+async def test_icp_round_trips(store):
+    from agents.schemas.icp import ICP
+    assert await store.icp() is None
+    await store.save_icp(ICP(buyer_type="b2b", industries=["Clinics"]))
+    assert (await store.icp()).industries == ["Clinics"]

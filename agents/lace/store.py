@@ -6,9 +6,11 @@ Lace: no method takes a Lace or workspace id, which is what keeps the model from
 reaching another startup's data whatever it asks for.
 """
 
-from typing import Protocol
+from typing import Literal, Protocol
 
-from agents.schemas.lace import Fact, FactTopic, LaceProfile, NewFact, SourcePage
+from agents.schemas.icp import ICP
+from agents.schemas.opportunities import OpportunitySummary
+from agents.schemas.lace import ProposedAction, AccountSummary, CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Suggestions, Fact, FactTopic, ItemsChanged, LaceProfile, NamedItem, NewContact, NewFact, SavedKind, SavedVerdict, SourcePage
 
 
 class LaceStore(Protocol):
@@ -27,4 +29,106 @@ class LaceStore(Protocol):
 
     async def save_source(self, page: SourcePage) -> None:
         """Keep a page the Lace read; re-reading a URL replaces its copy."""
+        ...
+
+    async def icp(self) -> ICP | None: ...
+
+    async def save_icp(self, icp: ICP) -> None:
+        """Replace the Lace's ideal customer profile."""
+        ...
+
+    async def accounts(self, limit: int = 50) -> list[AccountSummary]:
+        """Saved target accounts, strongest fit first."""
+        ...
+
+    async def opportunities(self, limit: int = 50) -> list[OpportunitySummary]:
+        """Saved opportunities still open, the soonest deadline first."""
+        ...
+
+    async def competitors(self, limit: int = 50) -> list[CompetitorSummary]:
+        """Saved (tracked) competitors, newest first."""
+        ...
+
+    async def suggestions(self, limit: int = 50) -> Suggestions:
+        """What searches found that the founder has not saved or dismissed yet.
+        Only saved items are worked from; these wait for the founder."""
+        ...
+
+    async def drafts(self, limit: int = 50) -> list[DraftSummary]:
+        """Messages drafted and not yet sent, newest first."""
+        ...
+
+    async def documents(self, limit: int = 50) -> list[DocumentSummary]:
+        """Documents the founder shared, newest first."""
+        ...
+
+    async def document_text(self, document_id: str) -> tuple[DocumentSummary, str] | None:
+        """One shared document and its text; None when it is not this Lace's."""
+        ...
+
+    # Changes the founder asked for. Ids that are not this Lace's are reported
+    # as missing, never touched.
+
+    async def set_saved(self, kind: SavedKind, ids: list[str], verdict: SavedVerdict) -> ItemsChanged:
+        """Save items (track a competitor, target an account, keep an
+        opportunity open) or remove them: removed ones leave every list and
+        are not suggested again, until saved back."""
+        ...
+
+    async def removed(self, kind: SavedKind, limit: int = 50) -> list[NamedItem]:
+        """Items the founder removed, newest first, so they can be saved back."""
+        ...
+
+    async def retract_facts(self, ids: list[str]) -> ItemsChanged:
+        """Facts that are wrong: they leave what the Lace knows."""
+        ...
+
+    async def contacts(self, limit: int = 100) -> list[ContactSummary]:
+        """The people at the Lace's target accounts."""
+        ...
+
+    async def add_contact(self, contact: NewContact) -> ContactSummary:
+        """Add a person the founder named, approved for outreach, at the target
+        account with that company's name (or website); a new target account
+        when there is none."""
+        ...
+
+    async def remove_contacts(self, ids: list[str]) -> ItemsChanged: ...
+
+    async def edit_draft(self, draft_id: str, subject: str | None, body: str | None) -> DraftSummary:
+        """Rewrite an unsent draft. Raises KeyError when it is not this Lace's
+        draft, ValueError when it was already sent."""
+        ...
+
+    async def discard_drafts(self, ids: list[str]) -> ItemsChanged:
+        """Delete unsent drafts; sent messages are never touched."""
+        ...
+
+    async def propose_action(self, action: ProposedAction) -> str:
+        """Keep an action in one of the founder's apps for them to approve;
+        its id. Nothing runs until they do."""
+        ...
+
+
+JobKind = Literal["find_competitors", "check_competitors", "find_accounts", "find_contacts", "draft_outreach",
+                  "find_opportunities", "define_icp", "read_tiktok_comments"]
+
+
+class JobRefused(Exception):
+    """A background job could not start: one is already running, or a limit
+    was reached. The message is said to the founder as is."""
+
+
+class JobBlocked(Exception):
+    """A job cannot do its work for a reason the founder can fix (not enough
+    known yet, no ICP). The message is safe to say to them as is; any other
+    failure is reported in general terms."""
+
+
+class LaceJobs(Protocol):
+    """Starts work too long for one turn. The job reports back by waking the
+    Lace with an update when it is done."""
+
+    async def start(self, kind: JobKind, params: dict) -> str:
+        """The job's id. Raises JobRefused."""
         ...

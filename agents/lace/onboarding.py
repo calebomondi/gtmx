@@ -56,6 +56,19 @@ _SKIP = re.compile(
     re.IGNORECASE,
 )
 
+# Where each stage ends, as a share of onboarding: what the founder's
+# progress bar shows. Reading pages fills MAPPED..READ page by page.
+MAPPED, READ, UNDERSTOOD = 0.15, 0.70, 0.90
+
+# How far onboarding has got: (fraction 0..1, what it is doing now). Called
+# from worker threads as well as the event loop, so it must be thread-safe.
+Progress = Callable[[float, str], None]
+
+
+def _no_progress(fraction: float, text: str) -> None:
+    pass
+
+
 # The model steps, injectable so tests can script them.
 Extract = Callable[[Sequence], SiteUnderstanding]
 Pick = Callable[[Sequence], PagePick]
@@ -66,7 +79,7 @@ feature pages, pricing, about, customers. Prefer overview pages to individual
 case studies or integrations. Copy URLs exactly from the list."""
 
 _EXTRACT_PROMPT = """You read a startup's own website and record what it says
-about itself, for a go-to-market assistant that will work from these facts.
+about itself, for the startup assistant that will work from these facts.
 
 Record facts on these topics: company (name, location, team, stage), offer (what
 it sells, key features, how it works), pricing, customers (who buys, named
@@ -182,12 +195,19 @@ async def _map(home: str, settings: Settings) -> list[SiteLink]:
     return ranked + full
 
 
-async def _read_site(website: str, settings: Settings, pick: Pick) -> tuple[list[Page], list[str]]:
+async def _read_site(website: str, settings: Settings, pick: Pick,
+                     progress: Progress) -> tuple[list[Page], list[str]]:
     home = _with_scheme(website)
+    progress(0.02, "Mapping your site")
     links = await _map(home, settings)
+    progress(MAPPED, "Choosing the pages to read")
     urls = await asyncio.to_thread(pick_pages, home, links, pick) if links else [home]
+
+    def pages_done(done: int, total: int) -> None:
+        progress(MAPPED + (READ - MAPPED) * done / max(total, 1), f"Read {done} of {total} pages")
+
     try:
-        pages, failures = await asyncio.to_thread(firecrawl.scrape_pages, urls, settings)
+        pages, failures = await asyncio.to_thread(firecrawl.scrape_pages, urls, settings, pages_done)
     except FirecrawlError as exc:
         logger.warning("Onboarding could not read %s: %s", home, exc)
         return [], urls
@@ -195,10 +215,11 @@ async def _read_site(website: str, settings: Settings, pick: Pick) -> tuple[list
 
 
 async def onboard(store: LaceStore, settings: Settings, extract: Extract = _default_extract,
-                  pick: Pick = _default_pick) -> OnboardingResult:
-    """Read the Lace's website and record what it says as facts."""
+                  pick: Pick = _default_pick, progress: Progress = _no_progress) -> OnboardingResult:
+    """Read the Lace's website and record what it says as facts, reporting
+    how far it has got to `progress`."""
     profile = await store.profile()
-    pages, failed = await _read_site(profile.website, settings, pick)
+    pages, failed = await _read_site(profile.website, settings, pick, progress)
     if not pages:
         return OnboardingResult(startup_name=None, pages_read=[], pages_failed=failed,
                                 facts_recorded=0, open_questions=[])
@@ -206,6 +227,7 @@ async def onboard(store: LaceStore, settings: Settings, extract: Extract = _defa
     for page in pages:
         await store.save_source(SourcePage(url=page.url, title=page.title, markdown=page.markdown))
 
+    progress(READ, "Learning what you sell")
     understanding = await asyncio.to_thread(extract, _extract_messages(pages))
     read = {p.url for p in pages}
     kept = [f for f in understanding.facts if f.source_url in read and f.claim.strip()]
@@ -217,6 +239,7 @@ async def onboard(store: LaceStore, settings: Settings, extract: Extract = _defa
                                         confidence=fact.confidence, origin="crawl"))
     if understanding.startup_name:
         await store.set_startup_name(understanding.startup_name.strip())
+    progress(UNDERSTOOD, f"Noted {len(kept)} things about you")
 
     return OnboardingResult(
         startup_name=understanding.startup_name,

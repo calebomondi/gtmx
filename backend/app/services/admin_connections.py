@@ -7,7 +7,7 @@ from datetime import datetime
 from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.database import models
+from backend.app.database.lace_models import LaceOutreach
 from backend.app.schemas.admin import ConnectionMetrics, PlatformUsage
 from backend.app.services import admin as admin_service
 from backend.app.services import connections as connection_service
@@ -18,11 +18,11 @@ from utils.log import logger
 COMPOSIO_UNAVAILABLE = "Couldn't read connected accounts from Composio; see the API logs."
 
 
-async def live_connections() -> tuple[dict[uuid.UUID, set[str]] | None, str | None]:
+async def live_connections(db: AsyncSession) -> tuple[dict[uuid.UUID, set[str]] | None, str | None]:
     """Every user's live platforms, or (None, reason) when Composio fails, so
     a Composio outage degrades the page instead of breaking it."""
     try:
-        return await connection_service.live_by_user(), None
+        return await connection_service.live_by_user(db), None
     except Exception:  # the SDK raises its own and httpx's error types
         logger.exception("Listing connected accounts from Composio failed")
         return None, COMPOSIO_UNAVAILABLE
@@ -32,7 +32,7 @@ async def sends_by_platform(
     db: AsyncSession, *, since: datetime | None = None, user_id: uuid.UUID | None = None,
 ) -> dict[str, tuple[int, int]]:
     """platform -> (messages sent, distinct senders)."""
-    o = models.OutreachMessage
+    o = LaceOutreach
     where = [o.status == "sent"]
     if since:
         where.append(o.sent_at >= since)
@@ -46,7 +46,7 @@ async def sends_by_platform(
 
 async def connection_metrics(db: AsyncSession, days: int) -> ConnectionMetrics:
     since, _ = window(days)
-    live, error = await live_connections()
+    live, error = await live_connections(db)
     live = live or {}
     sends = await sends_by_platform(db, since=since)
     total_users = len(await admin_service.list_all_users())

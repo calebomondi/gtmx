@@ -16,7 +16,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import models
 from backend.app.services.errors import RateLimitedError
-from backend.app.services.runs import TERMINAL_STATUSES
 from config import settings
 
 _DAY = timedelta(days=1)
@@ -47,6 +46,16 @@ def default_daily_cap(kind: str) -> int:
         "account_fit": settings.max_account_runs_per_day * 5,
         "lace_onboarding": settings.max_lace_onboardings_per_day,
         "lace_turn": settings.max_lace_turns_per_day,
+        "lace_competitors": settings.max_competitor_runs_per_day,
+        "lace_monitor": settings.max_monitor_runs_per_day,
+        "lace_accounts": settings.max_account_runs_per_day,
+        "lace_contacts": settings.max_account_runs_per_day,
+        "lace_drafts": settings.max_account_runs_per_day,
+        # One per sync that brought replies: bounded by what the user sends.
+        "lace_reply": settings.max_outreach_sends_per_day,
+        "lace_opportunities": settings.max_account_runs_per_day,
+        "lace_icp": settings.max_account_runs_per_day,
+        "lace_comments": settings.max_account_runs_per_day,
     }[kind]
 
 
@@ -60,18 +69,6 @@ async def daily_cap(db: AsyncSession, user_id: uuid.UUID, kind: str) -> int:
 
 async def ensure_can_start(db: AsyncSession, user_id: uuid.UUID, kind: str) -> None:
     """Raise RateLimitedError if this user may not start another `kind` run."""
-    if kind == "discovery":
-        active = await db.scalar(
-            select(func.count()).select_from(models.Run).where(
-                models.Run.user_id == user_id,
-                models.Run.kind == "discovery",
-                models.Run.status.not_in(TERMINAL_STATUSES),
-            )
-        )
-        if active and active >= settings.max_active_discovery_runs:
-            raise RateLimitedError(
-                "You already have a discovery run in progress. Let it finish (or cancel it) before starting another."
-            )
     cap = await daily_cap(db, user_id, kind)
     if await _runs_today(db, user_id, kind) >= cap:
         raise RateLimitedError(
