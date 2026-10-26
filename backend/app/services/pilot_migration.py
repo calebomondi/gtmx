@@ -166,7 +166,7 @@ async def _copy_competitors(db: AsyncSession, lace: Lace, ws_id: uuid.UUID) -> N
             summary=c.description, origin="founder" if c.source == "user" else "found", status="tracked",
             monitor_state=_json(c.monitor_state), last_checked_at=c.last_checked_at,
             first_seen_at=c.first_seen_at, last_seen_at=c.last_seen_at,
-        ).on_conflict_do_nothing(constraint="uq_lace_competitors_lace_id_domain_key"))
+        ).on_conflict_do_nothing(constraint="uq_lace_competitors_lace_id_owner_id_domain_key"))
 
 
 async def _copy_accounts(db: AsyncSession, lace: Lace, ws_id: uuid.UUID) -> dict[uuid.UUID, uuid.UUID]:
@@ -182,8 +182,9 @@ async def _copy_accounts(db: AsyncSession, lace: Lace, ws_id: uuid.UUID) -> dict
             website=record.website, geo=(record.geo or None) and record.geo[:120], score=record.score,
             fit_strength=(a.fit or {}).get("strength"), status=a.review_status, do_not_contact=a.do_not_contact,
             record=record.model_dump(mode="json"), fit=_json(a.fit), first_seen_at=a.created_at, last_seen_at=a.created_at,
-        ).on_conflict_do_nothing(constraint="uq_lace_accounts_lace_id_key"))
-        account_id = await db.scalar(select(LaceAccount.id).where(LaceAccount.lace_id == lace.id, LaceAccount.key == key))
+        ).on_conflict_do_nothing(constraint="uq_lace_accounts_lace_id_owner_id_key"))
+        account_id = await db.scalar(select(LaceAccount.id).where(LaceAccount.lace_id == lace.id, LaceAccount.team(),
+                                                                   LaceAccount.key == key))
         ids[a.id] = account_id
         await lace_contacts.sync(db, lace.id, account_id, record.key_contacts, "discovery")
     return ids

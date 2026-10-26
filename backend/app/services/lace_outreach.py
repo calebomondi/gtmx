@@ -283,7 +283,7 @@ async def accounts_to_draft(db: AsyncSession, lace_id: uuid.UUID, ids: list[uuid
                             limit: int) -> list[LaceAccount]:
     """The accounts named, else the strongest-fit targets that nothing was
     written to yet. Whether someone there can be reached is the caller's check."""
-    query = select(LaceAccount).where(LaceAccount.lace_id == lace_id, LaceAccount.status == "target")
+    query = select(LaceAccount).where(LaceAccount.lace_id == lace_id, LaceAccount.team(), LaceAccount.status == "target")
     if ids:
         query = query.where(LaceAccount.id.in_(ids))
     else:
@@ -305,7 +305,7 @@ async def funnel(db: AsyncSession, lace_id: uuid.UUID) -> dict[str, int]:
             LaceOutreach.lace_id == lace_id, LaceOutreach.account_id.is_not(None), *conditions)
 
     targets = await db.scalar(select(func.count()).select_from(LaceAccount).where(
-        LaceAccount.lace_id == lace_id, LaceAccount.status == "target"))
+        LaceAccount.lace_id == lace_id, LaceAccount.team(), LaceAccount.status == "target"))
     contacted = await db.scalar(accounts_where(LaceOutreach.direction == "outbound", LaceOutreach.status == "sent"))
     replied = await db.scalar(accounts_where(LaceOutreach.direction == "inbound"))
     interested = await db.scalar(accounts_where(LaceOutreach.direction == "inbound",

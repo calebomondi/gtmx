@@ -136,7 +136,7 @@ async def list_for_user(db: AsyncSession, user_id: uuid.UUID, limit: int) -> lis
             and_(LaceOutreach.direction == "inbound", LaceOutreach.status == "received", LaceOutreach.intent.is_(None)),
         )),
         exists().where(LaceActivity.lace_id == Lace.id, LaceActivity.read_at.is_(None)),
-        *(exists().where(model.lace_id == Lace.id, model.status == "suggested")
+        *(exists().where(model.lace_id == Lace.id, model.team(), model.status == "suggested")
           for model in (LaceCompetitor, LaceAccount, LaceOpportunity)),
     )
     last_run = select(func.max(Run.created_at)).where(Run.lace_id == Lace.id).correlate(Lace).scalar_subquery()

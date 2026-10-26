@@ -108,7 +108,7 @@ async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, limit: int) -> lis
     account, then name."""
     rows = await db.execute(
         select(LaceContact, LaceAccount).join(LaceAccount, LaceAccount.id == LaceContact.account_id)
-        .where(LaceContact.lace_id == lace_id, LaceAccount.status == "target")
+        .where(LaceContact.lace_id == lace_id, LaceAccount.team(), LaceAccount.status == "target")
         .order_by(LaceAccount.name, LaceContact.name.nulls_last()).limit(limit)
     )
     return [(contact, account) for contact, account in rows.all()]
