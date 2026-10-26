@@ -66,9 +66,12 @@ def _draft(r: LaceOutreach) -> DraftSummary:
 
 
 class DbLaceStore:
-    def __init__(self, sessions: async_sessionmaker[AsyncSession], lace_id: uuid.UUID):
+    def __init__(self, sessions: async_sessionmaker[AsyncSession], lace_id: uuid.UUID,
+                 actor_id: uuid.UUID | None = None):
+        """`actor_id`: the person the Lace is working for, whom what it saves is put down to."""
         self._sessions = sessions
         self._lace_id = lace_id
+        self._actor_id = actor_id
 
     async def profile(self) -> LaceProfile:
         async with self._sessions() as session:
@@ -185,7 +188,7 @@ class DbLaceStore:
                 try:
                     if item_id is None:
                         raise NotFoundError(raw)
-                    row = await _SET_STATUS[kind](session, self._lace_id, item_id, status)
+                    row = await _SET_STATUS[kind](session, self._lace_id, item_id, status, self._actor_id)
                 except NotFoundError:
                     result.missing.append(raw)
                     continue

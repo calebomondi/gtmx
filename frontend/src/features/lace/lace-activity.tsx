@@ -4,10 +4,12 @@ import { ArrowRight, CheckCheck, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { ActivityDto } from "@/lib/api"
+import { useAuth } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 
 import { byDay, dayLabel, timeOfDay } from "./activity-days"
 import { activityAction, type FeedTarget } from "./lace-activity-actions"
+import { PersonAvatar } from "./person-avatar"
 import type { LaceActivity } from "./use-lace-activity"
 import { useOpenedItems } from "./viewer-memory"
 
@@ -21,8 +23,10 @@ function Step<T extends ActivityDto>({ item, fresh, opened, last, onOpen, tag }:
   onOpen: (target: FeedTarget) => void
   tag?: ReactNode
 }) {
+  const { user } = useAuth()
   const action = activityAction(item.kind)
   const failed = item.kind === "job_failed"
+  const by = item.actor && (item.actor.id === user?.id ? "You" : (item.actor.name ?? "Someone on your team"))
   return (
     <li className="grid grid-cols-[4.25rem_1.25rem_1fr] gap-x-2">
       <time dateTime={item.created_at} className="pt-0.5 text-right text-xs whitespace-nowrap text-muted-foreground tabular-nums">
@@ -41,6 +45,12 @@ function Step<T extends ActivityDto>({ item, fresh, opened, last, onOpen, tag }:
         <p className={cn("text-sm break-words", opened ? "font-normal" : "font-medium")}>{item.title}</p>
         {item.summary && (
           <p className="mt-0.5 line-clamp-3 text-sm whitespace-pre-line text-muted-foreground">{item.summary}</p>
+        )}
+        {item.actor && (
+          <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <PersonAvatar name={item.actor.name} email={null} avatarUrl={item.actor.avatar_url} size="sm" className="size-4" />
+            {by}
+          </p>
         )}
         <div className="mt-1.5 flex flex-wrap items-center gap-2">
           <Button size="xs" variant={opened ? "ghost" : "outline"} onClick={() => onOpen(action.target)}>

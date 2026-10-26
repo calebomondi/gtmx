@@ -229,6 +229,9 @@ class LaceActivity(Base):
     # foreign key, since it may point at different tables.
     ref_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
     ref_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # Who on the team did it or asked for it; None for the Lace's own work
+    # (scheduled sweeps, briefs, replies coming in). Supabase owns users: no FK.
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
                                                  default=_now, server_default=func.now())
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

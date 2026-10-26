@@ -146,7 +146,7 @@ def test_find_contacts_from_a_card(client, lace, lace_runtime, user, monkeypatch
     started = client.post(url)
     assert started.status_code == 202
     [job] = [r for r in client.portal.call(_runs, lace, "lace_contacts") if str(r.id) == started.json()["run_id"]]
-    assert job.input == {"account_ids": [account]}
+    assert job.input == {"account_ids": [account], "actor_id": str(user.id)}
     client.portal.call(_wait_for_turns, lace, 1)
     assert client.post(f"{API}/laces/{lace}/accounts/{uuid.uuid4()}/find-contacts").status_code == 404
     client.sign_in(make_user("Intruder"))

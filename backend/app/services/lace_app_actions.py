@@ -109,10 +109,10 @@ def _waiting(row: LaceAppAction) -> None:
         raise ConflictError(f"This was already {'approved' if row.status in ('running', 'done', 'failed') else row.status}.")
 
 
-async def approve(db: AsyncSession, row: LaceAppAction) -> LaceAppAction:
-    """Run the action from the account the Lace uses for the app. The app
-    must be connected; otherwise it stays proposed and the founder is told to
-    connect it."""
+async def approve(db: AsyncSession, row: LaceAppAction, actor_id: uuid.UUID) -> LaceAppAction:
+    """Run the action from the account the Lace uses for the app, on the
+    approval of someone on the Lace (`actor_id`). The app must be connected;
+    otherwise it stays proposed and the founder is told to connect it."""
     _waiting(row)
     runner = RUNNERS.get((row.app, row.action))
     if runner is None:
@@ -127,7 +127,7 @@ async def approve(db: AsyncSession, row: LaceAppAction) -> LaceAppAction:
     # Claimed before the app is called, so a double click can't run it twice.
     row.status, row.decided_at = "running", datetime.now(UTC)
     await db.commit()
-    await _execute(db, row, runner, connection)
+    await _execute(db, row, runner, connection, actor_id)
     await lace_events.add(db, row.lace_id, f"The founder approved \"{row.title}\" and it "
                           + (f"ran: {row.result}" if row.status == "done" else f"failed: {row.result}"))
     await db.commit()
@@ -147,15 +147,15 @@ async def run_standing(db: AsyncSession, lace: Lace, app: str, action: str, titl
                         status="running", decided_at=datetime.now(UTC))
     db.add(row)
     await db.commit()
-    await _execute(db, row, RUNNERS[(app, action)], connection)
+    await _execute(db, row, RUNNERS[(app, action)], connection, None)
     await db.commit()
     return row
 
 
 async def _execute(db: AsyncSession, row: LaceAppAction, runner: Runner,
-                   connection: connection_service.ConnectionInfo) -> None:
-    """Run a claimed action and record its outcome and its Feed item; the
-    caller commits."""
+                   connection: connection_service.ConnectionInfo, actor_id: uuid.UUID | None) -> None:
+    """Run a claimed action and record its outcome and its Feed item (by who
+    approved it; None for a standing setting); the caller commits."""
     linked = await db.scalar(select(LaceChannel.account_id).where(
         LaceChannel.lace_id == row.lace_id, LaceChannel.platform == row.app))
     context = RunContext(connection.entity, row.lace_id, row.app, connection.id, linked)
@@ -170,7 +170,7 @@ async def _execute(db: AsyncSession, row: LaceAppAction, runner: Runner,
     row.finished_at = datetime.now(UTC)
     done = row.status == "done"
     await lace_activity.add(db, row.lace_id, "app_action", f"{row.title}: {'done' if done else 'didn’t go through'}",
-                            row.result, ref=("app_action", row.id))
+                            row.result, ref=("app_action", row.id), actor_id=actor_id)
 
 
 async def decline(db: AsyncSession, row: LaceAppAction) -> LaceAppAction:

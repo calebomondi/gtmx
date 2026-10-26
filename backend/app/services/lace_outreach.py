@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database.lace_models import Lace, LaceAccount, LaceChannel, LaceOutreach
 from backend.app.services import connections as connection_service
-from backend.app.services import lace_channels
+from backend.app.services import lace_activity, lace_channels
 from backend.app.services import outreach as outreach_service
 from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError
 from utils.log import logger
@@ -105,12 +105,28 @@ async def delete(db: AsyncSession, message: LaceOutreach) -> None:
     await db.commit()
 
 
-async def send(db: AsyncSession, message: LaceOutreach) -> LaceOutreach:
+async def send(db: AsyncSession, message: LaceOutreach, actor_id: uuid.UUID) -> LaceOutreach:
     """Send a draft from the account the Lace uses (its own, else the
-    founder's shared one): only ever on the founder's click, which is their
-    approval. Email goes through Gmail and X through X;
-    the other channels cannot start a conversation through their APIs, so
-    those the founder sends by hand and marks sent."""
+    founder's shared one): only ever on a click by someone on the Lace
+    (`actor_id`), which is their approval. Email goes through Gmail and X
+    through X; the other channels cannot start a conversation through their
+    APIs, so those the founder sends by hand and marks sent."""
+    message = await _deliver(db, message)
+    if message.status == "sent":
+        await _note_sent(db, message, actor_id)
+    return message
+
+
+async def _note_sent(db: AsyncSession, message: LaceOutreach, actor_id: uuid.UUID) -> None:
+    """On the Feed, after the send is committed: a message that went out is
+    never undone by its history failing to save."""
+    to = message.recipient_name or message.recipient_address or "someone"
+    await lace_activity.note(db, message.lace_id, actor_id, "message_sent", f"Sent a message to {to}",
+                             message.recipient_company or None)
+    await db.commit()
+
+
+async def _deliver(db: AsyncSession, message: LaceOutreach) -> LaceOutreach:
     if message.account_id and (account := await db.get(LaceAccount, message.account_id)) and account.do_not_contact:
         raise ConflictError(f"{account.name} asked not to be contacted.")
     lace = await db.get(Lace, message.lace_id)
@@ -251,7 +267,7 @@ async def mark_read(db: AsyncSession, lace_id: uuid.UUID, ids: list[uuid.UUID]) 
     return result.rowcount or 0
 
 
-async def mark_sent(db: AsyncSession, message: LaceOutreach) -> LaceOutreach:
+async def mark_sent(db: AsyncSession, message: LaceOutreach, actor_id: uuid.UUID) -> LaceOutreach:
     """Record a message the founder sent by hand on its platform."""
     if message.channel == "email":
         raise ConflictError("Emails are sent from here, not marked as sent.")
@@ -259,6 +275,7 @@ async def mark_sent(db: AsyncSession, message: LaceOutreach) -> LaceOutreach:
         raise ConflictError("This message was already sent.")
     message.status, message.sent_at, message.error = "sent", datetime.now(UTC), None
     await db.commit()
+    await _note_sent(db, message, actor_id)
     return message
 
 

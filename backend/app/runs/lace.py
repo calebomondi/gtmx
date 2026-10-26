@@ -101,8 +101,8 @@ async def forget_thread(lace_id: uuid.UUID) -> None:
     await get_checkpointer().adelete_thread(thread_config(lace_id)["configurable"]["thread_id"])
 
 
-def _graph(lace_id: uuid.UUID, jobs: LaceJobs | None = None):
-    store = DbLaceStore(AsyncSessionLocal, lace_id)
+def _graph(lace_id: uuid.UUID, jobs: LaceJobs | None = None, actor_id: uuid.UUID | None = None):
+    store = DbLaceStore(AsyncSessionLocal, lace_id, actor_id)
     apps = DbLaceApps(AsyncSessionLocal, lace_id)
     return build_lace_graph(store, checkpointer=get_checkpointer(), jobs=jobs, apps=apps), store
 
@@ -251,8 +251,9 @@ def _brief_message(request: str) -> HumanMessage:
 
 
 async def turn_segment(run_id: uuid.UUID, lace_id: uuid.UUID, message: HumanMessage,
-                       jobs: LaceJobs | None = None) -> None:
-    await _finish(run_id, await _converse(run_id, lace_id, message, jobs))
+                       jobs: LaceJobs | None = None, actor_id: uuid.UUID | None = None) -> None:
+    """`actor_id`: the person the turn answers, whom what it saves is put down to."""
+    await _finish(run_id, await _converse(run_id, lace_id, message, jobs, actor_id))
 
 
 async def brief_segment(run_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UUID, request: str,
@@ -260,7 +261,7 @@ async def brief_segment(run_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UU
     """The turn in which the Lace writes its brief. The brief is saved, and
     emailed and sent to their Slack and Notion if they asked, before the run
     completes."""
-    reply = await _converse(run_id, lace_id, _brief_message(request), jobs)
+    reply = await _converse(run_id, lace_id, _brief_message(request), jobs, None)
     async with AsyncSessionLocal() as db, db.begin():
         await lace_briefs.mark_posted(db, brief_id, reply)
         # Its Feed item went up when the brief was due; one held back from an
@@ -273,9 +274,10 @@ async def brief_segment(run_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UU
     await _finish(run_id, reply)
 
 
-async def _converse(run_id: uuid.UUID, lace_id: uuid.UUID, message: HumanMessage, jobs: LaceJobs | None) -> str:
+async def _converse(run_id: uuid.UUID, lace_id: uuid.UUID, message: HumanMessage, jobs: LaceJobs | None,
+                    actor_id: uuid.UUID | None) -> str:
     """Run one turn, streaming its frames; returns the Lace's reply."""
-    graph, _ = _graph(lace_id, jobs)
+    graph, _ = _graph(lace_id, jobs, actor_id)
     relay = _TokenRelay(run_id)
     reply = ""
     blocks: list[dict] = []

@@ -33,6 +33,11 @@ export const ACTIVITY_ACTIONS: Record<ActivityKind, { label: string; target: Fee
   app_action: { label: "Talk it through", target: { tab: "chat" } },
   comments_read: { label: "See who commented", target: { tab: "chat" } },
   access_requested: { label: "Open People", target: { tab: "feed", people: true } },
+  member_joined: { label: "Open People", target: { tab: "feed", people: true } },
+  message_sent: { label: "See sent", target: { tab: "messaging", section: "sent" } },
+  competitor_saved: { label: "See competitors", target: { tab: "feed", section: "competitors" } },
+  account_saved: { label: "See accounts", target: { tab: "feed", section: "accounts" } },
+  opportunity_saved: { label: "See opportunities", target: { tab: "feed", section: "opportunities" } },
 }
 
 /** A kind's action; a kind this app doesn't know yet (the server added it

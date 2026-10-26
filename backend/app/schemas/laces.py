@@ -363,6 +363,7 @@ class ActivityResponse(BaseModel):
     ref_id: uuid.UUID | None = None
     created_at: datetime
     read_at: datetime | None = None
+    actor: MessageAuthor | None = Field(default=None, description="Who on the team did it or asked for it")
 
 
 class OutreachReadRequest(BaseModel):
