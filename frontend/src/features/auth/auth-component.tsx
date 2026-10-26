@@ -5,11 +5,13 @@ import { LoginForm } from "@/components/login-form"
 import { SignupForm } from "@/components/signup-form"
 import type { AuthMode } from "@/features/auth/auth-types"
 import { useAuth } from "@/lib/auth"
+import { usePageTitle } from "@/lib/use-page-title"
 
 export default function AuthPage() {
   const { pathname } = useLocation()
   const { user } = useAuth()
   const mode: AuthMode = pathname.endsWith("/signup") ? "signup" : "login"
+  usePageTitle(mode === "signup" ? "Sign up" : "Sign in")
 
   if (user) return <Navigate to="/feed" replace />
 

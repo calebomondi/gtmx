@@ -6,10 +6,12 @@ import { buttonVariants } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { refetchLaces, useLaces } from "@/lib/laces-store"
 import { cn } from "@/lib/utils"
+import { usePageTitle } from "@/lib/use-page-title"
 
 import { LaceAvatar } from "./lace-avatar"
 
 export default function LaceList() {
+  usePageTitle("Your Laces")
   const { laces, loaded, error } = useLaces()
   useEffect(() => void refetchLaces(), [])
   const loading = !loaded && !error

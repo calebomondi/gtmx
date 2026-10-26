@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ALL_PLATFORMS, APP_GROUPS, PLATFORM_LABEL, type Platform } from "@/lib/platforms"
 import { cn } from "@/lib/utils"
+import { usePageTitle } from "@/lib/use-page-title"
 
 import { AccountTile, type GridItem } from "./account-tile"
 import { disconnectConnection, fetchConnectionState, type Connection } from "./accounts-type"
@@ -17,6 +18,7 @@ import { ConnectionDialog, type DialogState } from "./connection-dialog"
 // ---------------------------------------------------------------------------
 
 export function AccountsComponent() {
+  usePageTitle("Shared accounts")
   const [connections, setConnections] = React.useState<Connection[] | null>(null)
   const [available, setAvailable] = React.useState<Set<Platform>>(new Set())
   const [dialog, setDialog] = React.useState<DialogState | null>(null)

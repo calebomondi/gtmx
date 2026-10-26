@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { listAllLaceActivity, type LaceActivityItemDto, type ActivityKind } from "@/lib/api"
 import { ensureLacesLoaded, useLaces } from "@/lib/laces-store"
 import { cn } from "@/lib/utils"
+import { usePageTitle } from "@/lib/use-page-title"
 
 import { sectionHash, type FeedSection, type FeedTarget } from "./lace-activity-actions"
 import { ActivityStepper } from "./lace-activity"
@@ -49,6 +50,7 @@ function href(laceId: string, { tab, section }: FeedTarget): string {
  * the same timeline narrowed to that kind. Which Laces need the founder sits
  * on top. */
 export default function LaceHomeFeed() {
+  usePageTitle("Home Feed")
   const navigate = useNavigate()
   const { laces, loaded } = useLaces()
   const fetchPage = useCallback((before?: string) => listAllLaceActivity(before), [])

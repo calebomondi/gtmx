@@ -3,8 +3,10 @@ import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom"
 import { RotateCcw, Settings2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Separator } from "@/components/ui/separator"
 import { useAuth } from "@/lib/auth"
 import { ensureLacesLoaded, useLaces } from "@/lib/laces-store"
+import { usePageTitle } from "@/lib/use-page-title"
 
 import { JOB_INFO } from "./background-jobs"
 import type { DiscussState } from "./discuss"
@@ -25,7 +27,7 @@ import { useLaceApps } from "./use-lace-apps"
 import { useLacePeople } from "./use-lace-people"
 import { QuickAskChips } from "./lace-quick-asks"
 import { quickAsks } from "./quick-asks"
-import { chatMascot, LACE_TABS, type LaceTab } from "./lace-tabs"
+import { chatMascot, LACE_TAB_LABELS, LACE_TABS, type LaceTab } from "./lace-tabs"
 import { LaceSettings } from "./lace-settings"
 import { LaceStatusBanner } from "./lace-status-banner"
 import { useLaceActivity } from "./use-lace-activity"
@@ -83,6 +85,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
   const talking = talker ? (talker.name ?? talker.email ?? "Someone on your team") : null
   const [seenAt, markSeen] = useSeenAt<FoundSection["key"]>(laceId)
   const name = chat.lace?.name ?? "Lace"
+  usePageTitle(chat.lace ? `${chat.lace.name} • ${LACE_TAB_LABELS[tab]}` : null)
   const subtitle = chat.lace?.startup_name ?? chat.lace?.website
   const select = (next: LaceTab) => navigate(`/lace/${laceId}/${next}`)
   // The sub-tab rides in the hash, which Feed and Messaging read.
@@ -118,8 +121,13 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
           {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {chat.lace && <LacePeopleButton name={name} me={chat.lace.role} people={people} open={peopleOpen}
-                                          onOpenChange={setPeopleOpen} />}
+          {chat.lace && (
+            <>
+              <LacePeopleButton name={name} me={chat.lace.role} people={people} open={peopleOpen}
+                                onOpenChange={setPeopleOpen} />
+              <Separator orientation="vertical" className="mx-1.5 data-vertical:h-5 data-vertical:self-center" />
+            </>
+          )}
           <Button variant="outline" size="icon-sm" onClick={() => setSettingsOpen(true)} disabled={chat.loading}
                   aria-label={`${name}'s settings`} title="Settings">
             <Settings2 />
