@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import {
+  type ChatThread,
   answerLaceQuestion,
   followRunEvents,
   findLaceAccountContacts,
@@ -41,6 +42,8 @@ import {
   type RunDto,
   type RunFrame,
 } from "@/lib/api"
+
+import { useAuth } from "@/lib/auth"
 
 import { waitsOnFounder } from "./outreach-threads"
 import { answerLine } from "./questions"
@@ -131,13 +134,21 @@ function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
-/** One Lace's conversation, what it knows, and the run it is working on. The
- * server is the source of truth: when a run ends, everything is refetched
- * rather than pieced together from frames. State is per Lace: render the user
- * under a `key` of the Lace id. */
-export function useLaceChat(laceId: string): LaceChat {
+/** One Lace's conversation (`thread`: the team's, or the user's private
+ * one), what it knows, and the run it is working on. The server is the
+ * source of truth: when a run ends, everything is refetched rather than
+ * pieced together from frames. State is per Lace: render the user under a
+ * `key` of the Lace id. */
+export function useLaceChat(laceId: string, thread: ChatThread = "team"): LaceChat {
+  const { user } = useAuth()
+  const me = user?.id
   const [lace, setLace] = useState<LaceDto | null>(null)
-  const [messages, setMessages] = useState<LaceMessageDto[]>([])
+  // Kept with the thread they belong to, so a switch never shows the other's.
+  const [conversation, setConversation] = useState<{ thread: ChatThread; messages: LaceMessageDto[] }>(
+    { thread, messages: [] })
+  const messages = conversation.thread === thread ? conversation.messages : []
+  const say = useCallback((message: LaceMessageDto) => setConversation((prev) => (
+    { thread, messages: [...(prev.thread === thread ? prev.messages : []), message] })), [thread])
   const [facts, setFacts] = useState<FactDto[]>([])
   const [competitors, setCompetitors] = useState<LaceCompetitorDto[]>([])
   const [suggestedCompetitors, setSuggestedCompetitors] = useState<LaceCompetitorDto[]>([])
@@ -172,7 +183,7 @@ export function useLaceChat(laceId: string): LaceChat {
   const refresh = useCallback(async () => {
     const [nextLace, nextMessages, nextFacts, nextCompetitors, nextSuggestedCompetitors, nextAccounts,
       nextSuggestedAccounts, nextOutreach, nextContacts] = await Promise.allSettled([
-      getLace(laceId), listLaceMessages(laceId), listLaceFacts(laceId), listLaceCompetitors(laceId, "tracked"),
+      getLace(laceId), listLaceMessages(laceId, thread), listLaceFacts(laceId), listLaceCompetitors(laceId, "tracked"),
       listLaceCompetitors(laceId, "suggested"), listLaceAccounts(laceId, "target"),
       listLaceAccounts(laceId, "suggested"), listLaceOutreach(laceId), listLaceContacts(laceId),
     ])
@@ -180,7 +191,7 @@ export function useLaceChat(laceId: string): LaceChat {
       if (result.status === "fulfilled") set(result.value)
     }
     keep(nextLace, setLace)
-    keep(nextMessages, setMessages)
+    keep(nextMessages, (next) => setConversation({ thread, messages: next }))
     keep(nextFacts, setFacts)
     keep(nextCompetitors, setCompetitors)
     keep(nextSuggestedCompetitors, setSuggestedCompetitors)
@@ -191,7 +202,7 @@ export function useLaceChat(laceId: string): LaceChat {
     const failed = [nextLace, nextMessages, nextFacts, nextCompetitors, nextSuggestedCompetitors, nextAccounts,
       nextSuggestedAccounts, nextOutreach, nextContacts].find((result) => result.status === "rejected")
     if (failed) throw failed.reason
-  }, [laceId])
+  }, [laceId, thread])
 
   const follow = useCallback(async (runId: string) => {
     abort.current?.abort()
@@ -256,10 +267,12 @@ export function useLaceChat(laceId: string): LaceChat {
     // Drafts and replies land without a turn the page follows: load them now.
     if (jobEnded || reported) void refresh().catch(() => undefined)
     // A waiting message has no run to follow yet.
-    const turn = mine.find((run) => isTurn(run) && run.status !== "queued")
+    // A waiting message has no run to follow yet; and each chat follows its own turns.
+    const inThread = (run: RunDto) => thread === "mine" ? run.owner_id === me : run.owner_id === null
+    const turn = mine.find((run) => isTurn(run) && run.status !== "queued" && inThread(run))
     setTurnBy(turn?.user_id ?? null)
     if (turn && !busy.current) void follow(turn.id)
-  }, [laceId, follow, refresh])
+  }, [laceId, thread, me, follow, refresh])
 
   useEffect(() => {
     let cancelled = false
@@ -447,11 +460,11 @@ export function useLaceChat(laceId: string): LaceChat {
 
   const send = useCallback(async (text: string, files: File[] = [], draftId?: string) => {
     setError(null)
-    setMessages((prev) => [...prev, {
+    say({
       role: "founder", content: text,
       ...(files.length ? { documents: files.map((f) => ({ id: f.name, filename: f.name })) } : {}),
       ...(draftId ? { draft_id: draftId } : {}),
-    }])
+    })
     const documentIds: string[] = []
     try {
       for (const file of files) {
@@ -468,7 +481,7 @@ export function useLaceChat(laceId: string): LaceChat {
       return
     }
     try {
-      const { run_id, queued } = await sendLaceMessage(laceId, text, documentIds, draftId)
+      const { run_id, queued } = await sendLaceMessage(laceId, text, documentIds, draftId, thread)
       // A waiting message shows as waiting; checkRuns follows it once it starts.
       if (queued) await refresh()
       else await follow(run_id)
@@ -476,20 +489,20 @@ export function useLaceChat(laceId: string): LaceChat {
       setError(message(err))
       await refresh().catch(() => undefined)  // the send error is already shown
     }
-  }, [laceId, follow, refresh])
+  }, [laceId, thread, say, follow, refresh])
 
   const answer = useCallback(async (block: QuestionBlockDto, given: BlockAnswerDto) => {
     setError(null)
-    setMessages((prev) => [...prev, { role: "founder", content: answerLine(block, given), answer: given }])
+    say({ role: "founder", content: answerLine(block, given), answer: given })
     try {
-      const { run_id, queued } = await answerLaceQuestion(laceId, given)
+      const { run_id, queued } = await answerLaceQuestion(laceId, given, thread)
       if (queued) await refresh()
       else await follow(run_id)
     } catch (err) {
       setError(message(err))
       await refresh().catch(() => undefined)  // the error is already shown
     }
-  }, [laceId, follow, refresh])
+  }, [laceId, thread, say, follow, refresh])
 
   const reload = useCallback(async () => {
     setError(null)
@@ -504,7 +517,7 @@ export function useLaceChat(laceId: string): LaceChat {
 
   return {
     lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, waiting, drafting, findingOpportunities,
-    loading, error,
+    loading: loading || conversation.thread !== thread, error,
     working, turnBy, step, steps, jobs, draft, send, answer, reload, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, sendingSoon,
     undoSend, markSent, markRead, decideAction, findContacts, draftToContact, contacts, approveContact, approveAccountContacts, saveCompetitor, saveAccount, decideOpportunity, suggestedCompetitors,
     suggestedAccounts,

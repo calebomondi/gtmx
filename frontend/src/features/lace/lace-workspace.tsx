@@ -12,7 +12,7 @@ import { sectionHash, type FeedTarget } from "./lace-activity-actions"
 import { LaceBackgroundWork } from "./lace-background-work"
 import { LaceConversation } from "./lace-conversation"
 import { foundSections, type FoundSection } from "./found-model"
-import { useSeenAt } from "./viewer-memory"
+import { useChatThread, useSeenAt } from "./viewer-memory"
 import { LaceFeed } from "./lace-feed"
 import { LaceFindsDock } from "./lace-finds-dock"
 import { LaceInviteGate } from "./lace-invite-gate"
@@ -51,9 +51,15 @@ export default function LaceWorkspacePage() {
 
 function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
   const navigate = useNavigate()
+  // Shared by the header's faces and the chat, which shows who sent what in a
+  // team; with a team, the founder also has a private chat of their own.
+  const people = useLacePeople(laceId)
+  const team = (people.people ?? []).filter((p) => p.status === "active").length > 1
+  const [chosenThread, chooseThread] = useChatThread(laceId)
+  const thread = team ? chosenThread : "team"
   // One load of the Lace serves all three tabs, so the chat keeps following
   // its run while the founder looks at the Feed.
-  const chat = useLaceChat(laceId)
+  const chat = useLaceChat(laceId, thread)
   const activity = useLaceActivity(laceId, tab === "feed")
 
   // Refetched as new activity arrives (an opportunity search finished).
@@ -67,9 +73,6 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
   // The apps load with the settings and the chat, whose quick asks come from them.
   const apps = useLaceApps(laceId, settingsOpen || tab === "chat")
   const asks = quickAsks(apps.apps)
-  // Shared by the header's faces and the chat, which shows who sent what in a team.
-  const people = useLacePeople(laceId)
-  const team = (people.people ?? []).filter((p) => p.status === "active").length > 1
   const { user } = useAuth()
   const talker = chat.turnBy && chat.turnBy !== user?.id
     ? people.people?.find((p) => p.user_id === chat.turnBy) : undefined
@@ -135,6 +138,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
         <main className={tab === "chat" ? "flex min-h-0 min-w-0 flex-1 flex-col" : "min-h-0 min-w-0 flex-1 overflow-y-auto"}>
           {tab === "chat" && (
             <LaceConversation chat={chat} name={name} onOpenMessaging={() => select("messaging")} prefill={prefill} team={team} talking={talking}
+                              thread={team ? thread : undefined} onThread={team ? chooseThread : undefined}
                               starters={<QuickAskChips asks={asks} onAsk={(text) => void chat.send(text)} disabled={chat.working} />}
                               dock={
               <>

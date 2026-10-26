@@ -5,10 +5,11 @@ import { AlertTriangle, ArrowDown, ChevronRight, Clock, FileText, PenLine } from
 import { PromptInputWithActions } from "@/components/chat-input"
 import { Markdown } from "@/components/ui/markdown"
 import { Skeleton } from "@/components/ui/skeleton"
-import { DOCUMENT_ACCEPT, type LaceMessageDto } from "@/lib/api"
+import { DOCUMENT_ACCEPT, type ChatThread, type LaceMessageDto } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 
+import { ChatThreadSwitch } from "./chat-thread-switch"
 import { LaceAvatar } from "./lace-avatar"
 import { ChatBlocks } from "./lace-chat-blocks"
 import { LaceReplySources } from "./lace-reply-sources"
@@ -112,7 +113,8 @@ const LATEST_SLACK_PX = 120
 /** The founder's conversation with their Lace: the messages, what it is
  * doing now, the reply as it streams in, and the input. Scrolled back, a
  * button returns to the latest and counts what arrived meanwhile. */
-export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill, starters, team = false, talking }: {
+export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill, starters, team = false, talking, thread,
+                                   onThread }: {
   chat: LaceChat
   name: string
   onOpenMessaging: () => void
@@ -126,7 +128,11 @@ export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill, s
   team?: boolean
   /** Someone else on the team the Lace is answering now: a message sent meanwhile waits its turn. */
   talking?: string | null
+  /** On a Lace with a team: which chat this is, and the switch to the other. */
+  thread?: ChatThread
+  onThread?: (next: ChatThread) => void
 }) {
+  const alone = thread === "mine"
   const { user } = useAuth()
   const senderOf = (message: LaceMessageDto): Sender | undefined => {
     if (!team || message.role !== "founder") return undefined
@@ -180,6 +186,16 @@ export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill, s
       </AnimatePresence>
       <div className="min-h-0 flex-1 overflow-y-auto" onScroll={onScroll}>
         <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6">
+          {thread && onThread && (
+            <div className="flex flex-col items-center gap-2">
+              <ChatThreadSwitch value={thread} onChange={onThread} />
+              {alone && (
+                <p className="max-w-md text-center text-xs text-muted-foreground">
+                  Only you see this chat. What {name} finds here stays yours until you share it with the team.
+                </p>
+              )}
+            </div>
+          )}
           {chat.loading && (
             <div className="flex flex-col gap-3">
               <Skeleton className="h-5 w-2/3" />
@@ -196,7 +212,7 @@ export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill, s
             <DraftExchange key={`draft:${i}`} messages={item.messages}
                            to={chat.outreach.find((m) => m.id === item.draftId)?.recipient_name ?? null} />
           ) : (
-            <Message key={item.index} message={item.message} sender={senderOf(item.message)}>
+            <Message key={item.index} message={item.message} sender={alone ? undefined : senderOf(item.message)}>
               {item.message.ui && item.message.ui.length > 0 && (
                 <ChatBlocks blocks={item.message.ui} chat={chat} live={item.index === lastIndex} answers={answers}
                             onReview={onOpenMessaging} />
@@ -236,7 +252,7 @@ export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill, s
           accept={DOCUMENT_ACCEPT}
           isLoading={chat.working && !talking}
           disabled={chat.loading}
-          placeholder={`Message ${name}`}
+          placeholder={alone ? `Message ${name}, just between you` : `Message ${name}`}
         />
       </div>
     </div>
