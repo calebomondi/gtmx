@@ -5,6 +5,8 @@ export interface CurrentUser {
   name: string | null
   email: string | null
   avatar_url: string | null
+  /** May use the app while the pilot is closed; always true when it's open. */
+  in_pilot: boolean
 }
 
 let currentUserPromise: Promise<CurrentUser> | null = null

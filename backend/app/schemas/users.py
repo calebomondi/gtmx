@@ -10,3 +10,4 @@ class UserResponse(BaseModel):
     name: str | None = None
     email: str | None = None
     avatar_url: str | None = None
+    in_pilot: bool = True
