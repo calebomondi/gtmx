@@ -41,6 +41,8 @@ class _Find:
     # to approve it; and, when one sent it back instead, why.
     proposed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # What the member who found it tells the reviewer about it.
+    push_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     @classmethod
     def team(cls):
