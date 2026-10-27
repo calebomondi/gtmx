@@ -4,7 +4,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database.lace_models import LaceEvent
@@ -22,9 +22,11 @@ async def add(db: AsyncSession, lace_id: uuid.UUID, text: str, owner_id: uuid.UU
 
 @dataclass
 class Pending:
-    """Updates taken for one turn, and the searches they report on."""
+    """Updates taken for one turn, the searches they report on, and their ids
+    (to put them back should the turn fail)."""
     texts: list[str] = field(default_factory=list)
     run_ids: list[uuid.UUID] = field(default_factory=list)
+    ids: list[uuid.UUID] = field(default_factory=list)
 
 
 async def take_pending(db: AsyncSession, lace_id: uuid.UUID, owner_id: uuid.UUID | None = None) -> Pending:
@@ -42,4 +44,11 @@ async def take_pending(db: AsyncSession, lace_id: uuid.UUID, owner_id: uuid.UUID
     now = datetime.now(UTC)
     for row in rows:
         row.consumed_at = now
-    return Pending([row.text for row in rows], [row.run_id for row in rows if row.run_id is not None])
+    return Pending([row.text for row in rows], [row.run_id for row in rows if row.run_id is not None],
+                   [row.id for row in rows])
+
+
+async def put_back(db: AsyncSession, ids: list[uuid.UUID]) -> None:
+    """Queue taken updates again: the turn that was to pass them on failed, so
+    the next turn passes them on instead of their being lost."""
+    await db.execute(update(LaceEvent).where(LaceEvent.id.in_(ids)).values(consumed_at=None))
