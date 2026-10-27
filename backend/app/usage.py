@@ -11,6 +11,7 @@ inside a run is attributed to it.
 from psycopg_pool import ConnectionPool
 
 from agents.llm import main as llm
+from backend.app.database.connect import NO_PREPARED_STATEMENTS
 from config import settings
 from utils import usage as api_usage
 from utils.log import current_run_id
@@ -40,8 +41,8 @@ def _record_api(call: dict) -> None:
 
 def start() -> None:
     global _pool
-    _pool = ConnectionPool(settings.database_url, min_size=1, max_size=4, open=True,
-                           kwargs={"autocommit": True, "prepare_threshold": None})
+    _pool = ConnectionPool(settings.database_url, min_size=1, max_size=settings.usage_pool_size, open=True,
+                           kwargs={"autocommit": True, **NO_PREPARED_STATEMENTS})
     llm.set_usage_sink(_record_llm)
     api_usage.set_sink(_record_api)
 

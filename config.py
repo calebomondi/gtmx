@@ -47,14 +47,16 @@ class Settings(BaseSettings):
 
     # -- Database --
     # Postgres everywhere. The default is the docker-compose.yml service; in
-    # prod, point DATABASE_URL at Supabase Postgres (its plain postgresql:// URI).
+    # prod, point DATABASE_URL at Supabase's transaction pooler (port 6543).
     database_url: str = "postgresql://gtmx:gtmx@localhost:5432/gtmx"
-    # Connections the app holds: SQLAlchemy's pool (size + overflow) plus the
-    # agent checkpointer's fixed pool. Their sum must fit the database's limit
-    # (Supabase's session pooler allows few on small plans).
+    # Connections one API instance can hold: SQLAlchemy's pool (size +
+    # overflow), the agent checkpointer's fixed pool and the usage writer's
+    # pool. During a deploy the old and new instance run side by side, so
+    # twice the sum must fit the database's client limit.
     db_pool_size: int = 5
     db_max_overflow: int = 10
     checkpointer_pool_size: int = 10
+    usage_pool_size: int = 4
 
     # -- LLM providers --
     dashscope_api_key: str = ""

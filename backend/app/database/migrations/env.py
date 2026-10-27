@@ -10,7 +10,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from backend.app.database import models  # noqa: F401 -- registers every table on Base.metadata
-from backend.app.database.connect import Base
+from backend.app.database.connect import NO_PREPARED_STATEMENTS, Base
 from config import settings
 
 config = context.config
@@ -63,7 +63,9 @@ def _run_sync(connection: Connection) -> None:
 
 
 async def run_migrations_online() -> None:
-    engine = create_async_engine(settings.sqlalchemy_database_url, poolclass=pool.NullPool)
+    engine = create_async_engine(
+        settings.sqlalchemy_database_url, poolclass=pool.NullPool, connect_args=NO_PREPARED_STATEMENTS,
+    )
     async with engine.connect() as connection:
         await connection.run_sync(_run_sync)
     await engine.dispose()
