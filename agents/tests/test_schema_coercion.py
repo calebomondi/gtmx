@@ -33,3 +33,25 @@ def test_nested_string_containers_are_parsed():
 def test_real_containers_pass_through():
     out = Outer.model_validate({"items": [{"tags": ["a"]}], "maybe": None})
     assert out.items[0].tags == ["a"] and out.maybe is None
+
+
+class Finding(LenientModel):
+    text: str
+    evidence: str
+
+
+class Profile(LenientModel):
+    strengths: list[str] = []
+    sentiment: list[Finding] = []
+
+
+def test_a_list_written_as_prose_becomes_a_list():
+    out = Profile.model_validate({"strengths": "- Strong brand\n2. Local team\n\n", "sentiment": "No reviews found."})
+    assert out.strengths == ["Strong brand", "Local team"]
+    # Prose has no evidence to make a finding of.
+    assert out.sentiment == []
+
+
+def test_text_items_that_came_as_objects_become_their_text():
+    out = Profile.model_validate({"strengths": [{"text": "Strong brand"}, {"point": "Local team"}, "Fast"]})
+    assert out.strengths == ["Strong brand", "Local team", "Fast"]

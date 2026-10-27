@@ -32,6 +32,7 @@ from utils.progress import report
 from agents.pipelines.accounts import contacts
 from agents.pipelines.web_utils import (
     call_with_timeout,
+    is_own_site,
     run_parallel,
     search_cache_get,
     search_cache_put,
@@ -371,16 +372,6 @@ import re
 _EMAIL_RE = contacts.EMAIL_RE
 _LINKEDIN_RE = re.compile(r"https?://(?:www\.)?linkedin\.com/(?:in|company)/[^\s\"')]+", re.I)
 # Aggregator/directory hosts that should never be picked as an account's own site.
-_BAD_HOSTS = ("linkedin.com", "facebook.com", "twitter.com", "x.com", "instagram.com",
-              "youtube.com", "exa.ai", "google.com", "glassdoor", "wikipedia.org",
-              "crunchbase.com", "bloomberg.com", "africabusiness", "capitalfm", "kbc.co.ke")
-
-
-def _host_ok(url: str) -> bool:
-    u = url.lower()
-    return not any(b in u for b in _BAD_HOSTS)
-
-
 _ASSET_RE = re.compile(r"\.(pdf|docx?|xlsx?|png|jpe?g|gif|svg|zip)(\?|#|$)|/wp-content/uploads/|/uploads/|/media/", re.I)
 
 
@@ -696,6 +687,9 @@ def _enrich_one_account(acc, cfg):
     # Only companies need a verifiable own website; venues are validated
     # differently in verify_accounts (platform + size/date, not a homepage).
     is_company = not acc.account_type or acc.account_type == "company"
+    if acc.website and not is_own_site(acc.website):
+        # A job ad, directory entry or profile, not their site: find the real one.
+        acc.website = acc.domain = None
     if not is_company or (acc.website and acc.domain):
         return acc
     geo = acc.geo or ""
@@ -705,7 +699,7 @@ def _enrich_one_account(acc, cfg):
     except Exception as e:  # search failure must not sink the run
         logger.warning(f"⚠️ enrich search failed for '{acc.name}': {e}")
         return acc
-    site = next((h for h in hits if _host_ok(h.get("url", "")) and _is_homepage_like(h.get("url", ""))), None)
+    site = next((h for h in hits if is_own_site(h.get("url", "")) and _is_homepage_like(h.get("url", ""))), None)
     if site is None:
         logger.warning(f"⚠️ no own-site hit for '{acc.name}'")
         return acc
