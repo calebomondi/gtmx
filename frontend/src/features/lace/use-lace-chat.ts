@@ -11,6 +11,7 @@ import {
   removeLaceContact,
   setLaceContactApproved,
   type ContactDto,
+  type Dismissal,
   deleteLaceOutreach,
   setLaceOpportunityStatus,
   decideLaceAppAction,
@@ -103,7 +104,8 @@ export interface LaceChat {
    * failed load); a failure becomes `error`. */
   reload: () => Promise<void>
   dismissCompetitor: (competitorId: string) => Promise<void>
-  dismissAccount: (accountId: string) => Promise<void>
+  /** With `why`, later searches steer clear of the like. */
+  dismissAccount: (accountId: string, why?: Dismissal) => Promise<void>
   saveDraft: (messageId: string, changes: LaceOutreachChanges) => Promise<void>
   discardDraft: (messageId: string) => Promise<void>
   /** Send a draft (the founder's approval) after UNDO_SEND_MS, unless undone. */
@@ -328,9 +330,9 @@ export function useLaceChat(laceId: string, thread: ChatThread = "team"): LaceCh
     }
   }, [laceId, refresh, checkRuns])
 
-  const decideAccount = useCallback(async (accountId: string, status: "target" | "dismissed") => {
+  const decideAccount = useCallback(async (accountId: string, status: "target" | "dismissed", why?: Dismissal) => {
     try {
-      const updated = await setLaceAccountStatus(laceId, accountId, status)
+      const updated = await setLaceAccountStatus(laceId, accountId, status, why)
       setSuggestedAccounts((prev) => prev.filter((a) => a.id !== accountId))
       setAccounts((prev) => status === "target"
         ? [...prev.filter((a) => a.id !== accountId), updated]
@@ -339,7 +341,8 @@ export function useLaceChat(laceId: string, thread: ChatThread = "team"): LaceCh
       setError(message(err))
     }
   }, [laceId])
-  const dismissAccount = useCallback((id: string) => decideAccount(id, "dismissed"), [decideAccount])
+  const dismissAccount = useCallback((id: string, why?: Dismissal) => decideAccount(id, "dismissed", why),
+                                     [decideAccount])
   const saveAccount = useCallback((id: string) => decideAccount(id, "target"), [decideAccount])
 
   const saveDraft = useCallback(async (messageId: string, changes: LaceOutreachChanges) => {
