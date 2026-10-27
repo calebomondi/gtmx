@@ -50,6 +50,9 @@ from utils.log import logger
 WRITING_PROGRESS = 0.95
 # Characters per streamed "token" frame.
 TOKEN_FRAME_CHARS = 24
+# How much of a model message is held back before it streams: more than a
+# lead-in to a tool call, less than a real answer's first paragraph.
+HOLD_CHARS = 400
 # What the Lace says while it works ("let me check the pricing page") is
 # kept as one line of its step trail, at most this long.
 NARRATION_CHARS = 200
@@ -195,25 +198,38 @@ def narration(content) -> str:
 
 
 class _TokenRelay:
-    """Batches streamed tokens into "token" frames a few words at a time:
-    one frame per model token would be hundreds per reply."""
+    """Batches streamed tokens into "token" frames a few words at a time (one
+    frame per model token would be hundreds per reply), and holds back the
+    start of each model message: what the model writes before calling a tool
+    ("Let me look that up") is usually short, so it never reaches the reply
+    box only to be taken back. An answer streams once it is past that."""
 
     def __init__(self, run_id: uuid.UUID):
-        self._run_id, self._buffer = run_id, ""
+        self._run_id, self._buffer, self._streaming = run_id, "", False
 
     def add(self, text: str) -> None:
         self._buffer += text
-        if len(self._buffer) >= TOKEN_FRAME_CHARS:
-            self.flush()
+        if len(self._buffer) >= (TOKEN_FRAME_CHARS if self._streaming else HOLD_CHARS):
+            self._streaming = True
+            self._send()
 
-    def flush(self) -> None:
+    def finish(self) -> None:
+        """The message was the answer: show the rest of it."""
+        self._send()
+        self._streaming = False
+
+    def drop(self) -> None:
+        """The message led to a tool call, or is being started over: take
+        back whatever of it was shown."""
+        self._buffer = ""
+        if self._streaming:
+            events.broadcast(self._run_id, "token_reset")
+        self._streaming = False
+
+    def _send(self) -> None:
         if self._buffer:
             events.broadcast(self._run_id, "token", {"text": self._buffer})
             self._buffer = ""
-
-    def reset(self) -> None:
-        self._buffer = ""
-        events.broadcast(self._run_id, "token_reset")
 
 
 def founder_message(text: str, attachments: list[dict] | None = None, draft: dict | None = None) -> HumanMessage:
@@ -313,21 +329,21 @@ async def _converse(run_id: uuid.UUID, thread: LaceThread, message: HumanMessage
             elif chunk.get("reset"):
                 # A retry or the next model starts the answer over: say so,
                 # rather than wiping the text without a word.
-                relay.reset()
+                relay.drop()
                 await events.publish(run_id, "step", {"text": RETRY_STEP})
             continue
-        relay.flush()
         for node, output in chunk.items():
             for message in (output or {}).get("messages", []):
                 if node == "agent" and message.tool_calls:
                     # Text before a tool call ("let me look that up") is not the
-                    # reply: it leaves the reply box and stays in the trail.
-                    relay.reset()
+                    # reply: it goes to the trail, never the reply box.
+                    relay.drop()
                     if said := narration(message.content):
                         await events.publish(run_id, "step", {"text": said})
                     for tool_call in message.tool_calls:
                         await events.publish(run_id, "step", {"text": step_text(tool_call)})
                 elif node == "agent":
+                    relay.finish()
                     reply = str(message.content)
                 elif isinstance(message, ToolMessage):
                     await events.publish(run_id, "tool_result", _tool_summary(message))
