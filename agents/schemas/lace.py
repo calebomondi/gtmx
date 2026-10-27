@@ -193,6 +193,9 @@ class DraftSummary(BaseModel):
 SavedKind = Literal["competitor", "account", "opportunity"]
 SAVED_KINDS: tuple[str, ...] = SavedKind.__args__
 SavedVerdict = Literal["save", "remove"]
+# Why the founder dismissed a suggested account or opportunity: what later
+# searches should steer clear of.
+DismissReason = Literal["not_our_buyer", "too_small", "wrong_place", "no_need", "other"]
 
 
 class NamedItem(BaseModel):

@@ -121,7 +121,7 @@ export function LaceFeed({ laceId, name, chat, activity, opps, apps, onOpen, onD
         <>
           <PanelIntro>Events to showcase at, tenders and buyers to sell to, and partners: sourced, and still open.</PanelIntro>
           <LaceReview items={opps.suggested.map(opportunityItem)} onSave={(id) => void opps.save(id)}
-                      onDismiss={(id) => void opps.dismiss(id)} />
+                      onDismiss={(id, why) => void opps.dismiss(id, why)} askWhy />
           <LaceOpportunities opps={opps} searching={chat.findingOpportunities} name={name}
                              onDiscuss={(o) => onDiscuss(discussOpportunity(o))} />
         </>
@@ -134,7 +134,7 @@ export function LaceFeed({ laceId, name, chat, activity, opps, apps, onOpen, onD
         <>
           <PanelIntro>Who matches your ideal customer and has a reason to buy now, with the case for each.</PanelIntro>
           <LaceReview items={chat.suggestedAccounts.map(accountItem)} onSave={(id) => void chat.saveAccount(id)}
-                      onDismiss={(id) => void chat.dismissAccount(id)} />
+                      onDismiss={(id, why) => void chat.dismissAccount(id, why)} askWhy />
           <LaceAccounts accounts={chat.accounts} finding={chat.findingAccounts}
                         onDismiss={(id) => void chat.dismissAccount(id)} name={name}
                         onDiscuss={(a) => onDiscuss(discussAccount(a))} />

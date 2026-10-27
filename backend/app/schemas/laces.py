@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from agents.schemas.lace_ui import BlockAnswer, UiBlock
 from agents.schemas.monitor import MoveImportance, MoveKind
 from agents.schemas.opportunities import OpportunityKind, OpportunityStatus
-from agents.schemas.lace import AppActionStatus, LaceRole, WatchEvery, AccountStatus, ActivityKind, ActivityRef, ContactSource, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
+from agents.schemas.lace import AppActionStatus, DismissReason, LaceRole, WatchEvery, AccountStatus, ActivityKind, ActivityRef, ContactSource, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
 
 
 def known_zone(value: str | None) -> str | None:
@@ -49,6 +49,7 @@ class LaceResponse(BaseModel):
 LaceMood = Literal["thinking", "alert"]
 # Replies marked read in one request: a conversation's worth, with room.
 MAX_READ_IDS = 200
+MAX_DISMISS_NOTE_CHARS = 200
 MAX_APP_ACTIONS_PER_PAGE = 100
 MAX_APP_SETTINGS = 10
 
@@ -226,7 +227,19 @@ class AccountResponse(BaseModel):
     last_seen_at: datetime
 
 
-class AccountUpdateRequest(BaseModel):
+class _Dismissal(BaseModel):
+    reason: DismissReason | None = Field(default=None, description="With dismissed: why it isn't a fit, which "
+                                                                   "later searches steer clear of")
+    note: str | None = Field(default=None, max_length=MAX_DISMISS_NOTE_CHARS, description="A few words more")
+
+    @model_validator(mode="after")
+    def _only_when_dismissing(self):
+        if (self.reason or self.note) and getattr(self, "status", None) != "dismissed":
+            raise ValueError("A reason goes only with dismissed.")
+        return self
+
+
+class AccountUpdateRequest(_Dismissal):
     status: Literal["target", "dismissed"] = Field(
         description="target to save it, or dismissed to drop it (a later search won't bring it back)")
 
@@ -298,7 +311,7 @@ class OpportunityResponse(BaseModel):
     first_seen_at: datetime
 
 
-class OpportunityUpdateRequest(BaseModel):
+class OpportunityUpdateRequest(_Dismissal):
     status: Literal["open", "dismissed"] = Field(description="open to save it, or dismissed: not for us")
 
 

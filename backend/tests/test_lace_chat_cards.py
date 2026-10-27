@@ -40,8 +40,10 @@ def test_shown_cards_stay_under_the_reply(client, lace, lace_runtime):  # noqa: 
     assert reply["ui"] == [{"type": "card", "kind": "competitor", "id": rival, "title": "Rival",
                             "subtitle": "https://rival.test", "body": "Payroll for vets.", "url": "https://rival.test",
                             "status": "tracked"}]
-    # Earlier messages carry no ui at all.
-    assert "ui" not in client.get(f"{API}/laces/{lace}/messages").json()[0]
+    # Earlier messages carry no cards: the founder's question has no ui, and
+    # the opening only the buyer form (the test site says nothing of buyers).
+    before = client.get(f"{API}/laces/{lace}/messages").json()
+    assert "ui" not in before[1] and [b["type"] for b in before[0].get("ui", [])] in ([], ["form"])
 
 
 def test_a_choice_shows_even_without_words(client, lace, lace_runtime):  # noqa: F811

@@ -365,8 +365,20 @@ export function listLaceAccounts(laceId: string, status: AccountStatus = "target
   return apiFetch<LaceAccountDto[]>(`/api/v1/laces/${laceId}/accounts?status=${status}`)
 }
 
-export function setLaceAccountStatus(laceId: string, accountId: string, status: Exclude<AccountStatus, "suggested">): Promise<LaceAccountDto> {
-  return apiFetch(`/api/v1/laces/${laceId}/accounts/${accountId}`, { method: "PATCH", body: JSON.stringify({ status }) })
+/** Why the founder dismissed a suggestion. Mirrors agents' DismissReason. */
+export type DismissReason = "not_our_buyer" | "too_small" | "wrong_place" | "no_need" | "other"
+
+/** Sent with a dismissal: later searches steer clear of the like. */
+export interface Dismissal {
+  reason: DismissReason
+  note?: string
+}
+
+export function setLaceAccountStatus(laceId: string, accountId: string, status: Exclude<AccountStatus, "suggested">,
+                                     why?: Dismissal): Promise<LaceAccountDto> {
+  return apiFetch(`/api/v1/laces/${laceId}/accounts/${accountId}`, {
+    method: "PATCH", body: JSON.stringify({ status, ...why }),
+  })
 }
 
 export type OutreachChannel = "email" | "linkedin" | "x" | "instagram" | "facebook" | "tiktok" | "telegram"
@@ -480,9 +492,10 @@ export function listLaceOpportunities(laceId: string, status: OpportunityStatus 
 
 /** Save an opportunity (open) or drop it (dismissed: not for us). */
 export function setLaceOpportunityStatus(laceId: string, opportunityId: string,
-                                         status: Exclude<OpportunityStatus, "suggested">): Promise<LaceOpportunityDto> {
+                                         status: Exclude<OpportunityStatus, "suggested">,
+                                         why?: Dismissal): Promise<LaceOpportunityDto> {
   return apiFetch(`/api/v1/laces/${laceId}/opportunities/${opportunityId}`, {
-    method: "PATCH", body: JSON.stringify({ status }),
+    method: "PATCH", body: JSON.stringify({ status, ...why }),
   })
 }
 
