@@ -29,11 +29,14 @@ deploy when nobody is mid-discovery.
 
 ## 2. Supabase: the production database
 
-1. Supabase → Project Settings → Database → **Connection string** → **Session pooler**.
-   Copy it (`postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres`).
-   - Use the **session** pooler (port **5432**). The transaction pooler (6543)
-     breaks the app's prepared statements. The direct host is IPv6-only and
-     Render can't reach it.
+1. Supabase → Project Settings → Database → **Connection string** → **Transaction pooler**.
+   Copy it (`postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres`).
+   - Use the **transaction** pooler (port **6543**). The session pooler (5432)
+     allows only as many clients as its pool size (15 on small plans). A
+     deploy runs the old and new API side by side, and together they need
+     more, so the new one fails to start with `EMAXCONNSESSION`. The app turns
+     off prepared statements, which the transaction pooler can't carry.
+   - The direct host is IPv6-only and Render can't reach it.
 2. Nothing to create: on every deploy, `alembic upgrade head` runs before the
    new version starts and creates or updates the tables. Local data stays local;
    production starts empty. Users already live in Supabase Auth.
@@ -45,7 +48,7 @@ deploy when nobody is mid-discovery.
 
 | Variable | Service | Value |
 |---|---|---|
-| `DATABASE_URL` | api | The session-pooler URL from step 2 |
+| `DATABASE_URL` | api | The transaction-pooler URL from step 2 |
 | `SUPABASE_BASE_URL` | api | Supabase → Project Settings → API → Project URL |
 | `SUPABASE_SECRET_KEY` | api | Same page → **secret** (service role) key. Server only |
 | `ALLOWED_ORIGINS` | api | `https://gtmx-app.onrender.com,https://gtmx-waitlist.onrender.com,https://gtmx-admin.onrender.com` |

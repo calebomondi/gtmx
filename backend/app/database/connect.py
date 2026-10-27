@@ -4,6 +4,11 @@ from sqlalchemy.orm import DeclarativeBase
 
 from config import settings
 
+# Supabase's transaction pooler hands each transaction to whichever server
+# connection is free, so a statement prepared on one is missing on the next.
+# Every connection we open turns psycopg's automatic preparing off.
+NO_PREPARED_STATEMENTS = {"prepare_threshold": None}
+
 # pool_pre_ping drops connections the server (or Supabase's pooler) closed
 # while idle, instead of failing the next request on a dead socket.
 engine = create_async_engine(
@@ -11,6 +16,7 @@ engine = create_async_engine(
     pool_pre_ping=True,
     pool_size=settings.db_pool_size,
     max_overflow=settings.db_max_overflow,
+    connect_args=NO_PREPARED_STATEMENTS,
 )
 
 # Each call creates a new session bound to the engine.

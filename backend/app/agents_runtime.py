@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 import agents.schemas
 
+from backend.app.database.connect import NO_PREPARED_STATEMENTS
 from config import settings
 from utils.log import logger
 
@@ -74,10 +75,8 @@ async def start_agent_runtime(database_url: str) -> AsyncPostgresSaver:
         min_size=settings.checkpointer_pool_size,
         max_size=settings.checkpointer_pool_size,
         open=False,
-        # The settings AsyncPostgresSaver requires. prepare_threshold=None
-        # disables server-side prepared statements, which Supabase's
-        # transaction-mode pooler does not support.
-        kwargs={"autocommit": True, "prepare_threshold": None, "row_factory": dict_row},
+        # The settings AsyncPostgresSaver requires.
+        kwargs={"autocommit": True, "row_factory": dict_row, **NO_PREPARED_STATEMENTS},
     )
     try:
         await pool.open(wait=True)
