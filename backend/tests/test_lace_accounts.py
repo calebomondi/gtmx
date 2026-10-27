@@ -50,14 +50,16 @@ def test_search_saves_accounts_and_the_lace_reports_back(client, lace, lace_runt
 
     assert seen == {"exclude": ["acme.test", "rival.test"], "country": "Kenya", "industries": ["Clinics"]}
     update = turns[-1].input["updates"][0]
-    assert "in Kenya finished: 3 accounts (3 new, 0 already on file)" in update and "Strong raised a round" in update
+    assert "in Kenya finished: 2 accounts (2 new, 0 already on file)" in update and "Strong raised a round" in update
+    # A weak fit is left out, named for the Lace only, never put forward.
+    assert "1 weaker match left out: Weak. Don't put these forward." in update
     # Found accounts wait for the founder: none is a target until saved.
     assert client.get(f"{API}/laces/{lace}/accounts").json() == []
     accounts = client.get(f"{API}/laces/{lace}/accounts?status=suggested").json()
-    assert [a["name"] for a in accounts] == ["Strong", "Weak", "Unmade"]  # strongest case first
+    assert [a["name"] for a in accounts] == ["Strong", "Unmade"]  # strongest case first
     top = accounts[0]
     assert top["trigger"]["event"] == "Strong raised a round" and top["case"]["strength"] == "strong"
-    assert accounts[2]["case"] is None
+    assert accounts[1]["case"] is None
     assert client.get(f"{API}/laces/{lace}/messages").json()[-1]["content"] == "Strong raised a round and needs payroll."
     saved = client.patch(f"{API}/laces/{lace}/accounts/{top['id']}", json={"status": "target"}).json()
     assert saved["status"] == "target"
@@ -120,3 +122,15 @@ def test_accounts_are_private(client, lace, lace_runtime):  # noqa: F811
     client.sign_in(make_user("Intruder"))
     assert client.get(f"{API}/laces/{lace}/accounts").status_code == 404
     assert client.patch(f"{API}/laces/{lace}/accounts/{account}", json={"status": "dismissed"}).status_code == 404
+
+
+def test_when_nothing_fits_the_lace_is_told_to_say_so(client, lace, lace_runtime, monkeypatch):  # noqa: F811
+    _with_icp(lace)
+    monkeypatch.setattr(lace_jobs, "find_accounts", lambda *a: [_found("Tea Estate", "weak"), _found("Retailer", "weak")])
+    lace_runtime.extend([_call("find_accounts"), AIMessage(content="On it."), AIMessage(content="Nothing fits yet.")])
+    client.post(f"{API}/laces/{lace}/messages", json={"text": "find me customers"})
+    turns = client.portal.call(_wait_for_turns, lace, 2)
+    update = turns[-1].input["updates"][0]
+    assert "checked 2 companies, but none fits what we sell" in update and "Tell the founder plainly" in update
+    assert "Tea Estate" not in update
+    assert client.get(f"{API}/laces/{lace}/accounts?status=suggested").json() == []

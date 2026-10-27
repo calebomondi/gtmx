@@ -30,6 +30,10 @@ class Opportunity(LenientModel):
     location: str | None = Field(default=None, description="Where, if stated")
     why_it_fits: str = Field(description="One sentence: why this suits this startup, from its facts")
     how_to_act: str = Field(description="One sentence: the concrete next step (apply, register, contact whom)")
+    fit: Literal["strong", "moderate", "weak"] = Field(
+        default="moderate",
+        description="strong = plainly suits what the startup sells and to whom; weak = only a loose link",
+    )
 
 
 class OpportunityList(LenientModel):
