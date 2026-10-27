@@ -86,6 +86,14 @@ class SuggestionsBlock(BaseModel):
     options: list[str]
 
 
+class FollowUps(BaseModel):
+    """The replies a founder would likely tap after a reply that ends on an
+    offer, when the Lace didn't suggest any itself."""
+    options: list[str] = Field(
+        default_factory=list,
+        description="2 or 3 replies, a few words each, as the founder would send them; none when the question offers no next step")
+
+
 class ActionBlock(BaseModel):
     """Something the Lace proposes doing in one of the founder's apps, with
     Approve and Decline. `status` is filled in when the conversation is read."""
