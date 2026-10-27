@@ -28,6 +28,10 @@ def _rival_id() -> str:
 
 def test_new_finds_show_as_cards_when_the_reply_forgot_them(client, lace, lace_runtime, monkeypatch):  # noqa: F811
     reply = _hunt(client, lace, lace_runtime, monkeypatch, AIMessage(content="I found Rival."))
+    # It passes on what a search found, so it says so; the Lace's answer to
+    # the founder before it doesn't.
+    assert reply["update"] is True
+    assert "update" not in client.get(f"{API}/laces/{lace}/messages").json()[-2]
     [card] = reply["ui"]
     assert (card["type"], card["kind"], card["title"], card["status"]) == ("card", "competitor", "Rival", "suggested")
     [job] = client.portal.call(_runs, lace, "lace_competitors")

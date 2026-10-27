@@ -163,6 +163,8 @@ export interface LaceMessageDto {
   author?: { id: string; name: string | null; avatar_url: string | null }
   /** Waiting for the Lace to finish what it is doing. */
   queued?: boolean
+  /** A Lace reply passing on what background work found. */
+  update?: boolean
 }
 
 /** A document shared with a Lace, kept as its text. Mirrors DocumentResponse. */

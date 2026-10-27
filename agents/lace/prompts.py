@@ -5,7 +5,7 @@ from datetime import date
 
 from agents.context_budget import count_tokens
 from agents.schemas.icp import ICP
-from agents.schemas.lace import FACT_TOPICS, AccountSummary, CompetitorSummary, DocumentSummary, Fact, LaceProfile, Suggestions
+from agents.schemas.lace import FACT_TOPICS, AccountSummary, CompetitorSummary, DocumentSummary, Fact, LaceProfile, RunningJob, Suggestions
 from agents.schemas.opportunities import OpportunitySummary
 
 # The brief rides on every model call, so it stays small. Facts past the cap
@@ -234,3 +234,15 @@ def system_prompt(profile: LaceProfile, facts: list[Fact], icp: ICP | None = Non
         documents=render_documents(documents or []),
         on_file=on_file,
     )
+
+
+def render_running(jobs: list[RunningJob]) -> str | None:
+    """What the Lace is told about its background jobs still working, so it
+    neither starts one again nor leaves the founder guessing; None when none
+    is."""
+    if not jobs:
+        return None
+    listed = "; ".join(f"the {j.what} ({j.minutes} min so far)" for j in jobs)
+    return (f"Working in the background right now: {listed}. Each reports back in this chat when it finishes. "
+            "Don't start one of these again; if the founder asks about it, say it's still running and its results "
+            "will come here. Meanwhile, help with whatever else they ask.")

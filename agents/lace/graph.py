@@ -28,7 +28,7 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
 from agents.context_budget import count_tokens
-from agents.lace.prompts import DOCUMENTS_LISTED, render_on_file, system_prompt
+from agents.lace.prompts import DOCUMENTS_LISTED, render_on_file, render_running, system_prompt
 from agents.lace.apps import LaceApps
 from agents.lace.store import LaceJobs, LaceStore
 from agents.lace.tools import build_tools
@@ -152,6 +152,8 @@ def build_lace_graph(
                                                                         on_file=on_file))]
         if chat_note:
             prompt.append(SystemMessage(content=chat_note))
+        if jobs is not None and (running := render_running(await jobs.running())):
+            prompt.append(SystemMessage(content=running))
         prompt += close_dangling_tool_calls(history_window(messages, settings.lace_history_token_budget))
         allowed = tools
         if tool_calls_this_turn(messages) >= settings.lace_max_tool_calls_per_turn:

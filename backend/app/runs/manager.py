@@ -21,6 +21,7 @@ from backend.app.database.connect import AsyncSessionLocal
 from backend.app.database.lace_models import Lace
 from backend.app.runs import events
 from agents.lace.store import JobRefused
+from agents.schemas.lace import RunningJob
 from agents.schemas.lace_ui import BlockAnswer
 from backend.app.runs import lace as lace_runs
 from backend.app.runs.lace import LaceThread
@@ -384,6 +385,19 @@ class _LaceJobs:
                   **({"private_to": str(self._owner_id)} if self._owner_id else {})}
         run = await start_lace_job(_TOOL_JOB_RUN_KINDS[kind], self._user_id, self._lace_id, params)
         return str(run.id)
+
+    async def running(self) -> list[RunningJob]:
+        """This chat's background jobs still working, oldest first: the team
+        chat's, or the member's own in their private chat."""
+        chat = models.Run.owner_id.is_(None) if self._owner_id is None else models.Run.owner_id == self._owner_id
+        async with AsyncSessionLocal() as db:
+            runs = (await db.scalars(select(models.Run).where(
+                models.Run.lace_id == self._lace_id, chat, models.Run.kind.in_(list(_JOB_NAMES)),
+                models.Run.status.not_in(TERMINAL_STATUSES)).order_by(models.Run.created_at))).all()
+        now = datetime.now(UTC)
+        return [RunningJob(what=_JOB_NAMES[run.kind],
+                           minutes=int((now - (run.started_at or run.created_at)).total_seconds() // 60))
+                for run in runs]
 
 
 async def cancel(user_id: uuid.UUID, run_id: uuid.UUID) -> models.Run:
