@@ -3,7 +3,6 @@ import { AnimatePresence, motion } from "motion/react"
 import { AlertTriangle, ArrowDown, ChevronRight, Clock, FileText, PenLine } from "lucide-react"
 
 import { PromptInputWithActions } from "@/components/chat-input"
-import { Markdown } from "@/components/ui/markdown"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DOCUMENT_ACCEPT, type ChatThread, type LaceMessageDto } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
@@ -20,6 +19,7 @@ import { answersByBlock } from "./questions"
 import { splitSources } from "./reply-sources"
 import type { LaceChat } from "./use-lace-chat"
 import { useTypewriter } from "./use-typewriter"
+import { ReplyMarkdown } from "./reply-markdown"
 
 /** The reply as it streams in, revealed smoothly with a caret. */
 function Streaming({ text }: { text: string }) {
@@ -29,7 +29,7 @@ function Streaming({ text }: { text: string }) {
       <LaceAvatar state="thinking" />
       <div className="min-w-0 flex-1">
         {/* The sources list is folded under the finished reply, so it never streams in. */}
-        <Markdown className="prose prose-sm dark:prose-invert min-w-0 max-w-none">{splitSources(shown).body}</Markdown>
+        <ReplyMarkdown>{splitSources(shown).body}</ReplyMarkdown>
         <span aria-hidden className="ml-0.5 inline-block h-4 w-1.5 animate-pulse rounded-sm bg-theme align-middle" />
       </div>
     </div>
@@ -98,7 +98,7 @@ function Message({ message, sender, children }: {
       <LaceAvatar animated={false} />
       <div className="flex min-w-0 flex-1 flex-col gap-3">
         {body.trim() && (
-          <Markdown className="prose prose-sm dark:prose-invert min-w-0 max-w-none">{body}</Markdown>
+          <ReplyMarkdown>{body}</ReplyMarkdown>
         )}
         {children}
         <LaceReplySources sources={sources} />
