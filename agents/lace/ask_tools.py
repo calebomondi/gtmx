@@ -33,7 +33,7 @@ def build_ask_tools() -> list[BaseTool]:
     @tool(parse_docstring=True)
     @guarded
     async def ask_choice(question: str, options: list[str]) -> ToolResult:
-        """Put a question to the founder with a few answers they can click instead of typing, shown under your reply. Use it when the next step turns on one choice between a few clear options (which country first, whether to go ahead). Keep your reply short and stop: their click comes back as their next message.
+        """Put a question to the founder with a few answers they can click instead of typing, shown under your reply. Use it when the next step turns on one choice between a few clear options (which country first, whether to go ahead). Keep your reply short and stop: say what you found, but don't list the options or ask the question again in your text. Their click comes back as their next message.
 
         Args:
             question: The question, in one short sentence.

@@ -29,6 +29,7 @@ from agents.lace.graph import BRIEF_FACTS, PRIVATE_WITHHELD, build_lace_graph
 from agents.lace.onboarding import Progress, onboard, opening_message
 from agents.lace.store import LaceJobs
 from agents.lace.prompts import PRIVATE_CHAT_NOTE, system_prompt
+from agents.lace.reply_tidy import without_repeated_options
 from agents.llm.main import LlmProvidersExhaustedError
 from agents.schemas.lace_ui import BlockAnswer, SuggestionsBlock, UiBlock
 from backend.app.agents_runtime import get_checkpointer
@@ -333,7 +334,9 @@ async def _converse(run_id: uuid.UUID, thread: LaceThread, message: HumanMessage
                     blocks += _ui_blocks(message)
     blocks = await _with_follow_ups(reply, blocks)
     if blocks:
-        await _attach_ui(graph, thread, blocks)
+        tidy = without_repeated_options(reply, {b.get("type") for b in blocks})
+        await _attach_ui(graph, thread, blocks, tidy if tidy != reply else None)
+        reply = tidy
     return reply
 
 
@@ -377,14 +380,18 @@ def _ui_blocks(message: ToolMessage) -> list[dict]:
     return list((result.get("data") or {}).get("ui") or []) if result.get("ok") else []
 
 
-async def _attach_ui(graph, thread: LaceThread, blocks: list[dict]) -> None:
+async def _attach_ui(graph, thread: LaceThread, blocks: list[dict], text: str | None = None) -> None:
     """Keep the turn's cards and choices on its final reply, in the thread,
-    so they show with it whenever the conversation is read."""
+    so they show with it whenever the conversation is read; `text`, when
+    given, replaces the reply's words (without what the blocks repeat)."""
     state = await graph.aget_state(thread.config)
     reply = next((m for m in reversed(state.values.get("messages", [])) if isinstance(m, AIMessage)), None)
     if reply is None:
         return
-    updated = reply.model_copy(update={"additional_kwargs": {**reply.additional_kwargs, UI_KEY: blocks}})
+    changes: dict = {"additional_kwargs": {**reply.additional_kwargs, UI_KEY: blocks}}
+    if text is not None:
+        changes["content"] = text
+    updated = reply.model_copy(update=changes)
     await graph.aupdate_state(thread.config, {"messages": [updated]}, as_node="agent")
 
 
