@@ -5,8 +5,10 @@ the team's, saved; or sends it back to them with a note. Admins and the
 owner may approve anything, their own pushes too."""
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Literal
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,10 +16,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agents.schemas.lace import ActivityKind, LaceRole, SavedKind
 from backend.app.database.lace_models import LaceAccount, LaceCompetitor, LaceContact, LaceEvent, LaceOpportunity, LaceOutreach
 from backend.app.services import lace_activity, lace_events
-from backend.app.services.errors import ForbiddenError, NotFoundError
+from backend.app.services.errors import ConflictError, ForbiddenError, InvalidInputError, NotFoundError
 
 # A note left when someone sends a find back without one.
 NO_NOTE = "Sent back without a note."
+
+
+def _account_about(row: LaceAccount) -> str | None:
+    return (row.record or {}).get("summary")
+
+
+def _set_account_about(row: LaceAccount, text: str | None) -> None:
+    # A new dict, so SQLAlchemy sees the JSON column change.
+    row.record = {**(row.record or {}), "summary": text}
 
 
 @dataclass(frozen=True)
@@ -27,19 +38,34 @@ class _Kind:
     saved: str  # the status of a saved one
     name: str  # the column it is called by
     detail: str  # a second line about it
+    link: str  # the column with its page
     noun: str  # "competitor"
     saved_kind: ActivityKind
+    # What it is, or why it fits: what a reviewer judges it by.
+    about: Callable[[object], str | None]
+    set_about: Callable[[object, str | None], None]
 
     @property
     def label(self) -> str:
         return f"{'an' if self.noun[0] in 'aeiou' else 'a'} {self.noun}"
 
 
+def _column(name: str) -> tuple[Callable, Callable]:
+    """Read and write one column, as an `about`."""
+    return (lambda row: getattr(row, name)), (lambda row, text: setattr(row, name, text))
+
+
 KINDS: dict[str, _Kind] = {
-    "competitor": _Kind(LaceCompetitor, "domain_key", "tracked", "name", "website", "competitor", "competitor_saved"),
-    "account": _Kind(LaceAccount, "key", "target", "name", "website", "target account", "account_saved"),
-    "opportunity": _Kind(LaceOpportunity, "url_key", "open", "title", "organiser", "opportunity", "opportunity_saved"),
+    "competitor": _Kind(LaceCompetitor, "domain_key", "tracked", "name", "website", "website", "competitor",
+                        "competitor_saved", *_column("summary")),
+    "account": _Kind(LaceAccount, "key", "target", "name", "website", "website", "target account", "account_saved",
+                     _account_about, _set_account_about),
+    "opportunity": _Kind(LaceOpportunity, "url_key", "open", "title", "organiser", "url", "opportunity",
+                         "opportunity_saved", *_column("why_it_fits")),
 }
+
+# What a member may change on their own private find.
+FindChange = Literal["name", "summary", "note"]
 
 
 @dataclass(frozen=True)
@@ -52,12 +78,15 @@ class Find:
     owner_id: uuid.UUID
     proposed_at: datetime | None
     review_note: str | None
+    summary: str | None
+    link: str | None
+    push_note: str | None
 
 
 def _find(kind: SavedKind, row) -> Find:
     spec = KINDS[kind]
     return Find(kind, row.id, getattr(row, spec.name), getattr(row, spec.detail), row.status, row.owner_id,
-                row.proposed_at, row.review_note)
+                row.proposed_at, row.review_note, spec.about(row), getattr(row, spec.link), row.push_note)
 
 
 async def mine(db: AsyncSession, lace_id: uuid.UUID, owner_id: uuid.UUID, limit: int) -> list[Find]:
@@ -90,6 +119,48 @@ async def push(db: AsyncSession, lace_id: uuid.UUID, owner_id: uuid.UUID,
                                 lace_activity.names(pushed), actor_id=owner_id)
     await db.commit()
     return len(pushed)
+
+
+async def _own(db: AsyncSession, lace_id: uuid.UUID, owner_id: uuid.UUID, kind: SavedKind, find_id: uuid.UUID):
+    """A member's own private find, while it is theirs to change: not
+    dismissed, and not waiting for the team's review."""
+    spec = KINDS[kind]
+    row = await db.scalar(select(spec.model).where(
+        spec.model.id == find_id, spec.model.lace_id == lace_id, spec.model.owner_id == owner_id,
+        spec.model.status != "dismissed"))
+    if row is None:
+        raise NotFoundError("You have no find like that.")
+    if row.proposed_at is not None:
+        raise ConflictError("It is waiting for the team's review; it can change once it comes back.")
+    return row
+
+
+async def edit(db: AsyncSession, lace_id: uuid.UUID, owner_id: uuid.UUID, kind: SavedKind, find_id: uuid.UUID,
+               changes: dict[FindChange, str | None]) -> Find:
+    """Rename a private find, reword what it is, or write the reviewer a
+    note. A blank description or note clears it; a name can't be blank."""
+    spec = KINDS[kind]
+    row = await _own(db, lace_id, owner_id, kind, find_id)
+    if "name" in changes:
+        name = (changes["name"] or "").strip()
+        if not name:
+            raise InvalidInputError("Give it a name.")
+        setattr(row, spec.name, name)
+    if "summary" in changes:
+        spec.set_about(row, (changes["summary"] or "").strip() or None)
+    if "note" in changes:
+        row.push_note = (changes["note"] or "").strip() or None
+    await db.commit()
+    return _find(kind, row)
+
+
+async def remove(db: AsyncSession, lace_id: uuid.UUID, owner_id: uuid.UUID, kind: SavedKind,
+                 find_id: uuid.UUID) -> None:
+    """Drop a private find from the member's list. It is kept, dismissed, so
+    their chat's searches don't turn it up again."""
+    row = await _own(db, lace_id, owner_id, kind, find_id)
+    row.status = "dismissed"
+    await db.commit()
 
 
 async def forget_private(db: AsyncSession, lace_id: uuid.UUID, owner_id: uuid.UUID) -> None:
@@ -166,7 +237,7 @@ async def _into_team(db: AsyncSession, lace_id: uuid.UUID, kind: SavedKind, row)
     team = await db.scalar(select(spec.model).where(
         spec.model.lace_id == lace_id, spec.model.team(), getattr(spec.model, spec.key) == getattr(row, spec.key)))
     if team is None:
-        row.owner_id, row.status, row.proposed_at, row.review_note = None, spec.saved, None, None
+        row.owner_id, row.status, row.proposed_at, row.review_note, row.push_note = None, spec.saved, None, None, None
         return
     team.status = spec.saved
     if kind == "account":

@@ -76,8 +76,16 @@ you" is a member's private chat with the same Lace:
 - **Pushing.** In "Just you", the **Your finds** panel lists the private
   chat's finds. A member ticks what should go and pushes it to the team
   (`proposed_at`). The push lands on the Feed.
-- **Reviewing.** The Feed's **To review** card lists teammates' pushes, and
-  the "needs you" strip counts them. Any one other member decides: **Approve**
+- **Before pushing,** a member can rename a find, reword what it is (a
+  competitor's summary, an account's summary, an opportunity's why-it-fits),
+  and leave the reviewer a note (`push_note`). They can also remove one: it
+  is kept dismissed, so their chat doesn't suggest it again. While a find
+  waits for review it is locked; it can change again once it is sent back.
+  A later search that turns up the same company refreshes its name and
+  description, overwriting a manual edit.
+- **Reviewing.** The Feed's **To review** card lists teammates' pushes, each
+  with what it is, its link and the member's note, and the "needs you" strip
+  counts them. Any one other member decides: **Approve**
   or **Send back** with a note. Admins and the owner may also approve their
   own pushes.
 - **Approving** makes the find the team's, saved (tracked / target / open). If
