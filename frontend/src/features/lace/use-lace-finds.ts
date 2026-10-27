@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
 
-import { approveFind, listFindReviews, listMyFinds, pushFinds, sendBackFind, type FindDto, type FindKind } from "@/lib/api"
+import {
+  approveFind, editMyFind, listFindReviews, listMyFinds, pushFinds, removeMyFind, sendBackFind,
+  type FindDto, type FindEdit, type FindKind,
+} from "@/lib/api"
 
 /** How each kind of find is named on its own, matching the Feed's tabs. */
 export const FIND_KIND_LABEL: Record<FindKind, string> = {
@@ -54,6 +57,9 @@ export interface MyFinds {
   error: string | null
   /** Put these up for the team's review. */
   push: (finds: FindDto[]) => Promise<void>
+  /** Rename, reword or note one; whether it saved. */
+  edit: (find: FindDto, changes: FindEdit) => Promise<boolean>
+  remove: (find: FindDto) => Promise<void>
 }
 
 /** What the founder's private chat found, and pushing it to the team. */
@@ -65,7 +71,14 @@ export function useMyFinds(laceId: string, enabled: boolean, key: string): MyFin
       toast.success(`Sent ${finds.length === 1 ? finds[0].name : `${finds.length} finds`} to the team for review`)
     }
   }, [laceId, reload])
-  return { items, error, push }
+  const edit = useCallback((find: FindDto, changes: FindEdit) =>
+    change(`change ${find.name}`, () => editMyFind(laceId, find, changes), reload), [laceId, reload])
+  const remove = useCallback(async (find: FindDto) => {
+    if (await change(`remove ${find.name}`, () => removeMyFind(laceId, find), reload)) {
+      toast.success(`Removed ${find.name}`, { description: "Your chat won't suggest it again." })
+    }
+  }, [laceId, reload])
+  return { items, error, push, edit, remove }
 }
 
 export interface FindReviews {

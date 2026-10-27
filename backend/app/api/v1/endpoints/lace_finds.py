@@ -8,7 +8,7 @@ from fastapi import APIRouter, Query, status
 
 from agents.schemas.lace import SavedKind
 from backend.app.api.deps import CurrentUser, DbSession, LaceMembership, MemberLace
-from backend.app.schemas.lace_finds import FindResponse, PushRequest, PushResponse, SendBackRequest
+from backend.app.schemas.lace_finds import FindEdit, FindResponse, PushRequest, PushResponse, SendBackRequest
 from backend.app.services import lace_finds, lace_members
 
 router = APIRouter()
@@ -30,6 +30,20 @@ async def push_finds(lace: MemberLace, user: CurrentUser, payload: PushRequest, 
     """Put your private finds up for the team: another member approves them."""
     items = [(item.kind, item.id) for item in payload.items]
     return PushResponse(pushed=await lace_finds.push(db, lace.id, user.id, items))
+
+
+@router.patch("/{lace_id}/my-finds/{kind}/{find_id}", response_model=FindResponse)
+async def edit_find(lace: MemberLace, user: CurrentUser, kind: SavedKind, find_id: uuid.UUID, payload: FindEdit,
+                    db: DbSession):
+    """Rename one of your private finds, reword it, or leave the reviewer a note."""
+    find = await lace_finds.edit(db, lace.id, user.id, kind, find_id, payload.model_dump(exclude_unset=True))
+    return FindResponse(**asdict(find))
+
+
+@router.delete("/{lace_id}/my-finds/{kind}/{find_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_find(lace: MemberLace, user: CurrentUser, kind: SavedKind, find_id: uuid.UUID, db: DbSession):
+    """Drop one of your private finds; your chat won't suggest it again."""
+    await lace_finds.remove(db, lace.id, user.id, kind, find_id)
 
 
 @router.get("/{lace_id}/reviews", response_model=list[FindResponse])

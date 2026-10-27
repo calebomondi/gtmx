@@ -177,9 +177,9 @@ export function ChatBlocks({ blocks, chat, live, answers, onReview }: {
       {suggestions.length > 0 && (
         <div className="flex flex-wrap gap-1.5" aria-label="Suggested replies">
           {suggestions.map((option) => (
-            <Button key={option} size="sm" variant="outline" className="rounded-full border-theme/40"
+            <Button key={option} size="sm" variant="outline" className="max-w-64 rounded-full border-theme/40" title={option}
                     onClick={() => void chat.send(option)}>
-              {option}
+              <span className="truncate">{option}</span>
             </Button>
           ))}
         </div>

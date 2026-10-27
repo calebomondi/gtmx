@@ -1,27 +1,40 @@
 import { useState } from "react"
-import { ChevronDown, Clock, Send, Undo2 } from "lucide-react"
+import { ChevronDown, Send } from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
-import type { FindDto } from "@/lib/api"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import type { FindDto, FindKind } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
-import { FIND_KIND_LABEL, type MyFinds } from "./use-lace-finds"
+import { FindEditDialog } from "./find-edit-dialog"
+import { MyFindRow } from "./my-find-row"
+import type { MyFinds } from "./use-lace-finds"
+
+/** The panel's tabs, named like the Feed's. */
+const TABS: readonly { kind: FindKind; title: string }[] = [
+  { kind: "competitor", title: "Competitors" },
+  { kind: "account", title: "Customers" },
+  { kind: "opportunity", title: "Opportunities" },
+]
 
 /** In the founder's private chat: what it found, theirs until they push it
- * to the team. Each is ticked to go; ones waiting for review, and ones sent
- * back (with why), say so. */
+ * to the team, by kind. Each can be ticked to go, noted for the reviewer,
+ * edited or removed; ones waiting for review, and ones sent back (with
+ * why), say so. */
 export function MyFindsPanel({ finds }: { finds: MyFinds }) {
   const [open, setOpen] = useState(false)
+  const [tab, setTab] = useState<FindKind>("competitor")
   // Unticked ones stay behind; everything not yet pushed goes by default.
   const [held, setHeld] = useState<ReadonlySet<string>>(new Set())
   const [pushing, setPushing] = useState(false)
+  const [editing, setEditing] = useState<FindDto | null>(null)
   const items = finds.items ?? []
   if (items.length === 0) return null
-  const ready = items.filter((f) => !f.proposed_at)
-  const going = ready.filter((f) => !held.has(f.id))
+  const ofKind = (kind: FindKind) => items.filter((f) => f.kind === kind)
+  // The chosen tab, or the first with something in it once that one empties.
+  const shown = ofKind(tab).length > 0 ? tab : (TABS.find((t) => ofKind(t.kind).length > 0)?.kind ?? tab)
+  const going = items.filter((f) => !f.proposed_at && !held.has(f.id))
   const toggle = (id: string) => setHeld((prev) => {
     const next = new Set(prev)
     if (!next.delete(id)) next.add(id)
@@ -45,36 +58,25 @@ export function MyFindsPanel({ finds }: { finds: MyFinds }) {
         </Button>
       </div>
       {open && (
-        <ul className="flex max-h-56 flex-col gap-1 overflow-y-auto px-3">
-          {items.map((find) => (
-            <FindRow key={find.id} find={find} ticked={!held.has(find.id)} onToggle={() => toggle(find.id)} />
-          ))}
-        </ul>
+        <div className="flex flex-col gap-2 px-3">
+          <Tabs value={shown} onValueChange={(next) => setTab(next as FindKind)}>
+            <TabsList variant="line" aria-label="Kind of find">
+              {TABS.map(({ kind, title }) => (
+                <TabsTrigger key={kind} value={kind} disabled={ofKind(kind).length === 0} className="gap-1.5 text-xs">
+                  {title} <span className="text-muted-foreground tabular-nums">{ofKind(kind).length}</span>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+          <ul className="flex max-h-72 flex-col divide-y overflow-y-auto">
+            {ofKind(shown).map((find) => (
+              <MyFindRow key={find.id} find={find} ticked={!held.has(find.id)} onToggle={() => toggle(find.id)}
+                         finds={finds} onEdit={() => setEditing(find)} />
+            ))}
+          </ul>
+        </div>
       )}
+      <FindEditDialog find={editing} onClose={() => setEditing(null)} finds={finds} />
     </Card>
-  )
-}
-
-function FindRow({ find, ticked, onToggle }: { find: FindDto; ticked: boolean; onToggle: () => void }) {
-  const waiting = Boolean(find.proposed_at)
-  return (
-    <li className="flex items-start gap-2 py-1">
-      <Checkbox checked={!waiting && ticked} disabled={waiting} onCheckedChange={onToggle} aria-label={`Push ${find.name}`}
-                className="mt-0.5" />
-      <div className="min-w-0 flex-1">
-        <p className="flex items-center gap-1.5 text-sm">
-          <span className="truncate">{find.name}</span>
-          <Badge variant="outline" className="shrink-0 text-[10px]">{FIND_KIND_LABEL[find.kind]}</Badge>
-        </p>
-        {waiting && (
-          <p className="flex items-center gap-1 text-xs text-muted-foreground"><Clock className="size-3" /> Waiting for the team</p>
-        )}
-        {!waiting && find.review_note && (
-          <p className="flex items-start gap-1 text-xs text-muted-foreground">
-            <Undo2 className="mt-0.5 size-3 shrink-0" /> Sent back: {find.review_note}
-          </p>
-        )}
-      </div>
-    </li>
   )
 }

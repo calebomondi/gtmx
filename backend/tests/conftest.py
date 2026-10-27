@@ -21,6 +21,7 @@ from backend.app.api.v1.routes import api_router
 from backend.app.database import models  # noqa: F401 -- registers every table on Base.metadata
 from backend.app.database.connect import AsyncSessionLocal, Base, get_db
 from backend.app.main import add_service_error_handlers
+from backend.app.runs import lace as lace_runs
 from backend.app.runs import manager as run_manager
 from backend.app.services import connections as connection_service
 from backend.app.services import website_check
@@ -65,6 +66,13 @@ def readable_websites(monkeypatch):
     async def readable(website):
         return True
     monkeypatch.setattr(website_check, "readable", readable)
+
+
+@pytest.fixture(autouse=True)
+def no_follow_ups(monkeypatch):
+    """A reply ending on a question would ask a real model for suggested
+    replies; tests that want some patch lace_runs.follow_ups themselves."""
+    monkeypatch.setattr(lace_runs, "follow_ups", lambda reply: [])
 
 
 @pytest.fixture(autouse=True)
