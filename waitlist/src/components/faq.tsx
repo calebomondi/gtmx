@@ -16,7 +16,7 @@ const QUESTIONS = [
   },
   {
     q: 'Does it work in my country?',
-    a: 'It works wherever you sell. Tell it the countries, and it researches buyers, rivals and news there, in the local language.',
+    a: 'It works wherever you sell. Tell it the countries, and it researches buyers, rivals and news there.',
   },
   {
     q: 'Why one Lace per startup?',

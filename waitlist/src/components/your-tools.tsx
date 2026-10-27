@@ -12,7 +12,7 @@ interface App {
 const GROUPS: { label: string; blurb: string; apps: App[] }[] = [
   {
     label: 'Channels',
-    blurb: 'Where it reaches people and reads their replies.',
+    blurb: 'Where it reaches people, reads their replies, and proposes posts and comment replies.',
     apps: [
       { name: 'Gmail', icon: 'gmail' }, { name: 'Outlook' }, { name: 'LinkedIn', icon: 'linkedin' }, { name: 'X' },
       { name: 'Instagram', icon: 'instagram' }, { name: 'Facebook', icon: 'facebook' },
@@ -43,7 +43,7 @@ const GROUPS: { label: string; blurb: string; apps: App[] }[] = [
 ]
 
 // What it proposes in those apps; each runs only on the founder's click.
-const PROPOSALS = ['Post this on our LinkedIn', 'Add Dana to HubSpot as a lead', 'Share the brief in #sales',
+const PROPOSALS = ['Post this on our LinkedIn', 'Add Neema to HubSpot as a lead', 'Share the brief in #sales',
   'Put my booking link in the reply']
 
 function AppTile({ app }: { app: App }) {
