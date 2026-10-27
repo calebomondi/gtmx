@@ -105,7 +105,11 @@ const SCENES: Scene[] = [
           </div>
         </div>
         <At t={t} at={2}>
-          <p className="ml-auto w-fit rounded-lg bg-highlight px-2.5 py-1 text-[13px]">Make it shorter</p>
+          {/* A cofounder weighs in: the Lace is the whole team's. */}
+          <div className="ml-auto flex w-fit items-center gap-1.5">
+            <p className="rounded-lg bg-highlight px-2.5 py-1 text-[13px]">Make it shorter</p>
+            <span aria-label="Amina, a cofounder" className="grid size-5 place-items-center rounded-full bg-ink text-[10px] font-semibold text-paper">A</span>
+          </div>
         </At>
         <At t={t} at={6}>
           <p className="w-fit rounded-lg bg-panel px-2.5 py-1 text-[13px] text-muted shadow-lift">Cut it to three lines and kept the ask.</p>

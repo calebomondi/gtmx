@@ -6,7 +6,7 @@ import { Section } from './section'
 const STEPS = [
   {
     title: 'Name your Lace, give it your website',
-    body: 'It reads your site and shows you what it learned: what you sell, to whom, and how you stand out. You confirm or correct it.',
+    body: 'It reads your site and shows you what it learned: what you sell, to whom, and how you stand out. You confirm or correct it, and invite your cofounders.',
   },
   {
     title: 'It gets to work, and keeps at it',

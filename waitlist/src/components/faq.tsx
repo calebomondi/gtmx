@@ -19,8 +19,20 @@ const QUESTIONS = [
     a: 'It works wherever you sell. Tell it the countries, and it researches buyers, rivals and news there, in the local language.',
   },
   {
-    q: 'One Lace per startup?',
-    a: 'Yes: each Lace learns one startup. If you run more than one, give each its own Lace.',
+    q: 'Why one Lace per startup?',
+    a: 'So your startup has one memory: what you sell, who buys, every competitor, every conversation and draft. Everyone on the team works from it, and nothing is learned twice. If you run more than one startup, each gets its own Lace.',
+  },
+  {
+    q: 'Can my cofounders use it too?',
+    a: 'Yes. Invite them by email to your Lace. You all share one team chat (it shows who asked what), one Feed and one Messaging, and you can talk to Lace at the same time: messages wait their turn, and searches keep running while you chat.',
+  },
+  {
+    q: 'Can we each talk to it privately?',
+    a: 'Yes. Each of you has a “Just you” chat next to the team chat. What Lace finds there stays yours until you push it to the team, with a note, and a cofounder approves it.',
+  },
+  {
+    q: 'What if it can’t find good matches?',
+    a: 'It tells you, and asks a question that will sharpen the next search, instead of padding the list. Every find says why it fits and where it was found, and when you dismiss one you can say why, so the next search learns.',
   },
   {
     q: 'What happens to my data?',

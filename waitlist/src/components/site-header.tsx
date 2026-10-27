@@ -9,6 +9,7 @@ export function SiteHeader() {
         </a>
         <nav className="flex items-center gap-5 text-sm">
           <a href="#what-lace-does" className="hidden text-muted hover:text-ink sm:inline">What it does</a>
+          <a href="#teams" className="hidden text-muted hover:text-ink sm:inline">For teams</a>
           <a href="#pilot" className="hidden text-muted hover:text-ink sm:inline">Pilot</a>
           <a href="#join" className="btn-primary px-3.5 py-1.5 text-sm">
             Join the waitlist

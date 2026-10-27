@@ -1,5 +1,6 @@
 import { Closing } from './components/closing'
 import { Faq } from './components/faq'
+import { FoundingTeams } from './components/founding-teams'
 import { Hero } from './components/hero'
 import { HowItWorks } from './components/how-it-works'
 import { Pilot } from './components/pilot'
@@ -18,6 +19,7 @@ export default function App() {
       <main>
         <Hero pilot={pilot} onPilotSpotsLeft={setPilotSpotsLeft} />
         <WhatLaceDoes />
+        <FoundingTeams />
         <HowItWorks />
         <Worldwide />
         <Pilot pilot={pilot} />
