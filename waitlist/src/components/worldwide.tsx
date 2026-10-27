@@ -11,15 +11,15 @@ const SIGNALS = [
 const POINTS = [
   {
     title: 'Read from your site',
-    body: 'Your offices, your currencies, your customers’ logos. Lace works out your markets from what your pages already say.',
+    body: 'Your offices, your prices, your customers’ names. Lace works out your markets from what your pages already say.',
   },
   {
     title: 'Or just say where',
-    body: '“Find me clinics in Lisbon.” Name a place in chat and that search goes there, while everything else carries on as before.',
+    body: '“Find me fintechs in Lisbon.” Name a place in chat and that search goes there, while everything else carries on as before.',
   },
   {
     title: 'Local, and current',
-    body: 'It reads local news, sites and posts in their own language, recent first, and every find shows its source and date.',
+    body: 'It reads local news, sites and posts, recent first, and every find shows its source and date.',
   },
 ]
 

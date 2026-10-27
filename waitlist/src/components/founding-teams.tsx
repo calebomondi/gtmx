@@ -4,7 +4,8 @@ import { stagger } from '../lib/stagger'
 import { Lace } from './lace-mascot'
 import { Section } from './section'
 
-// The same invented startup as the hero's example: nothing here is a real company or person.
+// Thalace's own team chat, as in the hero's example. The people are "you" and "your cofounder", and the
+// startups invented: none is a real company or person.
 const POINTS = [
   {
     title: 'One Lace per startup',
@@ -64,7 +65,7 @@ function TeamChat() {
          aria-label="Two cofounders in their Lace's team chat, with a search running and a find to review">
       <div className="flex items-center gap-3 border-b border-line bg-panel px-4 py-3">
         <Lace state="idle" size={28} decorative />
-        <p className="text-sm font-semibold">Juno</p>
+        <div><p className="text-sm font-semibold leading-tight">Lace</p><p className="text-[11px] text-muted">thalace.com</p></div>
         <div className="ml-auto flex rounded-full border border-line bg-paper p-0.5 text-[11px]">
           <span className="rounded-full bg-panel px-2.5 py-0.5 font-medium shadow-lift">Team chat</span>
           <span className="px-2.5 py-0.5 text-muted">Just you</span>
@@ -72,16 +73,16 @@ function TeamChat() {
       </div>
       <div className="flex flex-col gap-3 p-4 sm:p-5">
         <div data-reveal style={stagger(0)}>
-          <Said who="Amina" initial="A" tone="brand">Who’s opening new clinics in Lagos?</Said>
+          <Said who="You" initial="Y" tone="brand">Who just raised and is hiring their first sales lead?</Said>
         </div>
         <div data-reveal style={stagger(1)} className="flex items-start gap-2">
           <Lace state="alert" size={24} decorative />
           <p className="max-w-[17rem] text-[13px] leading-snug">
-            Three clinic groups, Amina. Lagoon Health opens two sites in June: their check-ins still run on paper.
+            Three startups. Acme Pay raised its seed round in June and is hiring a head of sales.
           </p>
         </div>
         <div data-reveal style={stagger(2)}>
-          <Said who="Tomas" initial="T" tone="ink" waiting>Draft one to Lagoon’s head of operations</Said>
+          <Said who="Your cofounder" initial="C" tone="ink" waiting>Draft one to Acme Pay’s founder</Said>
         </div>
         <div data-reveal style={stagger(3)}
              className="flex w-fit items-center gap-2 rounded-full border border-brand/50 bg-highlight/50 px-3 py-1 text-[12px]">
@@ -90,10 +91,10 @@ function TeamChat() {
           <span className="text-muted">Keep chatting</span>
         </div>
         <div data-reveal style={stagger(4)} className="rounded-lg border border-line bg-panel p-3 shadow-lift">
-          <p className="font-mono text-[10px] uppercase tracking-wider text-brand-ink">To review · from Amina’s chat</p>
-          <p className="mt-1 font-semibold tracking-tight">Medlink Pharmacies</p>
-          <p className="mt-0.5 text-[13px] leading-snug text-muted">Partner: sells to the same clinics</p>
-          <p className="mt-1.5 rounded-md bg-paper px-2 py-1 text-[12px]">“Met their COO at the Lagos health expo.”</p>
+          <p className="font-mono text-[10px] uppercase tracking-wider text-brand-ink">To review · from your cofounder’s chat</p>
+          <p className="mt-1 font-semibold tracking-tight">Launchpad accelerator</p>
+          <p className="mt-0.5 text-[13px] leading-snug text-muted">Partner: runs programmes for the startups we sell to</p>
+          <p className="mt-1.5 rounded-md bg-paper px-2 py-1 text-[12px]">“Met their programme lead at a demo day.”</p>
           <div className="mt-2.5 flex justify-end gap-1.5 text-xs">
             <span className="rounded-md border border-line px-2.5 py-1">Send back</span>
             <span className="rounded-md bg-ink px-2.5 py-1 font-semibold text-paper">Approve</span>

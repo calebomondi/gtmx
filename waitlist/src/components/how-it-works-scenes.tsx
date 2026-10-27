@@ -37,17 +37,17 @@ export function CreatedScene() {
       </div>
       <dl className="grid w-56 grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 font-mono text-xs">
         <dt className="text-night-muted">Name</dt>
-        <dd><span className="type-in" style={{ '--chars': 4 } as CSSProperties}>Juno</span></dd>
+        <dd><span className="type-in" style={{ '--chars': 4 } as CSSProperties}>Lace</span></dd>
         <dt className="text-night-muted">Website</dt>
-        <dd><span className="type-in type-in-late" style={{ '--chars': 12 } as CSSProperties}>fieldcast.io</span></dd>
+        <dd><span className="type-in type-in-late" style={{ '--chars': 11 } as CSSProperties}>thalace.com</span></dd>
       </dl>
     </div>
   )
 }
 
 const FINDS = [
-  { tag: 'Customer', text: 'Medvale Clinics' },
-  { tag: 'Tender', text: 'Closes in 12 days' },
+  { tag: 'Customer', text: 'Acme Pay' },
+  { tag: 'Event', text: 'Closes in 12 days' },
   { tag: 'Competitor', text: 'Changed its pricing' },
 ]
 
@@ -103,8 +103,8 @@ export function StareScene() {
         <p className="rounded-full bg-night-line px-3 py-1 text-xs text-paper">Your call.</p>
       </div>
       <div className="w-52 rounded-lg border border-dashed border-brand bg-paper p-3 text-ink">
-        <p className="font-mono text-[10px] uppercase tracking-wider text-brand-ink">Draft · to Dana by email</p>
-        <p className="mt-1.5 text-[13px] leading-snug">Hi Dana, congrats on Medvale’s three new clinics. Worth 15 minutes next week?</p>
+        <p className="font-mono text-[10px] uppercase tracking-wider text-brand-ink">Draft · to Neema by email</p>
+        <p className="mt-1.5 text-[13px] leading-snug">Hi Neema, congrats on Acme Pay’s seed round. Worth 15 minutes next week?</p>
         <div className="mt-3 flex justify-end">
           <span className="send-wait rounded-md bg-ink px-3 py-1 text-xs font-semibold text-paper">Send</span>
         </div>

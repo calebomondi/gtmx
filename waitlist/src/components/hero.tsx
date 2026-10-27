@@ -34,9 +34,9 @@ export function Hero({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; on
           </div>
           <p className="max-w-xl text-lg leading-relaxed text-muted short:text-base">
             <span className="font-medium text-ink">One Lace for your startup, shared by your whole founding team.</span>{' '}
-            Give it your website. Lace learns what you sell, then finds your ideal customers and the people to reach,
-            spots places to sell, showcase and partner, watches your competitors, brainstorms with you, and drafts
-            every message and reply. Nothing goes out without your click.
+            Give it your website: it learns what you sell, finds your ideal customers and who to reach, spots places to
+            sell, showcase and partner, watches competitors, brainstorms with you and drafts every message. Nothing goes
+            out without your click.
           </p>
           <SignupCard id="join" pilot={pilot} onPilotSpotsLeft={onPilotSpotsLeft} />
           <ul className="flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-muted">
