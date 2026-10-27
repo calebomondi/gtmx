@@ -9,6 +9,7 @@ checklist (see the prompt); one item is changed straight away."""
 from langchain_core.tools import BaseTool, tool
 from pydantic import ValidationError
 
+from agents.lace.cards import cards
 from agents.lace.store import LaceStore
 from agents.lace.tool_guard import guarded
 from agents.schemas.lace import ItemsChanged, NewContact, SavedKind, SavedVerdict, ToolResult
@@ -41,7 +42,7 @@ def build_edit_tools(store: LaceStore) -> list[BaseTool]:
     @tool(parse_docstring=True)
     @guarded
     async def update_saved(kind: SavedKind, ids: list[str], verdict: SavedVerdict) -> ToolResult:
-        """Save or remove competitors, accounts or opportunities, when the founder asks (e.g. "remove the opportunities that don't fit what we sell"). Remove takes them out of every list and stops them being suggested again; save puts them back or keeps a suggestion. For two or more, confirm with ask_checklist first and change only what they left ticked.
+        """Remove competitors, accounts or opportunities, or save back ones the founder removed, when the founder asks (e.g. "remove the opportunities that don't fit what we sell"). Remove takes them out of every list and stops them being suggested again. You cannot save a new suggestion: the founder saves it with a click on its card, so asking to save one shows its card instead. For two or more, confirm with ask_checklist first and change only what they left ticked.
 
         Args:
             kind: competitor, account or opportunity.
@@ -52,7 +53,15 @@ def build_edit_tools(store: LaceStore) -> list[BaseTool]:
         if chosen is None:
             return _TOO_MANY
         done = "Saved" if verdict == "save" else "Removed"
-        return _report(done, await store.set_saved(kind, chosen, verdict))
+        result = await store.set_saved(kind, chosen, verdict)
+        if not result.for_founder:
+            return _report(done, result)
+        shown, _ = await cards(store, kind, [item.id for item in result.for_founder])
+        names = ", ".join(item.name for item in result.for_founder)
+        saved = f" {done}: {', '.join(i.name for i in result.changed)}." if result.changed else ""
+        return ToolResult.success(
+            f"{names} are suggestions: only the founder saves those. They will see them as cards under your reply to "
+            f"save or dismiss; say so.{saved}", {**result.model_dump(), "ui": [c.model_dump() for c in shown]})
 
     @tool(parse_docstring=True)
     @guarded

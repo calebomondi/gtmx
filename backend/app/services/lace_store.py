@@ -18,7 +18,7 @@ from agents.schemas.icp import ICP
 from agents.schemas.opportunities import OpportunitySummary
 from agents.schemas.lace import ProposedAction, AccountSummary, CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Fact, ItemsChanged, NamedItem, NewContact, SavedKind, SavedVerdict, Suggestions, FactTopic, LaceProfile, NewFact, SourcePage
 from backend.app.database.lace_models import Lace, LaceAccount, LaceCompetitor, LaceContact, LaceFact, LaceOutreach, LaceSource
-from backend.app.services import lace_app_actions, lace_accounts, lace_competitors, lace_contacts, lace_documents, lace_opportunities, lace_outreach
+from backend.app.services import lace_app_actions, lace_accounts, lace_competitors, lace_contacts, lace_documents, lace_finds, lace_opportunities, lace_outreach
 from backend.app.services import laces as lace_service
 from backend.app.services.errors import ConflictError, NotFoundError
 from backend.app.services.laces import current_facts_query
@@ -192,7 +192,10 @@ class DbLaceStore:
         return lace_documents.summary(row), row.text
 
     async def set_saved(self, kind: SavedKind, ids: list[str], verdict: SavedVerdict) -> ItemsChanged:
+        """Remove items, or save back removed ones. A suggestion is never saved
+        here: the founder saves it from its card, so it is left for them."""
         status = _SAVED_STATUS[kind] if verdict == "save" else "dismissed"
+        model = lace_finds.KINDS[kind].model
         result = ItemsChanged()
         async with self._sessions() as session:
             for raw in ids:
@@ -200,6 +203,12 @@ class DbLaceStore:
                 try:
                     if item_id is None:
                         raise NotFoundError(raw)
+                    if verdict == "save":
+                        row = await session.scalar(select(model).where(
+                            model.id == item_id, model.lace_id == self._lace_id, model.seen_by(self._owner_id)))
+                        if row is not None and row.status == "suggested":
+                            result.for_founder.append(NamedItem(id=raw, name=_name(row)))
+                            continue
                     row = await _SET_STATUS[kind](session, self._lace_id, item_id, status, self._actor_id,
                                                   self._owner_id)
                 except NotFoundError:

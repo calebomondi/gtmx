@@ -76,9 +76,11 @@ def private_to(params: dict) -> uuid.UUID | None:
     return uuid.UUID(params["private_to"]) if params.get("private_to") else None
 
 
-async def job_update(db: AsyncSession, lace_id: uuid.UUID, params: dict, text: str) -> None:
-    """Queue a job's update for the chat it was started from."""
-    await lace_events.add(db, lace_id, text, private_to(params))
+async def job_update(db: AsyncSession, lace_id: uuid.UUID, params: dict, text: str,
+                     run_id: uuid.UUID | None = None) -> None:
+    """Queue a job's update for the chat it was started from; `run_id` when
+    the job found things the turn passing it on should show."""
+    await lace_events.add(db, lace_id, text, private_to(params), run_id)
 
 
 async def job_activity(db: AsyncSession, lace_id: uuid.UUID, params: dict, kind: ActivityKind, title: str,
@@ -117,7 +119,7 @@ async def competitors_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -
         raise
     async with AsyncSessionLocal() as db, db.begin():
         new, refreshed = await lace_competitors.upsert_found(db, lace_id, run_id, found, private_to(params))
-        await job_update(db, lace_id, params, competitors_update(found, new, refreshed))
+        await job_update(db, lace_id, params, competitors_update(found, new, refreshed), run_id)
         if new:
             await job_activity(db, lace_id, params, "competitors_found", f"Found {plural(new, 'new competitor')}",
                         names([p.name for p in found]))
@@ -221,7 +223,8 @@ async def accounts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> N
         raise
     async with AsyncSessionLocal() as db, db.begin():
         new, refreshed = await lace_accounts.upsert_found(db, lace_id, run_id, found, private_to(params))
-        await job_update(db, lace_id, params, accounts_update(found, new, refreshed, params.get("country")))
+        await job_update(db, lace_id, params, accounts_update(found, new, refreshed, params.get("country")),
+                         run_id)
         if new:
             await job_activity(db, lace_id, params, "accounts_found", f"Found {plural(new, 'new target account')}",
                         names([record.name for record, _ in found]))
@@ -515,7 +518,7 @@ async def opportunities_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict)
     async with AsyncSessionLocal() as db, db.begin():
         new, refreshed = await lace_opportunities.upsert_found(db, lace_id, run_id, found, private_to(params))
         if new or not params.get("scheduled"):
-            await job_update(db, lace_id, params, opportunities_update(found, new))
+            await job_update(db, lace_id, params, opportunities_update(found, new), run_id)
         if new:
             await job_activity(db, lace_id, params, "opportunities_found",
                         f"Found {plural(new, 'new opportunity', 'new opportunities')}", names([o.title for o in found]))

@@ -24,10 +24,12 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMes
 from pydantic import TypeAdapter
 
 from agents.lace.answers import AnswerError, describe
+from agents.lace.cards import cards
 from agents.lace.follow_ups import ends_on_question, follow_ups
 from agents.lace.graph import BRIEF_FACTS, PRIVATE_WITHHELD, build_lace_graph
 from agents.lace.onboarding import Progress, onboard, opening_message
 from agents.lace.store import LaceJobs
+from agents.lace.tools import MAX_CARDS
 from agents.lace.prompts import PRIVATE_CHAT_NOTE, system_prompt
 from agents.lace.reply_tidy import without_repeated_options
 from agents.llm.main import LlmProvidersExhaustedError
@@ -37,7 +39,7 @@ from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.database.lace_models import Lace
 from backend.app.runs import events
-from backend.app.services import lace_activity, lace_brief_apps, lace_brief_email, lace_briefs
+from backend.app.services import lace_activity, lace_brief_apps, lace_brief_email, lace_briefs, lace_finds
 from backend.app.services.errors import ConflictError, InvalidInputError
 from backend.app.services.lace_apps import DbLaceApps
 from backend.app.services.lace_store import DbLaceStore
@@ -290,10 +292,11 @@ def _brief_message(request: str) -> HumanMessage:
 
 async def turn_segment(run_id: uuid.UUID, thread: LaceThread, message: HumanMessage,
                        jobs: LaceJobs | None = None, actor_id: uuid.UUID | None = None,
-                       who: str | None = None) -> None:
+                       who: str | None = None, found_by: list[uuid.UUID] | None = None) -> None:
     """`actor_id`: the person the turn answers, whom what it saves is put
-    down to; `who` names them in their private chat."""
-    await _finish(run_id, await _converse(run_id, thread, message, jobs, actor_id, who))
+    down to; `who` names them in their private chat; `found_by`, the searches
+    whose updates it passes on: their new finds show under the reply."""
+    await _finish(run_id, await _converse(run_id, thread, message, jobs, actor_id, who, found_by or []))
 
 
 async def brief_segment(run_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UUID, request: str,
@@ -315,7 +318,8 @@ async def brief_segment(run_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UU
 
 
 async def _converse(run_id: uuid.UUID, thread: LaceThread, message: HumanMessage, jobs: LaceJobs | None,
-                    actor_id: uuid.UUID | None, who: str | None = None) -> str:
+                    actor_id: uuid.UUID | None, who: str | None = None,
+                    found_by: list[uuid.UUID] | None = None) -> str:
     """Run one turn, streaming its frames; returns the Lace's reply."""
     graph, _ = _graph(thread, jobs, actor_id, who)
     relay = _TokenRelay(run_id)
@@ -348,12 +352,33 @@ async def _converse(run_id: uuid.UUID, thread: LaceThread, message: HumanMessage
                 elif isinstance(message, ToolMessage):
                     await events.publish(run_id, "tool_result", _tool_summary(message))
                     blocks += _ui_blocks(message)
+    blocks = await _with_found_cards(thread, found_by or [], blocks)
     blocks = await _with_follow_ups(reply, blocks)
     if blocks:
         tidy = without_repeated_options(reply, {b.get("type") for b in blocks})
         await _attach_ui(graph, thread, blocks, tidy if tidy != reply else None)
         reply = tidy
     return reply
+
+
+async def _with_found_cards(thread: LaceThread, found_by: list[uuid.UUID], blocks: list[dict]) -> list[dict]:
+    """The turn's blocks, plus cards for what the searches it reports on newly
+    found and the reply didn't show: those wait for the founder to save or
+    dismiss, so they must always be in front of them."""
+    if not found_by:
+        return blocks
+    shown = {(b.get("kind"), b.get("id")) for b in blocks if b.get("type") == "card"}
+    async with AsyncSessionLocal() as db:
+        found = await lace_finds.suggested_from(db, thread.lace_id, thread.owner_id, found_by, MAX_CARDS)
+    missing = [(kind, str(find_id)) for kind, find_id in found if (kind, str(find_id)) not in shown]
+    if not missing:
+        return blocks
+    store = DbLaceStore(AsyncSessionLocal, thread.lace_id, owner_id=thread.owner_id)
+    added: list[dict] = []
+    for kind in dict.fromkeys(kind for kind, _ in missing):
+        made, _ = await cards(store, kind, [i for k, i in missing if k == kind])
+        added += [c.model_dump() for c in made]
+    return [*blocks, *added[:max(0, MAX_CARDS - len(shown))]]
 
 
 # How long the turn waits for suggested replies before ending without them.
@@ -377,6 +402,8 @@ async def _with_follow_ups(reply: str, blocks: list[dict]) -> list[dict]:
 UI_KEY = "ui"
 # The tools whose results put something under the reply.
 _UI_TOOLS = frozenset({"ask_choice", "ask_checklist", "ask_form", "show", "suggest_replies",
+                       # Suggestions it was asked to save, shown for the founder to save.
+                       "update_saved",
                        # Proposals in the founder's apps, shown with Approve and Decline.
                        "post_on_social", "reply_to_comment", "engage_on_x"})
 # The blocks the founder answers.

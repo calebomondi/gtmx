@@ -204,6 +204,8 @@ class ItemsChanged(BaseModel):
     """What a change touched, and the ids that matched nothing of the Lace's."""
     changed: list[NamedItem] = Field(default_factory=list)
     missing: list[str] = Field(default_factory=list)
+    # Suggestions asked to be saved: only the founder saves those, with a click.
+    for_founder: list[NamedItem] = Field(default_factory=list)
 
 
 class ContactSummary(BaseModel):
