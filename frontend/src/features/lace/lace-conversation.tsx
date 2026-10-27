@@ -186,15 +186,17 @@ export function LaceConversation({ chat, name, onOpenMessaging, dock, prefill, s
       </AnimatePresence>
       <div className="min-h-0 flex-1 overflow-y-auto" onScroll={onScroll}>
         <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6">
+          {/* A child of the scrolling column itself, so it stays in view
+              while the messages pass under it. */}
           {thread && onThread && (
-            <div className="flex flex-col items-center gap-2">
+            <div className="sticky top-2 z-10 -mb-4 flex justify-center">
               <ChatThreadSwitch value={thread} onChange={onThread} />
-              {alone && (
-                <p className="max-w-md text-center text-xs text-muted-foreground">
-                  Only you see this chat. What {name} finds here stays yours until you share it with the team.
-                </p>
-              )}
             </div>
+          )}
+          {thread && onThread && alone && (
+            <p className="mx-auto max-w-md text-center text-xs text-muted-foreground">
+              Only you see this chat. What {name} finds here stays yours until you share it with the team.
+            </p>
           )}
           {chat.loading && (
             <div className="flex flex-col gap-3">
