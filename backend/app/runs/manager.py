@@ -219,12 +219,14 @@ async def start_lace_answer(user_id: uuid.UUID, thread: LaceThread, answer: Bloc
 
 
 def _spawn_turn(run_id: uuid.UUID, user_id: uuid.UUID, thread: LaceThread, message,
-                actor_id: uuid.UUID | None, who: str | None = None) -> None:
+                actor_id: uuid.UUID | None, who: str | None = None, found_by: list[uuid.UUID] | None = None) -> None:
     """`actor_id`: the person the turn answers, None for a turn of updates;
-    `who` names them in their private chat. Only the team's chat has
-    messages waiting for it to be free."""
+    `who` names them in their private chat; `found_by`, the searches whose
+    updates it passes on. Only the team's chat has messages waiting for it
+    to be free."""
     jobs = _LaceJobs(user_id, thread.lace_id, actor_id, thread.owner_id)
-    turn = lace_runs.turn_segment(run_id, thread, message, jobs=jobs, actor_id=actor_id, who=who)
+    turn = lace_runs.turn_segment(run_id, thread, message, jobs=jobs, actor_id=actor_id, who=who,
+                                  found_by=found_by or [])
     _spawn(run_id, user_id, _then_wake(turn, user_id, thread), settings.lace_turn_timeout_s,
            then=_next_queued(thread.lace_id) if thread.owner_id is None else None)
 
@@ -255,17 +257,18 @@ async def wake_lace(user_id: uuid.UUID, lace_id: uuid.UUID, owner_id: uuid.UUID 
             # Its updates stay queued for when it is restored.
             if await _archived(db, lace_id):
                 return
-            updates = await lace_events.take_pending(db, lace_id, owner_id)
-            if not updates:
+            pending = await lace_events.take_pending(db, lace_id, owner_id)
+            if not pending.texts:
                 return
             run = models.Run(user_id=user_id, lace_id=lace_id, owner_id=owner_id, kind="lace_turn",
-                             status="running", input={"updates": updates}, started_at=datetime.now(UTC))
+                             status="running", input={"updates": pending.texts}, started_at=datetime.now(UTC))
             db.add(run)
             await db.flush()
     except IntegrityError as exc:
         _busy(exc, thread)
         return  # rolled back: the updates stay queued for the running turn to pick up
-    _spawn_turn(run.id, user_id, thread, lace_runs.event_message(updates), actor_id=None)
+    _spawn_turn(run.id, user_id, thread, lace_runs.event_message(pending.texts), actor_id=None,
+                found_by=pending.run_ids)
 
 
 async def post_brief(user_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UUID, request: str) -> bool:

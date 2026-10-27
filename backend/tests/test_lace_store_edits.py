@@ -59,13 +59,18 @@ async def test_removed_items_leave_the_lists_and_can_come_back(store, lace_id):
     assert status == "open"
 
 
-async def test_accounts_and_competitors_are_saved_or_removed(store, lace_id):
+async def test_accounts_and_competitors_are_removed_or_brought_back(store, lace_id):
     account = str(_account(lace_id, "SunCulture"))
     await store.set_saved("account", [account], "remove")
     assert await store.accounts() == [] and [r.id for r in await store.removed("account")] == [account]
     [(rival,)] = _sql("INSERT INTO lace_competitors (id, lace_id, name, website, domain_key, status) VALUES"
                       " (%s, %s, 'Rival', 'https://rival.test', 'rival.test', 'suggested') RETURNING id",
                       uuid.uuid4(), lace_id)
+    # A suggestion is the founder's to save: the Lace's save leaves it for them.
+    result = await store.set_saved("competitor", [str(rival)], "save")
+    assert result.changed == [] and [i.name for i in result.for_founder] == ["Rival"]
+    assert await store.competitors() == []
+    await store.set_saved("competitor", [str(rival)], "remove")
     await store.set_saved("competitor", [str(rival)], "save")
     assert [c.name for c in await store.competitors()] == ["Rival"]
 
