@@ -31,6 +31,10 @@ const QUESTIONS = [
     a: 'Yes. Each of you has a “Just you” chat next to the team chat. What Lace finds there stays yours until you push it to the team, with a note, and a cofounder approves it.',
   },
   {
+    q: 'Which tools does it connect to?',
+    a: 'Gmail and Outlook, LinkedIn, X, Instagram, Facebook, TikTok and Telegram for reaching people; HubSpot and Zoho CRM; Google Sheets and Notion; Slack and Asana; Google Calendar and Calendly. WhatsApp is coming. Anything Lace would do in them, it proposes first, and it runs only when you approve.',
+  },
+  {
     q: 'What if it can’t find good matches?',
     a: 'It tells you, and asks a question that will sharpen the next search, instead of padding the list. Every find says why it fits and where it was found, and when you dismiss one you can say why, so the next search learns.',
   },
