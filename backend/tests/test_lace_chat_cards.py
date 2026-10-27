@@ -56,6 +56,17 @@ def test_a_choice_shows_even_without_words(client, lace, lace_runtime):  # noqa:
         "type": "choices", "question": "Which market first?", "options": ["Kenya", "Nigeria"]}
 
 
+def test_a_choice_is_not_repeated_in_the_text(client, lace, lace_runtime):  # noqa: F811
+    lace_runtime.extend([_call("ask_choice", {"question": "Which market first?", "options": ["Kenya", "Nigeria"]}),
+                         AIMessage(content="Both markets have buyers.\n\nWould you like me to:\n\n1. Start with Kenya?"
+                                           "\n2. Start with Nigeria?\n\nWhich works best?")])
+    _say(client, lace, "where should we start?")
+    client.portal.call(_wait_for_turns, lace, 1)
+    reply = client.get(f"{API}/laces/{lace}/messages").json()[-1]
+    assert reply["content"] == "Both markets have buyers."
+    assert reply["ui"][0]["type"] == "choices"
+
+
 def test_a_card_says_where_its_item_stands_now(client, lace, lace_runtime):  # noqa: F811
     rival = _rival(lace)
     lace_runtime.extend([_call("show", {"kind": "competitor", "ids": [rival]}), AIMessage(content="Here.")])
