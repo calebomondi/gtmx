@@ -13,6 +13,7 @@ from typing import Literal
 from langchain_core.tools import BaseTool, tool
 
 from agents.context_budget import _truncate_to_tokens, count_tokens
+from agents.lace.buyers import NOT_YET, knows_buyers
 from agents.lace.apps import AppError, LaceApps
 from agents.lace.ask_tools import build_ask_tools
 from agents.lace.cards import cards
@@ -61,6 +62,8 @@ DOCUMENT_PART_CHARS = 12_000
 SOCIAL_TOKEN_CAP = 3_000
 # What one reply can put in front of the founder.
 MAX_CARDS = 6
+# Facts read to tell whether enough is known about who buys.
+BUYER_FACTS_READ = 100
 
 
 def _capped(markdown: str, cap: int) -> tuple[str, bool]:
@@ -374,6 +377,8 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
         Args:
             country: Search one country only, e.g. "Kenya". Otherwise the profile's countries are searched one by one.
         """
+        if await store.icp() is None and not knows_buyers(await store.facts(None, BUYER_FACTS_READ)):
+            return ToolResult.failure(NOT_YET)
         try:
             await jobs.start("find_accounts", {"country": country})
         except JobRefused as exc:

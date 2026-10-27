@@ -30,6 +30,11 @@ would, and keep the profile narrow: a startup wins one segment before the next.
 - buyer_type: b2b, b2c or both.
 - B2B: 2-3 industries, company size bands, and the buyer titles who sign.
 - B2C: 1-3 personas, and the channels where they gather.
+- When it sells different things to different buyers (say, engineering work to
+  companies building products, and training to corporates), give one buyer
+  persona per offer, each with the signals that show that buyer needs it now
+  (for engineering work: a company hiring blockchain or AI engineers after a
+  raise; for training: a corporate announcing an AI programme).
 - geo: where it sells. Only places the facts support; if they name none, leave
   it empty rather than guessing.
 - pain_signals: what an account says or does when it needs this now (a new

@@ -59,11 +59,22 @@ def test_record_brief_carries_the_trigger():
 
 async def test_find_accounts_starts_without_an_icp(settings):
     """The search works out an ICP itself when there is none, in the
-    background, so the turn never waits minutes on it."""
+    background, so the turn never waits minutes on it: once it is known who
+    buys."""
     jobs = RecordingJobs()
-    tool = {t.name: t for t in build_tools(MemoryStore(), settings, jobs)}["find_accounts"]
+    store = MemoryStore([make_fact("1", "Clinic groups pay us.", topic="customers"),
+                         make_fact("2", "Aga Khan Clinics was our first customer.", topic="customers")])
+    tool = {t.name: t for t in build_tools(store, settings, jobs)}["find_accounts"]
     assert json.loads(await tool.ainvoke({"country": "Kenya"}))["ok"]
     assert jobs.started == [("find_accounts", {"country": "Kenya"})]
+
+
+async def test_without_knowing_who_buys_the_lace_asks_first(settings):
+    jobs = RecordingJobs()
+    store = MemoryStore([make_fact("1", "We build the future with AI & Web3.", topic="offer")])
+    tool = {t.name: t for t in build_tools(store, settings, jobs)}["find_accounts"]
+    out = json.loads(await tool.ainvoke({}))
+    assert not out["ok"] and "ask_form" in out["summary"] and jobs.started == []
 
 
 async def test_list_accounts(settings):

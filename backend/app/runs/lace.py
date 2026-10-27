@@ -24,6 +24,7 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMes
 from pydantic import TypeAdapter
 
 from agents.lace.answers import AnswerError, describe
+from agents.lace.buyers import ASKED_IN_FORM, buyer_form, knows_buyers
 from agents.lace.cards import cards
 from agents.lace.follow_ups import ends_on_question, follow_ups
 from agents.lace.graph import BRIEF_FACTS, PRIVATE_WITHHELD, build_lace_graph
@@ -182,10 +183,15 @@ async def onboarding_segment(run_id: uuid.UUID, lace_id: uuid.UUID) -> None:
     await events.publish(run_id, "step", {"text": "Writing to you"})
     await events.publish(run_id, "progress", {"fraction": WRITING_PROGRESS, "text": "Writing to you"})
     profile, facts = await asyncio.gather(store.profile(), store.facts(None, BRIEF_FACTS))
+    # The site said too little about who buys: ask, in a form, before anything is searched on a guess.
+    ask = [] if result.site_unreadable or knows_buyers(facts) else [buyer_form().model_dump()]
+    if ask:
+        result = result.model_copy(update={"open_questions": [ASKED_IN_FORM]})
     reply = await asyncio.to_thread(opening_message, system_prompt(profile, facts), result)
     # The opening is the Lace's own first message on its thread, so the next
     # turn's history starts with it.
-    await graph.aupdate_state(LaceThread(lace_id).config, {"messages": [AIMessage(content=reply)]}, as_node="agent")
+    opening = AIMessage(content=reply, additional_kwargs={UI_KEY: ask} if ask else {})
+    await graph.aupdate_state(LaceThread(lace_id).config, {"messages": [opening]}, as_node="agent")
     async with AsyncSessionLocal() as db, db.begin():
         lace = await db.get(Lace, lace_id)
         if lace is not None and lace.status == "onboarding":
