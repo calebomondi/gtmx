@@ -6,7 +6,8 @@ import { elapsed, jobLabel, useNow } from "./background-jobs"
 
 /** What the Lace is doing in the background, above the chat's input: one
  * pill per running job (a search, drafting) with a beacon, how long it has
- * run, and a light sweeping across it. Nothing when nothing runs. */
+ * run, and a light sweeping across it, and word that chatting meanwhile is
+ * fine. Nothing when nothing runs. */
 export function LaceBackgroundWork({ name, jobs }: { name: string; jobs: RunDto[] }) {
   const now = useNow(jobs.length > 0)
   if (jobs.length === 0) return null
@@ -27,6 +28,7 @@ export function LaceBackgroundWork({ name, jobs }: { name: string; jobs: RunDto[
                        transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }} />
         </div>
       ))}
+      <span className="self-center text-xs text-muted-foreground">Keep chatting: results will appear here.</span>
     </div>
   )
 }

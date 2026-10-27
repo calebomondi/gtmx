@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
-import { AlertTriangle, ArrowDown, ChevronRight, Clock, FileText, PenLine } from "lucide-react"
+import { AlertTriangle, ArrowDown, BellRing, ChevronRight, Clock, FileText, PenLine } from "lucide-react"
 
 import { PromptInputWithActions } from "@/components/chat-input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -97,6 +97,13 @@ function Message({ message, sender, children }: {
     <div className="flex gap-3">
       <LaceAvatar animated={false} />
       <div className="flex min-w-0 flex-1 flex-col gap-3">
+        {message.update && (
+          // Background work reporting back: set apart from the answer to
+          // whatever the founder asked meanwhile.
+          <span className="flex w-fit items-center gap-1.5 rounded-full border border-theme/40 bg-theme/10 px-2 py-0.5 text-[11px] font-medium">
+            <BellRing className="size-3 text-theme" /> Results are in
+          </span>
+        )}
         {body.trim() && (
           <ReplyMarkdown>{body}</ReplyMarkdown>
         )}
