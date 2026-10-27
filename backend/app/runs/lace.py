@@ -24,11 +24,13 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMes
 from pydantic import TypeAdapter
 
 from agents.lace.answers import AnswerError, describe
+from agents.lace.follow_ups import ends_on_question, follow_ups
 from agents.lace.graph import BRIEF_FACTS, PRIVATE_WITHHELD, build_lace_graph
 from agents.lace.onboarding import Progress, onboard, opening_message
 from agents.lace.store import LaceJobs
 from agents.lace.prompts import PRIVATE_CHAT_NOTE, system_prompt
-from agents.schemas.lace_ui import BlockAnswer, UiBlock
+from agents.llm.main import LlmProvidersExhaustedError
+from agents.schemas.lace_ui import BlockAnswer, SuggestionsBlock, UiBlock
 from backend.app.agents_runtime import get_checkpointer
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
@@ -40,6 +42,7 @@ from backend.app.services.lace_apps import DbLaceApps
 from backend.app.services.lace_store import DbLaceStore
 from backend.app.services.runs import set_run_fields
 from config import settings
+from utils.log import logger
 
 # Where the founder's progress bar stands while the Lace writes its first
 # message, after onboarding's own stages (agents/lace/onboarding.py).
@@ -328,9 +331,27 @@ async def _converse(run_id: uuid.UUID, thread: LaceThread, message: HumanMessage
                 elif isinstance(message, ToolMessage):
                     await events.publish(run_id, "tool_result", _tool_summary(message))
                     blocks += _ui_blocks(message)
+    blocks = await _with_follow_ups(reply, blocks)
     if blocks:
         await _attach_ui(graph, thread, blocks)
     return reply
+
+
+# How long the turn waits for suggested replies before ending without them.
+FOLLOW_UPS_TIMEOUT_S = 20
+
+
+async def _with_follow_ups(reply: str, blocks: list[dict]) -> list[dict]:
+    """The turn's blocks, plus suggested replies when the reply ends on a
+    question and nothing under it gives the founder something to click."""
+    if not ends_on_question(reply) or any(b.get("type") in _CLICKABLE for b in blocks):
+        return blocks
+    try:
+        options = await asyncio.wait_for(asyncio.to_thread(follow_ups, reply), FOLLOW_UPS_TIMEOUT_S)
+    except (LlmProvidersExhaustedError, TimeoutError):
+        logger.warning("Reply goes without suggested replies", exc_info=True)
+        return blocks
+    return [*blocks, SuggestionsBlock(options=options).model_dump()] if options else blocks
 
 
 # Where a reply keeps the cards and choices shown under it.
@@ -341,6 +362,8 @@ _UI_TOOLS = frozenset({"ask_choice", "ask_checklist", "ask_form", "show", "sugge
                        "post_on_social", "reply_to_comment", "engage_on_x"})
 # The blocks the founder answers.
 _QUESTION_TYPES = frozenset({"choices", "checklist", "form"})
+# Under a reply, these already give the founder something to click.
+_CLICKABLE = _QUESTION_TYPES | {"suggestions", "action"}
 _UI_BLOCK = TypeAdapter(UiBlock)
 
 
