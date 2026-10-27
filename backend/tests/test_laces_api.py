@@ -70,8 +70,11 @@ def test_create_onboards_and_opens_the_conversation(client, lace_runtime):
     lace = client.get(f"{API}/laces/{lace_id}").json()
     assert lace["status"] == "active" and lace["startup_name"] == "Acme"
     assert [f["claim"] for f in client.get(f"{API}/laces/{lace_id}/facts").json()] == ["Acme sells payroll to clinics."]
-    assert client.get(f"{API}/laces/{lace_id}/messages").json() == [
-        {"role": "lace", "content": "Hi, I'm Ada. Who is the buyer?"}]
+    [opening] = client.get(f"{API}/laces/{lace_id}/messages").json()
+    assert opening["content"] == "Hi, I'm Ada. Who is the buyer?"
+    # The site said what Acme sells but not who buys: the opening asks, in a form.
+    [form] = opening["ui"]
+    assert form["type"] == "form" and [f["name"] for f in form["fields"]] == ["who_pays", "past_customers", "where"]
     frames = _events(client, body["run_id"])
     assert [f["type"] for f in frames][-2:] == ["message", "complete"]
 
