@@ -98,8 +98,8 @@ function StepText({ index, active }: { index: number; active: boolean }) {
     <>
       <span
         aria-hidden
-        className={`absolute top-0.5 -left-10 grid size-6 place-items-center rounded-full font-mono text-[11px] font-semibold ring-8 ring-night transition-colors duration-500 ${
-          active ? 'bg-brand text-ink' : 'bg-night-line text-night-muted'}`}
+        className={`absolute top-0.5 -left-10 grid size-6 place-items-center rounded-md bg-brand font-mono text-[11px] font-semibold text-ink ring-8 ring-night transition-transform duration-500 ${
+          active ? 'scale-125' : ''}`}
       >
         {index + 1}
       </span>

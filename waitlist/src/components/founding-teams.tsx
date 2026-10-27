@@ -119,7 +119,7 @@ export function FoundingTeams() {
         <ol className="flex flex-col gap-7">
           {POINTS.map((point, i) => (
             <li key={point.title} data-reveal style={stagger(i)} className="flex gap-4">
-              <span className="grid size-9 shrink-0 place-items-center rounded-full border-2 border-ink font-mono text-sm font-semibold">
+              <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand font-mono text-sm font-semibold text-ink">
                 {i + 1}
               </span>
               <div>

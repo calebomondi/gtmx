@@ -37,7 +37,7 @@ function SpotDots({ pilot }: { pilot: PilotSpots | null }) {
         <span
           key={i}
           style={stagger(i)}
-          className={`size-3.5 rounded-full border-2 border-ink sm:size-4 ${i < taken ? 'dot-taken' : 'bg-panel'} ${
+          className={`size-3.5 rounded-[4px] border-2 border-ink sm:size-4 ${i < taken ? 'dot-taken' : 'bg-panel'} ${
             seen !== null && i >= seen && i < taken ? 'dot-new' : ''}`}
         />
       ))}
