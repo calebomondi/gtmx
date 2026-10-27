@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Check, Undo2 } from "lucide-react"
+import { Check, ExternalLink, Quote, Undo2 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -49,7 +49,18 @@ function ReviewRow({ find, reviews }: { find: FindDto; reviews: FindReviews }) {
             <span className="truncate">{find.name}</span>
             <Badge variant="outline" className="shrink-0 text-[10px]">{FIND_KIND_LABEL[find.kind]}</Badge>
           </p>
-          {find.detail && <p className="truncate text-xs text-muted-foreground">{find.detail}</p>}
+          {find.summary && <p className="mt-0.5 line-clamp-3 text-xs text-muted-foreground">{find.summary}</p>}
+          {find.link ? (
+            <a href={find.link} target="_blank" rel="noreferrer"
+               className="mt-0.5 flex w-fit max-w-full items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+              <span className="truncate">{find.detail ?? find.link}</span> <ExternalLink className="size-3 shrink-0" />
+            </a>
+          ) : find.detail && <p className="truncate text-xs text-muted-foreground">{find.detail}</p>}
+          {find.push_note && (
+            <p className="mt-1.5 flex items-start gap-1.5 rounded-md bg-muted/60 px-2 py-1 text-xs">
+              <Quote className="mt-0.5 size-3 shrink-0 text-theme" /> {find.push_note}
+            </p>
+          )}
           <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
             <PersonAvatar name={find.owner?.name ?? null} email={null} avatarUrl={find.owner?.avatar_url ?? null} size="sm"
                           className="size-4" />
