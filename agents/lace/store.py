@@ -10,7 +10,7 @@ from typing import Literal, Protocol
 
 from agents.schemas.icp import ICP
 from agents.schemas.opportunities import OpportunitySummary
-from agents.schemas.lace import ProposedAction, AccountSummary, CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Suggestions, Fact, FactTopic, ItemsChanged, LaceProfile, NamedItem, NewContact, NewFact, SavedKind, SavedVerdict, SourcePage
+from agents.schemas.lace import ProposedAction, AccountSummary, CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Suggestions, Fact, FactTopic, ItemsChanged, LaceProfile, NamedItem, NewContact, NewFact, RunningJob, SavedKind, SavedVerdict, SourcePage
 
 
 class LaceStore(Protocol):
@@ -131,4 +131,8 @@ class LaceJobs(Protocol):
 
     async def start(self, kind: JobKind, params: dict) -> str:
         """The job's id. Raises JobRefused."""
+        ...
+
+    async def running(self) -> list[RunningJob]:
+        """The jobs this chat started that are still working, oldest first."""
         ...

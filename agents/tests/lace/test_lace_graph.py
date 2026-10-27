@@ -7,7 +7,8 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from agents.lace.graph import build_lace_graph, history_window, tool_calls_this_turn
 from agents.lace.prompts import render_brief
-from lace_fakes import MemoryStore, ScriptedModel, call, make_fact
+from agents.schemas.lace import RunningJob
+from lace_fakes import MemoryStore, RecordingJobs, ScriptedModel, call, make_fact
 
 
 def _ask(text: str) -> dict:
@@ -29,6 +30,19 @@ async def test_brief_rides_in_the_system_prompt(settings):
     system = model.calls[0][0][0]
     assert isinstance(system, SystemMessage)
     assert "You are Ada" in system.content and "payroll software to clinics" in system.content
+
+
+async def test_the_lace_knows_what_runs_in_the_background(store, settings):
+    jobs = RecordingJobs()
+    jobs.busy = [RunningJob(what="search for target accounts", minutes=3)]
+    model = ScriptedModel(AIMessage(content="It's still running."), AIMessage(content="ok"))
+    await build_lace_graph(store, settings=settings, jobs=jobs, model_step=model).ainvoke(_ask("any news?"))
+    notes = [m.content for m in model.calls[0][0] if isinstance(m, SystemMessage)]
+    assert any("the search for target accounts (3 min so far)" in n and "Don't start one" in n for n in notes)
+    # Nothing running: nothing said about it.
+    jobs.busy = []
+    await build_lace_graph(store, settings=settings, jobs=jobs, model_step=model).ainvoke(_ask("hi"))
+    assert not any("in the background right now" in m.content for m in model.calls[1][0] if isinstance(m, SystemMessage))
 
 
 async def test_tool_call_then_answer(store, settings):

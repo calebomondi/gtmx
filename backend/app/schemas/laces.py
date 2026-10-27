@@ -113,6 +113,7 @@ class LaceMessage(BaseModel):
     documents: list[Attachment] | None = Field(default=None, description="What the founder attached to the message")
     answer: BlockAnswer | None = Field(default=None, description="The question this founder message answered")
     draft_id: uuid.UUID | None = Field(default=None, description="The draft this message (or reply) worked on")
+    update: bool | None = Field(default=None, description="A Lace reply passing on what background work found")
 
 
 class LaceMessageRequest(BaseModel):

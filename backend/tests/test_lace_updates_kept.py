@@ -55,3 +55,20 @@ async def test_a_job_a_restart_cut_short_is_reported(monkeypatch):
     # Only the job is reported, and its chat is woken to pass it on.
     assert "search for target accounts was cut short" in update
     assert woken == [(owner.id, lace_id, None)]
+
+
+async def test_the_lace_hears_which_of_its_chat_s_jobs_still_run():
+    owner = make_user("Owner")
+    lace_id = _lace(owner)
+    member = uuid.uuid4()
+    async with AsyncSessionLocal() as db, db.begin():
+        db.add_all([
+            models.Run(user_id=owner.id, lace_id=lace_id, kind="lace_accounts", status="running"),
+            models.Run(user_id=owner.id, lace_id=lace_id, kind="lace_opportunities", status="completed"),
+            models.Run(user_id=owner.id, lace_id=lace_id, kind="lace_turn", status="running"),
+            models.Run(user_id=owner.id, lace_id=lace_id, owner_id=member, kind="lace_competitors", status="running"),
+        ])
+    team = await manager._LaceJobs(owner.id, lace_id, None, None).running()
+    assert [(j.what, j.minutes) for j in team] == [("search for target accounts", 0)]
+    mine = await manager._LaceJobs(owner.id, lace_id, member, member).running()
+    assert [j.what for j in mine] == ["competitor search"]

@@ -89,6 +89,9 @@ _STEP_TEXT = {
 
 # Marks a message on the thread as an update for the Lace, not the founder's words.
 EVENT_FLAG = "lace_event"
+# On an update message: the reply passes on what background work found (and
+# is labelled so for the founder), as against a brief.
+UPDATES_FLAG = "lace_updates"
 # On a founder's message: what they attached ([{id, filename}]), and their own
 # words, which the founder sees without the note the model gets.
 ATTACHMENTS_KEY = "documents"
@@ -274,7 +277,7 @@ def event_message(updates: list[str]) -> HumanMessage:
     return HumanMessage(
         content=("Updates for you to pass on (these are not from the founder):\n" + body
                  + "\n\nTell the founder what this means for them, briefly."),
-        additional_kwargs={EVENT_FLAG: True},
+        additional_kwargs={EVENT_FLAG: True, UPDATES_FLAG: True},
     )
 
 
@@ -443,10 +446,12 @@ def visible_messages(messages: list[AnyMessage]) -> list[dict]:
     replies (with any cards or choices), without tool calls, results or updates."""
     out = []
     about = None  # the draft the founder's latest message was about
+    update = False  # the Lace is passing on an update, not answering the founder
     for m in messages:
         if isinstance(m, HumanMessage) and m.additional_kwargs.get(EVENT_FLAG):
-            about = None  # the Lace answers an update, not the founder
+            about, update = None, bool(m.additional_kwargs.get(UPDATES_FLAG))
         elif isinstance(m, HumanMessage):
+            update = False
             attached = m.additional_kwargs.get(ATTACHMENTS_KEY)
             content = m.additional_kwargs.get(FOUNDER_TEXT_KEY, str(m.content))
             answer = m.additional_kwargs.get(ANSWER_KEY)
@@ -459,7 +464,7 @@ def visible_messages(messages: list[AnyMessage]) -> list[dict]:
             ui = m.additional_kwargs.get(UI_KEY)
             if str(m.content).strip() or ui:
                 out.append({"role": "lace", "content": str(m.content), **({"ui": ui} if ui else {}),
-                            **({"draft_id": about} if about else {})})
+                            **({"draft_id": about} if about else {}), **({"update": True} if update else {})})
     return out
 
 

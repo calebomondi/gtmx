@@ -200,6 +200,12 @@ class NamedItem(BaseModel):
     name: str
 
 
+class RunningJob(BaseModel):
+    """A background job of the Lace's still working, as it is told about it."""
+    what: str = Field(description="e.g. 'search for target accounts'")
+    minutes: int = Field(description="How long it has run so far")
+
+
 class ItemsChanged(BaseModel):
     """What a change touched, and the ids that matched nothing of the Lace's."""
     changed: list[NamedItem] = Field(default_factory=list)
