@@ -228,9 +228,10 @@ async def test_live_subscribers_see_the_reply_stream_in(lace_runtime, user):
     await asyncio.wait_for(collector, 5)
 
     types = [f["type"] for f in frames]
-    # The pre-tool-call text leaves the reply box and stays in the trail,
-    # ahead of the step it led to.
-    assert types.index("token_reset") < types.index("step")
+    # The pre-tool-call text never reaches the reply box: it is only a line
+    # in the trail, ahead of the step it led to.
+    assert "token_reset" not in types
+    assert not any(f["type"] == "token" for f in frames[:types.index("step")])
     steps = [f["text"] for f in frames if f["type"] == "step"]
     assert steps[:2] == ["Let me check.", "Checking what I know"]
     after_step = frames[types.index("step"):]
@@ -316,9 +317,32 @@ async def test_a_retried_answer_says_so_instead_of_vanishing(lace_runtime, user,
         sink.token("Clinic owners.")
         return AIMessage(content="Clinic owners.")
     frames = await _live_frames(lace_runtime, user, monkeypatch, model_step)
-    types = [f["type"] for f in frames]
     assert [f["text"] for f in frames if f["type"] == "step"] == [lace_runs.RETRY_STEP]
-    assert types.index("token_reset") < types.index("step")
+    # Nothing of the first try was shown, so nothing is taken back.
+    assert "token_reset" not in [f["type"] for f in frames]
+    assert "".join(f["text"] for f in frames if f["type"] == "token") == "Clinic owners."
+
+
+async def test_a_long_answer_streams_and_a_long_lead_in_is_taken_back(lace_runtime, user, monkeypatch):
+    long = "Clinic owners with three or more sites. " * 20  # past the hold-back
+    calls = []
+
+    def model_step(messages, tools, sink):
+        calls.append(1)
+        if len(calls) == 1:
+            sink.token(long)
+            return AIMessage(content=long, tool_calls=[{"name": "get_facts", "id": "c1", "args": {}}])
+        for word in long.split(" "):
+            sink.token(word + " ")
+        return AIMessage(content=long)
+    frames = await _live_frames(lace_runtime, user, monkeypatch, model_step)
+    types = [f["type"] for f in frames]
+    # The first message did reach the box, so it is taken back for its tool call.
+    assert types.index("token") < types.index("token_reset") < types.index("step")
+    # The answer streams in many frames, not one at the end.
+    after = frames[types.index("token_reset"):]
+    assert sum(f["type"] == "token" for f in after) > 10
+    assert "".join(f["text"] for f in after if f["type"] == "token").strip() == long.strip()
 
 
 def test_narration_is_one_short_line():
