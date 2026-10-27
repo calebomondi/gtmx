@@ -73,17 +73,19 @@ function Chip({ section, since, onSeen, name, busy, searching, onAsk }: {
   // What counted as new when the card opened, so it still marks those while
   // open, though opening it marks them seen.
   const [cardSince, setCardSince] = useState(since)
-  const count = section.items.length
-  const fresh = section.items.filter((i) => isNewSince(i, since)).length
+  // Only what was saved counts as found; suggestions are counted apart,
+  // as waiting for the founder, never as added.
   const waiting = section.items.filter((i) => i.waiting).length
-  if (count === 0 && searching) {
+  const count = section.items.length - waiting
+  const fresh = section.items.filter((i) => isNewSince(i, since)).length
+  if (section.items.length === 0 && searching) {
     return (
       <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-dashed border-theme/50 px-2.5 py-1 text-xs">
         <Loader2 className="size-3 animate-spin text-theme" /> {section.title}…
       </span>
     )
   }
-  if (count === 0) {
+  if (section.items.length === 0) {
     // Nothing yet: the chip offers to start on it.
     return (
       <button type="button" disabled={busy} onClick={() => onAsk(section.ask)} title={`Ask ${name}: “${section.ask}”`}
@@ -99,7 +101,7 @@ function Chip({ section, since, onSeen, name, busy, searching, onAsk }: {
       onSeen()
     }}>
       <PopoverTrigger render={
-        <button type="button" aria-label={`${section.title}: ${count}${waiting ? `, ${waiting} ${section.waitingLabel}` : ""}${fresh ? `, ${fresh} new` : ""}`}
+        <button type="button" aria-label={`${section.title}: ${count} saved${waiting ? `, ${waiting} ${section.waitingLabel}` : ""}${fresh ? `, ${fresh} new` : ""}`}
                 className={cn("relative flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 text-xs transition-all hover:border-theme/60",
                               fresh > 0 && "border-theme/60 shadow-[0_0_14px_-2px] shadow-theme/60")} />
       }>
@@ -112,7 +114,11 @@ function Chip({ section, since, onSeen, name, busy, searching, onAsk }: {
                      className="font-semibold tabular-nums">
           {count}
         </motion.span>
-        {waiting > 0 && <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-theme" />}
+        {waiting > 0 && (
+          <span aria-hidden className="flex items-center gap-1 rounded-full border border-theme/40 bg-theme/10 px-1.5 text-[10px] tabular-nums">
+            <span className="size-1.5 animate-pulse rounded-full bg-theme" /> {waiting} {section.waitingLabel}
+          </span>
+        )}
         {/* "+1 competitor" rises out of the chip as a find arrives. */}
         <AnimatePresence>
           {fresh > 0 && (
@@ -170,7 +176,7 @@ export function LaceFindsDock({ name, sections, seenAt, onSeen, busy, searching,
     writeOpen(!was)
     return !was
   })
-  const total = sections.reduce((n, s) => n + s.items.length, 0)
+  const total = sections.reduce((n, s) => n + s.items.filter((i) => !i.waiting).length, 0)
   const fresh = sections.reduce((n, s) => n + s.items.filter((i) => isNewSince(i, seenAt(s.key))).length, 0)
   return (
     <div role="toolbar" aria-label={`What ${name} has found`}

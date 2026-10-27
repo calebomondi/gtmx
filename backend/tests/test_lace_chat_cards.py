@@ -40,8 +40,10 @@ def test_shown_cards_stay_under_the_reply(client, lace, lace_runtime):  # noqa: 
     assert reply["ui"] == [{"type": "card", "kind": "competitor", "id": rival, "title": "Rival",
                             "subtitle": "https://rival.test", "body": "Payroll for vets.", "url": "https://rival.test",
                             "status": "tracked"}]
-    # Earlier messages carry no ui at all.
-    assert "ui" not in client.get(f"{API}/laces/{lace}/messages").json()[0]
+    # Earlier messages carry no cards: the founder's question has no ui, and
+    # the opening only the buyer form (the test site says nothing of buyers).
+    before = client.get(f"{API}/laces/{lace}/messages").json()
+    assert "ui" not in before[1] and [b["type"] for b in before[0].get("ui", [])] in ([], ["form"])
 
 
 def test_a_choice_shows_even_without_words(client, lace, lace_runtime):  # noqa: F811
@@ -54,6 +56,17 @@ def test_a_choice_shows_even_without_words(client, lace, lace_runtime):  # noqa:
     assert reply["content"] == "" and block["id"]
     assert {k: block[k] for k in ("type", "question", "options")} == {
         "type": "choices", "question": "Which market first?", "options": ["Kenya", "Nigeria"]}
+
+
+def test_a_choice_is_not_repeated_in_the_text(client, lace, lace_runtime):  # noqa: F811
+    lace_runtime.extend([_call("ask_choice", {"question": "Which market first?", "options": ["Kenya", "Nigeria"]}),
+                         AIMessage(content="Both markets have buyers.\n\nWould you like me to:\n\n1. Start with Kenya?"
+                                           "\n2. Start with Nigeria?\n\nWhich works best?")])
+    _say(client, lace, "where should we start?")
+    client.portal.call(_wait_for_turns, lace, 1)
+    reply = client.get(f"{API}/laces/{lace}/messages").json()[-1]
+    assert reply["content"] == "Both markets have buyers."
+    assert reply["ui"][0]["type"] == "choices"
 
 
 def test_a_card_says_where_its_item_stands_now(client, lace, lace_runtime):  # noqa: F811

@@ -193,6 +193,9 @@ class DraftSummary(BaseModel):
 SavedKind = Literal["competitor", "account", "opportunity"]
 SAVED_KINDS: tuple[str, ...] = SavedKind.__args__
 SavedVerdict = Literal["save", "remove"]
+# Why the founder dismissed a suggested account or opportunity: what later
+# searches should steer clear of.
+DismissReason = Literal["not_our_buyer", "too_small", "wrong_place", "no_need", "other"]
 
 
 class NamedItem(BaseModel):
@@ -200,10 +203,18 @@ class NamedItem(BaseModel):
     name: str
 
 
+class RunningJob(BaseModel):
+    """A background job of the Lace's still working, as it is told about it."""
+    what: str = Field(description="e.g. 'search for target accounts'")
+    minutes: int = Field(description="How long it has run so far")
+
+
 class ItemsChanged(BaseModel):
     """What a change touched, and the ids that matched nothing of the Lace's."""
     changed: list[NamedItem] = Field(default_factory=list)
     missing: list[str] = Field(default_factory=list)
+    # Suggestions asked to be saved: only the founder saves those, with a click.
+    for_founder: list[NamedItem] = Field(default_factory=list)
 
 
 class ContactSummary(BaseModel):

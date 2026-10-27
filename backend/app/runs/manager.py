@@ -21,6 +21,7 @@ from backend.app.database.connect import AsyncSessionLocal
 from backend.app.database.lace_models import Lace
 from backend.app.runs import events
 from agents.lace.store import JobRefused
+from agents.schemas.lace import RunningJob
 from agents.schemas.lace_ui import BlockAnswer
 from backend.app.runs import lace as lace_runs
 from backend.app.runs.lace import LaceThread
@@ -219,12 +220,17 @@ async def start_lace_answer(user_id: uuid.UUID, thread: LaceThread, answer: Bloc
 
 
 def _spawn_turn(run_id: uuid.UUID, user_id: uuid.UUID, thread: LaceThread, message,
-                actor_id: uuid.UUID | None, who: str | None = None) -> None:
+                actor_id: uuid.UUID | None, who: str | None = None, found_by: list[uuid.UUID] | None = None,
+                event_ids: list[uuid.UUID] | None = None) -> None:
     """`actor_id`: the person the turn answers, None for a turn of updates;
-    `who` names them in their private chat. Only the team's chat has
-    messages waiting for it to be free."""
+    `who` names them in their private chat; `found_by`, the searches whose
+    updates it passes on, and `event_ids` those updates, queued again if it
+    fails. Only the team's chat has messages waiting for it to be free."""
     jobs = _LaceJobs(user_id, thread.lace_id, actor_id, thread.owner_id)
-    turn = lace_runs.turn_segment(run_id, thread, message, jobs=jobs, actor_id=actor_id, who=who)
+    turn = lace_runs.turn_segment(run_id, thread, message, jobs=jobs, actor_id=actor_id, who=who,
+                                  found_by=found_by or [])
+    if event_ids:
+        turn = _putting_back(turn, event_ids)
     _spawn(run_id, user_id, _then_wake(turn, user_id, thread), settings.lace_turn_timeout_s,
            then=_next_queued(thread.lace_id) if thread.owner_id is None else None)
 
@@ -233,6 +239,18 @@ def _next_queued(lace_id: uuid.UUID) -> Callable[[], Awaitable]:
     """What follows a conversation run: the next waiting message. If the
     run's own wake started a turn of updates, that turn's end starts it."""
     return lambda: start_next_queued(lace_id)
+
+
+async def _putting_back(turn: Coroutine, event_ids: list[uuid.UUID]) -> None:
+    """Run a turn of updates; if it fails (a model down, a timeout), queue the
+    updates again so the next turn passes them on. They are not passed on
+    straight away: whatever failed would most likely fail again."""
+    try:
+        await turn
+    except BaseException:
+        async with AsyncSessionLocal() as db, db.begin():
+            await lace_events.put_back(db, event_ids)
+        raise
 
 
 async def _then_wake(segment: Coroutine, user_id: uuid.UUID, thread: LaceThread) -> None:
@@ -255,17 +273,18 @@ async def wake_lace(user_id: uuid.UUID, lace_id: uuid.UUID, owner_id: uuid.UUID 
             # Its updates stay queued for when it is restored.
             if await _archived(db, lace_id):
                 return
-            updates = await lace_events.take_pending(db, lace_id, owner_id)
-            if not updates:
+            pending = await lace_events.take_pending(db, lace_id, owner_id)
+            if not pending.texts:
                 return
             run = models.Run(user_id=user_id, lace_id=lace_id, owner_id=owner_id, kind="lace_turn",
-                             status="running", input={"updates": updates}, started_at=datetime.now(UTC))
+                             status="running", input={"updates": pending.texts}, started_at=datetime.now(UTC))
             db.add(run)
             await db.flush()
     except IntegrityError as exc:
         _busy(exc, thread)
         return  # rolled back: the updates stay queued for the running turn to pick up
-    _spawn_turn(run.id, user_id, thread, lace_runs.event_message(updates), actor_id=None)
+    _spawn_turn(run.id, user_id, thread, lace_runs.event_message(pending.texts), actor_id=None,
+                found_by=pending.run_ids, event_ids=pending.ids)
 
 
 async def post_brief(user_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UUID, request: str) -> bool:
@@ -367,6 +386,19 @@ class _LaceJobs:
         run = await start_lace_job(_TOOL_JOB_RUN_KINDS[kind], self._user_id, self._lace_id, params)
         return str(run.id)
 
+    async def running(self) -> list[RunningJob]:
+        """This chat's background jobs still working, oldest first: the team
+        chat's, or the member's own in their private chat."""
+        chat = models.Run.owner_id.is_(None) if self._owner_id is None else models.Run.owner_id == self._owner_id
+        async with AsyncSessionLocal() as db:
+            runs = (await db.scalars(select(models.Run).where(
+                models.Run.lace_id == self._lace_id, chat, models.Run.kind.in_(list(_JOB_NAMES)),
+                models.Run.status.not_in(TERMINAL_STATUSES)).order_by(models.Run.created_at))).all()
+        now = datetime.now(UTC)
+        return [RunningJob(what=_JOB_NAMES[run.kind],
+                           minutes=int((now - (run.started_at or run.created_at)).total_seconds() // 60))
+                for run in runs]
+
 
 async def cancel(user_id: uuid.UUID, run_id: uuid.UUID) -> models.Run:
     async with AsyncSessionLocal() as db:
@@ -398,6 +430,28 @@ async def _cancel(db: AsyncSession, run: models.Run, message: str) -> models.Run
     return run
 
 
+# How the Lace names each background job when telling the founder it stopped.
+_JOB_NAMES = {"lace_competitors": "competitor search", "lace_monitor": "competitor check",
+              "lace_accounts": "search for target accounts", "lace_contacts": "contact search",
+              "lace_icp": "ideal customer profile", "lace_drafts": "drafting", "lace_reply": "reading of replies",
+              "lace_opportunities": "opportunity search", "lace_comments": "reading of TikTok comments"}
+
+
+async def _report_interrupted_jobs(run_ids: list[uuid.UUID]) -> None:
+    """Tell each chat whose background job a restart cut short, so the founder
+    hears of it instead of waiting on a job that is gone."""
+    if not run_ids:
+        return
+    async with AsyncSessionLocal() as db, db.begin():
+        jobs = (await db.scalars(select(models.Run).where(
+            models.Run.id.in_(run_ids), models.Run.kind.in_(list(_JOB_NAMES)), models.Run.lace_id.is_not(None)))).all()
+        for job in jobs:
+            await lace_events.add(db, job.lace_id, f"The {_JOB_NAMES[job.kind]} was cut short by a server restart "
+                                  "before it finished. Tell the founder and offer to run it again.", job.owner_id)
+    for job in jobs:
+        await wake_lace(job.user_id, job.lace_id, job.owner_id)
+
+
 async def recover_after_restart() -> None:
     """Fail segments that were mid-flight when the process died; their tasks
     are gone. Runs awaiting an answer need nothing: they resume on answer."""
@@ -412,6 +466,7 @@ async def recover_after_restart() -> None:
         await events.publish(run_id, "error", {"message": _RESTART_MESSAGE})
     if stranded:
         logger.warning("Marked %d interrupted run(s) failed after restart", len(stranded))
+    await _report_interrupted_jobs([run_id for run_id in stranded if run_id not in _tasks])
     # Messages that were waiting: the turn they waited for is gone.
     async with AsyncSessionLocal() as db:
         waiting = (await db.execute(select(models.Run.lace_id).where(

@@ -12,6 +12,7 @@ import { ChatQuestion } from "./lace-chat-questions"
 import { isQuestion } from "./questions"
 import { waitingAt } from "./contacts-model"
 import type { LaceChat } from "./use-lace-chat"
+import { DismissWithReason } from "./dismiss-reason"
 
 function OpenLink({ url }: { url: string | null }) {
   if (!url) return null
@@ -47,7 +48,7 @@ function Actions({ card, state, chat, onReview }: {
         return (
           <>
             <Button size="sm" onClick={() => void chat.saveAccount(card.id)}><Bookmark /> Save</Button>
-            <Button size="sm" variant="ghost" onClick={() => void chat.dismissAccount(card.id)}><X /> Dismiss</Button>
+            <DismissWithReason title={card.title} onDismiss={(why) => void chat.dismissAccount(card.id, why)} />
           </>
         )
       }

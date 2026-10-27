@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 
-import { listLaceOpportunities, setLaceOpportunityStatus, type LaceOpportunityDto } from "@/lib/api"
+import { listLaceOpportunities, setLaceOpportunityStatus, type Dismissal, type LaceOpportunityDto } from "@/lib/api"
 
 function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
@@ -14,7 +14,8 @@ export interface LaceOpportunities {
   loading: boolean
   error: string | null
   save: (id: string) => Promise<void>
-  dismiss: (id: string) => Promise<void>
+  /** With `why`, later searches steer clear of the like. */
+  dismiss: (id: string, why?: Dismissal) => Promise<void>
 }
 
 /** A Lace's open opportunities and the ones waiting to be saved. Refetched
@@ -48,9 +49,9 @@ export function useLaceOpportunities(laceId: string, refreshKey = ""): LaceOppor
     }
   }, [laceId])
 
-  const dismiss = useCallback(async (id: string) => {
+  const dismiss = useCallback(async (id: string, why?: Dismissal) => {
     try {
-      await setLaceOpportunityStatus(laceId, id, "dismissed")
+      await setLaceOpportunityStatus(laceId, id, "dismissed", why)
       setOpportunities((prev) => prev.filter((o) => o.id !== id))
       setSuggested((prev) => prev.filter((o) => o.id !== id))
     } catch (err) {

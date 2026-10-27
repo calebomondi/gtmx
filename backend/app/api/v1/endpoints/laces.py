@@ -60,7 +60,7 @@ from backend.app.schemas.laces import (
 from backend.app.services import (  # noqa: F401 -- registers their runners
     asana_actions, crm_actions, notion_actions, sheet_actions, slack_actions, social_actions, telegram_actions,
 )
-from backend.app.services import email, inbox, lace_app_actions, lace_app_settings, lace_accounts, lace_briefs, lace_cards, lace_documents, lace_activity, lace_contacts, lace_members, lace_search, lace_channels, lace_competitors, lace_opportunities, lace_outreach
+from backend.app.services import email, inbox, lace_app_actions, lace_app_settings, lace_accounts, lace_briefs, lace_cards, lace_documents, lace_activity, lace_contacts, lace_members, lace_search, lace_channels, lace_competitors, lace_exclusions, lace_opportunities, lace_outreach
 from backend.app.services import connections as connection_service
 from backend.app.services import laces as lace_service
 from backend.app.services import runs as run_service
@@ -378,8 +378,9 @@ async def list_accounts(lace: MemberLace, db: DbSession, shown: AccountStatus = 
 @router.patch("/{lace_id}/accounts/{account_id}", response_model=AccountResponse)
 async def update_account(lace: MemberLace, account_id: uuid.UUID, payload: AccountUpdateRequest,
                          user: CurrentUser, db: DbSession):
-    return lace_accounts.response(await lace_accounts.set_status(db, lace.id, account_id, payload.status, user.id,
-                                                                 user.id))
+    row = await lace_accounts.set_status(db, lace.id, account_id, payload.status, user.id, user.id)
+    await lace_exclusions.learn(db, lace.id, row, row.name, payload.reason, payload.note)
+    return lace_accounts.response(row)
 
 
 @router.post("/{lace_id}/accounts/{account_id}/find-contacts", response_model=JobStartedResponse,
@@ -514,7 +515,9 @@ async def list_opportunities(lace: MemberLace, db: DbSession,
 @router.patch("/{lace_id}/opportunities/{opportunity_id}", response_model=OpportunityResponse)
 async def update_opportunity(lace: MemberLace, opportunity_id: uuid.UUID, payload: OpportunityUpdateRequest,
                              user: CurrentUser, db: DbSession):
-    return await lace_opportunities.set_status(db, lace.id, opportunity_id, payload.status, user.id, user.id)
+    row = await lace_opportunities.set_status(db, lace.id, opportunity_id, payload.status, user.id, user.id)
+    await lace_exclusions.learn(db, lace.id, row, row.title, payload.reason, payload.note)
+    return row
 
 
 def _brief_settings(lace) -> BriefSettings:

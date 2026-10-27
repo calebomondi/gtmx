@@ -17,7 +17,7 @@ from urllib.parse import urljoin
 import dns.exception
 import dns.resolver
 
-from agents.pipelines.web_utils import call_with_timeout
+from agents.pipelines.web_utils import call_with_timeout, is_own_site, run_parallel, site_host
 from agents.schemas.accounts import AccountRecord, ContactRecord
 from config import Settings
 from data_sources.scraping.exa import scrape_url, search_and_scrape
@@ -28,7 +28,8 @@ _PERSON_LINKEDIN_RE = re.compile(r"https?://(?:[a-z]{2,3}\.)?linkedin\.com/in/[A
 # Pages where organisations publish who to contact.
 _CONTACT_PATHS = ("contact", "contact-us", "about", "about-us", "team", "our-team")
 _PAGE_CHARS = 20_000
-_PAGE_TIMEOUT_S = 20
+# A contact page that takes longer is not worth waiting for: they are fetched together.
+_PAGE_TIMEOUT_S = 10
 _PEOPLE_RESULTS = 5
 _PEOPLE_TITLES = 3
 _SEARCH_TIMEOUT_S = 20
@@ -71,16 +72,18 @@ def _belongs(email: str, domain: str | None) -> bool:
 
 
 def _site_pages(acc: AccountRecord, cfg: Settings) -> list[str]:
-    if not acc.website:
+    """The account's home page and its usual contact, about and team pages,
+    fetched together. Paths hang off the site's root (never off a deep link),
+    and a URL that isn't the company's own site (a job ad, a directory entry)
+    is not crawled at all."""
+    if not acc.website or not is_own_site(acc.website):
         return []
-    base = acc.website if acc.website.endswith("/") else acc.website + "/"
-    pages = []
-    for url in [acc.website, *(urljoin(base, path) for path in _CONTACT_PATHS)]:
-        text = call_with_timeout(lambda u=url: scrape_url(u, cfg), _PAGE_TIMEOUT_S, default="",
-                                 label=f"contact_page[{url}]") or ""
-        if text.strip():
-            pages.append(text[:_PAGE_CHARS])
-    return pages
+    root = f"https://{site_host(acc.website)}/"
+    urls = list(dict.fromkeys([acc.website, *(urljoin(root, path) for path in _CONTACT_PATHS)]))
+    texts = run_parallel([lambda u=url: call_with_timeout(lambda: scrape_url(u, cfg), _PAGE_TIMEOUT_S, default="",
+                                                          label=f"contact_page[{u}]") for url in urls],
+                         workers=len(urls))
+    return [t[:_PAGE_CHARS] for t in texts if t and t.strip()]
 
 
 def from_site(acc: AccountRecord, cfg: Settings) -> list[ContactRecord]:

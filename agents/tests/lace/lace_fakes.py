@@ -122,12 +122,16 @@ class RecordingJobs:
     def __init__(self, refuse: str | None = None):
         self.started: list[tuple[str, dict]] = []
         self.refuse = refuse
+        self.busy: list = []
 
     async def start(self, kind, params):
         if self.refuse:
             raise JobRefused(self.refuse)
         self.started.append((kind, params))
         return f"job-{len(self.started)}"
+
+    async def running(self):
+        return list(self.busy)
 
 
 def make_fact(id: str, claim: str, topic="offer", confidence="high") -> Fact:

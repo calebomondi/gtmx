@@ -110,3 +110,17 @@ def test_opportunities_are_private(client, lace, lace_runtime):  # noqa: F811
     client.sign_in(make_user("Intruder"))
     assert client.get(f"{API}/laces/{lace}/opportunities").status_code == 404
     assert client.patch(f"{API}/laces/{lace}/opportunities/{oid}", json={"status": "dismissed"}).status_code == 404
+
+
+def test_loose_matches_are_left_out(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    good, loose = _found(("sell", "Blockchain build RFP", "https://rfp.test/chain", SOON),
+                         ("sell", "Procurement officer job", "https://jobs.test/proc", SOON))
+    _stub(monkeypatch, [good, loose.model_copy(update={"fit": "weak"})])
+    lace_runtime.append(AIMessage(content="One RFP fits."))
+    run = client.portal.call(manager.start_lace_job, "lace_opportunities", user.id, uuid.UUID(lace), {})
+    client.portal.call(_wait_for_status, run.id, {"completed"})
+    turns = client.portal.call(_wait_for_turns, lace, 1)
+    update = turns[-1].input["updates"][0]
+    assert "found 1 open opportunities" in update and "1 weaker match left out: Procurement officer job" in update
+    listed = client.get(f"{API}/laces/{lace}/opportunities?status=suggested").json()
+    assert [o["title"] for o in listed] == ["Blockchain build RFP"]

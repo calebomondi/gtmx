@@ -3,7 +3,6 @@ import { ArrowUp, Loader2 } from "lucide-react"
 
 import { Lace } from "@/components/lace-mascot"
 import { Button } from "@/components/ui/button"
-import { Markdown } from "@/components/ui/markdown"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -13,6 +12,7 @@ import { cn } from "@/lib/utils"
 import { aboutDraft, workingOnDraft } from "./draft-exchanges"
 import type { LaceChat } from "./use-lace-chat"
 import { useScrollToEnd } from "./use-scroll-to-end"
+import { ReplyMarkdown } from "./reply-markdown"
 
 const IDEAS = ["Make it shorter", "Warmer, less salesy", "Lead with their news"]
 
@@ -58,7 +58,7 @@ export function DraftBrainstorm({ draft, chat, name }: { draft: LaceOutreachDto;
           {exchange.map((m, i) => (
             <div key={i} className={cn("max-w-[90%] rounded-lg px-2.5 py-1.5",
                                        m.role === "founder" ? "self-end bg-theme/15" : "self-start bg-muted")}>
-              {m.role === "founder" ? m.content : <Markdown>{m.content}</Markdown>}
+              {m.role === "founder" ? m.content : <ReplyMarkdown>{m.content}</ReplyMarkdown>}
             </div>
           ))}
           {busy && (

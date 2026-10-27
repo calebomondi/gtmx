@@ -35,7 +35,9 @@ class CompetitorChange(LenientModel):
     )
     client_country: str = Field(default="", description="kind=client only: where that client operates, if stated")
     source_url: str = ""
-    importance: MoveImportance
+    # Models leave it out now and then; a missing grade is a middling one,
+    # not a reason to ask again.
+    importance: MoveImportance = "medium"
 
 
 class ChangeReport(LenientModel):

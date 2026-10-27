@@ -1,9 +1,10 @@
 """Updates a Lace must pass on to its founder, queued until its next turn."""
 
 import uuid
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database.lace_models import LaceEvent
@@ -12,12 +13,23 @@ from backend.app.database.lace_models import LaceEvent
 MAX_EVENTS_PER_TURN = 10
 
 
-async def add(db: AsyncSession, lace_id: uuid.UUID, text: str, owner_id: uuid.UUID | None = None) -> None:
-    """An update for the team's chat, or (`owner_id`) for that member's private one."""
-    db.add(LaceEvent(lace_id=lace_id, owner_id=owner_id, text=text))
+async def add(db: AsyncSession, lace_id: uuid.UUID, text: str, owner_id: uuid.UUID | None = None,
+              run_id: uuid.UUID | None = None) -> None:
+    """An update for the team's chat, or (`owner_id`) for that member's private
+    one; `run_id` is the search it reports on, when it does."""
+    db.add(LaceEvent(lace_id=lace_id, owner_id=owner_id, text=text, run_id=run_id))
 
 
-async def take_pending(db: AsyncSession, lace_id: uuid.UUID, owner_id: uuid.UUID | None = None) -> list[str]:
+@dataclass
+class Pending:
+    """Updates taken for one turn, the searches they report on, and their ids
+    (to put them back should the turn fail)."""
+    texts: list[str] = field(default_factory=list)
+    run_ids: list[uuid.UUID] = field(default_factory=list)
+    ids: list[uuid.UUID] = field(default_factory=list)
+
+
+async def take_pending(db: AsyncSession, lace_id: uuid.UUID, owner_id: uuid.UUID | None = None) -> Pending:
     """The oldest unconsumed events for one chat (the team's, or a member's
     private one), marked consumed in the caller's transaction: if the turn
     that would carry them cannot start, the caller rolls back and they stay
@@ -32,4 +44,11 @@ async def take_pending(db: AsyncSession, lace_id: uuid.UUID, owner_id: uuid.UUID
     now = datetime.now(UTC)
     for row in rows:
         row.consumed_at = now
-    return [row.text for row in rows]
+    return Pending([row.text for row in rows], [row.run_id for row in rows if row.run_id is not None],
+                   [row.id for row in rows])
+
+
+async def put_back(db: AsyncSession, ids: list[uuid.UUID]) -> None:
+    """Queue taken updates again: the turn that was to pass them on failed, so
+    the next turn passes them on instead of their being lost."""
+    await db.execute(update(LaceEvent).where(LaceEvent.id.in_(ids)).values(consumed_at=None))

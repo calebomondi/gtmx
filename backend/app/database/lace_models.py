@@ -285,6 +285,10 @@ class LaceEvent(Base):
     # Supabase owns users.
     owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    # The search whose results it reports, so the turn that passes it on can
+    # show what that search found.
+    run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("runs.id", ondelete="SET NULL"), nullable=True,
+                                                     index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
                                                  default=_now, server_default=func.now())
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

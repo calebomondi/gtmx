@@ -1,16 +1,20 @@
 import { Bookmark, ExternalLink, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import type { Dismissal } from "@/lib/api"
 
+import { DismissWithReason } from "./dismiss-reason"
 import type { ReviewItem } from "./feed-review"
 
 /** What a search found in one section, waiting for the founder: save it to
  * have the Lace work from it, or dismiss it for good. */
-export function LaceReview({ items, saveLabel = "Save", onSave, onDismiss }: {
+export function LaceReview({ items, saveLabel = "Save", onSave, onDismiss, askWhy = false }: {
   items: ReviewItem[]
   saveLabel?: string
   onSave: (id: string) => void
-  onDismiss: (id: string) => void
+  onDismiss: (id: string, why?: Dismissal) => void
+  /** Dismissing asks why, so later searches learn from it. */
+  askWhy?: boolean
 }) {
   if (items.length === 0) return null
   return (
@@ -34,9 +38,13 @@ export function LaceReview({ items, saveLabel = "Save", onSave, onDismiss }: {
             </div>
             <div className="flex shrink-0 gap-1">
               <Button size="sm" onClick={() => onSave(item.id)}><Bookmark /> {saveLabel}</Button>
-              <Button size="sm" variant="ghost" onClick={() => onDismiss(item.id)} aria-label={`Dismiss ${item.title}`}>
-                <X /> Dismiss
-              </Button>
+              {askWhy ? (
+                <DismissWithReason title={item.title} onDismiss={(why) => onDismiss(item.id, why)} />
+              ) : (
+                <Button size="sm" variant="ghost" onClick={() => onDismiss(item.id)} aria-label={`Dismiss ${item.title}`}>
+                  <X /> Dismiss
+                </Button>
+              )}
             </div>
           </li>
         ))}

@@ -24,11 +24,15 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMes
 from pydantic import TypeAdapter
 
 from agents.lace.answers import AnswerError, describe
+from agents.lace.buyers import ASKED_IN_FORM, buyer_form, knows_buyers
+from agents.lace.cards import cards
 from agents.lace.follow_ups import ends_on_question, follow_ups
 from agents.lace.graph import BRIEF_FACTS, PRIVATE_WITHHELD, build_lace_graph
 from agents.lace.onboarding import Progress, onboard, opening_message
 from agents.lace.store import LaceJobs
+from agents.lace.tools import MAX_CARDS
 from agents.lace.prompts import PRIVATE_CHAT_NOTE, system_prompt
+from agents.lace.reply_tidy import without_repeated_options
 from agents.llm.main import LlmProvidersExhaustedError
 from agents.schemas.lace_ui import BlockAnswer, SuggestionsBlock, UiBlock
 from backend.app.agents_runtime import get_checkpointer
@@ -36,7 +40,7 @@ from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.database.lace_models import Lace
 from backend.app.runs import events
-from backend.app.services import lace_activity, lace_brief_apps, lace_brief_email, lace_briefs
+from backend.app.services import lace_activity, lace_brief_apps, lace_brief_email, lace_briefs, lace_finds
 from backend.app.services.errors import ConflictError, InvalidInputError
 from backend.app.services.lace_apps import DbLaceApps
 from backend.app.services.lace_store import DbLaceStore
@@ -49,6 +53,9 @@ from utils.log import logger
 WRITING_PROGRESS = 0.95
 # Characters per streamed "token" frame.
 TOKEN_FRAME_CHARS = 24
+# How much of a model message is held back before it streams: more than a
+# lead-in to a tool call, less than a real answer's first paragraph.
+HOLD_CHARS = 400
 # What the Lace says while it works ("let me check the pricing page") is
 # kept as one line of its step trail, at most this long.
 NARRATION_CHARS = 200
@@ -83,6 +90,9 @@ _STEP_TEXT = {
 
 # Marks a message on the thread as an update for the Lace, not the founder's words.
 EVENT_FLAG = "lace_event"
+# On an update message: the reply passes on what background work found (and
+# is labelled so for the founder), as against a brief.
+UPDATES_FLAG = "lace_updates"
 # On a founder's message: what they attached ([{id, filename}]), and their own
 # words, which the founder sees without the note the model gets.
 ATTACHMENTS_KEY = "documents"
@@ -176,10 +186,15 @@ async def onboarding_segment(run_id: uuid.UUID, lace_id: uuid.UUID) -> None:
     await events.publish(run_id, "step", {"text": "Writing to you"})
     await events.publish(run_id, "progress", {"fraction": WRITING_PROGRESS, "text": "Writing to you"})
     profile, facts = await asyncio.gather(store.profile(), store.facts(None, BRIEF_FACTS))
+    # The site said too little about who buys: ask, in a form, before anything is searched on a guess.
+    ask = [] if result.site_unreadable or knows_buyers(facts) else [buyer_form().model_dump()]
+    if ask:
+        result = result.model_copy(update={"open_questions": [ASKED_IN_FORM]})
     reply = await asyncio.to_thread(opening_message, system_prompt(profile, facts), result)
     # The opening is the Lace's own first message on its thread, so the next
     # turn's history starts with it.
-    await graph.aupdate_state(LaceThread(lace_id).config, {"messages": [AIMessage(content=reply)]}, as_node="agent")
+    opening = AIMessage(content=reply, additional_kwargs={UI_KEY: ask} if ask else {})
+    await graph.aupdate_state(LaceThread(lace_id).config, {"messages": [opening]}, as_node="agent")
     async with AsyncSessionLocal() as db, db.begin():
         lace = await db.get(Lace, lace_id)
         if lace is not None and lace.status == "onboarding":
@@ -194,25 +209,38 @@ def narration(content) -> str:
 
 
 class _TokenRelay:
-    """Batches streamed tokens into "token" frames a few words at a time:
-    one frame per model token would be hundreds per reply."""
+    """Batches streamed tokens into "token" frames a few words at a time (one
+    frame per model token would be hundreds per reply), and holds back the
+    start of each model message: what the model writes before calling a tool
+    ("Let me look that up") is usually short, so it never reaches the reply
+    box only to be taken back. An answer streams once it is past that."""
 
     def __init__(self, run_id: uuid.UUID):
-        self._run_id, self._buffer = run_id, ""
+        self._run_id, self._buffer, self._streaming = run_id, "", False
 
     def add(self, text: str) -> None:
         self._buffer += text
-        if len(self._buffer) >= TOKEN_FRAME_CHARS:
-            self.flush()
+        if len(self._buffer) >= (TOKEN_FRAME_CHARS if self._streaming else HOLD_CHARS):
+            self._streaming = True
+            self._send()
 
-    def flush(self) -> None:
+    def finish(self) -> None:
+        """The message was the answer: show the rest of it."""
+        self._send()
+        self._streaming = False
+
+    def drop(self) -> None:
+        """The message led to a tool call, or is being started over: take
+        back whatever of it was shown."""
+        self._buffer = ""
+        if self._streaming:
+            events.broadcast(self._run_id, "token_reset")
+        self._streaming = False
+
+    def _send(self) -> None:
         if self._buffer:
             events.broadcast(self._run_id, "token", {"text": self._buffer})
             self._buffer = ""
-
-    def reset(self) -> None:
-        self._buffer = ""
-        events.broadcast(self._run_id, "token_reset")
 
 
 def founder_message(text: str, attachments: list[dict] | None = None, draft: dict | None = None) -> HumanMessage:
@@ -255,7 +283,7 @@ def event_message(updates: list[str]) -> HumanMessage:
     return HumanMessage(
         content=("Updates for you to pass on (these are not from the founder):\n" + body
                  + "\n\nTell the founder what this means for them, briefly."),
-        additional_kwargs={EVENT_FLAG: True},
+        additional_kwargs={EVENT_FLAG: True, UPDATES_FLAG: True},
     )
 
 
@@ -273,10 +301,11 @@ def _brief_message(request: str) -> HumanMessage:
 
 async def turn_segment(run_id: uuid.UUID, thread: LaceThread, message: HumanMessage,
                        jobs: LaceJobs | None = None, actor_id: uuid.UUID | None = None,
-                       who: str | None = None) -> None:
+                       who: str | None = None, found_by: list[uuid.UUID] | None = None) -> None:
     """`actor_id`: the person the turn answers, whom what it saves is put
-    down to; `who` names them in their private chat."""
-    await _finish(run_id, await _converse(run_id, thread, message, jobs, actor_id, who))
+    down to; `who` names them in their private chat; `found_by`, the searches
+    whose updates it passes on: their new finds show under the reply."""
+    await _finish(run_id, await _converse(run_id, thread, message, jobs, actor_id, who, found_by or []))
 
 
 async def brief_segment(run_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UUID, request: str,
@@ -298,7 +327,8 @@ async def brief_segment(run_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UU
 
 
 async def _converse(run_id: uuid.UUID, thread: LaceThread, message: HumanMessage, jobs: LaceJobs | None,
-                    actor_id: uuid.UUID | None, who: str | None = None) -> str:
+                    actor_id: uuid.UUID | None, who: str | None = None,
+                    found_by: list[uuid.UUID] | None = None) -> str:
     """Run one turn, streaming its frames; returns the Lace's reply."""
     graph, _ = _graph(thread, jobs, actor_id, who)
     relay = _TokenRelay(run_id)
@@ -312,29 +342,52 @@ async def _converse(run_id: uuid.UUID, thread: LaceThread, message: HumanMessage
             elif chunk.get("reset"):
                 # A retry or the next model starts the answer over: say so,
                 # rather than wiping the text without a word.
-                relay.reset()
+                relay.drop()
                 await events.publish(run_id, "step", {"text": RETRY_STEP})
             continue
-        relay.flush()
         for node, output in chunk.items():
             for message in (output or {}).get("messages", []):
                 if node == "agent" and message.tool_calls:
                     # Text before a tool call ("let me look that up") is not the
-                    # reply: it leaves the reply box and stays in the trail.
-                    relay.reset()
+                    # reply: it goes to the trail, never the reply box.
+                    relay.drop()
                     if said := narration(message.content):
                         await events.publish(run_id, "step", {"text": said})
                     for tool_call in message.tool_calls:
                         await events.publish(run_id, "step", {"text": step_text(tool_call)})
                 elif node == "agent":
+                    relay.finish()
                     reply = str(message.content)
                 elif isinstance(message, ToolMessage):
                     await events.publish(run_id, "tool_result", _tool_summary(message))
                     blocks += _ui_blocks(message)
+    blocks = await _with_found_cards(thread, found_by or [], blocks)
     blocks = await _with_follow_ups(reply, blocks)
     if blocks:
-        await _attach_ui(graph, thread, blocks)
+        tidy = without_repeated_options(reply, {b.get("type") for b in blocks})
+        await _attach_ui(graph, thread, blocks, tidy if tidy != reply else None)
+        reply = tidy
     return reply
+
+
+async def _with_found_cards(thread: LaceThread, found_by: list[uuid.UUID], blocks: list[dict]) -> list[dict]:
+    """The turn's blocks, plus cards for what the searches it reports on newly
+    found and the reply didn't show: those wait for the founder to save or
+    dismiss, so they must always be in front of them."""
+    if not found_by:
+        return blocks
+    shown = {(b.get("kind"), b.get("id")) for b in blocks if b.get("type") == "card"}
+    async with AsyncSessionLocal() as db:
+        found = await lace_finds.suggested_from(db, thread.lace_id, thread.owner_id, found_by, MAX_CARDS)
+    missing = [(kind, str(find_id)) for kind, find_id in found if (kind, str(find_id)) not in shown]
+    if not missing:
+        return blocks
+    store = DbLaceStore(AsyncSessionLocal, thread.lace_id, owner_id=thread.owner_id)
+    added: list[dict] = []
+    for kind in dict.fromkeys(kind for kind, _ in missing):
+        made, _ = await cards(store, kind, [i for k, i in missing if k == kind])
+        added += [c.model_dump() for c in made]
+    return [*blocks, *added[:max(0, MAX_CARDS - len(shown))]]
 
 
 # How long the turn waits for suggested replies before ending without them.
@@ -358,6 +411,8 @@ async def _with_follow_ups(reply: str, blocks: list[dict]) -> list[dict]:
 UI_KEY = "ui"
 # The tools whose results put something under the reply.
 _UI_TOOLS = frozenset({"ask_choice", "ask_checklist", "ask_form", "show", "suggest_replies",
+                       # Suggestions it was asked to save, shown for the founder to save.
+                       "update_saved",
                        # Proposals in the founder's apps, shown with Approve and Decline.
                        "post_on_social", "reply_to_comment", "engage_on_x"})
 # The blocks the founder answers.
@@ -377,14 +432,18 @@ def _ui_blocks(message: ToolMessage) -> list[dict]:
     return list((result.get("data") or {}).get("ui") or []) if result.get("ok") else []
 
 
-async def _attach_ui(graph, thread: LaceThread, blocks: list[dict]) -> None:
+async def _attach_ui(graph, thread: LaceThread, blocks: list[dict], text: str | None = None) -> None:
     """Keep the turn's cards and choices on its final reply, in the thread,
-    so they show with it whenever the conversation is read."""
+    so they show with it whenever the conversation is read; `text`, when
+    given, replaces the reply's words (without what the blocks repeat)."""
     state = await graph.aget_state(thread.config)
     reply = next((m for m in reversed(state.values.get("messages", [])) if isinstance(m, AIMessage)), None)
     if reply is None:
         return
-    updated = reply.model_copy(update={"additional_kwargs": {**reply.additional_kwargs, UI_KEY: blocks}})
+    changes: dict = {"additional_kwargs": {**reply.additional_kwargs, UI_KEY: blocks}}
+    if text is not None:
+        changes["content"] = text
+    updated = reply.model_copy(update=changes)
     await graph.aupdate_state(thread.config, {"messages": [updated]}, as_node="agent")
 
 
@@ -393,10 +452,12 @@ def visible_messages(messages: list[AnyMessage]) -> list[dict]:
     replies (with any cards or choices), without tool calls, results or updates."""
     out = []
     about = None  # the draft the founder's latest message was about
+    update = False  # the Lace is passing on an update, not answering the founder
     for m in messages:
         if isinstance(m, HumanMessage) and m.additional_kwargs.get(EVENT_FLAG):
-            about = None  # the Lace answers an update, not the founder
+            about, update = None, bool(m.additional_kwargs.get(UPDATES_FLAG))
         elif isinstance(m, HumanMessage):
+            update = False
             attached = m.additional_kwargs.get(ATTACHMENTS_KEY)
             content = m.additional_kwargs.get(FOUNDER_TEXT_KEY, str(m.content))
             answer = m.additional_kwargs.get(ANSWER_KEY)
@@ -409,7 +470,7 @@ def visible_messages(messages: list[AnyMessage]) -> list[dict]:
             ui = m.additional_kwargs.get(UI_KEY)
             if str(m.content).strip() or ui:
                 out.append({"role": "lace", "content": str(m.content), **({"ui": ui} if ui else {}),
-                            **({"draft_id": about} if about else {})})
+                            **({"draft_id": about} if about else {}), **({"update": True} if update else {})})
     return out
 
 

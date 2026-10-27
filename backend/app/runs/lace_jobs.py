@@ -8,6 +8,7 @@ that fails for a reason the founder can fix (JobBlocked) says so as is.
 
 import asyncio
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -76,9 +77,11 @@ def private_to(params: dict) -> uuid.UUID | None:
     return uuid.UUID(params["private_to"]) if params.get("private_to") else None
 
 
-async def job_update(db: AsyncSession, lace_id: uuid.UUID, params: dict, text: str) -> None:
-    """Queue a job's update for the chat it was started from."""
-    await lace_events.add(db, lace_id, text, private_to(params))
+async def job_update(db: AsyncSession, lace_id: uuid.UUID, params: dict, text: str,
+                     run_id: uuid.UUID | None = None) -> None:
+    """Queue a job's update for the chat it was started from; `run_id` when
+    the job found things the turn passing it on should show."""
+    await lace_events.add(db, lace_id, text, private_to(params), run_id)
 
 
 async def job_activity(db: AsyncSession, lace_id: uuid.UUID, params: dict, kind: ActivityKind, title: str,
@@ -117,7 +120,7 @@ async def competitors_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -
         raise
     async with AsyncSessionLocal() as db, db.begin():
         new, refreshed = await lace_competitors.upsert_found(db, lace_id, run_id, found, private_to(params))
-        await job_update(db, lace_id, params, competitors_update(found, new, refreshed))
+        await job_update(db, lace_id, params, competitors_update(found, new, refreshed), run_id)
         if new:
             await job_activity(db, lace_id, params, "competitors_found", f"Found {plural(new, 'new competitor')}",
                         names([p.name for p in found]))
@@ -219,9 +222,11 @@ async def accounts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> N
     except Exception as exc:
         await report_failure(lace_id, "search for target accounts", exc, params)
         raise
+    found, weak = good_fits(found, lambda item: item[1].strength if item[1] else None)
     async with AsyncSessionLocal() as db, db.begin():
         new, refreshed = await lace_accounts.upsert_found(db, lace_id, run_id, found, private_to(params))
-        await job_update(db, lace_id, params, accounts_update(found, new, refreshed, params.get("country")))
+        await job_update(db, lace_id, params, accounts_update(found, new, refreshed, params.get("country"),
+                                                              [record.name for record, _ in weak]), run_id)
         if new:
             await job_activity(db, lace_id, params, "accounts_found", f"Found {plural(new, 'new target account')}",
                         names([record.name for record, _ in found]))
@@ -378,11 +383,32 @@ def contacts_update(results: list[AccountRecord]) -> str:
             + "\nDrafts go only to people the founder approves: show these accounts so they can approve them.")
 
 
-def accounts_update(found: list, new: int, refreshed: int, country: str | None) -> str:
+def good_fits(items: list, strength: Callable[[object], str | None]) -> tuple[list, list]:
+    """The items that fit (strong, moderate, or not graded), and the weak ones
+    left out: a weak match is never put to the founder to fill a gap."""
+    return [i for i in items if strength(i) != "weak"], [i for i in items if strength(i) == "weak"]
+
+
+# When nothing fits: what the Lace does with that.
+NOTHING_FITS = ("Tell the founder plainly that nothing fits yet; don't show or list the ones left out. Ask one "
+                "short question that would sharpen the next search (who has paid us so far, or a past customer we "
+                "want more of).")
+
+
+def _left_out(names: list[str]) -> str:
+    if not names:
+        return ""
+    shown = ", ".join(names[:3]) + (f" and {len(names) - 3} more" if len(names) > 3 else "")
+    return f"\n{plural(len(names), 'weaker match', 'weaker matches')} left out: {shown}. Don't put these forward."
+
+
+def accounts_update(found: list, new: int, refreshed: int, country: str | None, weak: list[str] | None = None) -> str:
     where = f" in {country}" if country else ""
     if not found:
+        checked = (f" It checked {plural(len(weak), 'company', 'companies')}, but none fits what we sell well enough."
+                   if weak else "")
         return (f"The search for target accounts{where} finished without finding an account with a current, "
-                "verifiable reason to buy.")
+                f"verifiable reason to buy that fits.{checked} {NOTHING_FITS}")
     lines = []
     for record, fit in found:
         line = f"{record.name} ({record.website or record.account_type})"
@@ -392,7 +418,7 @@ def accounts_update(found: list, new: int, refreshed: int, country: str | None) 
             line += f". Need: {fit.need} [{fit.strength} fit]"
         lines.append(line)
     return (f"The search for target accounts{where} finished: {len(found)} accounts ({new} new, {refreshed} "
-            "already on file), each with a current trigger:\n" + "\n".join(lines)
+            "already on file), each with a current trigger:\n" + "\n".join(lines) + _left_out(weak or [])
             + "\nNew ones wait for the founder to save or dismiss: show them (ids from list_suggestions); once saved, find_contacts finds who to reach.")
 
 
@@ -512,10 +538,11 @@ async def opportunities_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict)
     except Exception as exc:
         await report_failure(lace_id, "opportunity search", exc, params)
         raise
+    found, weak = good_fits(found, lambda o: o.fit)
     async with AsyncSessionLocal() as db, db.begin():
         new, refreshed = await lace_opportunities.upsert_found(db, lace_id, run_id, found, private_to(params))
         if new or not params.get("scheduled"):
-            await job_update(db, lace_id, params, opportunities_update(found, new))
+            await job_update(db, lace_id, params, opportunities_update(found, new, [o.title for o in weak]), run_id)
         if new:
             await job_activity(db, lace_id, params, "opportunities_found",
                         f"Found {plural(new, 'new opportunity', 'new opportunities')}", names([o.title for o in found]))
@@ -524,12 +551,14 @@ async def opportunities_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict)
     await events.publish(run_id, "complete", {"found": len(found)})
 
 
-def opportunities_update(found: list, new: int) -> str:
+def opportunities_update(found: list, new: int, weak: list[str] | None = None) -> str:
     if not found:
-        return "The opportunity search finished without finding anything current that fits."
+        checked = f" It left out {plural(len(weak), 'loose match', 'loose matches')}." if weak else ""
+        return f"The opportunity search finished without finding anything current that fits.{checked} {NOTHING_FITS}"
     lines = []
     for o in sorted(found, key=lambda o: o.deadline or o.date or "9999"):
         when = f" (deadline {o.deadline})" if o.deadline else f" ({o.date})" if o.date else ""
         lines.append(f"[{o.kind}] {o.title}{when}: {o.why_it_fits} Next step: {o.how_to_act} ({o.url})")
     return (f"The opportunity search found {len(found)} open opportunities ({new} new):\n" + "\n".join(lines)
+            + _left_out(weak or [])
             + "\nNew ones wait for the founder to save or dismiss: show them (ids from list_suggestions).")
