@@ -6,7 +6,7 @@ import { LacePreview } from './lace-preview'
 import { ProductDemo } from './product-demo'
 import { RotatingWord } from './rotating-word'
 
-const PROOF = ['One Lace per startup', 'Works wherever you sell', 'Email, LinkedIn, X, Instagram & more', 'You approve every send']
+const PROOF = ['One Lace per startup', 'Your cofounders on it too', 'Works wherever you sell', 'You approve every send']
 
 // What Lace finds, one after another; read whole without motion.
 const FINDS = ['customers.', 'opportunities.', 'partners.', 'next deal.']
@@ -33,6 +33,7 @@ export function Hero({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; on
             </p>
           </div>
           <p className="max-w-xl text-lg leading-relaxed text-muted short:text-base">
+            <span className="font-medium text-ink">One Lace for your startup, shared by your whole founding team.</span>{' '}
             Give it your website. Lace learns what you sell, then finds your ideal customers and the people to reach,
             spots places to sell, showcase and partner, watches your competitors, brainstorms with you, and drafts
             every message and reply. Nothing goes out without your click.

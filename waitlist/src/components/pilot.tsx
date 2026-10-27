@@ -3,7 +3,7 @@ import { pilotStart } from '../lib/pilot-start'
 import { stagger } from '../lib/stagger'
 import { Section } from './section'
 
-const GET = ['Your own Lace, free for the whole pilot', 'A direct line to the team building it', 'A say in what Lace learns next']
+const GET = ['Your startup’s Lace, free for your whole founding team', 'A direct line to the team building it', 'A say in what Lace learns next']
 const ASK = ['A 20-minute feedback call every two weeks', 'Honest answers about what works and what doesn’t']
 
 function SpotDots({ pilot }: { pilot: PilotSpots }) {
@@ -42,9 +42,9 @@ function List({ title, items }: { title: string; items: string[] }) {
 }
 
 function pilotTitle(pilot: PilotSpots | null): string {
-  if (!pilot) return 'A small group of founders, each with their own Lace.'
+  if (!pilot) return 'One spot per startup. Bring your founding team.'
   const { day, started } = pilotStart(pilot.starts_on)
-  return started ? `${pilot.total} founders, running since ${day}.` : `${pilot.total} founders, starting ${day}.`
+  return started ? `${pilot.total} startups, running since ${day}.` : `${pilot.total} startups, starting ${day}.`
 }
 
 export function Pilot({ pilot }: { pilot: PilotSpots | null }) {
@@ -55,7 +55,7 @@ export function Pilot({ pilot }: { pilot: PilotSpots | null }) {
       tone="brand"
       label="The pilot"
       title={pilotTitle(pilot)}
-      intro="Join the waitlist and tick “Join the pilot”. We’ll email you to set up your Lace and a short kickoff call."
+      intro="One spot per startup, and your whole founding team comes with it. Join the waitlist and tick “Join the pilot”; we’ll email you to set up your Lace and a short kickoff call."
     >
       <div className="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
         <div data-reveal className="flex flex-col gap-6">

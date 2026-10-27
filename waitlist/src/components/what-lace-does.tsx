@@ -55,12 +55,12 @@ const COLUMNS: Column[] = [
         body: 'Ask it anything about your market, your angle or a draft. It answers from what it knows about your startup.',
       },
       {
-        title: 'Drafts your outreach',
-        body: 'First messages in your voice on email, LinkedIn, X, Instagram, Facebook and TikTok, each built on why now.',
+        title: 'Drafts your outreach, and your answers',
+        body: 'First messages in your voice on email, LinkedIn, X, Instagram, Facebook and TikTok, each built on why now. When someone replies, the answer is waiting.',
       },
       {
-        title: 'Drafts your answers',
-        body: 'When someone replies, the answer is waiting. You edit it, or ask Lace to, and send it with one click.',
+        title: 'Learns from you',
+        body: 'Correct what it got wrong, or say why a find doesn’t fit, and the next search steers clear. When nothing fits yet, it says so.',
       },
     ],
   },
