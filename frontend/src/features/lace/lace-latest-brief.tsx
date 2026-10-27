@@ -2,12 +2,12 @@ import { useState } from "react"
 import { ChevronDown, MessageCircle } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Markdown } from "@/components/ui/markdown"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { LaceBriefDto } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 import { dayLabel, startOfDay } from "./activity-days"
+import { ReplyMarkdown } from "./reply-markdown"
 
 function Writing({ name }: { name: string }) {
   return (
@@ -40,7 +40,7 @@ export function LaceLatestBrief({ brief, name, onDiscuss }: {
       {brief.state === "writing" || !brief.body ? <Writing name={name} /> : (
         <>
           <div className={cn("relative", !open && "max-h-40 overflow-hidden")}>
-            <Markdown className="prose prose-sm dark:prose-invert min-w-0 max-w-none prose-p:my-1.5 prose-ul:my-1.5 prose-li:my-0.5">{brief.body}</Markdown>
+            <ReplyMarkdown>{brief.body}</ReplyMarkdown>
             {!open && <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-card to-transparent" />}
           </div>
           <div className="flex flex-wrap gap-2">
