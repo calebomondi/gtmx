@@ -12,11 +12,42 @@ and never pay for the same query twice within a short window.
 
 import threading
 import time
+from urllib.parse import urlparse
 from agents.concurrency import ContextThreadPoolExecutor
 from typing import Any, Callable, Iterable, Optional
 
 from config import get_settings
 from utils.log import logger
+
+
+# Hosts that are never a company's own site: a social profile, a directory or
+# job-board listing, or a news write-up is evidence ABOUT a firm, not the firm.
+# Taking one as its website breaks dedup, monitoring and contact finding.
+NOT_OWN_SITE_HOSTS = (
+    "linkedin.com", "facebook.com", "instagram.com", "twitter.com", "x.com", "tiktok.com", "youtube.com",
+    "reddit.com", "medium.com", "wikipedia.org", "github.com", "gitlab.com", "notion.so", "docs.google.com",
+    "google.com", "exa.ai",
+    "crunchbase.com", "g2.com", "capterra.com", "trustpilot.com", "producthunt.com",
+    "glassdoor.com", "glassdoor.co.uk", "indeed.com", "brightermonday.co.ke", "brightermonday.co.ug",
+    "brightermonday.co.tz", "fuzu.com", "myjobmag.co.ke", "myjobmag.com", "jobberman.com", "careers24.com",
+    "amazon.com", "ebay.com", "alibaba.com",
+    "bloomberg.com", "techcrunch.com", "forbes.com", "wired.com", "theverge.com", "capitalfm.co.ke", "kbc.co.ke",
+    "africabusinesscommunities.com",
+)
+
+
+def site_host(url: str) -> str:
+    """The URL's host, lowercased, without "www."; "" when it has none."""
+    candidate = url if "://" in url else f"https://{url}"
+    host = (urlparse(candidate.strip()).netloc or "").lower().split("@")[-1].split(":")[0]
+    return host.removeprefix("www.")
+
+
+def is_own_site(url: str) -> bool:
+    """Whether the URL could be a company's own website: it has a host, and
+    that host is not a social network, directory, job board or news site."""
+    host = site_host(url)
+    return bool(host) and not any(host == bad or host.endswith(f".{bad}") for bad in NOT_OWN_SITE_HOSTS)
 
 
 def timed_node(fn: Callable[[dict], dict]) -> Callable[[dict], dict]:

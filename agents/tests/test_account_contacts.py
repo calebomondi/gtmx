@@ -225,3 +225,15 @@ def test_person_socials_become_profile_urls_and_other_sites_are_dropped():
     assert social_profile_url("instagram", "not a handle!") is None
     person = ContactRecord(name="Enzi", x="@enzi", tiktok="", linkedin="https://linkedin.com/in/enzi")
     assert list(person.addresses()) == ["linkedin", "x"]
+
+
+def test_contact_pages_hang_off_the_site_root_and_skip_job_boards(monkeypatch):
+    fetched = []
+    monkeypatch.setattr(contacts, "scrape_url", lambda url, cfg: fetched.append(url) or f"page {url}")
+    deep = _account().model_copy(update={"website": "https://www.deloitte.com/tz/en/about.html"})
+    pages = contacts._site_pages(deep, None)
+    assert fetched[0] == deep.website and "https://deloitte.com/contact" in fetched
+    assert not any("about.html/" in url for url in fetched) and len(pages) == len(fetched)
+    fetched.clear()
+    listing = _account().model_copy(update={"website": "https://www.brightermonday.co.ke/listings/procurement-officer"})
+    assert contacts._site_pages(listing, None) == [] and fetched == []

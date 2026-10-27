@@ -46,9 +46,14 @@ Tracked competitors:
 {competitors}"""
 
 
+# A judgment over everything known is worth some thinking, but unbounded it
+# took over three minutes before a customer search could even start.
+ICP_THINKING_BUDGET = 2048
+
+
 def _default_draft(messages: Sequence) -> ICP:
-    # A judgment over everything known: worth the slower, deliberate call.
-    return invoke_structured_with_fallback(messages, ICP, log_label="lace:define_icp", thinking=True)
+    return invoke_structured_with_fallback(messages, ICP, log_label="lace:define_icp", thinking=True,
+                                           thinking_budget=ICP_THINKING_BUDGET)
 
 
 def define_icp(profile: LaceProfile, facts: list[Fact], competitors: list[CompetitorSummary],

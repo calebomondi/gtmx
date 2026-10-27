@@ -67,7 +67,7 @@ from data_sources.socials import profiles as social_profiles
 from utils.log import logger
 from utils.progress import report
 
-from ..web_utils import call_with_timeout, search_cache_get, search_cache_put, timed_node
+from ..web_utils import call_with_timeout, is_own_site, search_cache_get, search_cache_put, timed_node
 
 _SEARCH_TIMEOUT_S = get_settings().competitor_search_timeout_s
 _SCRAPE_TIMEOUT_S = get_settings().competitor_scrape_timeout_s
@@ -113,20 +113,6 @@ PROFILE_WORKERS = get_settings().competitor_profile_workers
 # publicly available website", and "publicly available" has to mean more than
 # "some string appeared in a search result".
 _WEBSITE_SHAPE = re.compile(r"^https?://[^\s/$.?#].[^\s]*$", re.IGNORECASE)
-
-# Hosts that are not a competitor's own site. A directory listing, a news write
-# -up or a social profile is evidence ABOUT a firm, not the firm. Accepting one
-# as `website` would put a tracking URL in the column the whole dedup and
-# monitoring story is built on.
-_NON_SITE_HOSTS = (
-    "linkedin.com", "facebook.com", "instagram.com", "twitter.com", "x.com",
-    "tiktok.com", "youtube.com", "reddit.com", "medium.com", "wikipedia.org",
-    "crunchbase.com", "g2.com", "capterra.com", "trustpilot.com", "glassdoor.com",
-    "producthunt.com", "github.com", "gitlab.com", "notion.so", "docs.google.com",
-    "amazon.com", "ebay.com", "alibaba.com", "indeed.com", "glassdoor.co.uk",
-    "bloomberg.com", "techcrunch.com", "forbes.com", "wired.com", "theverge.com",
-)
-
 
 # ---------------------------------------------------------------------------
 # Prompt templates
@@ -337,7 +323,7 @@ def _clean_website(raw: Optional[str]) -> Optional[str]:
     host = (urlparse(candidate).netloc or "").lower()
     if not host:
         return None
-    if any(host == bad or host.endswith(f".{bad}") for bad in _NON_SITE_HOSTS):
+    if not is_own_site(candidate):
         return None
     # www is stripped here, not only inside _domain_key, so the URL actually
     # stored matches the key the dedup constraint is built on. Keeping both would
