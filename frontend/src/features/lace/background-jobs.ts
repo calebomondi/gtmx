@@ -7,8 +7,8 @@ import type { FoundSection } from "./found-model"
 export const JOB_INFO: Record<string, { label: string; fills: FoundSection["key"] | null }> = {
   lace_competitors: { label: "Searching for competitors", fills: "competitors" },
   lace_monitor: { label: "Checking competitors for moves", fills: "competitors" },
-  lace_icp: { label: "Working out your ideal customer", fills: "customers" },
-  lace_accounts: { label: "Searching for customers", fills: "customers" },
+  lace_icp: { label: "Working out your ideal customer", fills: "leads" },
+  lace_accounts: { label: "Searching for leads", fills: "leads" },
   lace_contacts: { label: "Finding people to contact", fills: "contacts" },
   lace_opportunities: { label: "Looking for opportunities", fills: "opportunities" },
   lace_drafts: { label: "Drafting messages", fills: null },

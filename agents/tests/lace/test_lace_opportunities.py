@@ -79,4 +79,20 @@ async def test_find_opportunities_tool_starts_a_job(settings):
     assert json.loads(await tool.ainvoke({"kinds": ["sell"]}))["ok"]
     assert json.loads(await tool.ainvoke({}))["ok"]
     assert jobs.started == [("find_opportunities", {"kinds": ["sell"]}),
-                            ("find_opportunities", {"kinds": ["showcase", "sell", "partner"]})]
+                            ("find_opportunities", {"kinds": ["showcase", "sell", "partner", "funding"]})]
+
+
+def test_funding_is_searched_for_what_the_startup_qualifies_for():
+    grant = "https://grants.test/iot-2026"
+    PAGES[grant] = "IoT hardware grant: call for applications"
+    try:
+        found, seen = _run([_o(grant, kind="funding", deadline="2026-12-01", title="IoT hardware grant")],
+                           kinds=("funding",), queries=[OpportunityQuery(kind="funding", query="IoT grant Kenya 2026")])
+    finally:
+        del PAGES[grant]
+    assert [(o.kind, o.title) for o in found] == [("funding", "IoT hardware grant")]
+    # Searches name the sector, stage and country; the extraction keeps only
+    # a current call the startup meets, and says what it meets.
+    assert "grants, incubators, accelerators" in seen["plan_prompt"] and "sector, its stage and its country" in seen["plan_prompt"]
+    assert "states who can apply and the startup meets it" in seen["extract_prompt"]
+    assert "evergreen" in seen["extract_prompt"]

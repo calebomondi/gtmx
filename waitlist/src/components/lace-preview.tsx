@@ -3,8 +3,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { DemoFrame } from './demo-frame'
 import { Lace, type LaceState } from './lace-mascot'
 
-// An invented Lace for an invented startup: nothing here is a real company.
-const LACE = 'Juno'
+// Thalace's own Lace at work. The startups it finds are invented: none is a real company or person.
+const LACE = 'Lace'
 const TICK_MS = 750
 
 interface Scene {
@@ -46,8 +46,8 @@ function Card({ tag, title, children }: { tag: string; title: string; children: 
   )
 }
 
-const LONG_DRAFT = 'Hi Dana, congratulations on opening three new Medvale clinics this spring. Teams growing that fast often find patient check-ins pile up at the front desk. Fieldcast handles check-ins by SMS, so each new site starts without extra staff. Would a 15-minute call next week be useful?'
-const SHORT_DRAFT = 'Hi Dana, congrats on Medvale’s three new clinics. Fieldcast handles patient check-ins by SMS, so each new site opens without extra front-desk staff. Worth 15 minutes next week?'
+const LONG_DRAFT = 'Hi Neema, congratulations on Acme Pay’s seed round. A first sales hire often spends months building lead lists by hand. Lace finds the companies with a reason to buy now and drafts the first message, so your new hire is selling from week one. Would a 15-minute call next week be useful?'
+const SHORT_DRAFT = 'Hi Neema, congrats on the seed round. Lace finds Acme Pay’s next customers and drafts the outreach, so your first sales hire sells from week one. Worth 15 minutes next week?'
 
 const SCENES: Scene[] = [
   {
@@ -56,13 +56,13 @@ const SCENES: Scene[] = [
     mood: (t) => (t < 5 ? 'thinking' : 'alert'),
     render: (t) => (
       <>
-        <At t={t} at={0}><Step done={t >= 2}>Reading fieldcast.io/pricing</Step></At>
-        <At t={t} at={1}><Step done={t >= 3}>Searching for clinic groups opening new sites</Step></At>
-        <At t={t} at={2}><Step done={t >= 5}>Checking medvale.com/careers</Step></At>
+        <At t={t} at={0}><Step done={t >= 2}>Reading thalace.com</Step></At>
+        <At t={t} at={1}><Step done={t >= 3}>Searching for startups that just raised a seed round</Step></At>
+        <At t={t} at={2}><Step done={t >= 5}>Checking acmepay.example/careers</Step></At>
         <At t={t} at={5}>
-          <Card tag="Target account · strong fit" title="Medvale Clinics">
-            <p><span className="font-medium text-ink">Why now:</span> opened 3 new clinics this spring</p>
-            <p><span className="font-medium text-ink">Reach:</span> Dana Okoro, Head of Operations · email</p>
+          <Card tag="Target account · strong fit" title="Acme Pay">
+            <p><span className="font-medium text-ink">Why now:</span> raised a seed round, hiring its first sales lead</p>
+            <p><span className="font-medium text-ink">Reach:</span> Neema Okafor, founder &amp; CEO · email</p>
           </Card>
         </At>
       </>
@@ -74,15 +74,15 @@ const SCENES: Scene[] = [
     mood: (t) => (t < 3 ? 'thinking' : 'alert'),
     render: (t) => (
       <>
-        <At t={t} at={0}><Step done={t >= 3}>Scanning tenders, events and partners</Step></At>
+        <At t={t} at={0}><Step done={t >= 3}>Scanning events, accelerators and partners</Step></At>
         <At t={t} at={3}>
-          <Card tag="Sell · tender" title="Patient messaging pilot, City Health Board">
-            <p>Closes in 12 days · fits: you sell patient messaging to clinics</p>
+          <Card tag="Showcase · pitch competition" title="Founders’ Pitch Night: applications open">
+            <p>Closes in 12 days · fits: the room is seed-stage founders</p>
           </Card>
         </At>
         <At t={t} at={5}>
-          <Card tag="Showcase · speaking slot" title="HealthTech Summit, call for speakers">
-            <p>Closes in 3 weeks · your buyers’ biggest event this year</p>
+          <Card tag="Partner · accelerator" title="Launchpad accelerator: partner programme">
+            <p>Closes in 3 weeks · its startups are the ones you sell to</p>
           </Card>
         </At>
       </>
@@ -95,7 +95,7 @@ const SCENES: Scene[] = [
     render: (t) => (
       <>
         <div className="rounded-lg border border-dashed border-brand bg-panel p-3 sm:p-4">
-          <p className="font-mono text-[10px] uppercase tracking-wider text-brand-ink">Draft · to Dana Okoro by email</p>
+          <p className="font-mono text-[10px] uppercase tracking-wider text-brand-ink">Draft · to Neema Okafor by email</p>
           <p className="mt-1.5 text-[13px] leading-snug">{t >= 6 ? SHORT_DRAFT : LONG_DRAFT}</p>
           <div className="mt-3 flex items-center justify-end gap-2">
             <Lace state={t >= 3 && t < 6 ? 'thinking' : 'idle'} size={22} decorative />
@@ -105,7 +105,11 @@ const SCENES: Scene[] = [
           </div>
         </div>
         <At t={t} at={2}>
-          <p className="ml-auto w-fit rounded-lg bg-highlight px-2.5 py-1 text-[13px]">Make it shorter</p>
+          {/* A cofounder weighs in: the Lace is the whole team's. */}
+          <div className="ml-auto flex w-fit items-center gap-1.5">
+            <p className="rounded-lg bg-highlight px-2.5 py-1 text-[13px]">Make it shorter</p>
+            <span aria-label="Your cofounder" className="grid size-5 place-items-center rounded-full bg-ink text-[10px] font-semibold text-paper">C</span>
+          </div>
         </At>
         <At t={t} at={6}>
           <p className="w-fit rounded-lg bg-panel px-2.5 py-1 text-[13px] text-muted shadow-lift">Cut it to three lines and kept the ask.</p>
@@ -153,14 +157,14 @@ export function LacePreview() {
   }
 
   return (
-    <DemoFrame status="Example" live={!still && visible} detail={`${LACE}, a Lace for an invented startup`}>
+    <DemoFrame status="Example" live={!still && visible} detail={`Thalace’s own ${LACE}, finding invented startups`}>
       {/* 4:3 like the recording that will replace it; on phones, tall enough for a whole scene. */}
       <div ref={box} className="flex min-h-[24rem] flex-col bg-paper sm:aspect-[4/3] sm:min-h-0">
         <div className="flex items-center gap-3 border-b border-line bg-panel px-4 py-3">
           <Lace state={current.mood(t)} size={32} decorative />
           <div className="min-w-0">
             <p className="text-sm font-semibold leading-tight">{LACE}</p>
-            <p className="truncate text-xs text-muted">Fieldcast’s assistant</p>
+            <p className="truncate text-xs text-muted">thalace.com</p>
           </div>
           <div className="ml-auto flex gap-1" role="tablist" aria-label="Example scenes">
             {SCENES.map((s, i) => (

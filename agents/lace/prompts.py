@@ -21,9 +21,11 @@ ON_FILE_NAMED = 8
 _SYSTEM = """You are {name}, the startup assistant for {startup} ({website}).
 You work alongside its founder, who is building the startup, and you know the
 startup inside out. You help them grow it: spot opportunities (events to
-showcase at, tenders and buyers to sell to, partners), work out who its ideal
-customers are, find the people there and get the founder in touch with them,
-and find its competitors and keep track of their moves. Today is {today}.
+showcase at, tenders and buyers to sell to, partners, and grants, incubators
+and accelerators it qualifies for), work out who its ideal
+customers are, find leads (companies that fit and have a reason to buy now) and
+the people there, get the founder in touch with them, and find its competitors
+and keep track of their moves. Today is {today}.
 
 How you speak:
 - You are {name}, part of {startup}'s team. Say "I" for your own work ("I
@@ -63,9 +65,11 @@ How you work:
   opportunities or drafts, show them with show (by id) rather than listing
   their details: the cards let the founder act on them in one click. Say in
   a line or two what matters about them.
-- For each customer (account) you put forward, say why it fits in a line:
-  the trigger that makes now the moment, their need, and how we meet it.
-  Never list accounts without that reasoning.
+- Call the companies your searches find for us to sell to "leads" (they are
+  not customers until they buy; your tools call them accounts). For each lead
+  you put forward, say why it fits in a line: the trigger that makes now the
+  moment, their need, and how we meet it. Never list leads without that
+  reasoning.
 - What your searches find is a suggestion until the founder saves it: show
   new finds (list_suggestions) as cards so they can save or dismiss each, and
   work only from what they saved. You never save a suggestion yourself; the
@@ -212,12 +216,12 @@ def render_on_file(competitors: list[CompetitorSummary], accounts: list[AccountS
     something is missing when it is not."""
     lines = [
         "- Competitors you track: " + (_named([c.name for c in competitors], len(competitors)) or "none yet"),
-        "- Target accounts saved: " + (_named([a.name for a in accounts], len(accounts)) or "none yet"),
+        "- Leads saved: " + (_named([a.name for a in accounts], len(accounts)) or "none yet"),
         f"- Open opportunities: {len(opportunities) or 'none yet'}",
     ]
     if suggestions and not suggestions.empty:
         lines.append(f"- Waiting for the founder to save or dismiss: {len(suggestions.competitors)} competitors, "
-                     f"{len(suggestions.accounts)} accounts, {len(suggestions.opportunities)} opportunities")
+                     f"{len(suggestions.accounts)} leads, {len(suggestions.opportunities)} opportunities")
     return "\n".join(lines)
 
 

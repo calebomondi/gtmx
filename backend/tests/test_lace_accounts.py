@@ -50,7 +50,7 @@ def test_search_saves_accounts_and_the_lace_reports_back(client, lace, lace_runt
 
     assert seen == {"exclude": ["acme.test", "rival.test"], "country": "Kenya", "industries": ["Clinics"]}
     update = turns[-1].input["updates"][0]
-    assert "in Kenya finished: 2 accounts (2 new, 0 already on file)" in update and "Strong raised a round" in update
+    assert "in Kenya finished: 2 leads (2 new, 0 already on file)" in update and "Strong raised a round" in update
     # A weak fit is left out, named for the Lace only, never put forward.
     assert "1 weaker match left out: Weak. Don't put these forward." in update
     # Found accounts wait for the founder: none is a target until saved.

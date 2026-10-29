@@ -80,7 +80,7 @@ _STEP_TEXT = {
     "list_competitors": lambda a: "Checking the competitors I track",
     "find_competitors": lambda a: "Starting a competitor search",
     "check_competitors": lambda a: "Checking competitors for changes",
-    "list_accounts": lambda a: "Checking the target accounts",
+    "list_accounts": lambda a: "Checking the saved leads",
     "find_contacts": lambda a: "Starting a search for contacts",
     "draft_outreach": lambda a: "Starting to draft messages",
     "find_opportunities": lambda a: "Starting a search for opportunities",

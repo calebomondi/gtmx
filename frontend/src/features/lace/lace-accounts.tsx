@@ -94,7 +94,7 @@ function Reach({ account }: { account: LaceAccountDto }) {
   )
 }
 
-/** Target accounts: who they are, why they fit (the trigger that makes now
+/** Leads: who they are, why they fit (the trigger that makes now
  * the moment, their need, how we meet it, the payoff), who to reach, and a
  * way to talk it through with the Lace. Dismissing one drops it for good. */
 export function LaceAccounts({ accounts, finding, onDismiss, name, onDiscuss }: {
@@ -112,7 +112,7 @@ export function LaceAccounts({ accounts, finding, onDismiss, name, onDiscuss }: 
         </p>
       )}
       {accounts.length === 0 && !finding && (
-        <p className="text-sm text-muted-foreground">None yet. Ask {name} to find customers.</p>
+        <p className="text-sm text-muted-foreground">None yet. Ask {name} to find leads.</p>
       )}
       <ul className="flex flex-col gap-3">
         {accounts.map((a) => (

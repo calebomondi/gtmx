@@ -68,7 +68,7 @@ def build_sheet_tools(store: LaceStore, apps: LaceApps) -> list[BaseTool]:
     @guarded
     async def export_to_sheet(what: Literal["accounts", "contacts"], sheet_url: str | None = None,
                               title: str | None = None) -> ToolResult:
-        """Propose exporting your saved target accounts or contacts to Google Sheets: a new spreadsheet, or appended to one the founder links. It runs only if they approve it.
+        """Propose exporting your saved leads or contacts to Google Sheets: a new spreadsheet, or appended to one the founder links. It runs only if they approve it.
 
         Args:
             what: accounts or contacts.

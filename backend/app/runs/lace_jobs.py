@@ -220,7 +220,7 @@ async def accounts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> N
                 icp = await _define_icp(store, None)
             found = await asyncio.to_thread(find_accounts, profile, facts, icp, exclude, params.get("country"))
     except Exception as exc:
-        await report_failure(lace_id, "search for target accounts", exc, params)
+        await report_failure(lace_id, "search for leads", exc, params)
         raise
     found, weak = good_fits(found, lambda item: item[1].strength if item[1] else None)
     async with AsyncSessionLocal() as db, db.begin():
@@ -228,7 +228,7 @@ async def accounts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> N
         await job_update(db, lace_id, params, accounts_update(found, new, refreshed, params.get("country"),
                                                               [record.name for record, _ in weak]), run_id)
         if new:
-            await job_activity(db, lace_id, params, "accounts_found", f"Found {plural(new, 'new target account')}",
+            await job_activity(db, lace_id, params, "accounts_found", f"Found {plural(new, 'new lead')}",
                         names([record.name for record, _ in found]))
     await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
                          progress={"found": len(found), "new": new, "refreshed": refreshed})
@@ -366,7 +366,7 @@ def drafts_update(drafts: list[LaceOutreach], unreachable: list[str], failed: li
 
 def contacts_update(results: list[AccountRecord]) -> str:
     if not results:
-        return "The contact search had no accounts to look at: every target account was already searched."
+        return "The contact search had no leads to look at: every saved lead was already searched."
     lines = []
     for r in results:
         status = contact_status(r)
@@ -407,7 +407,7 @@ def accounts_update(found: list, new: int, refreshed: int, country: str | None, 
     if not found:
         checked = (f" It checked {plural(len(weak), 'company', 'companies')}, but none fits what we sell well enough."
                    if weak else "")
-        return (f"The search for target accounts{where} finished without finding an account with a current, "
+        return (f"The search for leads{where} finished without finding a company with a current, "
                 f"verifiable reason to buy that fits.{checked} {NOTHING_FITS}")
     lines = []
     for record, fit in found:
@@ -417,7 +417,7 @@ def accounts_update(found: list, new: int, refreshed: int, country: str | None, 
         if fit:
             line += f". Need: {fit.need} [{fit.strength} fit]"
         lines.append(line)
-    return (f"The search for target accounts{where} finished: {len(found)} accounts ({new} new, {refreshed} "
+    return (f"The search for leads{where} finished: {len(found)} leads ({new} new, {refreshed} "
             "already on file), each with a current trigger:\n" + "\n".join(lines) + _left_out(weak or [])
             + "\nNew ones wait for the founder to save or dismiss: show them (ids from list_suggestions); once saved, find_contacts finds who to reach.")
 

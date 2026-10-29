@@ -15,7 +15,7 @@ export interface FoundItem {
 }
 
 export interface FoundSection {
-  key: "competitors" | "customers" | "opportunities" | "contacts"
+  key: "competitors" | "leads" | "opportunities" | "contacts"
   title: string
   /** One of them, for "+1 competitor". */
   noun: string
@@ -50,8 +50,8 @@ export function foundSections(chat: LaceChat, opps: LaceOpportunities, open: (ta
       ]),
     },
     {
-      key: "customers", title: "Customers", noun: "customer", icon: Building2, waitingLabel: "to review",
-      open: () => open({ tab: "feed", section: "accounts" }), ask: "Find target accounts for us",
+      key: "leads", title: "Leads", noun: "lead", icon: Building2, waitingLabel: "to review",
+      open: () => open({ tab: "feed", section: "accounts" }), ask: "Find leads for us",
       keep: (id) => void chat.saveAccount(id), keepLabel: "Save", drop: (id) => void chat.dismissAccount(id),
       items: newestFirst([
         ...chat.suggestedAccounts.map((a) => ({ id: a.id, label: a.name, detail: a.trigger?.event, at: a.first_seen_at, waiting: true })),

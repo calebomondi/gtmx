@@ -16,7 +16,7 @@ export function Closing({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null;
             Join the waitlist
           </p>
           <h2 className="text-[2.5rem] leading-[1.02] font-semibold tracking-[-0.035em] text-balance sm:text-6xl">
-            Your next customer, partner or deal is out there. <span className="text-brand">Lace finds it.</span>
+            Your next customer, partner or deal is out there. <span className="text-brand">Lace finds it, with your whole team.</span>
           </h2>
           <p className="max-w-md text-lg leading-relaxed text-night-muted">
             One email puts you on the list. Tick the pilot on the next step if you want your Lace early.

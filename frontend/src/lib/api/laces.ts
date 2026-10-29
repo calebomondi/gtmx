@@ -466,7 +466,7 @@ export function unlinkLaceChannel(laceId: string, channelId: string): Promise<vo
   return apiFetch(`/api/v1/laces/${laceId}/channels/${channelId}`, { method: "DELETE" })
 }
 
-export type OpportunityKind = "showcase" | "sell" | "partner"
+export type OpportunityKind = "showcase" | "sell" | "partner" | "funding"
 /** suggested: a search found it and it waits for the founder to save (open) or dismiss. */
 export type OpportunityStatus = "suggested" | "open" | "dismissed"
 
@@ -613,7 +613,7 @@ export function listAllLaceActivity(before?: string): Promise<LaceActivityItemDt
   return apiFetch<LaceActivityItemDto[]>(`/api/v1/laces/activity${query}`)
 }
 
-/** How far a Lace's target accounts have come. Counts of distinct accounts. */
+/** How far a Lace's leads have come. Counts of distinct accounts. */
 export interface FunnelDto {
   accounts: number
   contacted: number
@@ -625,7 +625,7 @@ export function getLaceFunnel(laceId: string): Promise<FunnelDto> {
   return apiFetch<FunnelDto>(`/api/v1/laces/${laceId}/funnel`)
 }
 
-/** A person at one of the Lace's target accounts. */
+/** A person at one of the Lace's leads. */
 export interface ContactDto {
   id: string
   account_id: string

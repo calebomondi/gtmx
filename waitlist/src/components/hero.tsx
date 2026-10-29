@@ -6,10 +6,10 @@ import { LacePreview } from './lace-preview'
 import { ProductDemo } from './product-demo'
 import { RotatingWord } from './rotating-word'
 
-const PROOF = ['One Lace per startup', 'Works wherever you sell', 'Email, LinkedIn, X, Instagram & more', 'You approve every send']
+const PROOF = ['One Lace per startup', 'Your cofounders on it too', 'Works wherever you sell', 'You approve every send']
 
 // What Lace finds, one after another; read whole without motion.
-const FINDS = ['customers.', 'opportunities.', 'partners.', 'next deal.']
+const FINDS = ['leads.', 'opportunities.', 'partners.', 'next deal.']
 
 export function Hero({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; onPilotSpotsLeft: (left: number) => void }) {
   return (
@@ -29,13 +29,14 @@ export function Hero({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; on
             </h1>
             <p className="text-2xl leading-tight font-semibold tracking-tight sm:text-3xl short:text-xl">
               It finds your{' '}
-              <RotatingWord words={FINDS} whole="customers, opportunities, partners and your next deal." />
+              <RotatingWord words={FINDS} whole="leads, opportunities, partners and your next deal." />
             </p>
           </div>
           <p className="max-w-xl text-lg leading-relaxed text-muted short:text-base">
-            Give it your website. Lace learns what you sell, then finds your ideal customers and the people to reach,
-            spots places to sell, showcase and partner, watches your competitors, brainstorms with you, and drafts
-            every message and reply. Nothing goes out without your click.
+            <span className="font-medium text-ink">One Lace for your startup, shared by your whole founding team.</span>{' '}
+            Give it your website: it learns what you sell, finds your ideal customers and who to reach, spots places to
+            sell, showcase and partner, watches competitors, brainstorms with you and drafts every message. Nothing goes
+            out without your click.
           </p>
           <SignupCard id="join" pilot={pilot} onPilotSpotsLeft={onPilotSpotsLeft} />
           <ul className="flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-muted">
