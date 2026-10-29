@@ -1,5 +1,6 @@
-"""Opportunities for a startup: places to showcase, buyers to sell to, and
-partners. Found by search and kept only when sourced, recent and still open."""
+"""Opportunities for a startup: places to showcase, buyers to sell to,
+partners, and funding (grants, incubators, accelerators) it qualifies for.
+Found by search and kept only when sourced, recent, still open and a fit."""
 
 from typing import Literal
 
@@ -7,7 +8,7 @@ from pydantic import Field
 
 from agents.schemas.coercion import LenientModel
 
-OpportunityKind = Literal["showcase", "sell", "partner"]
+OpportunityKind = Literal["showcase", "sell", "partner", "funding"]
 OPPORTUNITY_KINDS: tuple[str, ...] = OpportunityKind.__args__
 
 

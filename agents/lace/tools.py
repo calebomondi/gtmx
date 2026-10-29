@@ -432,7 +432,7 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
     @tool(parse_docstring=True)
     @guarded
     async def find_opportunities(kinds: list[OpportunityKind] | None = None) -> ToolResult:
-        """Search for current opportunities: showcase (events, conferences, awards, press), sell (open tenders, RFPs, buyers looking) and partner (complementary companies, integrations, resellers). Keeps only sourced ones that are still open. Runs in the background; you get an update when it is done. It also runs on its own, as often as the founder set in this Lace's settings.
+        """Search for current opportunities: showcase (events, conferences, awards, press), sell (open tenders, RFPs, buyers looking), partner (complementary companies, integrations, resellers) and funding (grants, incubators, accelerators the startup qualifies for). Keeps only sourced ones that are still open and fit. Runs in the background; you get an update when it is done. It also runs on its own, as often as the founder set in this Lace's settings.
 
         Args:
             kinds: Which kinds to look for; all three when omitted.

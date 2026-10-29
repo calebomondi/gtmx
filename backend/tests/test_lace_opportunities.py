@@ -124,3 +124,14 @@ def test_loose_matches_are_left_out(client, lace, lace_runtime, user, monkeypatc
     assert "found 1 open opportunities" in update and "1 weaker match left out: Procurement officer job" in update
     listed = client.get(f"{API}/laces/{lace}/opportunities?status=suggested").json()
     assert [o["title"] for o in listed] == ["Blockchain build RFP"]
+
+
+def test_funding_is_saved_and_listed(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    grant, rules_us_out = _found(("funding", "IoT hardware grant", "https://grants.test/iot", SOON),
+                                 ("funding", "Fintech accelerator, Lagos only", "https://acc.test/lagos", SOON))
+    _stub(monkeypatch, [grant, rules_us_out.model_copy(update={"fit": "weak"})])
+    lace_runtime.append(AIMessage(content="One grant fits."))
+    run = client.portal.call(manager.start_lace_job, "lace_opportunities", user.id, uuid.UUID(lace), {"kinds": ["funding"]})
+    client.portal.call(_wait_for_status, run.id, {"completed"})
+    listed = client.get(f"{API}/laces/{lace}/opportunities?status=suggested").json()
+    assert [(o["kind"], o["title"]) for o in listed] == [("funding", "IoT hardware grant")]
