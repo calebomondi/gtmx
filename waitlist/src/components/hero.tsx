@@ -9,7 +9,7 @@ import { RotatingWord } from './rotating-word'
 const PROOF = ['One Lace per startup', 'Your cofounders on it too', 'Works wherever you sell', 'You approve every send']
 
 // What Lace finds, one after another; read whole without motion.
-const FINDS = ['customers.', 'opportunities.', 'partners.', 'next deal.']
+const FINDS = ['leads.', 'opportunities.', 'partners.', 'next deal.']
 
 export function Hero({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; onPilotSpotsLeft: (left: number) => void }) {
   return (
@@ -29,7 +29,7 @@ export function Hero({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; on
             </h1>
             <p className="text-2xl leading-tight font-semibold tracking-tight sm:text-3xl short:text-xl">
               It finds your{' '}
-              <RotatingWord words={FINDS} whole="customers, opportunities, partners and your next deal." />
+              <RotatingWord words={FINDS} whole="leads, opportunities, partners and your next deal." />
             </p>
           </div>
           <p className="max-w-xl text-lg leading-relaxed text-muted short:text-base">
