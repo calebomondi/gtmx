@@ -60,7 +60,7 @@ const SCENES: Scene[] = [
         <At t={t} at={1}><Step done={t >= 3}>Searching for startups that just raised a seed round</Step></At>
         <At t={t} at={2}><Step done={t >= 5}>Checking acmepay.example/careers</Step></At>
         <At t={t} at={5}>
-          <Card tag="Target account · strong fit" title="Acme Pay">
+          <Card tag="Lead · strong fit" title="Acme Pay">
             <p><span className="font-medium text-ink">Why now:</span> raised a seed round, hiring its first sales lead</p>
             <p><span className="font-medium text-ink">Reach:</span> Neema Okafor, founder &amp; CEO · email</p>
           </Card>
@@ -120,7 +120,7 @@ const SCENES: Scene[] = [
 ]
 
 /** The hero's example, until a recording is published: an invented Lace at
- * work, acted out in three short scenes (finding a customer, spotting an
+ * work, acted out in three short scenes (finding a lead, spotting an
  * opportunity, a draft brainstormed shorter). It plays only on screen; with
  * reduced motion each scene is shown whole and the tabs switch them. */
 export function LacePreview() {

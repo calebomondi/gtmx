@@ -15,8 +15,8 @@ const COLUMNS: Column[] = [
     mood: 'thinking',
     items: [
       {
-        title: 'Your ideal customers, and who to reach',
-        body: 'Companies with a reason to buy now (a funding round, a new office, a hiring push) and the person there who decides.',
+        title: 'Leads worth reaching, and who decides',
+        body: 'Companies that fit who you sell to and have a reason to buy now (a funding round, a new office, a hiring push), and the person there who signs off.',
       },
       {
         title: 'Places to sell',

@@ -4,15 +4,15 @@ import { Section } from './section'
 const QUESTIONS = [
   {
     q: 'What is a Lace?',
-    a: 'Your startup’s own assistant. You name it and give it your website; it learns what you sell, and from then on finds customers, opportunities and partners, watches your competitors, and drafts your messages and replies. You talk to it in a chat, and see what it did in your Feed and Messaging.',
+    a: 'Your startup’s own assistant. You name it and give it your website; it learns what you sell, and from then on finds leads, opportunities and partners, watches your competitors, and drafts your messages and replies. You talk to it in a chat, and see what it did in your Feed and Messaging.',
   },
   {
     q: 'Will it message people on its own?',
     a: 'No. Lace only drafts. Email and X messages go out from your own accounts when you click send; on LinkedIn, Instagram, Facebook and TikTok you copy the message and send it there yourself. Anyone who asks not to be contacted is never drafted to again.',
   },
   {
-    q: 'Can it find partners and tenders, not only customers?',
-    a: 'Yes. Besides customers, it looks for places to sell (tenders, RFPs, procurement calls), places to be seen (events, awards, podcasts, press) and partners who serve the same buyers, each with its deadline and why it fits.',
+    q: 'Can it find more than leads?',
+    a: 'Yes. Besides leads, it looks for places to sell (tenders, RFPs, procurement calls), places to be seen (events, awards, podcasts, press), partners who serve the same buyers, and grants, incubators and accelerators you qualify for, each with its deadline and why it fits.',
   },
   {
     q: 'Does it work in my country?',
