@@ -46,7 +46,7 @@ export function CreatedScene() {
 }
 
 const FINDS = [
-  { tag: 'Customer', text: 'Acme Pay' },
+  { tag: 'Lead', text: 'Acme Pay' },
   { tag: 'Event', text: 'Closes in 12 days' },
   { tag: 'Competitor', text: 'Changed its pricing' },
 ]
