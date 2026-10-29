@@ -153,7 +153,7 @@ function StackedStep({ index }: { index: number }) {
 export function HowItWorks() {
   const story = useStoryMode()
   return (
-    <Section tone="night" label="How it works" title="Three steps, and you stay in charge of every message.">
+    <Section tone="night" title="Three steps, and you stay in charge of every message.">
       {story ? (
         <Story />
       ) : (

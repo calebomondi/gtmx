@@ -75,7 +75,7 @@ export function Pilot({ pilot }: { pilot: PilotSpots | null }) {
       tone="brand"
       label="The pilot"
       title={pilotTitle(pilot)}
-      intro="One spot per startup, and your whole founding team comes with it. Join the waitlist and tick “Join the pilot”; we’ll email you to set up your Lace and a short kickoff call."
+      intro="Join the waitlist and tick “Join the pilot”. We’ll email you to set up your Lace and book a short kickoff call."
     >
       <div className="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
         <div data-reveal className="flex flex-col gap-6">

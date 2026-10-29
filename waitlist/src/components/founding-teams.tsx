@@ -1,25 +1,72 @@
-import type { ReactNode } from 'react'
+import type { ReactNode, SVGProps } from 'react'
 
 import { stagger } from '../lib/stagger'
 import { Lace } from './lace-mascot'
 import { Section } from './section'
 
+function Icon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" width={20} height={20} fill="none" stroke="currentColor" strokeWidth={2}
+         strokeLinecap="round" strokeLinejoin="round" {...props} />
+  )
+}
+
+/** Two people, one in front of the other. */
+function Cofounders() {
+  return (
+    <Icon>
+      <circle cx="9" cy="8" r="3.5" />
+      <path d="M2.5 20a6.5 6.5 0 0 1 13 0" />
+      <path d="M14.5 4.7a3.5 3.5 0 0 1 0 6.6" />
+      <path d="M18 14.2a6.5 6.5 0 0 1 3.5 5.8" />
+    </Icon>
+  )
+}
+
+function Padlock() {
+  return (
+    <Icon>
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </Icon>
+  )
+}
+
+/** Two message bubbles, one over the other: several talks going at once. */
+function Conversations() {
+  return (
+    <Icon>
+      <path d="M14 10a1.5 1.5 0 0 1-1.5 1.5H7L3 15V4.5A1.5 1.5 0 0 1 4.5 3h8A1.5 1.5 0 0 1 14 4.5z" />
+      <path d="M17.5 8h2A1.5 1.5 0 0 1 21 9.5V21l-4-3.5h-5.5a1.5 1.5 0 0 1-1.5-1.5v-1.5" />
+    </Icon>
+  )
+}
+
+/** The orange square each point's icon sits in, as wide as Lace beside it. */
+function Badge({ children }: { children: ReactNode }) {
+  return <span className="grid size-9 place-items-center rounded-lg bg-brand text-ink">{children}</span>
+}
+
 // Thalace's own team chat, as in the hero's example. The people are "you" and "your cofounder", and the
 // startups invented: none is a real company or person.
-const POINTS = [
+const POINTS: { title: string; body: string; icon: ReactNode }[] = [
   {
+    icon: <Lace state="idle" size={36} decorative />,
     title: 'One Lace per startup',
     body: 'One memory of what you sell, who buys, every competitor and every conversation. Nobody re-explains the startup, to Lace or to each other.',
   },
   {
+    icon: <Badge><Cofounders /></Badge>,
     title: 'Your cofounders, on the same Lace',
     body: 'Invite them by email. The team chat shows who asked what, and Lace answers each of you by name.',
   },
   {
+    icon: <Badge><Padlock /></Badge>,
     title: 'A private chat for each of you',
     body: 'Think out loud in “Just you”. What it finds there stays yours until you push it, with a note, and a cofounder approves it for the team.',
   },
   {
+    icon: <Badge><Conversations /></Badge>,
     title: 'All of you, at once',
     body: 'Ask while searches run in the background. Messages wait their turn, nothing gets lost, and results arrive marked when they’re in.',
   },
@@ -110,25 +157,22 @@ export function FoundingTeams() {
     <Section
       id="teams"
       tone="paper"
-      label="Built for founding teams"
       title="One startup. One Lace. Everyone on it."
       intro="A startup is rarely one person. Your Lace is shared by the whole founding team, so what one of you learns, all of you can build on."
     >
       <div className="grid gap-10 lg:grid-cols-[1fr_1fr] lg:items-center lg:gap-16">
         <TeamChat />
-        <ol className="flex flex-col gap-7">
+        <ul className="flex flex-col gap-7">
           {POINTS.map((point, i) => (
             <li key={point.title} data-reveal style={stagger(i)} className="flex gap-4">
-              <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand font-mono text-sm font-semibold text-ink">
-                {i + 1}
-              </span>
+              <span className="shrink-0">{point.icon}</span>
               <div>
                 <p className="text-lg font-semibold tracking-tight">{point.title}</p>
                 <p className="mt-1 leading-relaxed text-muted">{point.body}</p>
               </div>
             </li>
           ))}
-        </ol>
+        </ul>
       </div>
     </Section>
   )

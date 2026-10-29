@@ -71,7 +71,6 @@ export function WhatLaceDoes() {
     <Section
       id="what-lace-does"
       tone="white"
-      label="What your Lace does"
       title="One assistant for everything between you and your next deal."
       intro="Your Lace works from what it knows about your startup and from the web as it is today. Everything it finds says where it found it, and waits for your OK before it is saved or sent."
     >
