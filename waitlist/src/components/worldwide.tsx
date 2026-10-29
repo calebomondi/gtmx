@@ -26,7 +26,6 @@ const POINTS = [
 export function Worldwide() {
   return (
     <Section
-      label="Works wherever you sell"
       title="It already knows where to look."
       intro="There’s no list of countries to pick from. Lace reads where you sell from your own website, and goes wherever you point it."
     >

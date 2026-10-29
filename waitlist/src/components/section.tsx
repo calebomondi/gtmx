@@ -11,9 +11,10 @@ const TONE: Record<Tone, { section: string; label: string; intro: string }> = {
   brand: { section: 'bg-brand text-ink', label: 'text-ink', intro: 'text-ink/75' },
 }
 
-/** A page section: a mono label, a headline and an intro that rise in as the
- * section scrolls into view, then its content. The tone sets its surface, so
- * consecutive sections alternate. */
+/** A page section: a headline and an intro that rise in as the section
+ * scrolls into view, then its content. A mono label above the headline is
+ * kept for the few sections it helps find (the pilot, the questions). The tone
+ * sets its surface, so consecutive sections alternate. */
 export function Section({
   id,
   tone = 'paper',
@@ -24,7 +25,7 @@ export function Section({
 }: {
   id?: string
   tone?: Tone
-  label: string
+  label?: string
   title: string
   intro?: string
   children: ReactNode
@@ -33,14 +34,16 @@ export function Section({
   return (
     <section id={id} className={`scroll-mt-14 py-20 sm:py-28 ${t.section}`}>
       <div className="mx-auto max-w-7xl px-5 sm:px-8">
-        <p data-reveal className={`flex items-center gap-2 font-mono text-xs uppercase tracking-wider ${t.label}`}>
-          <span aria-hidden className={`h-px w-6 ${tone === 'brand' ? 'bg-ink' : 'bg-brand'}`} />
-          {label}
-        </p>
+        {label && (
+          <p data-reveal className={`mb-4 flex items-center gap-2 font-mono text-xs uppercase tracking-wider ${t.label}`}>
+            <span aria-hidden className={`h-px w-6 ${tone === 'brand' ? 'bg-ink' : 'bg-brand'}`} />
+            {label}
+          </p>
+        )}
         <h2
           data-reveal
           style={stagger(1)}
-          className="mt-4 max-w-3xl text-[2rem] leading-[1.08] font-semibold tracking-[-0.03em] text-balance sm:text-5xl"
+          className="max-w-3xl text-[2rem] leading-[1.08] font-semibold tracking-[-0.03em] text-balance sm:text-5xl"
         >
           {title}
         </h2>
