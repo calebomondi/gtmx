@@ -158,8 +158,7 @@ export function LacePreview() {
 
   return (
     <DemoFrame status="Example" live={!still && visible} detail={`Thalace’s own ${LACE}, finding invented startups`}>
-      {/* 4:3 like the recording that will replace it; on phones, tall enough for a whole scene. */}
-      <div ref={box} className="flex min-h-[24rem] flex-col bg-paper sm:aspect-[4/3] sm:min-h-0">
+      <div ref={box} className="flex flex-col bg-paper">
         <div className="flex items-center gap-3 border-b border-line bg-panel px-4 py-3">
           <Lace state={current.mood(t)} size={32} decorative />
           <div className="min-w-0">
@@ -176,8 +175,9 @@ export function LacePreview() {
             ))}
           </div>
         </div>
-        {/* Remounts per scene, so each starts from its first line. */}
-        <div key={scene} className="flex min-h-0 flex-1 flex-col justify-center gap-2.5 overflow-hidden p-4 sm:p-5" aria-live="off">
+        {/* Remounts per scene, so each starts from its first line. Lines stack from the
+            top, and the height fits the tallest scene, so the card never jumps between them. */}
+        <div key={scene} className="flex min-h-[23rem] flex-col justify-start gap-2.5 p-4 sm:min-h-[18.5rem] sm:p-5" aria-live="off">
           {current.render(t)}
         </div>
       </div>
