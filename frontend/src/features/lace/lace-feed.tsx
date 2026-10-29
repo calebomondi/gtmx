@@ -67,7 +67,7 @@ function Pulse({ laceId, name, chat, activity, apps, needs, onOpen }: {
 }
 
 /** What the Lace found and did, as sub-tabs under a short summary of where
- * things stand: its activity, the opportunities it turned up, the customers
+ * things stand: its activity, the opportunities it turned up, the leads
  * worth reaching, and the competitors it tracks. Each holds what waits for
  * the founder's review above what was saved. */
 export function LaceFeed({ laceId, name, chat, activity, opps, apps, onOpen, onDiscuss }: {
@@ -128,11 +128,11 @@ export function LaceFeed({ laceId, name, chat, activity, opps, apps, onOpen, onD
       ),
     },
     {
-      value: "accounts", label: "Customers", count: chat.accounts.length,
+      value: "accounts", label: "Leads", count: chat.accounts.length,
       waiting: chat.suggestedAccounts.length, busy: chat.findingAccounts,
       content: (
         <>
-          <PanelIntro>Who matches your ideal customer and has a reason to buy now, with the case for each.</PanelIntro>
+          <PanelIntro>Companies that fit your ideal customer profile and have a reason to buy now, with the case for each.</PanelIntro>
           <LaceReview items={chat.suggestedAccounts.map(accountItem)} onSave={(id) => void chat.saveAccount(id)}
                       onDismiss={(id, why) => void chat.dismissAccount(id, why)} askWhy />
           <LaceAccounts accounts={chat.accounts} finding={chat.findingAccounts}

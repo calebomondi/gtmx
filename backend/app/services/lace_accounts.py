@@ -75,7 +75,7 @@ async def set_status(db: AsyncSession, lace_id: uuid.UUID, account_id: uuid.UUID
                      actor_id: uuid.UUID | None, member_id: uuid.UUID | None = None) -> LaceAccount:
     row = await get_in_lace(db, lace_id, account_id, member_id)
     if status == "target" and row.status != status and row.owner_id is None:
-        await lace_activity.note(db, lace_id, actor_id, "account_saved", f"Saved {row.name} as a target account")
+        await lace_activity.note(db, lace_id, actor_id, "account_saved", f"Saved {row.name} as a lead")
     row.status = status
     await db.commit()
     return row

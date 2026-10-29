@@ -58,7 +58,7 @@ def _column(name: str) -> tuple[Callable, Callable]:
 KINDS: dict[str, _Kind] = {
     "competitor": _Kind(LaceCompetitor, "domain_key", "tracked", "name", "website", "website", "competitor",
                         "competitor_saved", *_column("summary")),
-    "account": _Kind(LaceAccount, "key", "target", "name", "website", "website", "target account", "account_saved",
+    "account": _Kind(LaceAccount, "key", "target", "name", "website", "website", "lead", "account_saved",
                      _account_about, _set_account_about),
     "opportunity": _Kind(LaceOpportunity, "url_key", "open", "title", "organiser", "url", "opportunity",
                          "opportunity_saved", *_column("why_it_fits")),

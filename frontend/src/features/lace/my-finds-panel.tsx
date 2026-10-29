@@ -14,7 +14,7 @@ import type { MyFinds } from "./use-lace-finds"
 /** The panel's tabs, named like the Feed's. */
 const TABS: readonly { kind: FindKind; title: string }[] = [
   { kind: "competitor", title: "Competitors" },
-  { kind: "account", title: "Customers" },
+  { kind: "account", title: "Leads" },
   { kind: "opportunity", title: "Opportunities" },
 ]
 

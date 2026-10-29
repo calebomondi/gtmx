@@ -1,5 +1,5 @@
 """Suggested replies the Lace forgot to offer. A reply that ends on an offer
-("Want me to dig into Velinex, or look for target accounts?") should come
+("Want me to dig into Velinex, or look for leads?") should come
 with chips the founder taps instead of typing. The model offers them with
 suggest_replies, but not every time; when it doesn't, the cheap model reads
 the closing question and writes them."""

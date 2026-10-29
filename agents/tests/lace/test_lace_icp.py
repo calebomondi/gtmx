@@ -67,7 +67,7 @@ def test_the_prompt_says_what_is_on_file_and_to_speak_as_itself():
               for i in range(10)]
     on_file = render_on_file(rivals, [], [], Suggestions())
     assert "- Competitors you track: Rival 0, Rival 1" in on_file and "(+2 more)" in on_file
-    assert "- Target accounts saved: none yet" in on_file
+    assert "- Leads saved: none yet" in on_file
     prompt = system_prompt(PROFILE, [], on_file=on_file)
     assert "Rival 7" in prompt and '"we", "us" and "our"' in prompt and "Never claim an absence" in prompt
     assert "say why it fits" in prompt

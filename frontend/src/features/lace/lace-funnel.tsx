@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { getLaceFunnel, type FunnelDto } from "@/lib/api"
 
 const STEPS: { key: keyof FunnelDto; label: string }[] = [
-  { key: "accounts", label: "Target accounts" },
+  { key: "accounts", label: "Leads" },
   { key: "contacted", label: "Contacted" },
   { key: "replied", label: "Replied" },
   { key: "interested", label: "Interested" },
@@ -14,7 +14,7 @@ function share(part: number, whole: number): string | null {
   return whole > 0 ? `${Math.round((part / whole) * 100)}%` : null
 }
 
-/** How far the Lace's target accounts have come: one tile per stage, each
+/** How far the Lace's leads have come: one tile per stage, each
  * with its share of the stage before. Refetched whenever `refreshKey`
  * changes (new activity, a message sent). */
 export function LaceFunnel({ laceId, refreshKey }: { laceId: string; refreshKey: string }) {

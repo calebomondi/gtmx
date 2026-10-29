@@ -93,7 +93,7 @@ export default function NewLace() {
             </div>
             <CardTitle className="text-xl">Create your Lace</CardTitle>
             <CardDescription className="text-balance">
-              Your Lace reads your website to learn what you sell, then spots opportunities, finds customers and partners,
+              Your Lace reads your website to learn what you sell, then spots opportunities, finds leads and partners,
               watches competitors, and drafts your outreach and replies.
             </CardDescription>
           </CardHeader>
