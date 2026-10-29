@@ -104,7 +104,7 @@ async def digest(db: AsyncSession, lace_id: uuid.UUID, since: datetime, today: d
     sections = [
         _section("Competitor moves", [m.claim + (f" ({m.source_url})" if m.source_url else "") for m in moves], n_moves),
         _section("New competitors found", [f"{c.name} ({c.website})" for c in rivals], n_rivals),
-        _section("New target accounts", [a.name + (f", {a.geo}" if a.geo else "") for a in accounts], n_accounts),
+        _section("New leads", [a.name + (f", {a.geo}" if a.geo else "") for a in accounts], n_accounts),
         _section("Named contacts found at", [a.name for a in reached], n_reached),
         _section("Replies that came in", [f"{r.recipient_name or r.recipient_address} ({r.recipient_company or r.channel})"
                                           + (f": {r.intent}" if r.intent else "") for r in replies], n_replies),

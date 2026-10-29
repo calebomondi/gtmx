@@ -82,4 +82,4 @@ async def test_list_accounts(settings):
     store.targets = [AccountSummary(id="a1", name="Alpha", account_type="company", trigger="Opened 3 new sites",
                                     need="Payroll", fit_strength="strong")]
     out = json.loads(await {t.name: t for t in build_tools(store, settings)}["list_accounts"].ainvoke({}))
-    assert out["summary"] == "1 target accounts." and out["data"][0]["trigger"] == "Opened 3 new sites"
+    assert out["summary"] == "1 saved leads." and out["data"][0]["trigger"] == "Opened 3 new sites"

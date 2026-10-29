@@ -322,7 +322,7 @@ _JOB_SEGMENTS = {"lace_competitors": lace_jobs.competitors_job, "lace_monitor": 
 _JOB_BUSY = {
     "lace_competitors": "A competitor search is already running; I'll report when it's done.",
     "lace_monitor": "I'm already checking the competitors; I'll report anything that matters.",
-    "lace_accounts": "A search for target accounts is already running; I'll report when it's done.",
+    "lace_accounts": "A search for leads is already running; I'll report when it's done.",
     "lace_icp": "I'm already working out the ideal customer profile; I'll report when it's done.",
     "lace_contacts": "A contact search is already running; I'll report when it's done.",
     "lace_drafts": "I'm already drafting messages; I'll report when they're ready.",
@@ -432,7 +432,7 @@ async def _cancel(db: AsyncSession, run: models.Run, message: str) -> models.Run
 
 # How the Lace names each background job when telling the founder it stopped.
 _JOB_NAMES = {"lace_competitors": "competitor search", "lace_monitor": "competitor check",
-              "lace_accounts": "search for target accounts", "lace_contacts": "contact search",
+              "lace_accounts": "search for leads", "lace_contacts": "contact search",
               "lace_icp": "ideal customer profile", "lace_drafts": "drafting", "lace_reply": "reading of replies",
               "lace_opportunities": "opportunity search", "lace_comments": "reading of TikTok comments"}
 

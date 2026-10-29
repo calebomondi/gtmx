@@ -433,7 +433,7 @@ class LaceActivityItem(ActivityResponse):
 
 
 class FunnelResponse(BaseModel):
-    accounts: int = Field(description="Target accounts on file")
+    accounts: int = Field(description="Leads on file (target accounts)")
     contacted: int = Field(description="Accounts written to (a message sent)")
     replied: int = Field(description="Accounts that wrote back")
     interested: int = Field(description="Accounts that replied keen, or asking to meet")

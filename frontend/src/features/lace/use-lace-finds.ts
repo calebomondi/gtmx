@@ -8,7 +8,7 @@ import {
 
 /** How each kind of find is named on its own, matching the Feed's tabs. */
 export const FIND_KIND_LABEL: Record<FindKind, string> = {
-  competitor: "Competitor", account: "Customer", opportunity: "Opportunity",
+  competitor: "Competitor", account: "Lead", opportunity: "Opportunity",
 }
 
 function message(err: unknown): string {

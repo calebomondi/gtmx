@@ -69,7 +69,7 @@ export interface LaceChat {
   accounts: LaceAccountDto[]
   /** Accounts a search found, waiting for the founder to save or dismiss. */
   suggestedAccounts: LaceAccountDto[]
-  /** A background search for target accounts, or for their contacts, is running. */
+  /** A background search for leads, or for their contacts, is running. */
   findingAccounts: boolean
   outreach: LaceOutreachDto[]
   /** The people found at saved accounts. */

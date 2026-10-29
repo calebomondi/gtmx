@@ -260,9 +260,9 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
     @tool(parse_docstring=True)
     @guarded
     async def list_accounts() -> ToolResult:
-        """The target accounts the founder saved: who they are, the trigger that makes them worth contacting now, and the case for them. New finds wait in list_suggestions."""
+        """The leads the founder saved (target accounts): who they are, the trigger that makes them worth contacting now, and the case for them. New finds wait in list_suggestions."""
         rows = await store.accounts(ACCOUNTS_PER_READ)
-        return ToolResult.success(f"{len(rows)} target accounts.", [r.model_dump(exclude_none=True) for r in rows])
+        return ToolResult.success(f"{len(rows)} saved leads.", [r.model_dump(exclude_none=True) for r in rows])
 
     @tool(parse_docstring=True)
     @guarded
@@ -372,7 +372,7 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
     @tool(parse_docstring=True)
     @guarded
     async def find_accounts(country: str | None = None) -> ToolResult:
-        """Start a search for target accounts that match the ideal customer profile and have a current reason to buy (a hire, a funding round, a launch...), each verified and with the case for it. When there is no ideal customer profile yet, the search works one out first. Takes several minutes in the background; you get an update when it is done.
+        """Start a search for leads (target accounts) that match the ideal customer profile and have a current reason to buy (a hire, a funding round, a launch...), each verified and with the case for it. When there is no ideal customer profile yet, the search works one out first. Takes several minutes in the background; you get an update when it is done.
 
         Args:
             country: Search one country only, e.g. "Kenya". Otherwise the profile's countries are searched one by one.
@@ -404,10 +404,10 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
     @tool(parse_docstring=True)
     @guarded
     async def find_contacts(account_ids: list[str] | None = None) -> ToolResult:
-        """Find the people to contact at target accounts (named decision makers with an email or LinkedIn) and the organisation's own pages on LinkedIn, Instagram, TikTok, Facebook and X. Runs in the background; you get an update when it is done.
+        """Find the people to contact at leads (named decision makers with an email or LinkedIn) and the organisation's own pages on LinkedIn, Instagram, TikTok, Facebook and X. Runs in the background; you get an update when it is done.
 
         Args:
-            account_ids: Ids from list_accounts to search for. Otherwise every target account not yet searched.
+            account_ids: Ids from list_accounts to search for. Otherwise every saved lead not yet searched.
         """
         try:
             await jobs.start("find_contacts", {"account_ids": account_ids or []})
@@ -418,7 +418,7 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
     @tool(parse_docstring=True)
     @guarded
     async def draft_outreach(account_ids: list[str] | None = None) -> ToolResult:
-        """Draft a first message to target accounts, each to the best person you found there, grounded in their trigger and your facts. The drafts wait for the founder to review, edit and send: you never send anything. Runs in the background; you get an update when they are ready.
+        """Draft a first message to leads, each to the best person you found there, grounded in their trigger and your facts. The drafts wait for the founder to review, edit and send: you never send anything. Runs in the background; you get an update when they are ready.
 
         Args:
             account_ids: Ids from list_accounts to write to. Otherwise the strongest-fit targets with someone to reach and no message yet.
