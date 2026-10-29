@@ -14,7 +14,7 @@ export function Closing({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null;
       <div className="mx-auto grid max-w-7xl gap-10 px-5 pt-20 pb-12 sm:px-8 sm:pt-28 lg:grid-cols-[1.1fr_1fr] lg:items-center">
         <div data-reveal className="flex flex-col gap-5">
           <h2 className="text-[2.5rem] leading-[1.02] font-semibold tracking-[-0.035em] text-balance sm:text-6xl">
-            Every customer starts as a lead. <span className="text-brand">Lace finds yours, with your whole team.</span>
+            Your next lead, partner or deal is out there. <span className="text-brand">Your Lace finds it.</span>
           </h2>
           <p className="max-w-md text-lg leading-relaxed text-night-muted">
             One email puts you on the list. Tick the pilot on the next step if you want your Lace early.
