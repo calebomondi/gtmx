@@ -466,7 +466,7 @@ export function unlinkLaceChannel(laceId: string, channelId: string): Promise<vo
   return apiFetch(`/api/v1/laces/${laceId}/channels/${channelId}`, { method: "DELETE" })
 }
 
-export type OpportunityKind = "showcase" | "sell" | "partner"
+export type OpportunityKind = "showcase" | "sell" | "partner" | "funding"
 /** suggested: a search found it and it waits for the founder to save (open) or dismiss. */
 export type OpportunityStatus = "suggested" | "open" | "dismissed"
 

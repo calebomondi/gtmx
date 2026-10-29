@@ -12,6 +12,7 @@ const KINDS: { id: OpportunityKind; label: string }[] = [
   { id: "sell", label: "Sell" },
   { id: "showcase", label: "Showcase" },
   { id: "partner", label: "Partner" },
+  { id: "funding", label: "Funding" },
 ]
 
 function when(deadline: string | null, eventDate: string | null): string | null {
@@ -21,7 +22,7 @@ function when(deadline: string | null, eventDate: string | null): string | null 
   return null
 }
 
-/** Events to showcase at, tenders and buyers to sell to, partners: the saved
+/** Events to showcase at, tenders and buyers to sell to, partners, funding: the saved
  * ones still open, the soonest first, each with a way to talk it through
  * with the Lace. Dismissing one drops it for good. */
 export function LaceOpportunities({ opps, searching, name, onDiscuss }: {

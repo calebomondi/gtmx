@@ -119,7 +119,7 @@ export function LaceFeed({ laceId, name, chat, activity, opps, apps, onOpen, onD
       waiting: opps.suggested.length, busy: chat.findingOpportunities,
       content: (
         <>
-          <PanelIntro>Events to showcase at, tenders and buyers to sell to, and partners: sourced, and still open.</PanelIntro>
+          <PanelIntro>Events to showcase at, tenders and buyers to sell to, partners, and grants and programmes you qualify for: sourced, and still open.</PanelIntro>
           <LaceReview items={opps.suggested.map(opportunityItem)} onSave={(id) => void opps.save(id)}
                       onDismiss={(id, why) => void opps.dismiss(id, why)} askWhy />
           <LaceOpportunities opps={opps} searching={chat.findingOpportunities} name={name}
