@@ -34,7 +34,7 @@ export function Hero({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; on
           </div>
           <p className="max-w-xl text-lg leading-relaxed text-muted short:text-base">
             <span className="font-medium text-ink">One Lace for your startup, shared by your whole founding team.</span>{' '}
-            Give it your website: it learns what you sell, finds your ideal customers and who to reach, spots places to
+            Give it your website: it learns what you sell, finds leads that fit and who to reach there, spots places to
             sell, showcase and partner, watches competitors, brainstorms with you and drafts every message. Nothing goes
             out without your click.
           </p>

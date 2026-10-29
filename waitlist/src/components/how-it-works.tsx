@@ -10,7 +10,7 @@ const STEPS = [
   },
   {
     title: 'It gets to work, and keeps at it',
-    body: 'Customers and the people to reach, places to sell and partner, competitors to watch, on a schedule you set. Ask it for more any time.',
+    body: 'Leads and the people to reach, places to sell and partner, grants you qualify for, competitors to watch, on a schedule you set. Ask it for more any time.',
   },
   {
     title: 'You decide, then send',
