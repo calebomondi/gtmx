@@ -11,10 +11,6 @@ export function Closing({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null;
     <footer className="on-dark overflow-hidden bg-night text-paper">
       <div className="mx-auto grid max-w-7xl gap-10 px-5 pt-20 pb-12 sm:px-8 sm:pt-28 lg:grid-cols-[1.1fr_1fr] lg:items-center">
         <div data-reveal className="flex flex-col gap-5">
-          <p className="flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-brand">
-            <span aria-hidden className="h-px w-6 bg-brand" />
-            Join the waitlist
-          </p>
           <h2 className="text-[2.5rem] leading-[1.02] font-semibold tracking-[-0.035em] text-balance sm:text-6xl">
             Every customer starts as a lead. <span className="text-brand">Lace finds yours, with your whole team.</span>
           </h2>

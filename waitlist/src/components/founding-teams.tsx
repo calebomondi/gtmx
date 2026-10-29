@@ -110,7 +110,6 @@ export function FoundingTeams() {
     <Section
       id="teams"
       tone="paper"
-      label="Built for founding teams"
       title="One startup. One Lace. Everyone on it."
       intro="A startup is rarely one person. Your Lace is shared by the whole founding team, so what one of you learns, all of you can build on."
     >
