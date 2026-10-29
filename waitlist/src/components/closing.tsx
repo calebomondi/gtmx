@@ -5,6 +5,8 @@ import { BrandMark } from './brand-mark'
 import { FooterWordmark } from './footer-wordmark'
 import { Lace } from './lace-mascot'
 
+const X_URL = 'https://x.com/thalaceai'
+
 /** The last word: a full-width black block with the signup inline, Lace on top. */
 export function Closing({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; onPilotSpotsLeft: (left: number) => void }) {
   return (
@@ -28,7 +30,15 @@ export function Closing({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null;
       </div>
       <div className="mx-auto flex max-w-7xl flex-col gap-3 border-t border-night-line px-5 py-8 text-sm text-night-muted sm:flex-row sm:items-center sm:justify-between sm:px-8">
         <BrandMark className="text-paper" />
-        <p>An assistant for every startup, wherever it sells.</p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
+          <p>An assistant for every startup, wherever it sells.</p>
+          <a href={X_URL} target="_blank" rel="noreferrer" aria-label="Thalace on X (@thalaceai)" className="flex w-fit items-center gap-2 text-paper hover:text-brand">
+            <svg aria-hidden viewBox="0 0 24 24" className="size-4" fill="currentColor">
+              <path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z" />
+            </svg>
+            @thalaceai
+          </a>
+        </div>
       </div>
       <FooterWordmark />
     </footer>
