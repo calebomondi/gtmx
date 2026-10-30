@@ -116,7 +116,7 @@ export function YourTools() {
   return (
     <Section
       id="tools"
-      tone="white"
+      tone="pegboard"
       title="It proposes. You approve. It runs."
       intro={<>Connect the apps your team already uses. Your Lace reads what it needs from them, and <strong>anything it would do there waits for your click</strong>.</>}
     >

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 
 import { stagger } from '../lib/stagger'
 
-export type Tone = 'paper' | 'white' | 'night' | 'brand' | 'bench'
+export type Tone = 'paper' | 'white' | 'night' | 'brand' | 'bench' | 'signals' | 'table' | 'pegboard' | 'notes'
 
 const TONE: Record<Tone, { section: string; label: string; intro: string }> = {
   paper: { section: 'bg-paper text-ink', label: 'text-brand-ink', intro: 'text-muted [&_strong]:text-ink' },
@@ -10,6 +10,11 @@ const TONE: Record<Tone, { section: string; label: string; intro: string }> = {
   night: { section: 'on-dark bg-night text-paper', label: 'text-brand', intro: 'text-night-muted [&_strong]:text-paper' },
   brand: { section: 'bg-brand text-ink', label: 'text-ink', intro: 'text-ink/75' },
   bench: { section: 'workbench text-ink', label: 'text-brand-ink', intro: 'text-muted [&_strong]:text-ink' },
+  // Surfaces drawn from each section's subject (index.css, "Section surfaces").
+  signals: { section: 'surface-signals text-ink', label: 'text-brand-ink', intro: 'text-muted [&_strong]:text-ink' },
+  table: { section: 'surface-table text-ink', label: 'text-brand-ink', intro: 'text-muted [&_strong]:text-ink' },
+  pegboard: { section: 'surface-pegboard text-ink', label: 'text-brand-ink', intro: 'text-muted [&_strong]:text-ink' },
+  notes: { section: 'surface-notes text-ink', label: 'text-brand-ink', intro: 'text-muted [&_strong]:text-ink' },
 }
 
 /** A page section: a headline and an intro that rise in as the section

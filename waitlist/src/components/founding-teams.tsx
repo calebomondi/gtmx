@@ -234,7 +234,7 @@ export function FoundingTeams() {
   return (
     <Section
       id="teams"
-      tone="white"
+      tone="table"
       title="One startup. One Lace. Everyone on it."
       intro={<>A startup is rarely one person. Your Lace is <strong>shared by the whole founding team</strong>, so what one of you learns, all of you can build on.</>}
     >

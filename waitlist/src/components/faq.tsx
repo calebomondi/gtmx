@@ -54,7 +54,7 @@ const QUESTIONS = [
 
 export function Faq() {
   return (
-    <Section tone="white" label="Questions" title="Before you ask.">
+    <Section tone="notes" label="Questions" title="Before you ask.">
       <div className="faq border-t border-line">
         {QUESTIONS.map((item, i) => (
           <details key={item.q} data-reveal style={stagger(i)} className="group border-b border-line">
