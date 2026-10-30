@@ -68,7 +68,7 @@ export function YourTools() {
       id="tools"
       tone="white"
       title="It proposes. You approve. It runs."
-      intro="Connect the apps your team already uses. Your Lace reads what it needs from them, and anything it would do there waits under its reply for your click."
+      intro={<>Connect the apps your team already uses. Your Lace reads what it needs from them, and <strong>anything it would do there waits for your click</strong>.</>}
     >
       <div className="grid gap-10 lg:grid-cols-[1.4fr_1fr] lg:gap-16">
         <div className="flex flex-col divide-y divide-line border-y border-line">

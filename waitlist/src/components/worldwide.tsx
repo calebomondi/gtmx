@@ -27,7 +27,7 @@ export function Worldwide() {
   return (
     <Section
       title="It already knows where to look."
-      intro="There’s no list of countries to pick from. Lace reads where you sell from your own website, and goes wherever you point it."
+      intro={<>There’s no list of countries to pick from. <strong>Lace reads where you sell from your own website</strong>, and goes wherever you point it.</>}
     >
       <div className="grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
         <div data-reveal className="flex justify-center">

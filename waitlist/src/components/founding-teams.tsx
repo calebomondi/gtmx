@@ -156,9 +156,9 @@ export function FoundingTeams() {
   return (
     <Section
       id="teams"
-      tone="paper"
+      tone="white"
       title="One startup. One Lace. Everyone on it."
-      intro="A startup is rarely one person. Your Lace is shared by the whole founding team, so what one of you learns, all of you can build on."
+      intro={<>A startup is rarely one person. Your Lace is <strong>shared by the whole founding team</strong>, so what one of you learns, all of you can build on.</>}
     >
       <div className="grid gap-10 lg:grid-cols-[1fr_1fr] lg:items-center lg:gap-16">
         <TeamChat />
