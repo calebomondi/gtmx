@@ -1,6 +1,7 @@
 import { useId, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
 
 import { Lace } from './lace-mascot'
+import { LaceSquare } from './lace-square'
 import { Section } from './section'
 
 interface Find {
@@ -69,6 +70,13 @@ const STARTUPS: Startup[] = [
   },
 ]
 
+/** Where the spotlight square sits for each startup: under its tab, turned a little. */
+const SPOTLIGHT = [
+  'left-[-30%] -rotate-3 lg:left-[2%]',
+  'left-[-10%] rotate-2 lg:left-[22%]',
+  'left-[10%] rotate-6 lg:left-[42%]',
+]
+
 function rise(i: number): CSSProperties {
   return { '--at': `${i * 0.08}s` } as CSSProperties
 }
@@ -105,7 +113,9 @@ export function TryIt() {
   return (
     <Section
       id="try-it"
-      tone="paper"
+      decor={
+        <LaceSquare className={`top-[34%] w-[110vw] transition-[left,rotate] duration-700 ease-out lg:top-[26%] lg:w-[min(52vw,46rem)] ${SPOTLIGHT[picked]}`} />
+      }
       title="Try it on yours."
       intro={<>Pick a startup like yours and see what its Lace brings back. <strong>Who you sell to changes what it looks for</strong>: businesses with a reason to buy, or the places your customers already gather.</>}
     >

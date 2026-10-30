@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 're
 
 import { BornScene, OrbitScene, RoundTripScene } from './how-it-works-scenes'
 import { Lace, type LaceState } from './lace-mascot'
+import { LaceSquare } from './lace-square'
 import { Section } from './section'
 
 const STEPS: { title: string; short: string; body: string; mood: LaceState }[] = [
@@ -35,6 +36,8 @@ const HEADER_CLEARANCE_PX = 72
 /** Of each step's share of the scroll, the part Lace rests on its step before moving on. */
 const REST = 0.6
 const RIDER_PX = 28
+/** The square behind the stage: it turns a little with each step, like cards being dealt. */
+const STAGE_TILT = ['rotate-0', '-rotate-4', 'rotate-4']
 /** A badge's centre, down from the top of its step. */
 const BADGE_CENTRE_PX = 14
 
@@ -223,7 +226,10 @@ function Story() {
         </ol>
         <div className="flex flex-col gap-3">
           {/* The pinned stage is large: its scene is drawn larger to fill it. */}
-          <Stage step={active} playing={onScreen} className="aspect-[4/3]" sceneClassName="scale-[1.2]" />
+          <div className="relative isolate">
+            <LaceSquare className={`-top-[10%] left-[8%] -z-10 w-[84%] transition-[rotate] duration-700 ease-out ${STAGE_TILT[active]}`} />
+            <Stage step={active} playing={onScreen} className="aspect-[4/3]" sceneClassName="scale-[1.2]" />
+          </div>
           <p aria-hidden className="text-center font-mono text-xs text-muted">
             Step {active + 1} of {STEPS.length} · {STEPS[active].short}
           </p>
@@ -244,7 +250,10 @@ function StackedStep({ index }: { index: number }) {
       <Badge index={index} done={false} />
       <h3 className="text-xl font-semibold tracking-tight">{step.title}</h3>
       <p className="leading-relaxed text-muted">{step.body}</p>
-      <Stage step={index} playing={onScreen} className="mt-2" />
+      <div className="relative isolate mt-2">
+        <LaceSquare className={`-top-[6%] left-[6%] -z-10 w-[88%] ${STAGE_TILT[index]}`} />
+        <Stage step={index} playing={onScreen} />
+      </div>
     </li>
   )
 }
@@ -252,7 +261,8 @@ function StackedStep({ index }: { index: number }) {
 export function HowItWorks() {
   const story = useStoryMode()
   return (
-    <Section tone="bench" title="Three steps. Your call."
+    <Section title="Three steps. Your call."
+             decor={<LaceSquare className="top-[-6%] left-[-20%] w-[70vw] rotate-12 lg:w-[min(40vw,36rem)]" />}
              intro={<>From your website to your first reply, <strong>you stay in charge of every message</strong>.</>}>
       {story ? (
         <Story />

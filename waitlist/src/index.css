@@ -68,86 +68,22 @@
     @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-md bg-brand font-semibold text-ink transition duration-200 hover:bg-panel active:translate-y-px;
   }
 
-  /* How it works' workbench: paper washed with the highlight, under the
-     dot grid of the link-preview image. */
-  .workbench {
-    background-color: color-mix(in oklab, var(--color-highlight) 38%, var(--color-paper));
-    background-image: radial-gradient(rgb(18 18 18 / 0.14) 1px, transparent 1.5px);
-    background-size: 22px 22px;
-  }
-  /* -- Section surfaces: each drawn from what its section is about. -- */
-
-  /* What your Lace does: the field Lace searches, dots scattered unevenly and a
-     few lit as finds, thickest towards the top right. */
-  .surface-signals {
-    position: relative;
-    isolation: isolate;
-    background-color: color-mix(in oklab, var(--color-highlight) 14%, var(--color-paper));
-  }
-  .surface-signals::before {
-    content: '';
+  /* The page's background shape (lace-square.tsx): Lace's rounded square in
+     translucent orange, deepening where two overlap. */
+  .lace-square {
     position: absolute;
-    inset: 0;
-    z-index: -1;
-    pointer-events: none;
-    background-image: url('/bg/signals.svg');
-    background-size: 320px 320px;
-    mask-image: radial-gradient(ellipse 90% 80% at 90% 10%, black, transparent 75%);
-  }
-  /* Founding teams: two Lace-shaped squares of warm colour, one each side,
-     overlapping in the middle, where the team meets. Stacked on phones. */
-  .surface-table {
-    position: relative;
-    isolation: isolate;
-    overflow: hidden;
-    background-color: var(--color-paper);
-  }
-  .surface-table::before,
-  .surface-table::after {
-    content: '';
-    position: absolute;
-    z-index: -1;
-    pointer-events: none;
-    width: min(48vw, 44rem);
     aspect-ratio: 1;
     border-radius: 9%;
-    /* Translucent, so where the two overlap reads deeper. */
     background: rgb(254 168 83 / 0.17);
   }
-  .surface-table::before {
-    left: 7%;
-    top: 9%;
-    rotate: -4deg;
+  /* Your tools: a rack of small squares, fading out towards the proposals. */
+  .lace-rack {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36'%3E%3Crect x='13' y='13' width='10' height='10' rx='1' fill='%23fea853' fill-opacity='0.2'/%3E%3C/svg%3E");
+    mask-image: radial-gradient(ellipse 55% 75% at 0% 85%, black, transparent);
   }
-  .surface-table::after {
-    right: 7%;
-    bottom: 5%;
-    rotate: 5deg;
-  }
-  @media (max-width: 1023px) {
-    .surface-table::before,
-    .surface-table::after {
-      width: 120vw;
-    }
-    .surface-table::before {
-      left: -40%;
-      top: 4%;
-    }
-    .surface-table::after {
-      right: -40%;
-      bottom: 4%;
-    }
-  }
-  /* Your tools: a pegboard, rows of small holes for the apps to hang on. */
-  .surface-pegboard {
-    background-color: var(--color-paper);
-    background-image: radial-gradient(circle, transparent 2px, rgb(18 18 18 / 0.08) 2.4px, rgb(18 18 18 / 0.08) 3.4px, transparent 3.8px);
-    background-size: 30px 30px;
-    background-position: 15px 15px;
-  }
-  /* FAQ: a warmer sheet of notes to read the answers on. */
-  .surface-notes {
-    background-color: color-mix(in oklab, var(--color-highlight) 22%, var(--color-paper));
+  /* The frame behind the globe, turning far slower than the globe itself. */
+  .spin-glacial {
+    animation: spin-slow 240s linear infinite;
   }
 
   /* The hero's paper: a faint ledger grid under a warm orange glow. */

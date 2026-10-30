@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { stagger } from '../lib/stagger'
+import { LaceSquare } from './lace-square'
 import { Section } from './section'
 
 interface App {
@@ -116,7 +117,11 @@ export function YourTools() {
   return (
     <Section
       id="tools"
-      tone="pegboard"
+      decor={<>
+        {/* A rack of small squares for the apps, and a large one behind the proposals. */}
+        <span className="lace-rack absolute inset-0" />
+        <LaceSquare className="right-[-30%] bottom-[2%] w-[90vw] rotate-6 lg:top-[40%] lg:right-[-4%] lg:bottom-auto lg:w-[min(40vw,34rem)]" />
+      </>}
       title="It proposes. You approve. It runs."
       intro={<>Connect the apps your team already uses. Your Lace reads what it needs from them, and <strong>anything it would do there waits for your click</strong>.</>}
     >

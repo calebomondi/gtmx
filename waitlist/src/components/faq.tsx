@@ -1,4 +1,5 @@
 import { stagger } from '../lib/stagger'
+import { LaceSquare } from './lace-square'
 import { Section } from './section'
 
 const QUESTIONS = [
@@ -54,7 +55,8 @@ const QUESTIONS = [
 
 export function Faq() {
   return (
-    <Section tone="notes" label="Questions" title="Before you ask.">
+    <Section label="Questions" title="Before you ask."
+             decor={<LaceSquare className="right-[-12%] bottom-[-10%] w-[min(70vw,40rem)] rotate-12" />}>
       <div className="faq border-t border-line">
         {QUESTIONS.map((item, i) => (
           <details key={item.q} data-reveal style={stagger(i)} className="group border-b border-line">

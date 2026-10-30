@@ -2,6 +2,7 @@ import { useRef, type ComponentType } from 'react'
 
 import { usePlay } from '../lib/motion'
 import { stagger } from '../lib/stagger'
+import { LaceSquare } from './lace-square'
 import { Section } from './section'
 import { DraftScene, FindsScene, WatchesScene, type SceneProps } from './what-lace-does-scenes'
 
@@ -90,13 +91,18 @@ export function WhatLaceDoes() {
   return (
     <Section
       id="what-lace-does"
-      tone="signals"
+      decor={<>
+        {/* A chain, one square behind each column, each overlapping the next. */}
+        <LaceSquare className="top-[20%] left-[-30%] w-[90vw] -rotate-6 lg:top-[34%] lg:left-[3%] lg:w-[min(34vw,30rem)]" />
+        <LaceSquare className="top-[48%] right-[-30%] w-[90vw] rotate-3 lg:top-[42%] lg:right-auto lg:left-[33%] lg:w-[min(34vw,30rem)]" />
+        <LaceSquare className="top-[76%] left-[-20%] w-[90vw] -rotate-2 lg:top-[34%] lg:left-[63%] lg:w-[min(34vw,30rem)]" />
+      </>}
       title="Finds. Watches. Works with you."
       intro={<>One assistant for everything between you and your next deal, working from what it knows about your startup and the web as it is today. Everything it finds <strong>says where it found it, and waits for your OK</strong> before it is saved or sent.</>}
     >
       <div className="grid gap-5 lg:grid-cols-3">
         {COLUMNS.map((column, c) => (
-          <div key={column.title} data-reveal style={stagger(c)} className="flex flex-col rounded-xl border border-line bg-paper p-6 sm:p-7">
+          <div key={column.title} data-reveal style={stagger(c)} className="flex flex-col rounded-xl border border-line bg-paper/60 p-6 sm:p-7">
             <Specimen Scene={column.Scene} />
             <h3 className="mt-6 text-lg font-semibold tracking-tight">{column.title}</h3>
             <ul className="mt-4 flex flex-col gap-5">

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { usePlay } from '../lib/motion'
 import { stagger } from '../lib/stagger'
 import { RotatingGlobe, type Place } from './rotating-globe'
+import { LaceSquare } from './lace-square'
 import { Section } from './section'
 
 /** Reasons to reach out now, the kind Lace spots wherever you sell. */
@@ -78,6 +79,10 @@ const POINTS = [
 export function Worldwide() {
   return (
     <Section
+      decor={
+        // The globe's frame, turning far slower than the globe.
+        <LaceSquare className="spin-glacial top-[30%] rotate-6 left-[10%] w-[80vw] lg:top-[30%] lg:left-[5%] lg:w-[min(34vw,30rem)]" />
+      }
       title="It already knows where to look."
       intro={<>There’s no list of countries to pick from. <strong>Lace reads where you sell from your own website</strong>, and goes wherever you point it.</>}
     >
