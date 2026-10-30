@@ -32,8 +32,8 @@ export function Hero({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; on
           </div>
           <p className="max-w-xl text-lg leading-relaxed text-muted short:text-base">
             <span className="font-medium text-ink">One Lace for your startup, shared by your whole founding team.</span>{' '}
-            It finds leads, partners and funding, watches competitors, and drafts every message. Nothing goes out
-            without your click.
+            It finds leads, partners and funding, watches competitors, and drafts every message.{' '}
+            <strong className="font-semibold text-ink">Nothing goes out without your click.</strong>
           </p>
           <SignupCard id="join" pilot={pilot} onPilotSpotsLeft={onPilotSpotsLeft} />
           {pilot && pilot.left > 0 && (

@@ -5,11 +5,11 @@ import { stagger } from '../lib/stagger'
 export type Tone = 'paper' | 'white' | 'night' | 'brand' | 'bench'
 
 const TONE: Record<Tone, { section: string; label: string; intro: string }> = {
-  paper: { section: 'bg-paper text-ink', label: 'text-brand-ink', intro: 'text-muted' },
-  white: { section: 'bg-panel text-ink', label: 'text-brand-ink', intro: 'text-muted' },
-  night: { section: 'on-dark bg-night text-paper', label: 'text-brand', intro: 'text-night-muted' },
+  paper: { section: 'bg-paper text-ink', label: 'text-brand-ink', intro: 'text-muted [&_strong]:text-ink' },
+  white: { section: 'bg-panel text-ink', label: 'text-brand-ink', intro: 'text-muted [&_strong]:text-ink' },
+  night: { section: 'on-dark bg-night text-paper', label: 'text-brand', intro: 'text-night-muted [&_strong]:text-paper' },
   brand: { section: 'bg-brand text-ink', label: 'text-ink', intro: 'text-ink/75' },
-  bench: { section: 'workbench text-ink', label: 'text-brand-ink', intro: 'text-muted' },
+  bench: { section: 'workbench text-ink', label: 'text-brand-ink', intro: 'text-muted [&_strong]:text-ink' },
 }
 
 /** A page section: a headline and an intro that rise in as the section
@@ -28,7 +28,8 @@ export function Section({
   tone?: Tone
   label?: string
   title: string
-  intro?: string
+  /** Its key phrase in <strong>, to be caught at a glance. */
+  intro?: ReactNode
   children: ReactNode
 }) {
   const t = TONE[tone]
@@ -49,7 +50,7 @@ export function Section({
           {title}
         </h2>
         {intro && (
-          <p data-reveal style={stagger(2)} className={`mt-5 max-w-2xl text-lg leading-relaxed ${t.intro}`}>
+          <p data-reveal style={stagger(2)} className={`mt-5 max-w-2xl text-lg leading-relaxed [&_strong]:font-semibold ${t.intro}`}>
             {intro}
           </p>
         )}

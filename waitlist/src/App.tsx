@@ -5,6 +5,7 @@ import { Hero } from './components/hero'
 import { HowItWorks } from './components/how-it-works'
 import { Pilot } from './components/pilot'
 import { SiteHeader } from './components/site-header'
+import { TryIt } from './components/try-it'
 import { WhatLaceDoes } from './components/what-lace-does'
 import { YourTools } from './components/your-tools'
 import { Worldwide } from './components/worldwide'
@@ -20,6 +21,7 @@ export default function App() {
       <main>
         <Hero pilot={pilot} onPilotSpotsLeft={setPilotSpotsLeft} />
         <WhatLaceDoes />
+        <TryIt />
         <FoundingTeams />
         <HowItWorks />
         <YourTools />
