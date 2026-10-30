@@ -68,6 +68,13 @@
     @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-md bg-brand font-semibold text-ink transition duration-200 hover:bg-panel active:translate-y-px;
   }
 
+  /* How it works' workbench: paper washed with the highlight, under the
+     dot grid of the link-preview image. */
+  .workbench {
+    background-color: color-mix(in oklab, var(--color-highlight) 38%, var(--color-paper));
+    background-image: radial-gradient(rgb(18 18 18 / 0.14) 1px, transparent 1.5px);
+    background-size: 22px 22px;
+  }
   /* The hero's paper: a faint ledger grid under a warm orange glow. */
   .hero-paper {
     background-image:
@@ -215,6 +222,84 @@
   from {
     opacity: 0;
     transform: translateX(-28px) scale(0.8);
+  }
+}
+/* Rising into place once its moment (--at) comes; hidden until then. */
+.rise-in {
+  animation: rise-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) var(--at, 0s) backwards;
+}
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+/* A button pressed for you, then confirmed green. */
+.confirm-in {
+  animation: confirm-in 0.5s ease-out var(--at, 0s) forwards;
+}
+@keyframes confirm-in {
+  40% {
+    transform: scale(0.9);
+  }
+  to {
+    background-color: var(--color-kept);
+    color: var(--color-panel);
+  }
+}
+/* A find swooping out of Lace into its place in the stack: from the left on
+   wide screens, from above on phones. */
+.find-swoop {
+  --fx: -210px;
+  --fy: var(--fy-row);
+  animation: find-swoop 0.9s cubic-bezier(0.3, 0.7, 0.2, 1) var(--at, 0s) backwards;
+}
+@media (max-width: 639px) {
+  .find-swoop {
+    --fx: 0px;
+    --fy: var(--fy-col);
+  }
+}
+@keyframes find-swoop {
+  from {
+    opacity: 0;
+    transform: translate(var(--fx), var(--fy)) scale(0.2) rotate(-20deg);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(calc(var(--fx) * 0.45), calc(var(--fy) * 0.45 - 48px)) scale(0.75) rotate(8deg);
+  }
+}
+/* The schedule's clock, its hand ticking round. */
+.clock-tick {
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+  animation: spin-slow 6s steps(12) infinite;
+}
+/* The sent draft folding away, and the paper plane it becomes. */
+.fly-off {
+  animation: fly-off 0.6s cubic-bezier(0.5, 0, 0.75, 0) forwards;
+}
+@keyframes fly-off {
+  to {
+    opacity: 0;
+    transform: translate(40px, -30px) rotate(-6deg) scale(0.5);
+  }
+}
+.plane-fly {
+  animation: plane-fly 1.3s cubic-bezier(0.4, 0, 0.6, 1) 0.2s both;
+}
+@keyframes plane-fly {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  15% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translate(150px, -130px) rotate(-14deg) scale(1.1);
   }
 }
 /* Send, waiting: a slow ring, breathing. */
