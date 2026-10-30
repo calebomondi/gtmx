@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode, type SVGProps } from 'reac
 
 import { usePlay } from '../lib/motion'
 import { stagger } from '../lib/stagger'
+import { Face, type Person } from './face'
 import { Lace } from './lace-mascot'
 import { LaceSquare } from './lace-square'
 import { Section } from './section'
@@ -49,7 +50,7 @@ function Badge({ children }: { children: ReactNode }) {
   return <span className="grid size-9 place-items-center rounded-lg bg-brand text-ink">{children}</span>
 }
 
-// Thalace's own team chat, as in the hero's example. The people are "you" and "your cofounder", and the
+// Thalace’s own team chat. The people are Kalev and his cofounder (face.tsx), and the
 // startups invented: none is a real company or person.
 const POINTS: { title: string; body: string; icon: ReactNode }[] = [
   {
@@ -74,20 +75,10 @@ const POINTS: { title: string; body: string; icon: ReactNode }[] = [
   },
 ]
 
-function Avatar({ initial, tone }: { initial: string; tone: 'ink' | 'brand' }) {
-  return (
-    <span aria-hidden className={`grid size-6 shrink-0 place-items-center rounded-full text-[11px] font-semibold ${
-      tone === 'ink' ? 'bg-ink text-paper' : 'bg-highlight text-brand-ink'}`}>
-      {initial}
-    </span>
-  )
-}
-
 /** A founder's message, signed: in a team, Lace and everyone see who asked. */
-function Said({ who, initial, tone, children, waiting = false }: {
+function Said({ who, person, children, waiting = false }: {
   who: string
-  initial: string
-  tone: 'ink' | 'brand'
+  person: Person
   children: ReactNode
   waiting?: boolean
 }) {
@@ -100,7 +91,7 @@ function Said({ who, initial, tone, children, waiting = false }: {
         </p>
         {waiting && <p className="text-[11px] text-muted">Waiting its turn</p>}
       </div>
-      <Avatar initial={initial} tone={tone} />
+      <Face person={person} size={24} />
     </div>
   )
 }
@@ -182,7 +173,7 @@ function TeamChat({ beat, still }: { beat: Beat; still: boolean }) {
       </div>
       <div className="flex flex-col gap-3 p-4 sm:p-5">
         <Arrive beat={beat} from="asked" still={still}>
-          <Said who="You" initial="Y" tone="brand">Who just raised and is hiring their first sales lead?</Said>
+          <Said who="Kalev" person="kalev">Who just raised and is hiring their first sales lead?</Said>
         </Arrive>
         <Arrive beat={beat} from="typing" still={still} className="flex items-start gap-2">
           <Lace state="alert" size={24} decorative />
@@ -193,7 +184,7 @@ function TeamChat({ beat, still }: { beat: Beat; still: boolean }) {
           ) : <Typing />}
         </Arrive>
         <Arrive beat={beat} from="cofounder" still={still}>
-          <Said who="Your cofounder" initial="C" tone="ink" waiting={!at('answeredCofounder')}>Draft one to Acme Pay’s founder</Said>
+          <Said who="Your cofounder" person="cofounder" waiting={!at('answeredCofounder')}>Draft one to Acme Pay’s founder</Said>
         </Arrive>
         <Arrive beat={beat} from="searching" still={still}
                 className="flex w-fit items-center gap-2 rounded-full border border-brand/50 bg-highlight/50 px-3 py-1 text-[12px]">

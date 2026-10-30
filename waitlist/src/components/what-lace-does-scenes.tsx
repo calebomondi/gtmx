@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 
+import { Face } from './face'
 import { Lace } from './lace-mascot'
 
 /** A scene plays from its first frame, or shows only its last one. */
@@ -106,7 +107,7 @@ export function DraftScene({ still }: SceneProps) {
         </p>
         <p className={`flex items-center gap-1.5 ${play('rise-in')}`} style={at(0.5)}>
           <span className="rounded-md bg-highlight px-2 py-0.5 text-xs">Make it shorter</span>
-          <span className="grid size-5 place-items-center rounded-full bg-ink text-[10px] font-semibold text-paper">C</span>
+          <Face person="cofounder" size={20} />
         </p>
       </div>
     </div>
