@@ -25,6 +25,9 @@ const PEOPLE = new URL('../public/people/', import.meta.url).pathname
 const ref = readFileSync(new URL('../../frontend/.env', import.meta.url), 'utf8').match(/VITE_SUPABASE_URL=https:\/\/([a-z0-9]+)/)[1]
 const SESSION_KEY = `sb-${ref}-auth-token`
 const FPS = 30
+/** CSS px to leave off the chat's top edge, where the header's border and
+ * shade would show as a faint line along the top of the cut. */
+const TOP_INSET = 4
 /** The two cuts: wide for the hero from sm up, tall for phones. The viewport
  * is sized so the chat, from its top to the input, is the cut's shape. */
 const CUTS = [
@@ -230,7 +233,7 @@ for (const cut of CUTS) {
   // The frames' own scale: the screencast sends CSS pixels.
   const frameWidth = probe(raw, 'stream=width')
   const k = frameWidth / cut.viewport.width
-  const height = Math.round((region.bottom - region.top) * k)
+  const height = Math.round((region.bottom - region.top - TOP_INSET) * k)
   const width = Math.min(frameWidth, Math.round(height * cut.aspect))
   // Too narrow for the shape (phones): keep the full width and the bottom of the region.
   const keptHeight = Math.round(width / cut.aspect)
