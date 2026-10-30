@@ -1,18 +1,21 @@
+import { useRef, type ComponentType } from 'react'
+
+import { usePlay } from '../lib/motion'
 import { stagger } from '../lib/stagger'
-import { Lace, type LaceState } from './lace-mascot'
 import { Section } from './section'
+import { DraftScene, FindsScene, WatchesScene, type SceneProps } from './what-lace-does-scenes'
 
 interface Column {
   title: string
-  /** How the mascot looks over this column: finding, watching, working with you. */
-  mood: LaceState
+  /** Lace doing this column's job, in a few seconds. */
+  Scene: ComponentType<SceneProps>
   items: { title: string; body: string }[]
 }
 
 const COLUMNS: Column[] = [
   {
     title: 'Finds',
-    mood: 'thinking',
+    Scene: FindsScene,
     items: [
       {
         title: 'Leads worth reaching, and who to talk to',
@@ -34,7 +37,7 @@ const COLUMNS: Column[] = [
   },
   {
     title: 'Watches',
-    mood: 'alert',
+    Scene: WatchesScene,
     items: [
       {
         title: 'Your competitors',
@@ -52,7 +55,7 @@ const COLUMNS: Column[] = [
   },
   {
     title: 'Works with you',
-    mood: 'idle',
+    Scene: DraftScene,
     items: [
       {
         title: 'Brainstorms',
@@ -70,6 +73,19 @@ const COLUMNS: Column[] = [
   },
 ]
 
+/** A column's scene: it plays when the section comes into view, and again
+ * when hovered or tapped. */
+function Specimen({ Scene }: { Scene: ComponentType<SceneProps> }) {
+  const box = useRef<HTMLDivElement>(null)
+  const { run, still, replay } = usePlay(box)
+  return (
+    <div ref={box} aria-hidden onPointerEnter={replay} onClick={replay}
+         className="h-40 overflow-hidden rounded-lg border border-line bg-panel p-4">
+      <Scene key={run} still={still} />
+    </div>
+  )
+}
+
 export function WhatLaceDoes() {
   return (
     <Section
@@ -81,11 +97,9 @@ export function WhatLaceDoes() {
       <div className="grid gap-5 lg:grid-cols-3">
         {COLUMNS.map((column, c) => (
           <div key={column.title} data-reveal style={stagger(c)} className="flex flex-col rounded-xl border border-line bg-paper p-6 sm:p-7">
-            <div className="flex items-center gap-3">
-              <Lace state={column.mood} size={36} phase={c * 1.3} decorative />
-              <h3 className="font-mono text-sm uppercase tracking-wider text-brand-ink">{column.title}</h3>
-            </div>
-            <ul className="mt-6 flex flex-col gap-5">
+            <Specimen Scene={column.Scene} />
+            <h3 className="mt-6 text-lg font-semibold tracking-tight">{column.title}</h3>
+            <ul className="mt-4 flex flex-col gap-5">
               {column.items.map((item) => (
                 <li key={item.title} className="group border-l-2 border-brand/40 pl-4 transition-colors hover:border-brand">
                   <p className="font-semibold tracking-tight">{item.title}</p>
