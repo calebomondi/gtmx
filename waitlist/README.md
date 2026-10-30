@@ -20,8 +20,10 @@ backend as the app (see `deploy/`).
 
 ## The hero's product recording
 
-Until a recording is published, the hero acts out a labelled example with an
-invented Lace (`lace-preview.tsx`). To show the real product instead:
+Until a recording is published, the hero shows a screenshot of the real app
+(`app-shot.tsx`): Thalace's own Lace in its team chat, filled with invented
+example data. `scripts/capture-app-shot.mjs` retakes it from a running app
+(instructions in the script) into `public/shots/`. To show a recording instead:
 
 1. **Record** (~20 s once edited, no audio) at 1440×900, browser zoom 110–125%,
    light theme. Storyboard: name a Lace and paste the website on `/new` → the
