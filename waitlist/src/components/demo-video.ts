@@ -1,9 +1,7 @@
-/** The product recording shown in the hero. While `DEMO_VIDEO` is null the
- * hero shows a screenshot of the app instead (`AppShot`).
- *
- * To publish a recording: run scripts/encode-demo.sh on the raw capture
- * (it writes public/media/demo.{mp4,webm} and demo-poster.webp), then fill
- * this in, with captions timed to the clip. */
+/** The hero's recording: the real app, Thalace's own Lace in its team chat,
+ * with example data. scripts/record-demo.mjs records and encodes both cuts
+ * into public/media/ and prints when each moment happens; the captions below
+ * are timed to those. */
 
 export interface DemoCaption {
   /** Seconds into the clip when this caption appears. */
@@ -11,13 +9,46 @@ export interface DemoCaption {
   text: string
 }
 
-export interface DemoVideo {
-  /** What the recording shows, e.g. "Shanga Labs". */
-  subject: string
+/** One cut of the recording, with its captions timed to it. */
+export interface DemoCut {
   mp4: string
   webm: string
   poster: string
+  /** Its shape, width over height. */
+  aspect: '4/3' | '3/4'
   captions: DemoCaption[]
 }
 
-export const DEMO_VIDEO: DemoVideo | null = null
+export interface DemoVideo {
+  /** What the recording shows. */
+  subject: string
+  /** 4:3, from sm up. */
+  wide: DemoCut
+  /** 3:4, so the chat stays readable on phones. */
+  phone: DemoCut
+}
+
+const captions = (at: { asks: number; works: number; answers: number; saves: number }): DemoCaption[] => [
+  { at: 0, text: 'Kalev asks his Lace' },
+  { at: at.works, text: 'It looks, step by step' },
+  { at: at.answers, text: 'It answers with why each fits' },
+  { at: at.saves, text: 'Saved only on his click' },
+]
+
+export const DEMO_VIDEO: DemoVideo = {
+  subject: 'Thalace’s own Lace',
+  wide: {
+    mp4: '/media/demo.mp4',
+    webm: '/media/demo.webm',
+    poster: '/media/demo-poster.webp',
+    aspect: '4/3',
+    captions: captions({ asks: 0.9, works: 6.3, answers: 10.1, saves: 13.1 }),
+  },
+  phone: {
+    mp4: '/media/demo-phone.mp4',
+    webm: '/media/demo-phone.webm',
+    poster: '/media/demo-phone-poster.webp',
+    aspect: '3/4',
+    captions: captions({ asks: 0.9, works: 5.7, answers: 9.5, saves: 12.1 }),
+  },
+}
