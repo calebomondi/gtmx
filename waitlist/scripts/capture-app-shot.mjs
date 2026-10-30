@@ -1,6 +1,7 @@
 // Writes public/shots/lace-chat.jpg and lace-chat-phone.jpg: the hero's
 // screenshot of the real app, a Lace's team chat, filled with invented example
-// data (no real company or person).
+// data: the companies and programmes are made up; the founder is Kalev Mokua,
+// with CC0 avatars from public/people/.
 //
 // Run the app first (`bun run dev` in frontend/, on :5173, or set APP), then
 // from waitlist/, with Playwright and its Chromium installed:
@@ -19,22 +20,22 @@ const SESSION_KEY = `sb-${ref}-auth-token`
 const L = "L1"
 const now = "2026-10-30T09:00:00Z"
 const lace = { id: L, name: "Lace", website: "https://thalace.com", startup_name: "Thalace", status: "active", pinned: true, role: "owner", created_at: "2026-10-01T09:00:00Z" }
-const me = { id: "u1", name: "You", email: "you@thalace.com", avatar_url: null, in_pilot: true }
+// Served from the waitlist's public/people/ (the routes below answer these URLs).
+const FACES = "https://faces.example/"
+const me = { id: "u1", name: "Kalev Mokua", email: "kalev@thalace.com", avatar_url: `${FACES}kalev.svg`, in_pilot: true }
 const members = [
-  { user_id: "u1", name: "You", email: "you@thalace.com", avatar_url: null, role: "owner", status: "active" },
-  { user_id: "u2", name: "Your cofounder", email: "cofounder@thalace.com", avatar_url: null, role: "admin", status: "active" },
+  { user_id: "u1", name: "Kalev Mokua", email: "kalev@thalace.com", avatar_url: `${FACES}kalev.svg`, role: "owner", status: "active" },
+  { user_id: "u2", name: "Your cofounder", email: "cofounder@thalace.com", avatar_url: `${FACES}cofounder.svg`, role: "admin", status: "active" },
 ]
-const account = (id, name, extra) => ({ id, name, account_type: "company", website: null, geo: "Nairobi, Kenya", summary: null, trigger: null, case: null, status: "suggested", contact_status: null, contacts: [], channels: {}, contacts_checked_at: null, first_seen_at: now, last_seen_at: now, ...extra })
-const acme = account("A1", "Acme Pay", { status: "target", contact_status: "person", contacts_checked_at: now,
-  contacts: [{ name: "Neema Okafor", title: "Founder & CEO", email: "neema@acmepay.example", linkedin: null }, { name: "Tomás Reyes", title: "COO", email: null, linkedin: null }] })
-const globex = account("A2", "Globex Freight")
+const opportunity = (id, title, subtitle, body) => ({ type: "card", kind: "opportunity", id, title, subtitle, body, url: null })
 const messages = [
-  { role: "founder", content: "Who just raised and is hiring their first sales lead?", author: { id: "u1", name: "You", avatar_url: null } },
-  { role: "lace", content: "Two fit right now, both with a reason to buy this month.\n\n**Acme Pay** raised its seed round in June and is hiring its first head of sales, so lead lists are about to become someone's whole job. **Globex Freight** opened a second office in Mombasa and posted for a sales lead last week.\n\nI saved Acme Pay and found two people there; Globex is waiting for your call.",
+  { role: "founder", content: "Any accelerators, grants or demo days we could apply to this quarter?",
+    author: { id: "u1", name: "Kalev Mokua", avatar_url: `${FACES}kalev.svg` } },
+  { role: "lace", content: "Two open calls fit Thalace right now, both with room for a seed-stage team selling to startups.\n\n**A fintech accelerator's spring cohort** takes B2B tools for early-stage founders, and applications close on November 28. **An innovation grant for seed-stage startups** funds up to $25,000 with no equity, for teams in Kenya.\n\nThere's also a demo day in Nairobi with pitch slots left. Save the ones worth a shot and I'll draft the applications.",
     ui: [
-      { type: "card", kind: "account", id: "A1", title: "Acme Pay", subtitle: "Fintech · Nairobi", body: "Why now: raised a seed round in June, hiring its first head of sales", url: null },
-      { type: "card", kind: "account", id: "A2", title: "Globex Freight", subtitle: "Logistics · Mombasa", body: "Why now: opened a second office, hiring a sales lead", url: null },
-      { type: "suggestions", options: ["Draft a message to Acme Pay's founder", "Find people at Globex Freight", "Look for more like these"] },
+      opportunity("O1", "Fintech accelerator, spring cohort", "Accelerator · Nairobi · closes Nov 28", "Fits: seed-stage B2B tools for founders, which is what you sell"),
+      opportunity("O2", "Innovation grant for seed-stage startups", "Grant · Kenya · up to $25,000", "Fits: no equity, open to software startups at your stage"),
+      { type: "suggestions", options: ["Draft the accelerator application", "Tell me more about the demo day", "Look for grants in Rwanda too"] },
     ] },
 ]
 const body = (path) => {
@@ -43,7 +44,6 @@ const body = (path) => {
   if (path === `/api/v1/laces/${L}`) return lace
   if (path.startsWith(`/api/v1/laces/${L}/members`)) return members
   if (path.startsWith(`/api/v1/laces/${L}/messages`)) return path.includes("mine") ? [] : messages
-  if (path.startsWith(`/api/v1/laces/${L}/accounts`)) return path.includes("suggested") ? [globex] : path.includes("target") ? [acme] : []
   if (path.includes("/briefs/latest")) return null
   return []
 }
@@ -57,6 +57,7 @@ for (const [n, vp] of [["desk", { width: 1280, height: 860 }], ["phone", { width
     localStorage.setItem(key, JSON.stringify({ access_token: "x.y.z", token_type: "bearer", expires_in: 31536000, expires_at: t, refresh_token: "r", user }))
   }, SESSION_KEY)
   await p.route("**/auth/v1/**", (r) => r.fulfill({ json: {} }))
+  await p.route(`${FACES}*`, (r) => r.fulfill({ path: new URL(`../public/people/${new URL(r.request().url()).pathname.slice(1)}`, import.meta.url).pathname }))
   await p.route("**/api/v1/**", (r) => {
     const u = new URL(r.request().url()); const path = u.pathname + u.search
     r.fulfill({ json: body(path) })

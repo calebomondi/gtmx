@@ -30,7 +30,7 @@ const LEARNED = [
 ]
 
 /** Step 1: Lace is printed while its name and website type in, then shows
- * what it learned; it's confirmed, and a cofounder joins. */
+ * what it learned; it's confirmed, and a cofounder (Kalev) joins. */
 export function BornScene({ still }: SceneProps) {
   const [printed, setPrinted] = useState(still)
   const rise = still ? '' : 'rise-in'
@@ -79,8 +79,8 @@ export function BornScene({ still }: SceneProps) {
           </span>
         </div>
         <p className={`flex items-center gap-2 text-[13px] ${rise}`} style={at(5.3)}>
-          <span className="grid size-6 place-items-center rounded-full bg-ink text-[11px] font-semibold text-paper">C</span>
-          Your cofounder joined
+          <img src="/people/kalev.svg" alt="" width={24} height={24} className="size-6 rounded-full" />
+          Kalev Mokua joined
         </p>
       </div>
     </div>
