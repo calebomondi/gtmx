@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
 /** The hero's showcase frame: an orange sheet offset behind a card with a
- * black status bar. Holds the app's screenshot or the product recording. */
+ * black status bar. Holds the app's recording. */
 export function DemoFrame({
   status,
   live,

@@ -3,7 +3,6 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
 import { SignupCard } from '../features/signup/signup-card'
 import { prefersStill } from '../lib/motion'
 import type { PilotSpots } from '../lib/api'
-import { AppShot } from './app-shot'
 import { DEMO_VIDEO } from './demo-video'
 import { HeroGlow } from './hero-glow'
 import { Lace } from './lace-mascot'
@@ -86,7 +85,7 @@ export function Hero({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; on
           )}
         </div>
         <div className="min-w-0 pr-3 pb-3 sm:pr-4 sm:pb-4">
-          {DEMO_VIDEO ? <ProductDemo video={DEMO_VIDEO} /> : <AppShot />}
+          <ProductDemo video={DEMO_VIDEO} />
         </div>
       </div>
     </section>
