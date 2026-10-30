@@ -1,5 +1,5 @@
 /** The product recording shown in the hero. While `DEMO_VIDEO` is null the
- * hero acts out an example instead (`LacePreview`).
+ * hero shows a screenshot of the app instead (`AppShot`).
  *
  * To publish a recording: run scripts/encode-demo.sh on the raw capture
  * (it writes public/media/demo.{mp4,webm} and demo-poster.webp), then fill
