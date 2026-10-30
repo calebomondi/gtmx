@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode, type SVGProps } from 'reac
 import { usePlay } from '../lib/motion'
 import { stagger } from '../lib/stagger'
 import { Lace } from './lace-mascot'
+import { LaceSquare } from './lace-square'
 import { Section } from './section'
 
 function Icon(props: SVGProps<SVGSVGElement>) {
@@ -234,7 +235,11 @@ export function FoundingTeams() {
   return (
     <Section
       id="teams"
-      tone="table"
+      decor={<>
+        {/* Two people, one Lace: a square each side, deepening where they meet. */}
+        <LaceSquare className="top-[4%] left-[-40%] w-[120vw] -rotate-4 lg:top-[9%] lg:left-[7%] lg:w-[min(48vw,44rem)]" />
+        <LaceSquare className="right-[-40%] bottom-[4%] w-[120vw] rotate-5 lg:right-[7%] lg:bottom-[5%] lg:w-[min(48vw,44rem)]" />
+      </>}
       title="One startup. One Lace. Everyone on it."
       intro={<>A startup is rarely one person. Your Lace is <strong>shared by the whole founding team</strong>, so what one of you learns, all of you can build on.</>}
     >

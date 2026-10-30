@@ -2,31 +2,26 @@ import type { ReactNode } from 'react'
 
 import { stagger } from '../lib/stagger'
 
-export type Tone = 'paper' | 'white' | 'night' | 'brand' | 'bench' | 'signals' | 'table' | 'pegboard' | 'notes'
+export type Tone = 'paper' | 'night' | 'brand'
 
 const TONE: Record<Tone, { section: string; label: string; intro: string }> = {
   paper: { section: 'bg-paper text-ink', label: 'text-brand-ink', intro: 'text-muted [&_strong]:text-ink' },
-  white: { section: 'bg-panel text-ink', label: 'text-brand-ink', intro: 'text-muted [&_strong]:text-ink' },
   night: { section: 'on-dark bg-night text-paper', label: 'text-brand', intro: 'text-night-muted [&_strong]:text-paper' },
   brand: { section: 'bg-brand text-ink', label: 'text-ink', intro: 'text-ink/75' },
-  bench: { section: 'workbench text-ink', label: 'text-brand-ink', intro: 'text-muted [&_strong]:text-ink' },
-  // Surfaces drawn from each section's subject (index.css, "Section surfaces").
-  signals: { section: 'surface-signals text-ink', label: 'text-brand-ink', intro: 'text-muted [&_strong]:text-ink' },
-  table: { section: 'surface-table text-ink', label: 'text-brand-ink', intro: 'text-muted [&_strong]:text-ink' },
-  pegboard: { section: 'surface-pegboard text-ink', label: 'text-brand-ink', intro: 'text-muted [&_strong]:text-ink' },
-  notes: { section: 'surface-notes text-ink', label: 'text-brand-ink', intro: 'text-muted [&_strong]:text-ink' },
 }
 
 /** A page section: a headline and an intro that rise in as the section
  * scrolls into view, then its content. A mono label above the headline is
  * kept for the few sections it helps find (the pilot, the questions). The tone
- * sets its surface, so consecutive sections alternate. */
+ * sets its surface; on paper, `decor` draws the section's own arrangement of
+ * Lace squares behind it. */
 export function Section({
   id,
   tone = 'paper',
   label,
   title,
   intro,
+  decor,
   children,
 }: {
   id?: string
@@ -35,11 +30,16 @@ export function Section({
   title: string
   /** Its key phrase in <strong>, to be caught at a glance. */
   intro?: ReactNode
+  /** Background shapes (LaceSquare), clipped to the section. */
+  decor?: ReactNode
   children: ReactNode
 }) {
   const t = TONE[tone]
   return (
-    <section id={id} className={`scroll-mt-14 py-20 sm:py-28 ${t.section}`}>
+    // overflow-clip, not hidden: it clips the decor without becoming a scroll
+    // container, so How it works' sticky stage still pins.
+    <section id={id} className={`relative isolate scroll-mt-14 overflow-clip py-20 sm:py-28 ${t.section}`}>
+      {decor && <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">{decor}</div>}
       <div className="mx-auto max-w-7xl px-5 sm:px-8">
         {label && (
           <p data-reveal className={`mb-4 flex items-center gap-2 font-mono text-xs uppercase tracking-wider ${t.label}`}>
