@@ -84,7 +84,7 @@ export function Hero({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; on
             </p>
           )}
         </div>
-        <div className="min-w-0 pr-3 pb-3 sm:pr-4 sm:pb-4">
+        <div className="min-w-0">
           <ProductDemo video={DEMO_VIDEO} />
         </div>
       </div>
