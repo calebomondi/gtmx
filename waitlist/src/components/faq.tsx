@@ -4,7 +4,7 @@ import { Section } from './section'
 const QUESTIONS = [
   {
     q: 'What is a Lace?',
-    a: 'Your startup’s own assistant. You name it and give it your website; it learns what you sell, and from then on finds leads, opportunities and partners, watches your competitors, and drafts your messages and replies. You talk to it in a chat, and see what it did in your Feed and Messaging.',
+    a: 'Your startup’s own AI assistant. You name it and give it your website; it learns what you sell, and from then on finds leads, opportunities and partners, watches your competitors, and drafts your messages and replies. You talk to it in a chat, and see what it did in your Feed and Messaging.',
   },
   {
     q: 'Will it message people on its own?',
