@@ -90,7 +90,7 @@ export function WhatLaceDoes() {
   return (
     <Section
       id="what-lace-does"
-      tone="white"
+      tone="signals"
       title="Finds. Watches. Works with you."
       intro={<>One assistant for everything between you and your next deal, working from what it knows about your startup and the web as it is today. Everything it finds <strong>says where it found it, and waits for your OK</strong> before it is saved or sent.</>}
     >
