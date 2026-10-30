@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { prefersStill } from '../lib/motion'
+
 import { CELL_DEGREES, WORLD_GRID } from './world-grid'
 
 // The theme's colours (index.css), for the canvas, which can't read classes.
@@ -16,6 +18,9 @@ const START_LON = -20
 /** A find: how often one appears, and how long it shows. */
 const FIND_EVERY_S = 1.3
 const FIND_LIFE_S = 3.6
+/** Turning to a place someone named: how quickly, and how long it stays there with its pin. */
+const AIM_RATE = 2.4
+const AIM_HOLD_S = 4
 
 const RAD = Math.PI / 180
 
@@ -48,13 +53,24 @@ function project(cell: Cell, center: number) {
   }
 }
 
-function prefersStill(): boolean {
-  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+/** A place to turn to, in degrees, with the name pinned on it. */
+export interface Place {
+  name: string
+  lat: number
+  lon: number
 }
 
 interface Find {
   cell: Cell
   born: number
+  /** Seconds it shows; a named place's pin stays while the globe holds on it. */
+  life: number
+  label?: string
+}
+
+/** The shortest signed turn from `from` to `to`, in radians. */
+function turn(from: number, to: number): number {
+  return Math.atan2(Math.sin(to - from), Math.cos(to - from))
 }
 
 function draw(ctx: CanvasRenderingContext2D, size: number, center: number, finds: Find[], now: number) {
@@ -92,7 +108,7 @@ function draw(ctx: CanvasRenderingContext2D, size: number, center: number, finds
   for (const find of finds) {
     const p = project(find.cell, center)
     if (p.z <= 0) continue
-    const age = (now - find.born) / FIND_LIFE_S
+    const age = (now - find.born) / find.life
     const side = cellSide * (0.5 + 0.5 * p.z)
     const x = cx + p.x * r
     const y = cy - p.y * r
@@ -102,14 +118,28 @@ function draw(ctx: CanvasRenderingContext2D, size: number, center: number, finds
     ctx.strokeRect(x - ring / 2, y - ring / 2, ring, ring)
     ctx.fillStyle = `rgba(${INK}, ${age < 0.85 ? 1 : (1 - age) / 0.15})`
     ctx.fillRect(x - side / 2, y - side / 2, side, side)
+    if (find.label) {
+      ctx.font = '600 13px "Geist Variable", system-ui, sans-serif'
+      ctx.fillStyle = `rgba(${INK}, ${age < 0.85 ? 1 : (1 - age) / 0.15})`
+      ctx.fillText(find.label, x + side, y - side)
+    }
   }
 }
 
 /** The world as square boxes on a slowly turning globe, with finds lighting
- * up on land as it turns. Turns only on screen; still with reduced motion. */
-export function RotatingGlobe() {
+ * up on land as it turns. Given a `place`, it turns there, pins it, holds a
+ * moment, and turns on. Turns only on screen; still with reduced motion,
+ * where it simply faces the place. */
+export function RotatingGlobe({ place = null }: { place?: Place | null }) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const [still] = useState(prefersStill)
+  // Read by the drawing loop, which outlives renders.
+  const aim = useRef<{ place: Place; pinned: boolean; until: number } | null>(null)
+  const show = useRef<(place: Place) => void>(() => {})
+
+  useEffect(() => {
+    if (place) show.current(place)
+  }, [place])
 
   useEffect(() => {
     const el = canvas.current
@@ -123,6 +153,16 @@ export function RotatingGlobe() {
     let nextFind = 0
     let finds: Find[] = []
 
+    show.current = (target) => {
+      if (still) {
+        center = target.lon * RAD
+        finds = [{ cell: { lat: target.lat * RAD, lon: target.lon * RAD }, born: 0, life: Infinity, label: target.name }]
+        draw(ctx, size, center, finds, 0)
+        return
+      }
+      aim.current = { place: target, pinned: false, until: Infinity }
+    }
+
     const resize = () => {
       const dpr = window.devicePixelRatio || 1
       size = el.clientWidth
@@ -134,14 +174,29 @@ export function RotatingGlobe() {
 
     const tick = (ms: number) => {
       const now = ms / 1000
-      // West to east, as the Earth turns: the land in front drifts right.
-      if (last) center -= ((now - last) * 2 * Math.PI) / TURN_S
+      const dt = last ? now - last : 0
       last = now
-      finds = finds.filter((f) => now - f.born < FIND_LIFE_S)
-      if (now >= nextFind) {
+      const target = aim.current
+      if (target && now < target.until) {
+        // Turning to the named place, easing in; pinned once it faces us.
+        const lon = target.place.lon * RAD
+        const left = turn(center, lon)
+        center += left * (1 - Math.exp(-dt * AIM_RATE))
+        if (!target.pinned && Math.abs(left) < 0.05) {
+          target.pinned = true
+          target.until = now + AIM_HOLD_S
+          finds.push({ cell: { lat: target.place.lat * RAD, lon }, born: now, life: AIM_HOLD_S, label: target.place.name })
+        }
+      } else {
+        if (target) aim.current = null
+        // West to east, as the Earth turns: the land in front drifts right.
+        center -= (dt * 2 * Math.PI) / TURN_S
+      }
+      finds = finds.filter((f) => now - f.born < f.life)
+      if (!target && now >= nextFind) {
         // A new find on land near the front, where it can be seen.
         const front = LAND.filter((cell) => project(cell, center).z > 0.6)
-        if (front.length) finds.push({ cell: front[Math.floor(Math.random() * front.length)], born: now })
+        if (front.length) finds.push({ cell: front[Math.floor(Math.random() * front.length)], born: now, life: FIND_LIFE_S })
         nextFind = now + FIND_EVERY_S
       }
       draw(ctx, size, center, finds, now)
