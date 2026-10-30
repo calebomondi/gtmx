@@ -5,7 +5,7 @@ import { Section } from './section'
 /** Reasons to reach out now, the kind Lace spots wherever you sell. */
 const SIGNALS = [
   'funding rounds', 'new offices', 'tenders & RFPs', 'hiring pushes', 'product launches',
-  'leadership moves', 'conferences', 'partnerships', 'expansions', 'tool switches',
+  'leadership moves', 'conferences', 'partnerships', 'growing communities', 'tool switches',
 ]
 
 const POINTS = [

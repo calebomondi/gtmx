@@ -12,7 +12,11 @@ const QUESTIONS = [
   },
   {
     q: 'Can it find more than leads?',
-    a: 'Yes. Besides leads, it looks for places to sell (tenders, RFPs, procurement calls), places to be seen (events, awards, podcasts, press), partners who serve the same buyers, and grants, incubators and accelerators you qualify for, each with its deadline and why it fits.',
+    a: 'Yes. Besides leads, it looks for places to sell (tenders, RFPs, procurement calls), places to be seen (events, awards, podcasts, press), partners who serve the same customers, and grants, incubators and accelerators you qualify for, each with its deadline and why it fits.',
+  },
+  {
+    q: 'We sell to consumers, not businesses. Does it still work?',
+    a: 'Yes. Tell it who buys, and instead of companies it looks for where those people already gather: communities, creators, events and platforms, and who runs each one. What it drafts to them offers something for their audience, not a cold pitch.',
   },
   {
     q: 'Does it work in my country?',
