@@ -42,13 +42,13 @@ export const DEMO_VIDEO: DemoVideo = {
     webm: '/media/demo.webm',
     poster: '/media/demo-poster.webp',
     aspect: '4/3',
-    captions: captions({ asks: 0.9, works: 6.3, answers: 10.1, saves: 13.1 }),
+    captions: captions({ asks: 0.9, works: 5.2, answers: 9, saves: 11.4 }),
   },
   phone: {
     mp4: '/media/demo-phone.mp4',
     webm: '/media/demo-phone.webm',
     poster: '/media/demo-phone-poster.webp',
     aspect: '3/4',
-    captions: captions({ asks: 0.9, works: 5.7, answers: 9.5, saves: 12.1 }),
+    captions: captions({ asks: 0, works: 3.4, answers: 7.2, saves: 10.9 }),
   },
 }
