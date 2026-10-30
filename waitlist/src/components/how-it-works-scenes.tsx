@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 
+import { Face } from './face'
 import { Lace, type LaceState } from './lace-mascot'
 
 /** A scene plays from its first frame, or shows only its last one: before it
@@ -79,7 +80,7 @@ export function BornScene({ still }: SceneProps) {
           </span>
         </div>
         <p className={`flex items-center gap-2 text-[13px] ${rise}`} style={at(5.3)}>
-          <img src="/people/kalev.svg" alt="" width={24} height={24} className="size-6 rounded-full" />
+          <Face person="kalev" size={24} />
           Kalev Mokua joined
         </p>
       </div>
