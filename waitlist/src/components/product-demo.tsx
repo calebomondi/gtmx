@@ -68,7 +68,7 @@ export function ProductDemo({ video }: { video: DemoVideo }) {
   }
 
   return (
-    <DemoFrame status="The real app" live={playing} detail={`${video.subject} · example data`}>
+    <DemoFrame>
       <div ref={frame} className={`relative bg-paper ${cut.aspect === '3/4' ? 'aspect-[3/4]' : 'aspect-[4/3]'}`}>
         <video
           ref={player}
