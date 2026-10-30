@@ -1,5 +1,6 @@
-import type { ReactNode, SVGProps } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type SVGProps } from 'react'
 
+import { usePlay } from '../lib/motion'
 import { stagger } from '../lib/stagger'
 import { Lace } from './lace-mascot'
 import { Section } from './section'
@@ -103,15 +104,75 @@ function Said({ who, initial, tone, children, waiting = false }: {
   )
 }
 
-/** A sketch of a founding team on one Lace: the team chat with two
- * cofounders, a search running meanwhile, and a find one of them pushed from
- * their private chat waiting for the other's OK. */
-function TeamChat() {
+/** The chat's beats, in ms from the start: who says what, and when. */
+const BEATS = {
+  asked: 300,
+  typing: 900,
+  answered: 2000,
+  cofounder: 2600,
+  searching: 3100,
+  answeredCofounder: 4300,
+  pushed: 5300,
+  approved: 6600,
+} as const
+type Beat = keyof typeof BEATS | 'start'
+const ORDER: Beat[] = ['start', 'asked', 'typing', 'answered', 'cofounder', 'searching', 'answeredCofounder', 'pushed', 'approved']
+
+/** Which point beside the chat each beat shows (POINTS' index). */
+function pointAt(beat: Beat): number {
+  if (beat === 'start') return 0
+  if (ORDER.indexOf(beat) < ORDER.indexOf('cofounder')) return 1
+  if (ORDER.indexOf(beat) < ORDER.indexOf('pushed')) return 3
+  return 2
+}
+
+/** The chat's beat: it walks through BEATS once per run, and sits on the last when still. */
+function useBeat(run: number, still: boolean): Beat {
+  // Tagged with its run, so a replay reads as the start until its first beat lands.
+  const [reached, setReached] = useState<{ run: number; beat: Beat }>({ run, beat: 'start' })
+  useEffect(() => {
+    if (still) return
+    const timers = (Object.keys(BEATS) as (keyof typeof BEATS)[])
+      .map((beat) => window.setTimeout(() => setReached({ run, beat }), BEATS[beat]))
+    return () => timers.forEach((t) => window.clearTimeout(t))
+  }, [run, still])
+  if (still) return 'approved'
+  return reached.run === run ? reached.beat : 'start'
+}
+
+/** Shown from `from` on, rising in as it arrives; until then it keeps its
+ * place, so the chat doesn't jump as it fills. */
+function Arrive({ beat, from, still, className = '', children }: {
+  beat: Beat
+  from: Beat
+  still: boolean
+  className?: string
+  children: ReactNode
+}) {
+  const shown = ORDER.indexOf(beat) >= ORDER.indexOf(from)
+  return <div className={`${className} ${shown ? (still ? '' : 'rise-in') : 'invisible'}`}>{children}</div>
+}
+
+function Typing() {
+  return (
+    <span className="flex items-center gap-1 py-1.5" aria-hidden>
+      {[0, 1, 2].map((i) => <span key={i} className="typing-dot size-1.5 rounded-full bg-ink/40" style={{ animationDelay: `${i * 0.15}s` }} />)}
+    </span>
+  )
+}
+
+/** A founding team on one Lace, played out: you ask and Lace answers, your
+ * cofounder's message waits its turn while a search runs, then a find your
+ * cofounder pushed from their private chat is approved. */
+function TeamChat({ beat, still }: { beat: Beat; still: boolean }) {
+  const at = (from: Beat) => ORDER.indexOf(beat) >= ORDER.indexOf(from)
+  const working = !at('answered') || (at('searching') && !at('answeredCofounder'))
+  const lace = !at('typing') || at('approved') ? 'idle' : working ? 'thinking' : 'alert'
   return (
     <div className="overflow-hidden rounded-xl border border-line bg-paper shadow-lift" role="img"
          aria-label="Two cofounders in their Lace's team chat, with a search running and a find to review">
       <div className="flex items-center gap-3 border-b border-line bg-panel px-4 py-3">
-        <Lace state="idle" size={28} decorative />
+        <Lace state={lace} size={28} decorative />
         <div><p className="text-sm font-semibold leading-tight">Lace</p><p className="text-[11px] text-muted">thalace.com</p></div>
         <div className="ml-auto flex rounded-full border border-line bg-paper p-0.5 text-[11px]">
           <span className="rounded-full bg-panel px-2.5 py-0.5 font-medium shadow-lift">Team chat</span>
@@ -119,40 +180,57 @@ function TeamChat() {
         </div>
       </div>
       <div className="flex flex-col gap-3 p-4 sm:p-5">
-        <div data-reveal style={stagger(0)}>
+        <Arrive beat={beat} from="asked" still={still}>
           <Said who="You" initial="Y" tone="brand">Who just raised and is hiring their first sales lead?</Said>
-        </div>
-        <div data-reveal style={stagger(1)} className="flex items-start gap-2">
+        </Arrive>
+        <Arrive beat={beat} from="typing" still={still} className="flex items-start gap-2">
           <Lace state="alert" size={24} decorative />
-          <p className="max-w-[17rem] text-[13px] leading-snug">
-            Three startups. Acme Pay raised its seed round in June and is hiring a head of sales.
-          </p>
-        </div>
-        <div data-reveal style={stagger(2)}>
-          <Said who="Your cofounder" initial="C" tone="ink" waiting>Draft one to Acme Pay’s founder</Said>
-        </div>
-        <div data-reveal style={stagger(3)}
-             className="flex w-fit items-center gap-2 rounded-full border border-brand/50 bg-highlight/50 px-3 py-1 text-[12px]">
+          {at('answered') ? (
+            <p className={`max-w-[17rem] text-[13px] leading-snug ${still ? '' : 'rise-in'}`}>
+              Three startups. Acme Pay raised its seed round in June and is hiring a head of sales.
+            </p>
+          ) : <Typing />}
+        </Arrive>
+        <Arrive beat={beat} from="cofounder" still={still}>
+          <Said who="Your cofounder" initial="C" tone="ink" waiting={!at('answeredCofounder')}>Draft one to Acme Pay’s founder</Said>
+        </Arrive>
+        <Arrive beat={beat} from="searching" still={still}
+                className="flex w-fit items-center gap-2 rounded-full border border-brand/50 bg-highlight/50 px-3 py-1 text-[12px]">
           <span aria-hidden className="size-2 animate-pulse rounded-full bg-brand" />
           Searching for partners · 2m
           <span className="text-muted">Keep chatting</span>
-        </div>
-        <div data-reveal style={stagger(4)} className="rounded-lg border border-line bg-panel p-3 shadow-lift">
+        </Arrive>
+        <Arrive beat={beat} from="answeredCofounder" still={still} className="flex items-start gap-2">
+          <Lace state="idle" size={24} decorative />
+          <p className="max-w-[17rem] text-[13px] leading-snug">Drafted for Neema, Acme Pay’s founder. It’s in Messaging when you’re ready.</p>
+        </Arrive>
+        <Arrive beat={beat} from="pushed" still={still} className="rounded-lg border border-line bg-panel p-3 shadow-lift">
           <p className="font-mono text-[10px] uppercase tracking-wider text-brand-ink">To review · from your cofounder’s chat</p>
           <p className="mt-1 font-semibold tracking-tight">Launchpad accelerator</p>
           <p className="mt-0.5 text-[13px] leading-snug text-muted">Partner: runs programmes for the startups we sell to</p>
           <p className="mt-1.5 rounded-md bg-paper px-2 py-1 text-[12px]">“Met their programme lead at a demo day.”</p>
-          <div className="mt-2.5 flex justify-end gap-1.5 text-xs">
-            <span className="rounded-md border border-line px-2.5 py-1">Send back</span>
-            <span className="rounded-md bg-ink px-2.5 py-1 font-semibold text-paper">Approve</span>
+          <div className="mt-2.5 flex items-center justify-end gap-1.5 text-xs">
+            {at('approved') ? (
+              <span className={`rounded-md bg-kept px-2.5 py-1 font-semibold text-panel ${still ? '' : 'pop-in'}`}>✓ Approved by you</span>
+            ) : (
+              <>
+                <span className="rounded-md border border-line px-2.5 py-1">Send back</span>
+                <span className="rounded-md bg-ink px-2.5 py-1 font-semibold text-paper">Approve</span>
+              </>
+            )}
           </div>
-        </div>
+        </Arrive>
       </div>
     </div>
   )
 }
 
 export function FoundingTeams() {
+  const stage = useRef<HTMLDivElement>(null)
+  const { run, still, replay } = usePlay(stage)
+  const beat = useBeat(run, still)
+  // While it plays, the point it's showing stands out; once done, all read alike.
+  const lit = !still && beat !== 'approved' ? pointAt(beat) : null
   return (
     <Section
       id="teams"
@@ -161,14 +239,24 @@ export function FoundingTeams() {
       intro={<>A startup is rarely one person. Your Lace is <strong>shared by the whole founding team</strong>, so what one of you learns, all of you can build on.</>}
     >
       <div className="grid gap-10 lg:grid-cols-[1fr_1fr] lg:items-center lg:gap-16">
-        <TeamChat />
+        <div ref={stage} className="flex flex-col gap-3">
+          <TeamChat key={run} beat={beat} still={still} />
+          {!still && beat === 'approved' && (
+            <button type="button" onClick={replay} className="cursor-pointer self-start text-sm text-muted underline-offset-4 hover:text-ink hover:underline">
+              Play it again
+            </button>
+          )}
+        </div>
         <ul className="flex flex-col gap-7">
           {POINTS.map((point, i) => (
-            <li key={point.title} data-reveal style={stagger(i)} className="flex gap-4">
-              <span className="shrink-0">{point.icon}</span>
-              <div>
-                <p className="text-lg font-semibold tracking-tight">{point.title}</p>
-                <p className="mt-1 leading-relaxed text-muted">{point.body}</p>
+            <li key={point.title} data-reveal style={stagger(i)}>
+              {/* Dimmed on an inner box: the reveal owns the item's own opacity. */}
+              <div className={`flex gap-4 transition-opacity duration-500 ${lit === null || lit === i ? '' : 'opacity-40'}`}>
+                <span className={`shrink-0 transition-transform duration-500 ${lit === i ? 'scale-110' : ''}`}>{point.icon}</span>
+                <div>
+                  <p className="text-lg font-semibold tracking-tight">{point.title}</p>
+                  <p className="mt-1 leading-relaxed text-muted">{point.body}</p>
+                </div>
               </div>
             </li>
           ))}

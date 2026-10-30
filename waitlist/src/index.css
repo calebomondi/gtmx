@@ -363,6 +363,17 @@
   }
 }
 
+/* Lace typing: three dots bobbing in turn. */
+.typing-dot {
+  animation: typing-dot 0.9s ease-in-out infinite;
+}
+@keyframes typing-dot {
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
 /* Send, waiting: a slow ring, breathing. */
 .send-wait {
   animation: send-wait 2.2s ease-in-out infinite;
