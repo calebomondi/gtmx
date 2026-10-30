@@ -22,6 +22,7 @@ export function Section({
   title,
   intro,
   decor,
+  layout = 'stacked',
   children,
 }: {
   id?: string
@@ -32,6 +33,9 @@ export function Section({
   intro?: ReactNode
   /** Background shapes (LaceSquare), clipped to the section. */
   decor?: ReactNode
+  /** stacked: the heading above the content. split: on wide screens the
+   * heading holds a left column, pinned, beside the content. */
+  layout?: 'stacked' | 'split'
   children: ReactNode
 }) {
   const t = TONE[tone]
@@ -40,26 +44,29 @@ export function Section({
     // container, so How it works' sticky stage still pins.
     <section id={id} className={`relative isolate scroll-mt-14 overflow-clip py-20 sm:py-28 ${t.section}`}>
       {decor && <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">{decor}</div>}
-      <div className="mx-auto max-w-7xl px-5 sm:px-8">
-        {label && (
-          <p data-reveal className={`mb-4 flex items-center gap-2 font-mono text-xs uppercase tracking-wider ${t.label}`}>
-            <span aria-hidden className={`h-px w-6 ${tone === 'brand' ? 'bg-ink' : 'bg-brand'}`} />
-            {label}
-          </p>
-        )}
-        <h2
-          data-reveal
-          style={stagger(1)}
-          className="max-w-3xl text-[2rem] leading-[1.08] font-semibold tracking-[-0.03em] text-balance sm:text-5xl"
-        >
-          {title}
-        </h2>
-        {intro && (
-          <p data-reveal style={stagger(2)} className={`mt-5 max-w-2xl text-lg leading-relaxed [&_strong]:font-semibold ${t.intro}`}>
-            {intro}
-          </p>
-        )}
-        <div className="mt-12 sm:mt-14">{children}</div>
+      <div className={`mx-auto max-w-7xl px-5 sm:px-8 ${
+        layout === 'split' ? 'lg:grid lg:grid-cols-[0.8fr_1.2fr] lg:gap-16' : ''}`}>
+        <div className={layout === 'split' ? 'lg:sticky lg:top-24 lg:self-start' : ''}>
+          {label && (
+            <p data-reveal className={`mb-4 flex items-center gap-2 font-mono text-xs uppercase tracking-wider ${t.label}`}>
+              <span aria-hidden className={`h-px w-6 ${tone === 'brand' ? 'bg-ink' : 'bg-brand'}`} />
+              {label}
+            </p>
+          )}
+          <h2
+            data-reveal
+            style={stagger(1)}
+            className="max-w-3xl text-[2rem] leading-[1.08] font-semibold tracking-[-0.03em] text-balance sm:text-5xl"
+          >
+            {title}
+          </h2>
+          {intro && (
+            <p data-reveal style={stagger(2)} className={`mt-5 max-w-2xl text-lg leading-relaxed [&_strong]:font-semibold ${t.intro}`}>
+              {intro}
+            </p>
+          )}
+        </div>
+        <div className={layout === 'split' ? 'mt-12 sm:mt-14 lg:mt-0' : 'mt-12 sm:mt-14'}>{children}</div>
       </div>
     </section>
   )
