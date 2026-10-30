@@ -7,8 +7,8 @@ import { DemoFrame } from './demo-frame'
 // image, which is the one shown from sm up. The phone crop gets none.
 const CALLOUTS: { text: string; left: string; top: string }[] = [
   { text: 'Your whole team, one chat', left: '4%', top: '3%' },
-  { text: 'A lead, and why now', left: '27%', top: '51.5%' },
-  { text: 'Saved only when you say', left: '55%', top: '74%' },
+  { text: 'An opportunity, and why it fits', left: '22%', top: '46.5%' },
+  { text: 'Saved only when you say', left: '50%', top: '89%' },
 ]
 
 /** The hero's showcase: the real app, a Lace's team chat, captured with
@@ -23,7 +23,7 @@ export function AppShot() {
         <picture>
           <source media="(max-width: 639px)" srcSet="/shots/lace-chat-phone.jpg" width={860} height={1050} />
           <img src="/shots/lace-chat.jpg" width={1632} height={1224} className="block h-auto w-full"
-               alt="Thalace’s Lace in its team chat: asked who just raised and is hiring a first sales lead, it answers with two startups, Acme Pay (saved, two people to contact) and Globex Freight (waiting to be saved or dismissed), and suggests what to ask next." />
+               alt="Thalace’s Lace in its team chat: Kalev asks for accelerators, grants or demo days to apply to this quarter, and it answers with a fintech accelerator’s spring cohort and an innovation grant, each with why it fits and Save or Not for us, then suggests what to ask next." />
         </picture>
         <ul key={run} aria-hidden className="hidden sm:block">
           {CALLOUTS.map((c, i) => (

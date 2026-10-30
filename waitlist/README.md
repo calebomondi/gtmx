@@ -23,7 +23,9 @@ backend as the app (see `deploy/`).
 Until a recording is published, the hero shows a screenshot of the real app
 (`app-shot.tsx`): Thalace's own Lace in its team chat, filled with invented
 example data. `scripts/capture-app-shot.mjs` retakes it from a running app
-(instructions in the script) into `public/shots/`. To show a recording instead:
+(instructions in the script) into `public/shots/`. The faces in it and in How it
+works (`public/people/`) are Notionists avatars by Zoish via DiceBear, CC0 1.0.
+To show a recording instead:
 
 1. **Record** (~20 s once edited, no audio) at 1440×900, browser zoom 110–125%,
    light theme. Storyboard: name a Lace and paste the website on `/new` → the
