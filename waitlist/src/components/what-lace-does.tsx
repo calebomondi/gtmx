@@ -15,16 +15,20 @@ const COLUMNS: Column[] = [
     mood: 'thinking',
     items: [
       {
-        title: 'Leads worth reaching, and who decides',
-        body: 'Companies that fit who you sell to and have a reason to buy now (a funding round, a new office, a hiring push), and the person there who signs off.',
+        title: 'Leads worth reaching, and who to talk to',
+        body: 'Selling to businesses: the ones with a reason to buy now (a funding round, a new office, a hiring push), and the person who signs off. Selling to people: the communities, creators and events where they already gather, and who runs them.',
       },
       {
         title: 'Places to sell',
-        body: 'Tenders, RFPs, procurement calls and public “looking for” posts that fit what you sell, with their deadlines.',
+        body: 'Whenever someone puts out a call for what you sell: tenders, RFPs, procurement notices and public “looking for” posts, with their deadlines.',
       },
       {
         title: 'Places to showcase and partner',
-        body: 'Events, awards, podcasts and press to be seen at, and companies serving the same buyers to team up with.',
+        body: 'Events, awards, podcasts and press where your customers are paying attention, and businesses that serve the same customers to team up with.',
+      },
+      {
+        title: 'Funding you qualify for',
+        body: 'Grants, incubators and accelerators with an open call that matches your sector, your stage and your country.',
       },
     ],
   },

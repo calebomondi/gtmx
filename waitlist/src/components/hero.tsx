@@ -6,8 +6,6 @@ import { LacePreview } from './lace-preview'
 import { ProductDemo } from './product-demo'
 import { RotatingWord } from './rotating-word'
 
-const PROOF = ['One Lace per startup', 'Your cofounders on it too', 'Works wherever you sell', 'You approve every send']
-
 // What Lace finds, one after another; read whole without motion.
 const FINDS = ['leads.', 'opportunities.', 'partners.', 'next deal.']
 
@@ -38,20 +36,12 @@ export function Hero({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; on
             without your click.
           </p>
           <SignupCard id="join" pilot={pilot} onPilotSpotsLeft={onPilotSpotsLeft} />
-          <ul className="flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-muted">
-            {PROOF.map((item) => (
-              <li key={item} className="flex items-center gap-2">
-                <span aria-hidden className="size-2 rounded-[2px] bg-brand" />
-                {item}
-              </li>
-            ))}
-            {pilot && pilot.left > 0 && (
-              <li className="flex items-center gap-2 font-medium text-ink">
-                <span aria-hidden className="size-2 rounded-[2px] bg-ink" />
-                {pilot.left} of {pilot.total} pilot spots open
-              </li>
-            )}
-          </ul>
+          {pilot && pilot.left > 0 && (
+            <p className="flex items-center gap-2 text-[13px] font-medium">
+              <span aria-hidden className="size-2 rounded-[2px] bg-ink" />
+              {pilot.left} of {pilot.total} pilot spots open
+            </p>
+          )}
         </div>
         <div className="min-w-0 pr-3 pb-3 sm:pr-4 sm:pb-4">
           {DEMO_VIDEO ? <ProductDemo video={DEMO_VIDEO} /> : <LacePreview />}
