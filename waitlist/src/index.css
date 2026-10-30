@@ -302,6 +302,67 @@
     transform: translate(150px, -130px) rotate(-14deg) scale(1.1);
   }
 }
+/* -- What your Lace does: each column's scene (what-lace-does-scenes.tsx). -- */
+
+/* A highlight passing over the dots, left to right, once. */
+.scan-sweep {
+  left: -2.5rem;
+  background: linear-gradient(90deg, transparent, rgb(254 168 83 / 0.35), transparent);
+  animation: scan-sweep 1.4s cubic-bezier(0.4, 0, 0.2, 1) 0.2s forwards;
+  opacity: 0;
+}
+@keyframes scan-sweep {
+  10%,
+  90% {
+    opacity: 1;
+  }
+  to {
+    left: 100%;
+    opacity: 0;
+  }
+}
+/* The dot that is a find: lit, and swelling once. */
+.dot-light {
+  animation: dot-light 0.6s cubic-bezier(0.3, 1.6, 0.5, 1) var(--at, 0s) backwards;
+}
+@keyframes dot-light {
+  from {
+    background-color: rgb(18 18 18 / 0.15);
+    transform: scale(1);
+  }
+  60% {
+    transform: scale(2.4);
+  }
+}
+/* An old price struck through, then dimmed. */
+.strike-in {
+  transform-origin: left;
+  animation: strike-in 0.35s ease-out var(--at, 0s) backwards;
+}
+@keyframes strike-in {
+  from {
+    transform: scaleX(0);
+  }
+}
+.price-old {
+  animation: price-old 0.4s ease-out var(--at, 0s) backwards;
+}
+@keyframes price-old {
+  from {
+    color: var(--color-ink);
+  }
+}
+/* Text making way for what replaces it. */
+.fade-out {
+  animation: fade-out 0.3s ease-in var(--at, 0s) forwards;
+}
+@keyframes fade-out {
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
 /* Send, waiting: a slow ring, breathing. */
 .send-wait {
   animation: send-wait 2.2s ease-in-out infinite;
