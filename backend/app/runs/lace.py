@@ -85,6 +85,10 @@ _STEP_TEXT = {
     "draft_outreach": lambda a: "Starting to draft messages",
     "find_opportunities": lambda a: "Starting a search for opportunities",
     "list_opportunities": lambda a: "Checking the opportunities on file",
+    "set_jurisdiction": lambda a: "Noting where we're registered and operate",
+    "find_regulations": lambda a: "Starting a search for the laws and regulations that apply",
+    "list_regulations": lambda a: "Checking the laws and regulations on file",
+    "update_regulations": lambda a: "Updating the laws and regulations we track",
     "find_accounts": lambda a: "Starting a search for customers" + (f" in {a['country']}" if a.get("country") else ""),
 }
 

@@ -16,9 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agents.schemas.icp import ICP
 from agents.schemas.opportunities import OpportunitySummary
+from agents.schemas.regulations import Jurisdiction, RegulationStatus, RegulationSummary
 from agents.schemas.lace import ProposedAction, AccountSummary, CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Fact, ItemsChanged, NamedItem, NewContact, SavedKind, SavedVerdict, Suggestions, FactTopic, LaceProfile, NewFact, SourcePage
 from backend.app.database.lace_models import Lace, LaceAccount, LaceCompetitor, LaceContact, LaceFact, LaceOutreach, LaceSource
-from backend.app.services import lace_app_actions, lace_accounts, lace_competitors, lace_contacts, lace_documents, lace_finds, lace_opportunities, lace_outreach
+from backend.app.services import lace_app_actions, lace_accounts, lace_competitors, lace_contacts, lace_documents, lace_finds, lace_opportunities, lace_outreach, lace_regulations
 from backend.app.services import laces as lace_service
 from backend.app.services.errors import ConflictError, NotFoundError
 from backend.app.services.laces import current_facts_query
@@ -159,6 +160,32 @@ class DbLaceStore:
         async with self._sessions() as session:
             rows = await self._saved(session, "competitor", limit)
         return [_competitor(r) for r in rows]
+
+    async def jurisdiction(self) -> Jurisdiction:
+        async with self._sessions() as session:
+            lace = await session.get(Lace, self._lace_id)
+        if lace is None:
+            raise NotFoundError("Lace not found")
+        return lace_regulations.jurisdiction_of(lace)
+
+    async def set_jurisdiction(self, registered_in: str | None, operates_in: list[str]) -> Jurisdiction:
+        async with self._sessions() as session, session.begin():
+            return await lace_regulations.set_jurisdiction(session, self._lace_id, registered_in, operates_in)
+
+    async def regulations(self, status: RegulationStatus, limit: int = 50) -> list[RegulationSummary]:
+        """The team's, then (in a private chat) the member's own."""
+        async with self._sessions() as session:
+            rows = await lace_regulations.list_for_lace(session, self._lace_id, status, limit)
+            if self._owner_id is not None:
+                rows += await lace_regulations.list_for_lace(session, self._lace_id, status, limit, self._owner_id)
+        return [lace_regulations.summary(r) for r in rows]
+
+    async def set_regulations(self, ids: list[str], status: RegulationStatus) -> ItemsChanged:
+        parsed = {i: _parse_id(i) for i in ids}
+        async with self._sessions() as session, session.begin():
+            result = await lace_regulations.set_status(session, self._lace_id, [u for u in parsed.values() if u],
+                                                       status, self._owner_id)
+        return result.model_copy(update={"missing": [*result.missing, *(i for i, u in parsed.items() if u is None)]})
 
     async def suggestions(self, limit: int = 50) -> Suggestions:
         async with self._sessions() as session:

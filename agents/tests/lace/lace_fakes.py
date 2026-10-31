@@ -1,11 +1,13 @@
 """An in-memory Lace store and a scripted model, for the offline Lace tests."""
 
 import itertools
+import re
 from datetime import datetime, timezone
 
 from langchain_core.messages import AIMessage
 
 from agents.lace.store import JobRefused
+from agents.schemas.regulations import JURISDICTION_PATTERN, Jurisdiction
 from agents.schemas.lace import CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Fact, ItemsChanged, NamedItem, Suggestions, LaceProfile, NewFact, SourcePage
 
 
@@ -25,6 +27,9 @@ class MemoryStore:
         self.website = "https://acme.test"
         # id -> (summary, text)
         self.shared: dict[str, tuple[DocumentSummary, str]] = {}
+        self.place = Jurisdiction()
+        # RegulationSummary rows; set_regulations changes their status.
+        self.rules: list = []
 
     async def profile(self) -> LaceProfile:
         return LaceProfile(name="Ada", website=self.website, startup_name=self.startup_name)
@@ -112,6 +117,27 @@ class MemoryStore:
         self.drafted = [d for d in self.drafted if d.id not in ids]
         return ItemsChanged(changed=[NamedItem(id=d.id, name=d.recipient) for d in gone],
                             missing=[i for i in ids if i not in {d.id for d in gone}])
+
+    async def jurisdiction(self):
+        return self.place
+
+    async def set_jurisdiction(self, registered_in, operates_in):
+        bad = [c for c in [registered_in, *operates_in] if c and not re.match(JURISDICTION_PATTERN, c)]
+        if bad:
+            raise ValueError(f"Not ISO 3166 codes: {', '.join(bad)}")
+        self.place = Jurisdiction(registered_in=registered_in, operates_in=operates_in, confirmed=True)
+        return self.place
+
+    async def regulations(self, status, limit=50):
+        return [r for r in self.rules if r.status == status][:limit]
+
+    async def set_regulations(self, ids, status) -> ItemsChanged:
+        changed = []
+        for i, rule in enumerate(self.rules):
+            if rule.id in ids:
+                self.rules[i] = rule.model_copy(update={"status": status})
+                changed.append(NamedItem(id=rule.id, name=rule.title))
+        return ItemsChanged(changed=changed, missing=[i for i in ids if i not in {c.id for c in changed}])
 
     async def propose_action(self, action) -> str:
         self.proposed.append(action)

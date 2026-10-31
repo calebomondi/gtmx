@@ -25,7 +25,7 @@ from agents.schemas.lace import RunningJob
 from agents.schemas.lace_ui import BlockAnswer
 from backend.app.runs import lace as lace_runs
 from backend.app.runs.lace import LaceThread
-from backend.app.runs import lace_jobs, social_jobs
+from backend.app.runs import lace_jobs, regulation_jobs, social_jobs
 from backend.app.runs.errors import user_facing_error
 from backend.app.services import limits
 from backend.app.services import runs as run_service
@@ -312,13 +312,14 @@ async def post_brief(user_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UUID
 _TOOL_JOB_RUN_KINDS = {"find_competitors": "lace_competitors", "check_competitors": "lace_monitor",
                        "find_accounts": "lace_accounts", "find_contacts": "lace_contacts", "define_icp": "lace_icp",
                        "draft_outreach": "lace_drafts", "find_opportunities": "lace_opportunities",
-                       "read_tiktok_comments": "lace_comments"}
+                       "read_tiktok_comments": "lace_comments", "find_regulations": "lace_regulations"}
 _JOB_SEGMENTS = {"lace_competitors": lace_jobs.competitors_job, "lace_monitor": lace_jobs.monitor_job,
                  "lace_accounts": lace_jobs.accounts_job, "lace_contacts": lace_jobs.contacts_job,
                  "lace_icp": lace_jobs.icp_job,
                  "lace_drafts": lace_jobs.drafts_job, "lace_reply": lace_jobs.reply_job,
                  "lace_opportunities": lace_jobs.opportunities_job,
-                 "lace_comments": social_jobs.tiktok_comments_job}
+                 "lace_comments": social_jobs.tiktok_comments_job,
+                 "lace_regulations": regulation_jobs.regulations_job}
 _JOB_BUSY = {
     "lace_competitors": "A competitor search is already running; I'll report when it's done.",
     "lace_monitor": "I'm already checking the competitors; I'll report anything that matters.",
@@ -330,6 +331,7 @@ _JOB_BUSY = {
     "lace_reply": "Replies are already being read.",
     "lace_opportunities": "I'm already looking for opportunities; I'll report when it's done.",
     "lace_comments": "I'm already reading their TikTok comments; I'll report when it's done.",
+    "lace_regulations": "I'm already looking for the laws and regulations that apply; I'll report when it's done.",
 }
 
 
@@ -434,7 +436,8 @@ async def _cancel(db: AsyncSession, run: models.Run, message: str) -> models.Run
 _JOB_NAMES = {"lace_competitors": "competitor search", "lace_monitor": "competitor check",
               "lace_accounts": "search for leads", "lace_contacts": "contact search",
               "lace_icp": "ideal customer profile", "lace_drafts": "drafting", "lace_reply": "reading of replies",
-              "lace_opportunities": "opportunity search", "lace_comments": "reading of TikTok comments"}
+              "lace_opportunities": "opportunity search", "lace_comments": "reading of TikTok comments",
+              "lace_regulations": "search for laws and regulations"}
 
 
 async def _report_interrupted_jobs(run_ids: list[uuid.UUID]) -> None:
