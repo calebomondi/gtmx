@@ -51,7 +51,7 @@ export function Hero({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; on
   const mascot = useRef<HTMLSpanElement>(null)
   const look = useLookAtPointer(mascot)
   return (
-    <section ref={hero} id="top" className="hero-paper relative isolate flex min-h-[calc(100svh-3.5rem)] items-center overflow-hidden">
+    <section ref={hero} id="top" className="hero-paper relative isolate flex min-h-[calc(100dvh-3.5rem)] items-center overflow-hidden">
       <HeroGlow hero={hero} />
       <div className="mx-auto grid w-full max-w-7xl gap-14 px-5 py-14 sm:px-8 short:py-8 lg:grid-cols-[0.95fr_1.15fr] lg:items-center lg:gap-16">
         <div className="flex min-w-0 flex-col gap-6 short:gap-4">
