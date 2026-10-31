@@ -10,11 +10,12 @@ import uuid
 from datetime import UTC, date, datetime
 
 from sqlalchemy import or_, Boolean, CheckConstraint, Date, DateTime, Float, Integer, SmallInteger, ForeignKey, Index, String, Text, UUID, UniqueConstraint, false, func, text
-from sqlalchemy.dialects.postgresql import JSONB as JSON
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB as JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
 from agents.schemas.monitor import MOVE_IMPORTANCES, MOVE_KINDS
 from agents.schemas.opportunities import OPPORTUNITY_KINDS, OPPORTUNITY_STATUSES
+from agents.schemas.regulations import BILL_STAGES, JURISDICTION_MAX_LEN, JURISDICTION_PATTERN, REGULATION_KINDS, REGULATION_STATUSES
 from agents.schemas.lace import ACCOUNT_STATUSES, ACTIVITY_KINDS, ACTIVITY_REFS, APP_ACTION_STATUSES, CONTACT_SOURCES, LACE_ROLES, MEMBER_STATUSES, BRIEF_FREQUENCIES, CONTACT_STATUSES, INBOX_PLATFORMS, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, DEFAULT_WATCH_EVERY_H, FACT_ORIGINS, FACT_TOPICS, WATCH_EVERY_H
 from backend.app.database.connect import Base
 
@@ -75,6 +76,7 @@ class Lace(Base):
         CheckConstraint("quiet_start BETWEEN 0 AND 23 AND quiet_end BETWEEN 0 AND 23 AND quiet_start <> quiet_end",
                         name="quiet_hours_range"),
         Index("uq_laces_domain", "domain", unique=True, postgresql_where=text("domain IS NOT NULL")),
+        CheckConstraint(f"registered_in ~ '{JURISDICTION_PATTERN}'", name="registered_in_code"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -104,6 +106,14 @@ class Lace(Base):
     # How often it looks for new opportunities and competitor moves, in hours.
     watch_every_h: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=DEFAULT_WATCH_EVERY_H,
                                                server_default=str(DEFAULT_WATCH_EVERY_H))
+    # Where the startup is registered (company law, corporate tax) and where it
+    # operates (staff, offices, customers: employment, tax registration,
+    # licences, data protection), as ISO 3166 codes. Suggested from its facts;
+    # nothing is checked against them until a founder confirms.
+    registered_in: Mapped[str | None] = mapped_column(String(JURISDICTION_MAX_LEN), nullable=True)
+    operates_in: Mapped[list[str]] = mapped_column(ARRAY(String(JURISDICTION_MAX_LEN)), nullable=False,
+                                                   default=list, server_default="{}")
+    jurisdiction_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # When the last brief was due, whether or not there was news for it.
     last_brief_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
@@ -499,6 +509,56 @@ class LaceOpportunity(_Find, Base):
                                                     default=_now, server_default=func.now())
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
                                                    server_default=func.now(), index=True)
+
+
+class LaceRegulation(_Find, Base):
+    """A law, regulation, bill or filing obligation that applies to the Lace's
+    startup in one of its jurisdictions. One row per source page per Lace; a
+    later search refreshes it and keeps the founder's choice. A tracked bill
+    is re-checked on the watch interval, and its stage moves forward here."""
+
+    __tablename__ = "lace_regulations"
+    __table_args__ = (
+        UniqueConstraint("lace_id", "owner_id", "url_key", name="uq_lace_regulations_lace_id_owner_id_url_key",
+                         postgresql_nulls_not_distinct=True),
+        Index("ix_lace_regulations_proposed", "lace_id", postgresql_where=text("proposed_at IS NOT NULL")),
+        CheckConstraint(_one_of("kind", REGULATION_KINDS), name="kind"),
+        CheckConstraint(_one_of("status", REGULATION_STATUSES), name="status"),
+        CheckConstraint(f"stage IS NULL OR {_one_of('stage', BILL_STAGES)}", name="stage"),
+        CheckConstraint(f"jurisdiction ~ '{JURISDICTION_PATTERN}'", name="jurisdiction_code"),
+        Index("ix_lace_regulations_lace_id_status_next_date", "lace_id", "status", "next_date"),
+        Index("ix_lace_regulations_status_last_checked_at", "status", "last_checked_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Indexed by the unique constraint and the status index, which lead with it.
+    lace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("laces.id", ondelete="CASCADE"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    # Who makes or enforces it: a parliament, ministry, regulator or tax authority.
+    authority: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    jurisdiction: Mapped[str] = mapped_column(String(JURISDICTION_MAX_LEN), nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    # The url without scheme, www or trailing slash: the page's identity for dedup.
+    url_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    # Bills only: how far through parliament, and when it last moved.
+    stage: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    stage_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    in_force_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # The next date that matters: a filing deadline, a renewal, the close of
+    # public comment on a bill. Tracked ones are sorted soonest first.
+    next_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    why_it_applies: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    what_to_do: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    status: Mapped[str] = mapped_column(String(12), nullable=False, default="suggested", server_default="suggested")
+    found_by_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
+                                                    default=_now, server_default=func.now())
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
+                                                   server_default=func.now(), index=True)
+    # When the watcher last read its source; NULL until the first check.
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class LaceBrief(Base):
