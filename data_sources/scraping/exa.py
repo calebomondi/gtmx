@@ -127,12 +127,14 @@ def search_highlights(
     search_type: SearchType = "auto",
     num_results: int = 10,
     start_published_date: str | None = None,
+    include_domains: list[str] | None = None,
 ) -> list[dict]:
     """Search returning query-relevant highlights instead of full page text.
 
     For an agent choosing what to read next: the highlights are enough to judge
     a result, and full text would flood its context. "instant" is left out of
-    SearchType on purpose, it is priced for real-time paths.
+    SearchType on purpose, it is priced for real-time paths. `include_domains`,
+    when given, keeps results to those sites.
     """
     exa = _client(config.exa_api_key)
     with usage.track("exa", "search"):
@@ -142,6 +144,7 @@ def search_highlights(
             contents={"highlights": True},
             num_results=num_results,
             start_published_date=start_published_date,
+            include_domains=include_domains,
         ), config, "search")
     return [
         {
