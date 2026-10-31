@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { DemoFrame } from './demo-frame'
-import type { DemoVideo } from './demo-video'
+import type { DemoCut, DemoVideo } from './demo-video'
 
 function prefersStill(): boolean {
   if (typeof window === 'undefined') return true
@@ -10,17 +10,23 @@ function prefersStill(): boolean {
   return reduced || saveData
 }
 
-/** The real product, recorded and sped up. The poster paints first (it is
+/** The real app, recorded with example data. The poster paints first (it is
  * the hero's largest image); the video only loads once the page has loaded
  * and plays only while on screen. With reduced motion or data saver it waits
  * for a click. Captions are HTML, timed to the clip, so they stay sharp and
  * readable by assistive tech. */
+/** The tall cut on phones, where the wide one's text would be too small to read. */
+function pickCut(video: DemoVideo): DemoCut {
+  return typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches ? video.phone : video.wide
+}
+
 export function ProductDemo({ video }: { video: DemoVideo }) {
   const frame = useRef<HTMLDivElement>(null)
   const player = useRef<HTMLVideoElement>(null)
   const [autoplay] = useState(() => !prefersStill())
+  const [cut] = useState(() => pickCut(video))
   const [playing, setPlaying] = useState(false)
-  const [caption, setCaption] = useState(video.captions[0]?.text ?? '')
+  const [caption, setCaption] = useState(cut.captions[0]?.text ?? '')
 
   // Play while in view (after the page has loaded); pause when scrolled away.
   useEffect(() => {
@@ -50,7 +56,7 @@ export function ProductDemo({ video }: { video: DemoVideo }) {
 
   const onTime = () => {
     const t = player.current?.currentTime ?? 0
-    const current = [...video.captions].reverse().find((c) => c.at <= t)
+    const current = [...cut.captions].reverse().find((c) => c.at <= t)
     if (current && current.text !== caption) setCaption(current.text)
   }
 
@@ -62,23 +68,22 @@ export function ProductDemo({ video }: { video: DemoVideo }) {
   }
 
   return (
-    <DemoFrame status="Real product" live={playing} detail={`Sped up · ${video.subject}`}>
-      <div ref={frame} className="relative aspect-[4/3] bg-paper">
+    <DemoFrame>
+      <div ref={frame} className={`relative bg-paper ${cut.aspect === '3/4' ? 'aspect-[3/4]' : 'aspect-[4/3]'}`}>
         <video
           ref={player}
           className="absolute inset-0 h-full w-full object-cover"
-          poster={video.poster}
+          poster={cut.poster}
           muted
           loop
           playsInline
           preload="none"
-          aria-label={`Recording of Thalace researching ${video.subject}, sped up`}
+          aria-label={`Recording of the app: ${video.subject} finds accelerators and grants, and one is saved`}
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
           onTimeUpdate={onTime}
         >
-          <source src={video.webm} type="video/webm" />
-          <source src={video.mp4} type="video/mp4" />
+          <source src={cut.mp4} type="video/mp4" />
         </video>
 
         {caption && (
@@ -104,7 +109,7 @@ export function ProductDemo({ video }: { video: DemoVideo }) {
       </div>
       {/* The whole story for screen readers, rather than captions changing under them. */}
       <ol className="sr-only">
-        {video.captions.map((c) => <li key={c.at}>{c.text}</li>)}
+        {cut.captions.map((c) => <li key={c.at}>{c.text}</li>)}
       </ol>
     </DemoFrame>
   )

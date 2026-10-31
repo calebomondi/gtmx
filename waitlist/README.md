@@ -18,22 +18,19 @@ bun run lint     # oxlint
 In production nginx serves `dist/` at thalace.com and proxies `/api` to the same
 backend as the app (see `deploy/`).
 
-## The hero's product recording
+## The hero's recording
 
-Until a recording is published, the hero acts out a labelled example with an
-invented Lace (`lace-preview.tsx`). To show the real product instead:
+The hero plays a short recording of the real app (`product-demo.tsx`): Thalace's
+own Lace in its team chat, Kalev asking for accelerators, grants or demo days,
+Lace working and answering with two opportunities, and one being saved. The
+data is invented; the faces (`public/people/`) are Notionists avatars by Zoish
+via DiceBear, CC0 1.0.
 
-1. **Record** (~20 s once edited, no audio) at 1440×900, browser zoom 110–125%,
-   light theme. Storyboard: name a Lace and paste the website on `/new` → the
-   mascot printing while it reads the site → confirm what it learned → ask it in
-   chat for customers, then an opportunity → a draft in Messaging, brainstorm it
-   shorter, and **Send** (hold on it). Blur any real contact names or emails you
-   can't publish.
-2. **Encode**: `scripts/encode-demo.sh raw.mp4 --start 2 --end 24 --crop W:H:X:Y --poster 1`
-   writes `public/media/demo.mp4`, `demo.webm` and `demo-poster.webp` (1200×900).
-   Aim for under ~2 MB per video.
-3. **Publish**: fill in `DEMO_VIDEO` in `src/components/demo-video.ts` (the subject,
-   the three paths under `/media/`, and captions timed in seconds to the clip).
+`scripts/record-demo.mjs` records it from a running frontend, with a stand-in
+session and every API call (and the reply's event stream) answered in the
+script, then runs `scripts/encode-demo.sh` into `public/media/`. Instructions
+are at the top of the script. Captions are in `src/components/demo-video.ts`,
+timed to the clip: retime them if the storyboard changes.
 
 The player (`product-demo.tsx`) shows the poster first, loads the video after the
 page, plays only while on screen, and has a pause button. With reduced motion or

@@ -1,38 +1,16 @@
 import { stagger } from '../lib/stagger'
+import { LaceSquare } from './lace-square'
 import { Section } from './section'
 
+// Only what the page above doesn't already answer: the worries before signing up.
 const QUESTIONS = [
-  {
-    q: 'What is a Lace?',
-    a: 'Your startup’s own assistant. You name it and give it your website; it learns what you sell, and from then on finds leads, opportunities and partners, watches your competitors, and drafts your messages and replies. You talk to it in a chat, and see what it did in your Feed and Messaging.',
-  },
   {
     q: 'Will it message people on its own?',
     a: 'No. Lace only drafts. Email and X messages go out from your own accounts when you click send; on LinkedIn, Instagram, Facebook and TikTok you copy the message and send it there yourself. Anyone who asks not to be contacted is never drafted to again.',
   },
   {
-    q: 'Can it find more than leads?',
-    a: 'Yes. Besides leads, it looks for places to sell (tenders, RFPs, procurement calls), places to be seen (events, awards, podcasts, press), partners who serve the same buyers, and grants, incubators and accelerators you qualify for, each with its deadline and why it fits.',
-  },
-  {
-    q: 'Does it work in my country?',
-    a: 'It works wherever you sell. Tell it the countries, and it researches buyers, rivals and news there.',
-  },
-  {
-    q: 'Why one Lace per startup?',
-    a: 'So your startup has one memory: what you sell, who buys, every competitor, every conversation and draft. Everyone on the team works from it, and nothing is learned twice. If you run more than one startup, each gets its own Lace.',
-  },
-  {
-    q: 'Can my cofounders use it too?',
-    a: 'Yes. Invite them by email to your Lace. You all share one team chat (it shows who asked what), one Feed and one Messaging, and you can talk to Lace at the same time: messages wait their turn, and searches keep running while you chat.',
-  },
-  {
-    q: 'Can we each talk to it privately?',
-    a: 'Yes. Each of you has a “Just you” chat next to the team chat. What Lace finds there stays yours until you push it to the team, with a note, and a cofounder approves it.',
-  },
-  {
-    q: 'Which tools does it connect to?',
-    a: 'Gmail and Outlook, LinkedIn, X, Instagram, Facebook, TikTok and Telegram for reaching people; HubSpot and Zoho CRM; Google Sheets and Notion; Slack and Asana; Google Calendar and Calendly. WhatsApp is coming. Anything Lace would do in them, it proposes first, and it runs only when you approve.',
+    q: 'We sell to consumers, not businesses. Does it still work?',
+    a: 'Yes. Tell it who buys, and instead of companies it looks for where those people already gather: communities, creators, events and platforms, and who runs each one. What it drafts to them offers something for their audience, not a cold pitch.',
   },
   {
     q: 'What if it can’t find good matches?',
@@ -50,7 +28,8 @@ const QUESTIONS = [
 
 export function Faq() {
   return (
-    <Section tone="white" label="Questions" title="Before you ask.">
+    <Section label="Questions" title="Before you ask." layout="split"
+             decor={<LaceSquare className="right-[-12%] bottom-[-10%] w-[min(70vw,40rem)] rotate-12" />}>
       <div className="faq border-t border-line">
         {QUESTIONS.map((item, i) => (
           <details key={item.q} data-reveal style={stagger(i)} className="group border-b border-line">

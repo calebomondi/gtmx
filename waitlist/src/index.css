@@ -68,14 +68,35 @@
     @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-md bg-brand font-semibold text-ink transition duration-200 hover:bg-panel active:translate-y-px;
   }
 
+  /* The page's background shape (lace-square.tsx): Lace's rounded square in
+     translucent orange, deepening where two overlap. */
+  .lace-square {
+    position: absolute;
+    aspect-ratio: 1;
+    border-radius: 9%;
+    background: rgb(254 168 83 / 0.17);
+  }
+  /* Your tools: a rack of small squares, fading out towards the proposals. */
+  .lace-rack {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36'%3E%3Crect x='13' y='13' width='10' height='10' rx='1' fill='%23fea853' fill-opacity='0.2'/%3E%3C/svg%3E");
+    mask-image: radial-gradient(ellipse 55% 75% at 0% 85%, black, transparent);
+  }
+  /* The frame behind the globe, turning far slower than the globe itself. */
+  .spin-glacial {
+    animation: spin-slow 240s linear infinite;
+  }
+
   /* The hero's paper: a faint ledger grid under a warm orange glow. */
   .hero-paper {
     background-image:
-      radial-gradient(60rem 30rem at 85% 20%, rgb(254 168 83 / 0.28), transparent 60%),
       radial-gradient(40rem 24rem at 5% 90%, rgb(254 168 83 / 0.14), transparent 60%),
       linear-gradient(rgb(18 18 18 / 0.045) 1px, transparent 1px),
       linear-gradient(90deg, rgb(18 18 18 / 0.045) 1px, transparent 1px);
-    background-size: auto, auto, 44px 44px, 44px 44px;
+    background-size: auto, 44px 44px, 44px 44px;
+  }
+  /* The hero's moving glow (hero-glow.tsx), over the paper and under the content. */
+  .hero-glow {
+    background: radial-gradient(closest-side, rgb(254 168 83 / 0.4), transparent);
   }
 
   /* Marker-pen highlight behind words that carry the point. */
@@ -217,6 +238,156 @@
     transform: translateX(-28px) scale(0.8);
   }
 }
+/* Rising into place once its moment (--at) comes; hidden until then. */
+.rise-in {
+  animation: rise-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) var(--at, 0s) backwards;
+}
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+/* A button pressed for you, then confirmed green. */
+.confirm-in {
+  animation: confirm-in 0.5s ease-out var(--at, 0s) forwards;
+}
+@keyframes confirm-in {
+  40% {
+    transform: scale(0.9);
+  }
+  to {
+    background-color: var(--color-kept);
+    color: var(--color-panel);
+  }
+}
+/* A find swooping out of Lace into its place in the stack: from the left on
+   wide screens, from above on phones. */
+.find-swoop {
+  --fx: -210px;
+  --fy: var(--fy-row);
+  animation: find-swoop 0.9s cubic-bezier(0.3, 0.7, 0.2, 1) var(--at, 0s) backwards;
+}
+@media (max-width: 639px) {
+  .find-swoop {
+    --fx: 0px;
+    --fy: var(--fy-col);
+  }
+}
+@keyframes find-swoop {
+  from {
+    opacity: 0;
+    transform: translate(var(--fx), var(--fy)) scale(0.2) rotate(-20deg);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(calc(var(--fx) * 0.45), calc(var(--fy) * 0.45 - 48px)) scale(0.75) rotate(8deg);
+  }
+}
+/* The schedule's clock, its hand ticking round. */
+.clock-tick {
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+  animation: spin-slow 6s steps(12) infinite;
+}
+/* The sent draft folding away, and the paper plane it becomes. */
+.fly-off {
+  animation: fly-off 0.6s cubic-bezier(0.5, 0, 0.75, 0) forwards;
+}
+@keyframes fly-off {
+  to {
+    opacity: 0;
+    transform: translate(40px, -30px) rotate(-6deg) scale(0.5);
+  }
+}
+.plane-fly {
+  animation: plane-fly 1.3s cubic-bezier(0.4, 0, 0.6, 1) 0.2s both;
+}
+@keyframes plane-fly {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  15% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translate(150px, -130px) rotate(-14deg) scale(1.1);
+  }
+}
+/* -- What your Lace does: each column's scene (what-lace-does-scenes.tsx). -- */
+
+/* A highlight passing over the dots, left to right, once. */
+.scan-sweep {
+  left: -2.5rem;
+  background: linear-gradient(90deg, transparent, rgb(254 168 83 / 0.35), transparent);
+  animation: scan-sweep 1.4s cubic-bezier(0.4, 0, 0.2, 1) 0.2s forwards;
+  opacity: 0;
+}
+@keyframes scan-sweep {
+  10%,
+  90% {
+    opacity: 1;
+  }
+  to {
+    left: 100%;
+    opacity: 0;
+  }
+}
+/* The dot that is a find: lit, and swelling once. */
+.dot-light {
+  animation: dot-light 0.6s cubic-bezier(0.3, 1.6, 0.5, 1) var(--at, 0s) backwards;
+}
+@keyframes dot-light {
+  from {
+    background-color: rgb(18 18 18 / 0.15);
+    transform: scale(1);
+  }
+  60% {
+    transform: scale(2.4);
+  }
+}
+/* An old price struck through, then dimmed. */
+.strike-in {
+  transform-origin: left;
+  animation: strike-in 0.35s ease-out var(--at, 0s) backwards;
+}
+@keyframes strike-in {
+  from {
+    transform: scaleX(0);
+  }
+}
+.price-old {
+  animation: price-old 0.4s ease-out var(--at, 0s) backwards;
+}
+@keyframes price-old {
+  from {
+    color: var(--color-ink);
+  }
+}
+/* Text making way for what replaces it. */
+.fade-out {
+  animation: fade-out 0.3s ease-in var(--at, 0s) forwards;
+}
+@keyframes fade-out {
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+/* Lace typing: three dots bobbing in turn. */
+.typing-dot {
+  animation: typing-dot 0.9s ease-in-out infinite;
+}
+@keyframes typing-dot {
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
 /* Send, waiting: a slow ring, breathing. */
 .send-wait {
   animation: send-wait 2.2s ease-in-out infinite;
