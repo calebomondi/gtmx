@@ -12,7 +12,6 @@ export interface DemoCaption {
 /** One cut of the recording, with its captions timed to it. */
 export interface DemoCut {
   mp4: string
-  webm: string
   poster: string
   /** Its shape, width over height. */
   aspect: '4/3' | '3/4'
@@ -39,14 +38,12 @@ export const DEMO_VIDEO: DemoVideo = {
   subject: 'Thalace’s own Lace',
   wide: {
     mp4: '/media/demo.mp4',
-    webm: '/media/demo.webm',
     poster: '/media/demo-poster.webp',
     aspect: '4/3',
     captions: captions({ asks: 0.9, works: 5.2, answers: 9, saves: 11.4 }),
   },
   phone: {
     mp4: '/media/demo-phone.mp4',
-    webm: '/media/demo-phone.webm',
     poster: '/media/demo-phone-poster.webp',
     aspect: '3/4',
     captions: captions({ asks: 0, works: 3.4, answers: 7.2, saves: 10.9 }),
