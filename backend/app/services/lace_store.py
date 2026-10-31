@@ -21,7 +21,7 @@ from agents.schemas.lace import ProposedAction, AccountSummary, CompetitorSummar
 from backend.app.database.lace_models import Lace, LaceAccount, LaceCompetitor, LaceContact, LaceFact, LaceOutreach, LaceSource
 from backend.app.services import lace_app_actions, lace_accounts, lace_competitors, lace_contacts, lace_documents, lace_finds, lace_opportunities, lace_outreach, lace_regulations
 from backend.app.services import laces as lace_service
-from backend.app.services.errors import ConflictError, NotFoundError
+from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError
 from backend.app.services.laces import current_facts_query
 
 
@@ -169,8 +169,11 @@ class DbLaceStore:
         return lace_regulations.jurisdiction_of(lace)
 
     async def set_jurisdiction(self, registered_in: str | None, operates_in: list[str]) -> Jurisdiction:
-        async with self._sessions() as session, session.begin():
-            return await lace_regulations.set_jurisdiction(session, self._lace_id, registered_in, operates_in)
+        try:
+            async with self._sessions() as session, session.begin():
+                return await lace_regulations.set_jurisdiction(session, self._lace_id, registered_in, operates_in)
+        except InvalidInputError as exc:
+            raise ValueError(str(exc)) from exc
 
     async def regulations(self, status: RegulationStatus, limit: int = 50) -> list[RegulationSummary]:
         """The team's, then (in a private chat) the member's own."""

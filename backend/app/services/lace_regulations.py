@@ -17,7 +17,7 @@ from agents.schemas.regulations import JURISDICTION_PATTERN, Jurisdiction, Regul
 from backend.app.database import models
 from backend.app.database.lace_models import Lace, LaceRegulation
 from backend.app.services import lace_activity, lace_events
-from backend.app.services.errors import NotFoundError
+from backend.app.services.errors import InvalidInputError, NotFoundError
 from backend.app.services.lace_opportunities import url_key
 from backend.app.services.runs import TERMINAL_STATUSES
 from config import settings
@@ -55,13 +55,13 @@ def jurisdiction_of(lace: Lace) -> Jurisdiction:
 async def set_jurisdiction(db: AsyncSession, lace_id: uuid.UUID, registered_in: str | None,
                            operates_in: list[str]) -> Jurisdiction:
     """Record where a founder said the startup is registered and operates, as
-    confirmed now. Raises ValueError for anything but ISO 3166 codes."""
+    confirmed now. Raises InvalidInputError for anything but ISO 3166 codes."""
     places = list(dict.fromkeys(operates_in))
     bad = [c for c in [registered_in, *places] if c is not None and not _CODE.match(c)]
     if bad:
-        raise ValueError(f"Not ISO 3166 codes: {', '.join(bad)}. Use codes like KE, NG or US-DE.")
+        raise InvalidInputError(f"Not ISO 3166 codes: {', '.join(bad)}. Use codes like KE, NG or US-DE.")
     if len(places) > MAX_PLACES:
-        raise ValueError(f"At most {MAX_PLACES} places it operates in; got {len(places)}.")
+        raise InvalidInputError(f"At most {MAX_PLACES} places it operates in; got {len(places)}.")
     lace = await db.get(Lace, lace_id)
     if lace is None:
         raise NotFoundError("Lace not found")
@@ -88,6 +88,19 @@ async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, status: Regulation
     order = ((LaceRegulation.next_date.asc().nulls_last(), LaceRegulation.last_seen_at.desc()) if status == "tracked"
              else (LaceRegulation.last_seen_at.desc(),))
     return list((await db.scalars(query.order_by(*order).limit(limit))).all())
+
+
+async def set_one_status(db: AsyncSession, lace_id: uuid.UUID, regulation_id: uuid.UUID, status: RegulationStatus,
+                         member_id: uuid.UUID | None = None) -> LaceRegulation:
+    """404 for a regulation that is not this Lace's (or is another member's)."""
+    row = await db.scalar(select(LaceRegulation).where(LaceRegulation.id == regulation_id,
+                                                       LaceRegulation.lace_id == lace_id,
+                                                       LaceRegulation.seen_by(member_id)))
+    if row is None:
+        raise NotFoundError("Regulation not found")
+    row.status = status
+    await db.commit()
+    return row
 
 
 async def set_status(db: AsyncSession, lace_id: uuid.UUID, ids: list[uuid.UUID], status: RegulationStatus,
