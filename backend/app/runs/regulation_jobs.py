@@ -14,9 +14,9 @@ from agents.schemas.regulations import Regulation
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.runs import events
-from backend.app.runs.lace_jobs import good_fits, job_update, private_to, report_failure
+from backend.app.runs.lace_jobs import good_fits, job_activity, job_update, private_to, report_failure
 from backend.app.services import lace_regulations
-from backend.app.services.lace_activity import plural
+from backend.app.services.lace_activity import names, plural
 from backend.app.services.lace_store import DbLaceStore
 from backend.app.services.runs import set_run_fields
 from config import settings
@@ -66,6 +66,11 @@ async def regulations_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -
         new, refreshed = await lace_regulations.upsert_found(db, lace_id, run_id, found, private_to(params))
         if new or not params.get("scheduled"):
             await job_update(db, lace_id, params, regulations_update(found, new, len(weak), place.places), run_id)
+        if new:
+            await job_activity(db, lace_id, params, "regulations_found",
+                               f"Found {plural(new, 'law or regulation', 'laws and regulations')} that "
+                               + ("applies" if new == 1 else "apply"),
+                               names([r.title for r in found]))
     await set_run_fields(models.Run, run_id, status="completed", finished_at=datetime.now(UTC),
                          progress={"found": len(found), "new": new, "refreshed": refreshed})
     await events.publish(run_id, "complete", {"found": len(found)})
