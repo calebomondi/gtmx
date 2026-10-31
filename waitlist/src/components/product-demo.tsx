@@ -83,7 +83,6 @@ export function ProductDemo({ video }: { video: DemoVideo }) {
           onPause={() => setPlaying(false)}
           onTimeUpdate={onTime}
         >
-          <source src={cut.webm} type="video/webm" />
           <source src={cut.mp4} type="video/mp4" />
         </video>
 

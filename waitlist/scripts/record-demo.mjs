@@ -1,7 +1,7 @@
 // Records the hero's demo: the real app's Lace chat, with Kalev asking for
 // accelerators, grants or demo days, Lace working, answering with two
 // opportunities, and Kalev saving one. Each cut is captured into .demo-raw/,
-// then encode-demo.sh writes public/media/<cut>.{mp4,webm} and its poster.
+// then encode-demo.sh writes public/media/<cut>.mp4 and its poster.
 //
 // The app is signed in with a stand-in session and every API call is answered
 // here, including the reply's event stream, played on a timer: no backend,
