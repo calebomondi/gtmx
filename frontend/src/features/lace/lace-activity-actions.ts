@@ -40,6 +40,8 @@ export const ACTIVITY_ACTIONS: Record<ActivityKind, { label: string; target: Fee
   opportunity_saved: { label: "See opportunities", target: { tab: "feed", section: "opportunities" } },
   finds_proposed: { label: "Review", target: { tab: "feed", section: "activity" } },
   finds_returned: { label: "Open your chat", target: { tab: "chat" } },
+  regulations_found: { label: "Talk it through", target: { tab: "chat" } },
+  bill_moved: { label: "Talk it through", target: { tab: "chat" } },
 }
 
 /** A kind's action; a kind this app doesn't know yet (the server added it

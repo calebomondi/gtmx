@@ -5,21 +5,39 @@ see lace_competitors for `owner_id` and `member_id`)."""
 
 import re
 import uuid
-from datetime import UTC, date, datetime
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.schemas.lace import ItemsChanged, NamedItem
 from agents.schemas.regulations import JURISDICTION_PATTERN, Jurisdiction, Regulation, RegulationStatus, RegulationSummary
+from backend.app.database import models
 from backend.app.database.lace_models import Lace, LaceRegulation
+from backend.app.services import lace_activity, lace_events
 from backend.app.services.errors import NotFoundError
 from backend.app.services.lace_opportunities import url_key
+from backend.app.services.runs import TERMINAL_STATUSES
+from config import settings
+from data_sources.legislation.mzalendo import HOUSES, BillStatus, bill_key
 
 # The most places one startup operates in that its searches cover.
 MAX_PLACES = 10
 _CODE = re.compile(JURISDICTION_PATTERN)
+# A stage a bill no longer moves on from.
+FINAL_STAGES = ("assented", "withdrawn", "lapsed")
+# How a moved bill is described on the Feed.
+STAGE_NEWS = {
+    "published": "was published", "first_reading": "had its first reading", "committee": "went to committee",
+    "second_reading": "reached second reading", "whole_house": "went before the Committee of the Whole House",
+    "third_reading": "reached third reading", "assented": "was signed into law", "withdrawn": "was withdrawn",
+    "lapsed": "lapsed",
+}
+# Kenya Law's bill links carry the house: /akn/ke/bill/<na|senate>/<date>/.
+_KENYA_LAW_BILL = re.compile(r"kenyalaw\.org/akn/ke/bill/(na|senate)/(\d{4})-")
+_HOUSE_OF = {code: house for house, code in HOUSES.items()}
 
 
 def _date(value: str | None) -> date | None:
@@ -110,3 +128,80 @@ async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID, 
                                                     set_=refresh))
     refreshed = len(set(keys) & known)
     return len(set(keys)) - refreshed, refreshed
+
+
+async def laces_due_for_search(db: AsyncSession) -> list[tuple[uuid.UUID, uuid.UUID]]:
+    """(lace_id, user_id) of active Laces with a confirmed jurisdiction whose
+    last regulations search is older than the search interval (or never ran)
+    and none is running."""
+    recent = select(models.Run.id).where(
+        models.Run.kind == "lace_regulations", models.Run.lace_id == Lace.id,
+        or_(models.Run.status.not_in(TERMINAL_STATUSES),
+            models.Run.created_at >= func.now() - timedelta(hours=settings.regulation_search_every_h)))
+    rows = await db.execute(select(Lace.id, Lace.user_id).where(
+        Lace.status == "active", Lace.jurisdiction_confirmed_at.is_not(None), ~recent.exists()))
+    return [(lace_id, user_id) for lace_id, user_id in rows.all()]
+
+
+async def bills_due_for_check(db: AsyncSession, now: datetime) -> list[LaceRegulation]:
+    """Tracked Kenyan bills, on any Lace, still moving and not read within the
+    check interval."""
+    stale = now - timedelta(hours=settings.bill_check_every_h)
+    return list((await db.scalars(select(LaceRegulation).join(Lace, Lace.id == LaceRegulation.lace_id).where(
+        Lace.status == "active", LaceRegulation.kind == "bill", LaceRegulation.status == "tracked",
+        LaceRegulation.jurisdiction == "KE",
+        or_(LaceRegulation.stage.is_(None), LaceRegulation.stage.not_in(FINAL_STAGES)),
+        or_(LaceRegulation.last_checked_at.is_(None), LaceRegulation.last_checked_at < stale)))).all())
+
+
+def houses_of(bills: list[LaceRegulation]) -> list[str]:
+    """The houses whose tracker covers these bills: the one in a Kenya Law
+    link, else both."""
+    houses = set()
+    for bill in bills:
+        found = _KENYA_LAW_BILL.search(bill.url)
+        houses |= {_HOUSE_OF[found[1]]} if found else set(HOUSES)
+    return sorted(houses)
+
+
+def status_of(bill: LaceRegulation, tracker: list[BillStatus]) -> BillStatus | None:
+    """The tracker's row for a bill: same name and year, in its house when known."""
+    found = _KENYA_LAW_BILL.search(bill.url)
+    house = _HOUSE_OF[found[1]] if found else None
+    key = bill_key(bill.title, int(found[2]) if found else None)
+    for row in tracker:
+        if bill_key(row.title, row.year) == key and house in (None, row.house):
+            return row
+    return None
+
+
+@dataclass(frozen=True)
+class BillMove:
+    lace_id: uuid.UUID
+    title: str
+    stage: str
+
+
+async def apply_stages(db: AsyncSession, bills: list[LaceRegulation], tracker: list[BillStatus],
+                       now: datetime) -> list[BillMove]:
+    """Record where each bill now stands and when it was checked. A bill that
+    moved goes on its Lace's Feed (a team's) or to the member's chat (theirs
+    alone); a first reading of its stage is recorded quietly."""
+    moves = []
+    for bill in bills:
+        bill.last_checked_at = now
+        row = status_of(bill, tracker)
+        if row is None or row.stage == bill.stage:
+            continue
+        was, bill.stage, bill.stage_changed_at = bill.stage, row.stage, now
+        if was is None:
+            continue
+        news = f"{bill.title} {STAGE_NEWS[row.stage]}"
+        if bill.owner_id is None:
+            await lace_activity.add(db, bill.lace_id, "bill_moved", news, bill.why_it_applies or None)
+        else:
+            await lace_events.add(db, bill.lace_id, f"A bill the member tracks moved: {news} ({bill.url}). "
+                                                    "Tell them what it means for us.", bill.owner_id)
+        moves.append(BillMove(bill.lace_id, bill.title, row.stage))
+    await db.flush()
+    return moves

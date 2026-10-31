@@ -1,5 +1,5 @@
 """In-process scheduler: keeps every active Lace's competitor monitoring,
-opportunity searches and briefs going, and syncs replies to sent outreach
+opportunity and regulation searches, tracked bills and briefs going, and syncs replies to sent outreach
 from users' Gmail and linked DM inboxes. Single-instance
 by design for launch (one backend process); a multi-instance deployment needs
 a leader lock or an external scheduler."""
@@ -15,9 +15,10 @@ from backend.app.database.connect import AsyncSessionLocal
 from backend.app.database.lace_models import Lace, LaceBrief
 from backend.app.runs import manager
 from backend.app.services import inbox as inbox_service
-from backend.app.services import lace_activity, lace_brief_email, lace_briefs, lace_competitors, lace_opportunities, social_inbox
+from backend.app.services import lace_activity, lace_brief_email, lace_briefs, lace_competitors, lace_opportunities, lace_regulations, social_inbox
 from backend.app.services.lace_activity import BRIEF_TITLE, BRIEF_WRITING
 from config import settings
+from data_sources.legislation import mzalendo
 from utils.log import logger
 
 _tasks: list[asyncio.Task] = []
@@ -50,6 +51,39 @@ async def sweep_lace_opportunities() -> int:
         except JobRefused:
             continue  # this user hit the daily cap; try next sweep
     return started
+
+
+async def sweep_lace_regulations() -> int:
+    """Start a regulations search for each Lace with a confirmed jurisdiction
+    that is due one."""
+    async with AsyncSessionLocal() as db:
+        due = await lace_regulations.laces_due_for_search(db)
+    started = 0
+    for lace_id, user_id in due:
+        try:
+            await manager.start_lace_job("lace_regulations", user_id, lace_id, {"scheduled": True})
+            started += 1
+        except JobRefused:
+            continue  # this user hit the daily cap; try next sweep
+    return started
+
+
+async def check_bills(now: datetime | None = None) -> int:
+    """Read where each tracked Kenyan bill now stands, once per check interval,
+    from one read of the tracker for every Lace. Returns how many moved."""
+    now = now or datetime.now(UTC)
+    async with AsyncSessionLocal() as db:
+        bills = await lace_regulations.bills_due_for_check(db, now)
+        if not bills:
+            return 0
+        try:
+            tracker = await asyncio.to_thread(mzalendo.bill_stages, lace_regulations.houses_of(bills))
+        except mzalendo.MzalendoError as exc:
+            logger.warning("Bill check skipped, tried again next sweep: %s", exc)
+            return 0
+        moves = await lace_regulations.apply_stages(db, bills, tracker, now)
+        await db.commit()
+    return len(moves)
 
 
 async def sweep_briefs(now: datetime | None = None) -> int:
@@ -91,9 +125,12 @@ def _since_label(since: datetime, lace: Lace) -> str:
 
 
 async def sweep() -> int:
-    """Start each Lace's due monitoring, opportunity search and brief, and
-    email briefs held back. Returns how many runs started."""
-    started = await sweep_laces() + await sweep_lace_opportunities() + await sweep_briefs()
+    """Start each Lace's due monitoring, opportunity and regulation searches
+    and brief, read tracked bills' stages, and email briefs held back.
+    Returns how many runs started."""
+    started = (await sweep_laces() + await sweep_lace_opportunities() + await sweep_lace_regulations()
+               + await sweep_briefs())
+    await check_bills()
     await lace_brief_email.email_waiting(datetime.now(UTC))
     return started
 

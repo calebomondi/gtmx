@@ -305,7 +305,7 @@ ActivityKind = Literal[
     "brief", "competitors_found", "competitor_moves", "accounts_found", "contacts_found",
     "drafts_ready", "reply_received", "opportunities_found", "job_failed", "app_action", "access_requested",
     "comments_read", "member_joined", "message_sent", "competitor_saved", "account_saved",
-    "opportunity_saved", "finds_proposed", "finds_returned",
+    "opportunity_saved", "finds_proposed", "finds_returned", "regulations_found", "bill_moved",
 ]
 ACTIVITY_KINDS: tuple[str, ...] = ActivityKind.__args__
 # What an activity is about, when it is one thing the founder can open.
