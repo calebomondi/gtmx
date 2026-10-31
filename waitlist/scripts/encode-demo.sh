@@ -40,8 +40,10 @@ filters="${crop:+crop=$crop,}scale=$w:$h:force_original_aspect_ratio=increase:fl
 
 ffmpeg -y -loglevel error "${trim[@]}" -i "$raw" -an -vf "$filters" \
   -c:v libx264 -preset slow -crf 26 -pix_fmt yuv420p -movflags +faststart "$out/$name.mp4"
+# One tile column: some GPU decoders draw a magenta row along the top of each
+# tile, which showed as a dashed line over the video.
 ffmpeg -y -loglevel error -i "$out/$name.mp4" -an \
-  -c:v libvpx-vp9 -b:v 0 -crf 38 -row-mt 1 "$out/$name.webm"
+  -c:v libvpx-vp9 -b:v 0 -crf 38 -row-mt 1 -tile-columns 0 "$out/$name.webm"
 ffmpeg -y -loglevel error -ss "$poster_at" -i "$out/$name.mp4" -frames:v 1 -c:v libwebp -quality 82 "$out/$name-poster.webp"
 
 for f in "$name.mp4" "$name.webm" "$name-poster.webp"; do
