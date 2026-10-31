@@ -3,8 +3,8 @@ import type { ActivityDto, ActivityKind } from "@/lib/api"
 import type { LaceTab } from "./lace-tabs"
 
 /** The Feed's sub-tabs. */
-export type FeedSection = "activity" | "opportunities" | "accounts" | "competitors"
-export const FEED_SECTIONS: readonly FeedSection[] = ["activity", "opportunities", "accounts", "competitors"]
+export type FeedSection = "activity" | "opportunities" | "accounts" | "competitors" | "compliance"
+export const FEED_SECTIONS: readonly FeedSection[] = ["activity", "opportunities", "accounts", "competitors", "compliance"]
 
 /** Messaging's sub-tabs. */
 export type MessagingSection = "conversations" | "drafts" | "sent" | "contacts"
@@ -40,8 +40,8 @@ export const ACTIVITY_ACTIONS: Record<ActivityKind, { label: string; target: Fee
   opportunity_saved: { label: "See opportunities", target: { tab: "feed", section: "opportunities" } },
   finds_proposed: { label: "Review", target: { tab: "feed", section: "activity" } },
   finds_returned: { label: "Open your chat", target: { tab: "chat" } },
-  regulations_found: { label: "Talk it through", target: { tab: "chat" } },
-  bill_moved: { label: "Talk it through", target: { tab: "chat" } },
+  regulations_found: { label: "See compliance", target: { tab: "feed", section: "compliance" } },
+  bill_moved: { label: "See compliance", target: { tab: "feed", section: "compliance" } },
 }
 
 /** A kind's action; a kind this app doesn't know yet (the server added it

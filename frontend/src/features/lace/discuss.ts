@@ -1,4 +1,4 @@
-import type { LaceAccountDto, LaceBriefDto, LaceCompetitorDto, LaceOpportunityDto } from "@/lib/api"
+import type { LaceAccountDto, LaceBriefDto, LaceCompetitorDto, LaceOpportunityDto, LaceRegulationDto } from "@/lib/api"
 
 /** What opening the chat with a topic carries: the message waiting in the
  * input, for the founder to edit or send. */
@@ -44,4 +44,11 @@ export function discussMove(competitor: string, title: string, detectedAt: strin
 export function discussBrief(brief: LaceBriefDto): string {
   return `Let's go over your brief from ${day(brief.posted_at ?? brief.created_at)}.\n`
     + "What should we act on first, and what can wait?"
+}
+
+/** A message that starts a conversation about one law, regulation, bill or filing obligation. */
+export function discussRegulation(r: LaceRegulationDto): string {
+  const due = r.next_date ? ` (next date ${day(r.next_date)})` : ""
+  return `Let's talk about "${r.title}"${due}. ${r.url}\n`
+    + "What does it mean for us, what do we need to do, and by when?"
 }
