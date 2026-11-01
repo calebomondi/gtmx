@@ -18,6 +18,7 @@ from agents.lace.apps import AppError, LaceApps
 from agents.lace.ask_tools import build_ask_tools
 from agents.lace.cards import cards
 from agents.lace.edit_tools import build_edit_tools
+from agents.lace.regulation_tools import build_regulation_tools
 from agents.lace.asana_tools import build_asana_tools
 from agents.lace.calendly_tools import build_calendly_tools
 from agents.lace.crm_tools import build_crm_tools
@@ -335,7 +336,7 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
 
     tools = [search_web, map_site, read_page, read_pages, read_social, get_facts, record_fact, list_competitors,
              list_accounts, list_opportunities, list_suggestions, show, list_documents, read_document,
-             *build_ask_tools(), *build_edit_tools(store),
+             *build_ask_tools(), *build_edit_tools(store), *build_regulation_tools(store, jobs),
              # Acting in the founder's apps needs them: proposals, run on approval.
              *([*build_social_tools(store, apps), *build_sheet_tools(store, apps), *build_notion_tools(store, apps),
                 *build_slack_tools(store, apps), *build_asana_tools(store, apps), *build_crm_tools(store, apps),

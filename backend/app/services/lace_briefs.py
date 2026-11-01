@@ -12,11 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.database.lace_models import (
     Lace,
     LaceAccount,
+    LaceActivity,
     LaceBrief,
     LaceCompetitor,
     LaceFact,
     LaceOpportunity,
     LaceOutreach,
+    LaceRegulation,
 )
 
 # Lines per digest section; the rest is summarised as a count.
@@ -100,6 +102,16 @@ async def digest(db: AsyncSession, lace_id: uuid.UUID, since: datetime, today: d
         LaceOpportunity.lace_id == lace_id, LaceOpportunity.team(), LaceOpportunity.status != "dismissed",
         LaceOpportunity.deadline >= today, LaceOpportunity.deadline <= today + timedelta(days=CLOSING_SOON_DAYS),
     ).order_by(LaceOpportunity.deadline))
+    bills, n_bills = await _rows(db, select(LaceActivity).where(
+        LaceActivity.lace_id == lace_id, LaceActivity.kind == "bill_moved", LaceActivity.created_at >= since,
+    ).order_by(LaceActivity.created_at.desc()))
+    new_rules, n_new_rules = await _rows(db, select(LaceRegulation).where(
+        LaceRegulation.lace_id == lace_id, LaceRegulation.team(), LaceRegulation.status != "dismissed",
+        LaceRegulation.first_seen_at >= since).order_by(LaceRegulation.first_seen_at.desc()))
+    due, n_due = await _rows(db, select(LaceRegulation).where(
+        LaceRegulation.lace_id == lace_id, LaceRegulation.team(), LaceRegulation.status == "tracked",
+        LaceRegulation.next_date >= today, LaceRegulation.next_date <= today + timedelta(days=CLOSING_SOON_DAYS),
+    ).order_by(LaceRegulation.next_date))
 
     sections = [
         _section("Competitor moves", [m.claim + (f" ({m.source_url})" if m.source_url else "") for m in moves], n_moves),
@@ -114,6 +126,11 @@ async def digest(db: AsyncSession, lace_id: uuid.UUID, since: datetime, today: d
         _section("New opportunities", [f"[{o.kind}] {o.title} ({o.url})" for o in new_opps], n_new_opps),
         _section("Opportunities closing within a week",
                  [f"{o.title}: closes {o.deadline.isoformat()} ({o.url})" for o in closing], n_closing),
+        _section("Tracked bills that moved", [b.title for b in bills], n_bills),
+        _section("New laws and regulations that apply", [f"[{r.kind}, {r.jurisdiction}] {r.title} ({r.url})"
+                                                         for r in new_rules], n_new_rules),
+        _section("Compliance dates within a week", [f"{r.title}: {r.next_date.isoformat()} ({r.what_to_do})"
+                                                    for r in due], n_due),
     ]
     waiting = await suggestion_counts(db, lace_id)
     if any(waiting.values()):

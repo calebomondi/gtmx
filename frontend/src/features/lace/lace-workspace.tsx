@@ -34,6 +34,7 @@ import { LaceStatusBanner } from "./lace-status-banner"
 import { useLaceActivity } from "./use-lace-activity"
 import { useLaceChat } from "./use-lace-chat"
 import { useLaceOpportunities } from "./use-lace-opportunities"
+import { useLaceRegulations } from "./use-lace-regulations"
 
 function isTab(value: string | undefined): value is LaceTab {
   return LACE_TABS.includes(value as LaceTab)
@@ -75,6 +76,8 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
 
   // Refetched as new activity arrives (an opportunity search finished).
   const opps = useLaceOpportunities(laceId, activity.items[0]?.id ?? "")
+  // Likewise when a search for laws finished or a tracked bill moved.
+  const regulations = useLaceRegulations(laceId, activity.items[0]?.id ?? "")
   // Back from connecting an app from the settings: open them again there.
   // Open on coming back from connecting an app, or when sent here to change a setting (?settings).
   const [settingsOpen, setSettingsOpen] = useState(() => {
@@ -179,7 +182,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
             } />
           )}
           {tab === "feed" && (
-            <LaceFeed laceId={laceId} name={name} chat={chat} activity={activity} opps={opps} apps={apps} onOpen={open}
+            <LaceFeed laceId={laceId} name={name} chat={chat} activity={activity} opps={opps} regulations={regulations} apps={apps} onOpen={open}
                       onDiscuss={discuss} />
           )}
           {tab === "messaging" && <LaceMessaging laceId={laceId} name={name} chat={chat} />}
@@ -187,7 +190,8 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
       </div>
       <LaceTabBar {...nav} className="md:hidden" />
       <LaceSettings laceId={laceId} name={name} status={chat.lace?.status ?? "active"} role={chat.lace?.role ?? "member"} facts={chat.facts}
-                    apps={apps} open={settingsOpen} onOpenChange={setSettingsOpen} onChanged={() => void chat.reload()} />
+                    apps={apps} regulations={regulations} open={settingsOpen} onOpenChange={setSettingsOpen}
+                    onChanged={() => void chat.reload()} />
     </div>
   )
 }

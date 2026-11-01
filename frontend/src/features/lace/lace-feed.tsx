@@ -8,12 +8,13 @@ import { FindReviewsCard } from "./find-reviews"
 import { useFindReviews } from "./use-lace-finds"
 import { FEED_SECTIONS, needsYou, type FeedSection, type FeedTarget, type NeedsYouItem } from "./lace-activity-actions"
 import { LaceActivityList } from "./lace-activity"
-import { accountItem, competitorItem, opportunityItem } from "./feed-review"
+import { accountItem, competitorItem, opportunityItem, regulationItem } from "./feed-review"
 import { LaceAccounts } from "./lace-accounts"
 import { LaceFunnel } from "./lace-funnel"
 import { CompetitorMovesStepper } from "./lace-competitor-moves"
 import { LaceCompetitors } from "./lace-competitors"
-import { discussAccount, discussBrief, discussCompetitor, discussMove, discussOpportunity } from "./discuss"
+import { discussAccount, discussBrief, discussCompetitor, discussMove, discussOpportunity, discussRegulation } from "./discuss"
+import { LaceCompliance } from "./lace-compliance"
 import { LaceLatestBrief } from "./lace-latest-brief"
 import { useLatestBrief } from "./use-latest-brief"
 import { useLaceMoves } from "./use-lace-moves"
@@ -23,6 +24,7 @@ import { LacePanelTabs, PanelIntro, type PanelTab } from "./lace-panel-tabs"
 import { LaceReview } from "./lace-review"
 import type { LaceActivity } from "./use-lace-activity"
 import type { LaceOpportunities as Opportunities } from "./use-lace-opportunities"
+import type { LaceRegulations } from "./use-lace-regulations"
 import type { LaceApps } from "./use-lace-apps"
 import type { LaceChat } from "./use-lace-chat"
 import { useSection } from "./use-lace-section"
@@ -70,12 +72,13 @@ function Pulse({ laceId, name, chat, activity, apps, needs, onOpen }: {
  * things stand: its activity, the opportunities it turned up, the leads
  * worth reaching, and the competitors it tracks. Each holds what waits for
  * the founder's review above what was saved. */
-export function LaceFeed({ laceId, name, chat, activity, opps, apps, onOpen, onDiscuss }: {
+export function LaceFeed({ laceId, name, chat, activity, opps, regulations, apps, onOpen, onDiscuss }: {
   laceId: string
   name: string
   chat: LaceChat
   activity: LaceActivity
   opps: Opportunities
+  regulations: LaceRegulations
   apps: LaceApps
   onOpen: (target: FeedTarget) => void
   /** Open the chat with a message about something here, ready to send. */
@@ -155,6 +158,18 @@ export function LaceFeed({ laceId, name, chat, activity, opps, apps, onOpen, onD
           <LaceCompetitors competitors={chat.competitors} searching={chat.searching}
                            onDismiss={(id) => void chat.dismissCompetitor(id)} moveCounts={moveCounts}
                            onShowMoves={showMoves} name={name} onDiscuss={(c) => onDiscuss(discussCompetitor(c))} />
+        </>
+      ),
+    },
+    {
+      value: "compliance", label: "Compliance", count: regulations.tracked.length,
+      waiting: regulations.suggested.length,
+      content: (
+        <>
+          <PanelIntro>The laws, regulations, bills and filings that apply where you're registered and operate, and where each bill stands.</PanelIntro>
+          <LaceReview items={regulations.suggested.map(regulationItem)} saveLabel="Track"
+                      onSave={(id) => void regulations.track(id)} onDismiss={(id) => void regulations.dismiss(id)} />
+          <LaceCompliance regulations={regulations} name={name} onDiscuss={(r) => onDiscuss(discussRegulation(r))} />
         </>
       ),
     },

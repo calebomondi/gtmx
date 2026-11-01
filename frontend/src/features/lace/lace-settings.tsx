@@ -10,15 +10,17 @@ import { LaceBrief } from "./lace-brief"
 import { LaceBriefApps } from "./lace-brief-apps"
 import { LaceDocuments } from "./lace-documents"
 import { LaceFacts } from "./lace-facts"
+import { LaceJurisdiction } from "./lace-jurisdiction"
 import { LaceManage } from "./lace-manage"
 import { LaceWatch } from "./lace-watch"
 import type { LaceApps } from "./use-lace-apps"
 import { useLaceBrief } from "./use-lace-brief"
+import type { LaceRegulations } from "./use-lace-regulations"
 
 /** A Lace's settings and memory: how often it keeps watch, when it posts
  * its brief, everything it knows about the startup (each fact with its
  * source), and archiving or deleting it. */
-export function LaceSettings({ laceId, name, status, role, facts, apps, open, onOpenChange, onChanged }: {
+export function LaceSettings({ laceId, name, status, role, facts, apps, regulations, open, onOpenChange, onChanged }: {
   laceId: string
   name: string
   status: LaceStatus
@@ -26,6 +28,7 @@ export function LaceSettings({ laceId, name, status, role, facts, apps, open, on
   role: LaceRole
   facts: FactDto[]
   apps: LaceApps
+  regulations: LaceRegulations
   open: boolean
   onOpenChange: (open: boolean) => void
   /** The Lace was archived or restored. */
@@ -39,8 +42,8 @@ export function LaceSettings({ laceId, name, status, role, facts, apps, open, on
         <SheetHeader>
           <SheetTitle>{name}'s settings</SheetTitle>
           <SheetDescription>
-            How often it keeps watch, its brief, the apps it works in, what it knows about your startup, and archiving or
-            deleting it.
+            How often it keeps watch, its brief, the apps it works in, where you operate, what it knows about your
+            startup, and archiving or deleting it.
           </SheetDescription>
         </SheetHeader>
         <div className="flex flex-col gap-6 px-4 pb-6">
@@ -70,6 +73,12 @@ export function LaceSettings({ laceId, name, status, role, facts, apps, open, on
             <LaceAppsSection laceId={laceId} name={name} apps={apps} />
           </section>
           </fieldset>
+          <Separator />
+          {/* Any member can confirm it, as in the chat. */}
+          <section className="flex flex-col gap-3">
+            <h3 className="text-sm font-medium">Where we operate</h3>
+            <LaceJurisdiction name={name} regulations={regulations} />
+          </section>
           <Separator />
           {/* Closed by default: a long list would push Manage out of sight. */}
           <Collapsible render={<section className="group/knows flex flex-col gap-3" />}>

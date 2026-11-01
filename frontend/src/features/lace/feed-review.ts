@@ -1,4 +1,5 @@
-import type { LaceAccountDto, LaceCompetitorDto, LaceOpportunityDto } from "@/lib/api"
+import type { LaceAccountDto, LaceCompetitorDto, LaceOpportunityDto, LaceRegulationDto } from "@/lib/api"
+import { countryName } from "@/lib/countries"
 
 /** One suggestion as the Feed's review list shows it. */
 export interface ReviewItem {
@@ -22,4 +23,9 @@ export function accountItem(a: LaceAccountDto): ReviewItem {
 export function opportunityItem(o: LaceOpportunityDto): ReviewItem {
   const when = o.deadline ? `closes ${o.deadline}` : o.event_date ? `on ${o.event_date}` : null
   return { id: o.id, title: o.title, detail: [o.kind, o.organiser, when].filter(Boolean).join(" · "), why: o.why_it_fits, url: o.url }
+}
+
+export function regulationItem(r: LaceRegulationDto): ReviewItem {
+  const detail = [r.kind, countryName(r.jurisdiction), r.authority].filter(Boolean).join(" · ")
+  return { id: r.id, title: r.title, detail, why: r.why_it_applies, url: r.url }
 }

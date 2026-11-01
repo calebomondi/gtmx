@@ -207,6 +207,12 @@ class Settings(BaseSettings):
     # dev reload) doesn't immediately fan out paid monitoring runs.
     monitor_initial_delay_s: float = 120.0
 
+    # -- Regulations --
+    # How often each Lace searches again for the laws and regulations that
+    # apply where it is, and how often tracked bills' stages are re-read.
+    regulation_search_every_h: int = 168
+    bill_check_every_h: int = 24
+
     # -- Agent tuning --
     # How far back (days) research may look for sources. Kept short so the
     # analysis reflects CURRENT conditions, not history.

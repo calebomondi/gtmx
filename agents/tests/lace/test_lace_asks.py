@@ -71,3 +71,10 @@ async def test_suggested_replies_are_two_or_three_short_ones():
     assert not (await _ask("suggest_replies", options=["Only one"]))["ok"]
     assert not (await _ask("suggest_replies", options=["a", "b", "c", "d"]))["ok"]
     assert not (await _ask("suggest_replies", options=["x" * 61, "ok"]))["ok"]
+
+
+async def test_suggested_replies_ask_for_the_whole_reply_after_them():
+    # Text written alongside a tool call is not shown, so the reply comes after.
+    ok = await _ask("suggest_replies", options=["Find leads", "Track competitors"])
+    assert "not shown to them: now write your whole reply" in ok["summary"]
+    assert "don't suggest replies again" in ok["summary"]

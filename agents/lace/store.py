@@ -10,6 +10,7 @@ from typing import Literal, Protocol
 
 from agents.schemas.icp import ICP
 from agents.schemas.opportunities import OpportunitySummary
+from agents.schemas.regulations import Jurisdiction, RegulationStatus, RegulationSummary
 from agents.schemas.lace import ProposedAction, AccountSummary, CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Suggestions, Fact, FactTopic, ItemsChanged, LaceProfile, NamedItem, NewContact, NewFact, RunningJob, SavedKind, SavedVerdict, SourcePage
 
 
@@ -43,6 +44,24 @@ class LaceStore(Protocol):
 
     async def opportunities(self, limit: int = 50) -> list[OpportunitySummary]:
         """Saved opportunities still open, the soonest deadline first."""
+        ...
+
+    async def jurisdiction(self) -> Jurisdiction:
+        """Where the startup is registered and operates, and whether a founder confirmed it."""
+        ...
+
+    async def set_jurisdiction(self, registered_in: str | None, operates_in: list[str]) -> Jurisdiction:
+        """Record where a founder said the startup is registered and operates
+        (ISO 3166 codes), as confirmed. Raises ValueError for a code that is not one."""
+        ...
+
+    async def regulations(self, status: RegulationStatus, limit: int = 50) -> list[RegulationSummary]:
+        """Regulations with that status: tracked ones soonest next date first,
+        suggested ones newest first."""
+        ...
+
+    async def set_regulations(self, ids: list[str], status: RegulationStatus) -> ItemsChanged:
+        """Track or dismiss regulations; ids that are not this Lace's are reported missing."""
         ...
 
     async def competitors(self, limit: int = 50) -> list[CompetitorSummary]:
@@ -111,7 +130,7 @@ class LaceStore(Protocol):
 
 
 JobKind = Literal["find_competitors", "check_competitors", "find_accounts", "find_contacts", "draft_outreach",
-                  "find_opportunities", "define_icp", "read_tiktok_comments"]
+                  "find_opportunities", "define_icp", "read_tiktok_comments", "find_regulations"]
 
 
 class JobRefused(Exception):

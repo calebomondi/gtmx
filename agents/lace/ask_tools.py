@@ -98,7 +98,7 @@ def build_ask_tools() -> list[BaseTool]:
     @tool(parse_docstring=True)
     @guarded
     async def suggest_replies(options: list[str]) -> ToolResult:
-        """Offer the founder likely replies to the question your answer ends on, as chips they can tap to send (e.g. after "Want me to dig deeper into one of them?": "Check Hamtech's LinkedIn", "Look for their OTA guide"). They can still type anything, so this is not for a decision you need answered (that is ask_choice). Call it last, after writing your answer.
+        """Offer the founder likely replies to the question your answer ends on, as chips they can tap to send (e.g. after "Want me to dig deeper into one of them?": "Check Hamtech's LinkedIn", "Look for their OTA guide"). They can still type anything, so this is not for a decision you need answered (that is ask_choice). Call it once, before your final answer; then write the whole answer. Text you write alongside the call is not shown to the founder.
 
         Args:
             options: 2 or 3 short replies, each a few words, written as the founder would say them.
@@ -108,6 +108,9 @@ def build_ask_tools() -> list[BaseTool]:
             return ToolResult.failure(f"Give {MIN_SUGGESTIONS} or {MAX_SUGGESTIONS} options; got {len(options)}.")
         if any(len(o) > CHOICE_CHARS for o in options):
             return ToolResult.failure(f"Keep each option under {CHOICE_CHARS} characters.")
-        return _shown(SuggestionsBlock(options=options), "these suggested replies")
+        return ToolResult.success(
+            "The founder will see these suggested replies under your reply. What you wrote alongside this call is "
+            "not shown to them: now write your whole reply, as if for the first time, and don't suggest replies again.",
+            {"ui": [SuggestionsBlock(options=options).model_dump()]})
 
     return [ask_choice, ask_checklist, ask_form, suggest_replies]
