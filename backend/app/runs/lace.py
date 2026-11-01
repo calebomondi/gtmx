@@ -31,7 +31,7 @@ from agents.lace.graph import BRIEF_FACTS, PRIVATE_WITHHELD, build_lace_graph
 from agents.lace.onboarding import Progress, onboard, opening_message
 from agents.lace.store import LaceJobs
 from agents.lace.tools import MAX_CARDS
-from agents.lace.prompts import PRIVATE_CHAT_NOTE, system_prompt
+from agents.lace.prompts import PRIVATE_CHAT_NOTE, SPEAKER_NOTE, system_prompt
 from agents.lace.reply_tidy import without_repeated_options
 from agents.llm.main import LlmProvidersExhaustedError
 from agents.schemas.lace_ui import BlockAnswer, SuggestionsBlock, UiBlock
@@ -129,15 +129,24 @@ async def forget_thread(thread: LaceThread) -> None:
     await get_checkpointer().adelete_thread(thread.config["configurable"]["thread_id"])
 
 
+def speaker_note(who: str | None) -> str | None:
+    """Who the Lace is talking with, so it can call them by their first name."""
+    name = " ".join((who or "").split())
+    return SPEAKER_NOTE.format(who=name, first=name.split(" ")[0]) if name else None
+
+
 def _graph(thread: LaceThread, jobs: LaceJobs | None = None, actor_id: uuid.UUID | None = None,
            who: str | None = None):
-    """The Lace for one conversation. In a private chat (`who` is the
-    member's name) it works on their finds and cannot change the team's."""
+    """The Lace for one conversation, told who it is talking with (`who`).
+    In a member's private chat it works on their finds and cannot change the
+    team's."""
     store = DbLaceStore(AsyncSessionLocal, thread.lace_id, actor_id, thread.owner_id)
     apps = DbLaceApps(AsyncSessionLocal, thread.lace_id)
+    speaker = speaker_note(who)
     if thread.owner_id is None:
-        return build_lace_graph(store, checkpointer=get_checkpointer(), jobs=jobs, apps=apps), store
-    note = PRIVATE_CHAT_NOTE.format(who=who or "this member")
+        return build_lace_graph(store, checkpointer=get_checkpointer(), jobs=jobs, apps=apps,
+                                chat_note=speaker), store
+    note = PRIVATE_CHAT_NOTE.format(who=who or "this member") + (f"\n{speaker}" if speaker else "")
     return build_lace_graph(store, checkpointer=get_checkpointer(), jobs=jobs, apps=apps,
                             withheld=PRIVATE_WITHHELD, chat_note=note), store
 

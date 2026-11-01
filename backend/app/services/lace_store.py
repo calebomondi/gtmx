@@ -90,7 +90,8 @@ class DbLaceStore:
             lace = await session.get(Lace, self._lace_id)
         if lace is None:
             raise NotFoundError("Lace not found")
-        return LaceProfile(name=lace.name, website=lace.website, startup_name=lace.startup_name)
+        return LaceProfile(name=lace.name, website=lace.website, startup_name=lace.startup_name,
+                           timezone=lace.timezone)
 
     async def facts(self, topic: FactTopic | None = None, limit: int = 50) -> list[Fact]:
         query = current_facts_query(self._lace_id, topic, limit)

@@ -56,6 +56,8 @@ class LaceProfile(BaseModel):
     name: str
     website: str
     startup_name: str | None = None
+    # The founders' timezone (IANA name), from the brief settings.
+    timezone: str = "UTC"
 
 
 class ToolResult(BaseModel):
