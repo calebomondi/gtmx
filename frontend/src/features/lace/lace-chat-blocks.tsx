@@ -4,6 +4,7 @@ import { Bookmark, Check, CheckCheck, ExternalLink, Loader2, Search, Send, Undo2
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Separator } from "@/components/ui/separator"
 import type { ActionBlockDto, BlockAnswerDto, CardBlockDto, UiBlockDto } from "@/lib/api"
 
 import { cardState, contactsLine, type CardState } from "./chat-cards"
@@ -176,13 +177,21 @@ export function ChatBlocks({ blocks, chat, live, answers, onReview }: {
                       live={live && !chat.working} onAnswer={(answer) => void chat.answer(block, answer)} />
       ))}
       {suggestions.length > 0 && (
-        <div className="flex flex-wrap gap-1.5" aria-label="Suggested replies">
-          {suggestions.map((option) => (
-            <Button key={option} size="sm" variant="outline" className="max-w-64 rounded-full border-theme/40" title={option}
-                    onClick={() => void chat.send(option)}>
-              <span className="truncate">{option}</span>
-            </Button>
-          ))}
+        // Shown once the reply is done, so they fade in rather than jump in mid-stream.
+        <div className="flex flex-col gap-3 animate-in fade-in-0 duration-300 motion-reduce:animate-none">
+          <Separator />
+          <ul className="flex flex-col items-start gap-2" aria-label="Suggested replies">
+            {suggestions.map((option) => (
+              <li key={option} className="max-w-full">
+                <Button size="sm" variant="outline"
+                        className="h-auto max-w-full items-start justify-start rounded-full border-theme/40 py-1.5 text-left whitespace-normal"
+                        onClick={() => void chat.send(option)}>
+                  <span aria-hidden className="text-theme">↪</span>
+                  <span>{option}</span>
+                </Button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>
