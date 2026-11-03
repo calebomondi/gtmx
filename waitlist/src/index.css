@@ -1,36 +1,39 @@
 @import "tailwindcss";
-@import "@fontsource-variable/geist";
+@import "@fontsource-variable/funnel-display";
+@import "@fontsource-variable/funnel-sans";
 @import "@fontsource-variable/geist-mono";
 
 /* Phones held sideways: little height, so the hero tightens to keep the
    signup in reach. */
 @custom-variant short (@media (max-height: 30rem));
 
-/* An assistant for every startup: warm off-white paper, strong
-   black type, and #FEA853 as the signature. On light surfaces orange is a
-   fill behind black text (it is too light to be text there); orange text
-   appears only on black, where it reads at ~9:1. */
+/* Everything is a Lace square. Funnel's squared-off curves echo Lace's own
+   shape: Funnel Display for headlines, Funnel Sans for text, and mono only
+   for data. Neutral paper so the orange alone is warm; #FEA853 is a fill
+   behind black text (too light to be text on paper), and ember is the
+   orange that reads as text on paper (4.7:1). */
 @theme {
-  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Funnel Sans Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Funnel Display Variable', 'Funnel Sans Variable', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'Geist Mono Variable', ui-monospace, monospace;
 
-  --color-paper: #fbf8f3;
+  --color-paper: #f6f5f1;
   --color-panel: #ffffff;
-  --color-ink: #121212;
-  --color-night: #141312;
+  --color-ink: #17150f;
+  --color-night: #1a1916;
   --color-muted: #5f5a54;
   --color-night-muted: #b3ada5;
-  --color-line: #e7e1d8;
+  --color-line: #dad6cd;
   --color-night-line: #2c2a27;
   --color-brand: #fea853;
   --color-brand-deep: #f08a24;
-  --color-brand-ink: #9a4a08;
+  --color-brand-ink: #b4500a;
   --color-highlight: #ffe1bb;
   --color-kept: #1f7a4d;
   --color-dropped: #b42318;
 
-  --shadow-lift: 0 1px 0 rgb(18 18 18 / 0.04), 0 18px 40px -22px rgb(18 18 18 / 0.35);
-  --shadow-card: 0 1px 1px rgb(18 18 18 / 0.04), 0 8px 16px -8px rgb(18 18 18 / 0.12),
+  --shadow-lift: 0 1px 0 rgb(23 21 15 / 0.04), 0 18px 40px -22px rgb(23 21 15 / 0.35);
+  --shadow-card: 0 1px 1px rgb(23 21 15 / 0.04), 0 8px 16px -8px rgb(23 21 15 / 0.12),
     0 32px 64px -32px rgb(154 74 8 / 0.35);
 }
 
@@ -44,6 +47,10 @@
   }
   body {
     @apply bg-paper font-sans text-ink antialiased;
+  }
+  /* Headlines in Funnel Display: the squared curves carry the brand. */
+  h1, h2, h3 {
+    font-family: var(--font-display);
   }
   ::selection {
     @apply bg-brand text-ink;
