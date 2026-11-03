@@ -4,7 +4,7 @@ import { SignupCard } from '../features/signup/signup-card'
 import { prefersStill } from '../lib/motion'
 import type { PilotSpots } from '../lib/api'
 import { DEMO_VIDEO } from './demo-video'
-import { HeroGlow } from './hero-glow'
+import { HeroRadar } from './hero-radar'
 import { Lace } from './lace-mascot'
 import { ProductDemo } from './product-demo'
 import { RotatingWord } from './rotating-word'
@@ -49,12 +49,14 @@ function useLookAtPointer(el: RefObject<HTMLElement | null>): { x: number; y: nu
 export function Hero({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; onPilotSpotsLeft: (left: number) => void }) {
   const hero = useRef<HTMLElement>(null)
   const mascot = useRef<HTMLSpanElement>(null)
+  const copy = useRef<HTMLDivElement>(null)
+  const demo = useRef<HTMLDivElement>(null)
   const look = useLookAtPointer(mascot)
   return (
     <section ref={hero} id="top" className="hero-paper relative isolate flex min-h-[calc(100dvh-3.5rem)] items-center overflow-hidden">
-      <HeroGlow hero={hero} />
+      <HeroRadar hero={hero} origin={mascot} copy={copy} demo={demo} />
       <div className="mx-auto grid w-full max-w-7xl gap-14 px-5 py-14 sm:px-8 short:py-8 lg:grid-cols-[0.95fr_1.15fr] lg:items-center lg:gap-16">
-        <div className="flex min-w-0 flex-col gap-6 short:gap-4">
+        <div ref={copy} className="flex min-w-0 flex-col gap-6 short:gap-4">
           <div className="flex flex-col gap-3">
             <h1 className="text-[2.75rem] leading-[1.02] font-semibold tracking-[-0.035em] text-balance sm:text-[4.1rem] short:text-[2.6rem]">
               Meet{' '}
@@ -84,7 +86,7 @@ export function Hero({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; on
             </p>
           )}
         </div>
-        <div className="min-w-0">
+        <div ref={demo} className="min-w-0">
           <ProductDemo video={DEMO_VIDEO} />
         </div>
       </div>
