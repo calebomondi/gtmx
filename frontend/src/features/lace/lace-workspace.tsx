@@ -30,6 +30,7 @@ import { QuickAskChips } from "./lace-quick-asks"
 import { quickAsks } from "./quick-asks"
 import { chatMascot, LACE_TAB_LABELS, LACE_TABS, type LaceTab } from "./lace-tabs"
 import { LaceSettings } from "./lace-settings"
+import { sectionFromUrl } from "./settings-sections"
 import { LaceStatusBanner } from "./lace-status-banner"
 import { useLaceActivity } from "./use-lace-activity"
 import { useLaceChat } from "./use-lace-chat"
@@ -80,10 +81,8 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
   const regulations = useLaceRegulations(laceId, activity.items[0]?.id ?? "")
   // Back from connecting an app from the settings: open them again there.
   // Open on coming back from connecting an app, or when sent here to change a setting (?settings).
-  const [settingsOpen, setSettingsOpen] = useState(() => {
-    const params = new URLSearchParams(window.location.search)
-    return params.has("connected") || params.has("settings")
-  })
+  const [settingsSection] = useState(() => sectionFromUrl(window.location.search))
+  const [settingsOpen, setSettingsOpen] = useState(settingsSection !== null)
   const openSettings = () => {
     track("lace_settings_opened", { laceId })
     setSettingsOpen(true)
@@ -190,7 +189,8 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
       </div>
       <LaceTabBar {...nav} className="md:hidden" />
       <LaceSettings laceId={laceId} name={name} status={chat.lace?.status ?? "active"} role={chat.lace?.role ?? "member"} facts={chat.facts}
-                    apps={apps} regulations={regulations} open={settingsOpen} onOpenChange={setSettingsOpen}
+                    apps={apps} regulations={regulations} open={settingsOpen} initialSection={settingsSection}
+                    onOpenChange={setSettingsOpen}
                     onChanged={() => void chat.reload()} />
     </div>
   )
