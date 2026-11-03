@@ -192,7 +192,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
           )}
           {tab === "messaging" && <LaceMessaging laceId={laceId} name={name} chat={chat} />}
           {tab === "store" && (store.loading || storeShown
-            ? <LaceStoreTab name={name} role={chat.lace?.role ?? "member"} store={store} />
+            ? <LaceStoreTab laceId={laceId} name={name} role={chat.lace?.role ?? "member"} store={store} />
             : <Navigate to={`/lace/${laceId}`} replace />)}
         </main>
       </div>
