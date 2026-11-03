@@ -22,6 +22,8 @@ export interface LaceStore {
   addOffer: (offer: OfferInput) => Promise<boolean>
   updateOffer: (offerId: string, update: Partial<OfferInput>) => Promise<boolean>
   savePayees: (payees: PayeeInput[]) => Promise<boolean>
+  /** Show the Store as the server last returned it (after a signature). */
+  replace: (store: StoreDto) => void
 }
 
 /** A Lace's Store, its offers and its revenue split. */
@@ -81,5 +83,6 @@ export function useLaceStore(laceId: string): LaceStore {
     setPayeeRows(await setPayees(laceId, split))
   }), [attempt, laceId])
 
-  return { store, offers, payees, loading, error, setShown, update, addOffer: add, updateOffer: change, savePayees }
+  return { store, offers, payees, loading, error, setShown, update, addOffer: add, updateOffer: change, savePayees,
+           replace: setStore }
 }

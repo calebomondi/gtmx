@@ -20,7 +20,10 @@ export interface StoreDto {
   settlement_asset: string
   /** The most it may send out in a day, in USD, as a decimal string. */
   daily_budget_usd: string
+  /** The NEAR account the owner's passkey controls, once the wallet exists. */
   owner_account_id: string | null
+  /** Whether a passkey to sign with was added. */
+  has_owner: boolean
   /** The Store's own NEAR Intents account, where sales land. */
   wallet_account_id: string | null
   frozen_at: string | null
@@ -110,4 +113,55 @@ export function listPayees(laceId: string): Promise<PayeeDto[]> {
 /** Replace the revenue split, while the Store is still being set up. */
 export function setPayees(laceId: string, payees: PayeeInput[]): Promise<PayeeDto[]> {
   return apiFetch(`${base(laceId)}/payees`, { method: "PUT", body: JSON.stringify({ payees }) })
+}
+
+/** A passkey the owner registered on this site: public data only. */
+export interface PasskeyOwner {
+  credential_id: string
+  /** P-256, SPKI, base64url. */
+  public_key: string
+  rp_id: string
+  origin: string
+}
+
+export type StoreSignatureType = "agent_create" | "grant_issue" | "policy_update" | "agent_freeze" | "agent_unfreeze"
+export type StoreSignatureStatus = "awaiting_signature" | "submitted" | "succeeded" | "failed" | "expired"
+
+/** What the owner's passkey signs, unchanged, and what it means. */
+export interface SignatureRequestDto {
+  correlation_id: string
+  type: StoreSignatureType
+  /** For a passkey: { standard: "webauthn", payload: the WebAuthn request options }. */
+  intent: { standard: string; payload: unknown } & Record<string, unknown>
+  preview: { summary?: string } & Record<string, unknown>
+  expires_at: string
+}
+
+export interface SignatureStatusDto {
+  correlation_id: string
+  type: StoreSignatureType
+  status: StoreSignatureStatus
+  failure_code: string | null
+  store: StoreDto
+}
+
+/** The passkey that signs for the Store, before its wallet exists. Owner only. */
+export function setStoreOwner(laceId: string, owner: PasskeyOwner): Promise<StoreDto> {
+  return apiFetch(`${base(laceId)}/owner`, { method: "PUT", body: JSON.stringify(owner) })
+}
+
+/** The next request the owner signs to take the Store live. */
+export function requestStoreSignature(laceId: string): Promise<SignatureRequestDto> {
+  return apiFetch(`${base(laceId)}/signatures`, { method: "POST" })
+}
+
+export function submitStoreSignature(laceId: string, correlationId: string,
+                                     signedData: Record<string, unknown>): Promise<SignatureStatusDto> {
+  return apiFetch(`${base(laceId)}/signatures/${correlationId}`, {
+    method: "POST", body: JSON.stringify({ signed_data: signedData }),
+  })
+}
+
+export function getStoreSignature(laceId: string, correlationId: string): Promise<SignatureStatusDto> {
+  return apiFetch(`${base(laceId)}/signatures/${correlationId}`)
 }

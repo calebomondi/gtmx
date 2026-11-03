@@ -1,8 +1,6 @@
 import { useState, type ReactNode } from "react"
-import { Check, ShieldCheck } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -10,7 +8,8 @@ import {
 } from "@/components/ui/stepper"
 import type { LaceRole } from "@/lib/api"
 
-import { STORE_STATUS_BADGE } from "./store-model"
+import { formatShare, STORE_STATUS_BADGE } from "./store-model"
+import { StoreGoLive } from "./store-go-live"
 import { StoreOffers } from "./store-offers"
 import { StoreRules } from "./store-rules"
 import { StoreSplit } from "./store-split"
@@ -37,42 +36,9 @@ function StepCard({ title, about, children }: { title: string; about: string; ch
   )
 }
 
-/** The last step: what going live asks of the owner, once the rest is ready. */
-function GoLive({ name, store }: { name: string; store: LaceStore }) {
-  const onSale = store.offers.filter((o) => o.status === "active").length
-  const checks = [
-    { done: onSale > 0, label: onSale ? `${onSale} ${onSale === 1 ? "offer" : "offers"} on sale` : "Put at least one offer on sale" },
-    { done: true, label: store.payees.length ? `${store.payees.length} ${store.payees.length === 1 ? "payee" : "payees"} share in each sale`
-                                             : "No payees: every sale stays in the Store's wallet" },
-    { done: true, label: `At most $${store.store?.daily_budget_usd} sent out a day` },
-  ]
-  return (
-    <div className="flex flex-col gap-4">
-      <ul className="flex flex-col gap-2">
-        {checks.map((check) => (
-          <li key={check.label} className="flex items-center gap-2 text-sm">
-            <Check className={check.done ? "size-4 text-theme" : "size-4 text-muted-foreground/40"} />
-            <span className={check.done ? "" : "text-muted-foreground"}>{check.label}</span>
-          </li>
-        ))}
-      </ul>
-      <div className="flex gap-3 rounded-lg border bg-muted/30 p-4 text-sm">
-        <ShieldCheck className="mt-0.5 size-4 shrink-0 text-theme" />
-        <p className="text-muted-foreground">
-          Going live opens a wallet for the Store on NEAR Intents. The owner signs its rules (the payees and the
-          daily cap) once, and then lets {name} act inside them. Sales land there; nothing can be sent anywhere
-          else, or past the cap, without a new signature.
-        </p>
-      </div>
-      <Button className="self-end" disabled>Sign and go live</Button>
-      <p className="self-end text-xs text-muted-foreground">Wallet signing is being connected next.</p>
-    </div>
-  )
-}
-
 /** A Store not yet selling: what it sells, who shares in each sale, its
  * rules, then going live. */
-function StoreSetup({ name, store, manages }: { name: string; store: LaceStore; manages: boolean }) {
+function StoreSetup({ laceId, name, store, role }: { laceId: string; name: string; store: LaceStore; role: LaceRole }) {
   const [step, setStep] = useState<SetupStep>(store.offers.length ? "split" : "sell")
   const row = store.store
   if (!row) return null
@@ -94,7 +60,7 @@ function StoreSetup({ name, store, manages }: { name: string; store: LaceStore; 
     ),
     live: (
       <StepCard title="Go live" about="One last check before the Store opens.">
-        <GoLive name={name} store={store} />
+        <StoreGoLive laceId={laceId} name={name} store={store} isOwner={role === "owner"} />
       </StepCard>
     ),
   }
@@ -114,13 +80,44 @@ function StoreSetup({ name, store, manages }: { name: string; store: LaceStore; 
         </StepperNav>
       </Stepper>
       {/* Members see the setup; admins and the owner change it. */}
-      <fieldset disabled={!manages} className="min-w-0">{body[step]}</fieldset>
+      <fieldset disabled={role === "member"} className="min-w-0">{body[step]}</fieldset>
     </div>
   )
 }
 
+/** A live Store, until its own tabs (orders, ledger) arrive: where its money
+ * sits and the rules it keeps to. */
+function StoreLive({ store }: { store: LaceStore }) {
+  const row = store.store
+  if (!row) return null
+  const facts = [
+    { label: "Sales land in", value: row.wallet_account_id ?? "Its NEAR Intents wallet" },
+    { label: "Signed by", value: row.owner_account_id ?? "The owner's passkey" },
+    { label: "Payees", value: store.payees.map((p) => `${p.label} ${formatShare(p.share_bps)}`).join(", ") || "None" },
+    { label: "Daily cap", value: `$${row.daily_budget_usd}` },
+  ]
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Open for sales</CardTitle>
+        <CardDescription>Its rules are in the wallet's signed policy: only a new signature from the owner changes them.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <dl className="grid gap-3 text-sm sm:grid-cols-[10rem_1fr]">
+          {facts.map((fact) => (
+            <div key={fact.label} className="contents">
+              <dt className="text-muted-foreground">{fact.label}</dt>
+              <dd className="min-w-0 truncate font-mono text-xs leading-5 sm:text-sm">{fact.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </CardContent>
+    </Card>
+  )
+}
+
 /** A Lace's Store tab. Until it goes live, the setup; after, what it sold. */
-export function LaceStoreTab({ name, role, store }: { name: string; role: LaceRole; store: LaceStore }) {
+export function LaceStoreTab({ laceId, name, role, store }: { laceId: string; name: string; role: LaceRole; store: LaceStore }) {
   if (store.loading) return <div className="mx-auto w-full max-w-4xl p-4"><Skeleton className="h-64 w-full" /></div>
   const row = store.store
   if (!row) return null
@@ -135,7 +132,8 @@ export function LaceStoreTab({ name, role, store }: { name: string; role: LaceRo
         </div>
       </header>
       {store.error && <p role="alert" className="text-sm text-destructive">{store.error}</p>}
-      {row.status === "setup" && <StoreSetup name={name} store={store} manages={role !== "member"} />}
+      {row.status === "setup" && <StoreSetup laceId={laceId} name={name} store={store} role={role} />}
+      {row.status !== "setup" && <StoreLive store={store} />}
     </div>
   )
 }
