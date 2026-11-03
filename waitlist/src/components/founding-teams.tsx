@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode, type SVGProps } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type RefObject, type SVGProps } from 'react'
 
 import { usePlay } from '../lib/motion'
+import { useScrollScenes, watchProgress } from '../lib/use-scroll-progress'
 import { Face, type Person } from './face'
 import { Lace } from './lace-mascot'
 import { Section } from './section'
@@ -215,10 +216,28 @@ function TeamChat({ beat, still }: { beat: Beat; still: boolean }) {
   )
 }
 
+/** On wide screens the chat follows the scroll: it pins beside the points
+ * while they pass, each stretch of scroll moving it one beat on, and
+ * scrolling back rewinds it. Returns the beat the scroll has reached. */
+function useScrolledBeat(track: RefObject<HTMLDivElement | null>, on: boolean): Beat {
+  const [beat, setBeat] = useState<Beat>('start')
+  useEffect(() => {
+    const el = track.current
+    if (!on || !el) return
+    return watchProgress(el, (p) => setBeat(ORDER[Math.min(ORDER.length - 1, Math.floor(p * ORDER.length))]))
+  }, [track, on])
+  return beat
+}
+
 export function FoundingTeams() {
   const stage = useRef<HTMLDivElement>(null)
-  const { run, still, replay } = usePlay(stage)
-  const beat = useBeat(run, still)
+  const track = useRef<HTMLDivElement>(null)
+  const scrub = useScrollScenes()
+  const { run, still: played, replay } = usePlay(stage)
+  const scrolled = useScrolledBeat(track, scrub)
+  const timed = useBeat(run, played)
+  const still = scrub ? false : played
+  const beat = scrub ? scrolled : timed
   // While it plays, the point it's showing stands out; once done, all read alike.
   const lit = !still && beat !== 'approved' ? pointAt(beat) : null
   return (
@@ -227,10 +246,12 @@ export function FoundingTeams() {
       title="One startup. One Lace. Everyone on it."
       intro={<>A startup is rarely one person. Your Lace is shared by the whole founding team, so what one of you learns, all of you can build on.</>}
     >
-      <div className="grid gap-10 lg:grid-cols-[1fr_1fr] lg:items-center lg:gap-16">
+      <div ref={track} className={scrub ? 'h-[260vh]' : ''}>
+      <div className={`grid gap-10 lg:grid-cols-[1fr_1fr] lg:items-center lg:gap-16 ${
+        scrub ? 'sticky top-14 h-[calc(100dvh-3.5rem)] content-center' : ''}`}>
         <div ref={stage} className="flex flex-col gap-3">
-          <TeamChat key={run} beat={beat} still={still} />
-          {!still && beat === 'approved' && (
+          <TeamChat key={scrub ? 'scroll' : run} beat={beat} still={still} />
+          {!scrub && !still && beat === 'approved' && (
             <button type="button" onClick={replay} className="cursor-pointer self-start text-sm text-muted underline-offset-4 hover:text-ink hover:underline">
               Play it again
             </button>
@@ -250,6 +271,7 @@ export function FoundingTeams() {
             </li>
           ))}
         </ul>
+      </div>
       </div>
     </Section>
   )
