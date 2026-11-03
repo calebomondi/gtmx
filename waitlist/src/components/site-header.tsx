@@ -9,7 +9,7 @@ const LINKS = [
   { href: '#pilot', label: 'Pilot' },
 ] as const
 
-/** Past this much scroll the header floats as a pill. */
+/** Past this much scroll the header floats as a bar. */
 const FLOAT_AFTER_PX = 8
 
 /** Whether the page has left its very top, which linked section the reader
@@ -48,7 +48,7 @@ function usePagePlace() {
 }
 
 /** The header. On the hero it sits open on the page's paper, with no bar;
- * once the page scrolls it eases into a pill floating below the top of the
+ * once the page scrolls it eases into a bar floating below the top of the
  * screen. The section you're in is lit, and the Pilot link says how many
  * pilot spots are left. It keeps its 56 px slot either way, so the pinned
  * scroll scenes sit where they always have. */
@@ -57,10 +57,10 @@ export function SiteHeader({ pilot }: { pilot: PilotSpots | null }) {
   const left = pilot && pilot.left > 0 ? pilot.left : null
   return (
     <header className={`sticky top-0 z-20 h-14 ${floating ? 'pt-2.5' : 'header-veil'}`}>
-      {/* The same column as the sections, so the pill lines up with them. */}
+      {/* The same column as the sections, so the floating bar lines up with them. */}
       <div className={`header-bar mx-auto max-w-7xl ${floating ? 'px-2.5 sm:px-8' : 'px-5 sm:px-8'}`}>
         <div className={`header-bar relative flex items-center justify-between ${floating
-          ? 'header-pill h-11 overflow-hidden rounded-full bg-paper/95 pr-1.5 pl-5 shadow-lift ring-1 ring-ink/10 backdrop-blur-md'
+          ? 'header-pill h-12 overflow-hidden rounded-xl bg-paper/95 pr-2 pl-5 shadow-lift ring-1 ring-ink/10 backdrop-blur-md'
           : 'h-14'}`}>
           <a href="#top" aria-label="Thalace home" className="relative">
             <BrandMark />
@@ -78,11 +78,11 @@ export function SiteHeader({ pilot }: { pilot: PilotSpots | null }) {
                 )}
               </a>
             ))}
-            <a href="#join" className={`btn-primary text-sm ${floating ? 'rounded-full px-4 py-1.5' : 'px-3.5 py-1.5'}`}>
+            <a href="#join" className="btn-primary px-3.5 py-1.5 text-sm">
               Join the waitlist
             </a>
           </nav>
-          {/* How far down the page you've read, along the pill's lower edge. */}
+          {/* How far down the page you've read, along the bar's lower edge. */}
           <span ref={reading} aria-hidden
                 className={`absolute bottom-0 left-0 h-[2px] w-full origin-left bg-brand transition-opacity ${floating ? '' : 'opacity-0'}`} />
         </div>
