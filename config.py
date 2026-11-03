@@ -175,6 +175,10 @@ class Settings(BaseSettings):
     near_intents_agent_api_url: str = "https://api.agentsonintents.com"
     # Above the 30 s a status read is held open waiting for a change.
     near_intents_timeout_s: float = 45.0
+    # What every sale is credited as: native USDC on NEAR.
+    store_settlement_asset: str = "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"
+    # A new Store's daily cap on what it may send out, until the founder sets one.
+    store_default_daily_budget_usd: int = 50
 
     # -- Observability (all opt-in: empty means off) --
     sentry_dsn: str = ""
