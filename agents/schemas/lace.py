@@ -308,8 +308,9 @@ ActivityKind = Literal[
     "drafts_ready", "reply_received", "opportunities_found", "job_failed", "app_action", "access_requested",
     "comments_read", "member_joined", "message_sent", "competitor_saved", "account_saved",
     "opportunity_saved", "finds_proposed", "finds_returned", "regulations_found", "bill_moved",
+    "store_sale", "store_payout", "store_status",
 ]
 ACTIVITY_KINDS: tuple[str, ...] = ActivityKind.__args__
 # What an activity is about, when it is one thing the founder can open.
-ActivityRef = Literal["brief", "outreach", "app_action"]
+ActivityRef = Literal["brief", "outreach", "app_action", "store_order"]
 ACTIVITY_REFS: tuple[str, ...] = ActivityRef.__args__
