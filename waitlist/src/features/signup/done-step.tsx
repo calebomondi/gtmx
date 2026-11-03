@@ -8,7 +8,7 @@ export function DoneStep({ email, wantsPilot }: { email: string; wantsPilot: boo
       </h2>
       <p className="text-sm leading-relaxed text-muted">
         {wantsPilot
-          ? `We'll email ${email} within two weeks to set up your account and a short kickoff call.`
+          ? `We'll email ${email} within two weeks to set up your account.`
           : `We'll email ${email} when Thalace opens. Want a pilot spot after all? Reply to our email with "pilot".`}
       </p>
     </div>

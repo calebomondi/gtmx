@@ -10,7 +10,10 @@ import { Section } from './section'
 const POP_MS = 1200
 
 const GET = ['Your startup’s Lace, free for your whole founding team', 'A direct line to the team building it', 'A say in what Lace learns next']
-const ASK = ['A 20-minute feedback call every two weeks', 'Honest answers about what works and what doesn’t']
+const ASK = [
+  'Your feedback and suggestions as you use it: the feedback button in the app, or a reply to our emails',
+  'Honest answers about what works and what doesn’t',
+]
 
 // The dots drawn while the count loads: the size of a cohort, all open.
 const LOADING_DOTS = 50
@@ -75,7 +78,7 @@ export function Pilot({ pilot }: { pilot: PilotSpots | null }) {
       id="pilot"
       label="The pilot"
       title={pilotTitle(pilot)}
-      intro="Join the waitlist and tick “Join the pilot”. We’ll email you to set up your Lace and book a short kickoff call."
+      intro="Join the waitlist and tick “Join the pilot”. We’ll email you to set up your Lace."
     >
       <div className="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
         <div data-reveal className="relative isolate flex flex-col gap-6">
