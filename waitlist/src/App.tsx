@@ -19,7 +19,7 @@ export default function App() {
   return (
     <>
       <PageBackdrop />
-      <SiteHeader />
+      <SiteHeader pilot={pilot} />
       <main>
         <Hero pilot={pilot} onPilotSpotsLeft={setPilotSpotsLeft} />
         <WhatLaceDoes />
