@@ -1,5 +1,3 @@
-import { stagger } from '../lib/stagger'
-import { LaceSquare } from './lace-square'
 import { Section } from './section'
 
 // Only what the page above doesn't already answer: the worries before signing up.
@@ -28,16 +26,15 @@ const QUESTIONS = [
 
 export function Faq() {
   return (
-    <Section label="Questions" title="Before you ask." layout="split"
-             decor={<LaceSquare className="right-[-12%] bottom-[-10%] w-[min(70vw,40rem)] rotate-12" />}>
+    <Section title="Before you ask." layout="split">
       <div className="faq border-t border-line">
-        {QUESTIONS.map((item, i) => (
-          <details key={item.q} data-reveal style={stagger(i)} className="group border-b border-line">
+        {QUESTIONS.map((item) => (
+          <details key={item.q} className="group border-b border-line">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-6 rounded-md px-2 py-6 text-lg font-medium transition-colors hover:bg-paper sm:px-4 [&::-webkit-details-marker]:hidden">
               {item.q}
               <span
                 aria-hidden
-                className="grid size-8 shrink-0 place-items-center rounded-full border border-line font-mono text-lg transition duration-300 group-open:rotate-45 group-open:border-brand group-open:bg-brand group-hover:border-brand"
+                className="grid size-8 shrink-0 place-items-center text-2xl leading-none font-light text-muted transition duration-300 group-open:rotate-45 group-open:text-brand-ink group-hover:text-ink"
               >
                 +
               </span>

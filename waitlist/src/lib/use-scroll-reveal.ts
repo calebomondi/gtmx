@@ -1,10 +1,9 @@
 import { useEffect } from 'react'
 
-const SELECTOR = '[data-reveal], [data-draw], [data-dots]'
+const SELECTOR = '[data-draw], [data-dots]'
 
-/** Reveal marked elements as they scroll into view, once each. Marks:
- * `data-reveal` (fade and rise; `--i` staggers siblings), `data-draw` (a line
- * draws itself), `data-dots` (pilot dots fill in). Elements rendered later
+/** Play marked elements as they scroll into view, once each. Marks:
+ * `data-draw` (a line draws itself), `data-dots` (pilot dots fill in). Elements rendered later
  * (e.g. once the pilot count loads) are picked up too. The page marks <html>
  * with `.js` first, so without this script nothing is ever hidden. Shown
  * elements get `data-shown`. */

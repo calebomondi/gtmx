@@ -18,14 +18,14 @@ const FIND_FADE_MS = 500
 const KEEP_CLEAR_PX = 14
 /** How far a find on show warms the squares around it. */
 const GLOW_PX = 110
-const FONT = '500 11px ui-monospace, SFMono-Regular, Menlo, monospace'
+const FONT = '600 12px "Funnel Sans Variable", ui-sans-serif, system-ui, sans-serif'
 
 // What a ping turns up, from anywhere in the world.
 const FINDS = [
-  'Tender · Nairobi', 'Partner · Lagos', 'Grant · closes in 9 days', 'Lead · CTO, Kigali',
-  'Accelerator · open call', 'Competitor · new pricing', 'Event · Founders Summit, Berlin',
-  'Lead · Head of Ops, São Paulo', 'Pilot customer · Cape Town', 'Investor · pre-seed, Jakarta',
-  'Tender · Accra', 'Partner · Austin',
+  'A tender in Nairobi', 'A partner in Lagos', 'A grant, closing in 9 days', 'A CTO in Kigali to reach',
+  'An accelerator with an open call', 'A competitor changed its pricing', 'Founders Summit, Berlin',
+  'Head of Ops in São Paulo, hiring', 'A pilot customer in Cape Town', 'A pre-seed investor in Jakarta',
+  'A tender in Accra', 'A partner in Austin',
 ]
 
 interface Ping { born: number; find: Find | null }

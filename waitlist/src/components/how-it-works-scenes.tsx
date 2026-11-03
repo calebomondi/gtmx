@@ -65,11 +65,11 @@ export function BornScene({ still }: SceneProps) {
       </div>
       <div className="flex w-60 flex-col gap-2.5">
         <div className="rounded-xl border border-line bg-panel p-4 shadow-lift">
-          <p className="font-mono text-[10px] uppercase tracking-wider text-brand-ink">What it learned</p>
+          <p className="tag">What it learned</p>
           <dl className="mt-2.5 flex flex-col gap-2">
             {LEARNED.map((row, i) => (
               <div key={row.label} className={rise} style={at(2.9 + i * 0.45)}>
-                <dt className="font-mono text-[10px] uppercase tracking-wider text-muted">{row.label}</dt>
+                <dt className="text-xs text-muted">{row.label}</dt>
                 <dd className="text-[13px] font-medium leading-snug">{row.value}</dd>
               </div>
             ))}
@@ -130,7 +130,7 @@ export function OrbitScene({ still }: SceneProps) {
                 '--fy-row': `${(1.5 - i) * FIND_ROW_PX}px`,
                 '--fy-col': `${-(150 + i * FIND_ROW_PX)}px`,
               } as CSSProperties}>
-            <p className="font-mono text-[10px] uppercase tracking-wider text-brand-ink">{find.tag}</p>
+            <p className="tag">{find.tag}</p>
             <p className="text-sm font-semibold leading-tight">{find.text}</p>
           </li>
         ))}
@@ -199,7 +199,7 @@ export function RoundTripScene({ still }: SceneProps) {
       <div className="relative grid w-60 *:[grid-area:1/1]">
         <div className={`self-center rounded-lg border border-dashed border-brand bg-panel p-3 ${
           trip === 'waiting' ? '' : still ? 'invisible' : 'fly-off'}`}>
-          <p className="font-mono text-[10px] uppercase tracking-wider text-brand-ink">Draft · to Neema by email</p>
+          <p className="tag">Draft to Neema, by email</p>
           <p className="mt-1.5 text-[13px] leading-snug">Hi Neema, congrats on Acme Pay’s seed round. Worth 15 minutes next week?</p>
           <div className="mt-3 flex justify-end">
             <span className={`rounded-md px-3 py-1 text-xs font-semibold ${
@@ -209,7 +209,7 @@ export function RoundTripScene({ still }: SceneProps) {
         {trip === 'sent' && <PaperPlane />}
         <div className={`self-center rounded-lg border border-line bg-panel p-3 shadow-lift ${
           trip !== 'replied' ? 'invisible' : still ? '' : 'rise-in'}`}>
-          <p className="font-mono text-[10px] uppercase tracking-wider text-brand-ink">Reply · from Neema</p>
+          <p className="tag">Neema replied</p>
           <p className="mt-1.5 text-[13px] leading-snug">“Tuesday works. Can my cofounder join the call?”</p>
           <div className="mt-2.5 flex items-center justify-between border-t border-line pt-2.5">
             <span className="flex items-center gap-1.5 text-xs font-medium">

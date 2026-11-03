@@ -1,7 +1,5 @@
 import { useState } from 'react'
 
-import { stagger } from '../lib/stagger'
-import { LaceSquare } from './lace-square'
 import { Section } from './section'
 
 interface App {
@@ -69,7 +67,7 @@ function AppTile({ app, lit }: { app: App; lit: boolean }) {
         </span>
       )}
       {app.name}
-      {app.soon && <span className="font-mono text-[10px] uppercase tracking-wider text-muted">Soon</span>}
+      {app.soon && <span className="text-xs text-muted">soon</span>}
     </li>
   )
 }
@@ -117,20 +115,15 @@ export function YourTools() {
   return (
     <Section
       id="tools"
-      decor={<>
-        {/* A rack of small squares for the apps, and a large one behind the proposals. */}
-        <span className="lace-rack absolute inset-0" />
-        <LaceSquare className="right-[-30%] bottom-[2%] w-[90vw] rotate-6 lg:top-[40%] lg:right-[-4%] lg:bottom-auto lg:w-[min(40vw,34rem)]" />
-      </>}
       title="It proposes. You approve. It runs."
-      intro={<>Connect the apps your team already uses. Your Lace reads what it needs from them, and <strong>anything it would do there waits for your click</strong>.</>}
+      intro={<>Connect the apps your team already uses. Your Lace reads what it needs from them, and anything it would do there waits for your click.</>}
     >
       <div className="grid gap-10 lg:grid-cols-[1.4fr_1fr] lg:gap-16">
         <div className="flex flex-col divide-y divide-line border-y border-line">
-          {GROUPS.map((group, g) => (
-            <div key={group.label} data-reveal style={stagger(g)} className="grid gap-3 py-5 sm:grid-cols-[11rem_1fr] sm:gap-6">
+          {GROUPS.map((group) => (
+            <div key={group.label} className="grid gap-3 py-5 sm:grid-cols-[11rem_1fr] sm:gap-6">
               <div>
-                <h3 className="font-mono text-xs uppercase tracking-wider text-brand-ink">{group.label}</h3>
+                <h3 className="font-sans text-[15px] font-semibold">{group.label}</h3>
                 <p className="mt-1 text-sm leading-snug text-muted">{group.blurb}</p>
               </div>
               <ul className="flex flex-wrap content-start gap-2" aria-label={group.label}>
@@ -139,8 +132,8 @@ export function YourTools() {
             </div>
           ))}
         </div>
-        <div data-reveal style={stagger(2)} className="flex flex-col gap-3 self-center rounded-xl bg-paper p-6 shadow-lift">
-          <p className="font-mono text-xs uppercase tracking-wider text-brand-ink">Ask, and approve</p>
+        <div className="flex flex-col gap-3 self-center rounded-xl bg-paper p-6 shadow-lift">
+          <p className="tag text-sm">Ask, and approve</p>
           <ul className="flex flex-col gap-2.5">
             {PROPOSALS.map((p) => (
               <Proposal key={p.ask} ask={p.ask} done={p.done}

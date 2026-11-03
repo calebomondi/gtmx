@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode, type SVGProps } from 'react'
 
 import { usePlay } from '../lib/motion'
-import { stagger } from '../lib/stagger'
 import { Face, type Person } from './face'
 import { Lace } from './lace-mascot'
-import { LaceSquare } from './lace-square'
 import { Section } from './section'
 
 function Icon(props: SVGProps<SVGSVGElement>) {
@@ -85,7 +83,7 @@ function Said({ who, person, children, waiting = false }: {
   return (
     <div className="flex items-start justify-end gap-2">
       <div className="flex flex-col items-end gap-0.5">
-        <p className="font-mono text-[10px] uppercase tracking-wider text-muted">{who}</p>
+        <p className="text-[11px] font-medium text-muted">{who}</p>
         <p className={`max-w-[15rem] rounded-lg bg-highlight px-2.5 py-1.5 text-[13px] leading-snug ${waiting ? 'opacity-60' : ''}`}>
           {children}
         </p>
@@ -189,7 +187,7 @@ function TeamChat({ beat, still }: { beat: Beat; still: boolean }) {
         <Arrive beat={beat} from="searching" still={still}
                 className="flex w-fit items-center gap-2 rounded-full border border-brand/50 bg-highlight/50 px-3 py-1 text-[12px]">
           <span aria-hidden className="size-2 animate-pulse rounded-full bg-brand" />
-          Searching for partners · 2m
+          Searching for partners, 2 min in
           <span className="text-muted">Keep chatting</span>
         </Arrive>
         <Arrive beat={beat} from="answeredCofounder" still={still} className="flex items-start gap-2">
@@ -197,7 +195,7 @@ function TeamChat({ beat, still }: { beat: Beat; still: boolean }) {
           <p className="max-w-[17rem] text-[13px] leading-snug">Drafted for Neema, Acme Pay’s founder. It’s in Messaging when you’re ready.</p>
         </Arrive>
         <Arrive beat={beat} from="pushed" still={still} className="rounded-lg border border-line bg-panel p-3 shadow-lift">
-          <p className="font-mono text-[10px] uppercase tracking-wider text-brand-ink">To review · from your cofounder’s chat</p>
+          <p className="tag">From your cofounder’s chat, to review</p>
           <p className="mt-1 font-semibold tracking-tight">Launchpad accelerator</p>
           <p className="mt-0.5 text-[13px] leading-snug text-muted">Partner: runs programmes for the startups we sell to</p>
           <p className="mt-1.5 rounded-md bg-paper px-2 py-1 text-[12px]">“Met their programme lead at a demo day.”</p>
@@ -226,13 +224,8 @@ export function FoundingTeams() {
   return (
     <Section
       id="teams"
-      decor={<>
-        {/* Two people, one Lace: a square each side, deepening where they meet. */}
-        <LaceSquare className="top-[4%] left-[-40%] w-[120vw] -rotate-4 lg:top-[9%] lg:left-[7%] lg:w-[min(48vw,44rem)]" />
-        <LaceSquare className="right-[-40%] bottom-[4%] w-[120vw] rotate-5 lg:right-[7%] lg:bottom-[5%] lg:w-[min(48vw,44rem)]" />
-      </>}
       title="One startup. One Lace. Everyone on it."
-      intro={<>A startup is rarely one person. Your Lace is <strong>shared by the whole founding team</strong>, so what one of you learns, all of you can build on.</>}
+      intro={<>A startup is rarely one person. Your Lace is shared by the whole founding team, so what one of you learns, all of you can build on.</>}
     >
       <div className="grid gap-10 lg:grid-cols-[1fr_1fr] lg:items-center lg:gap-16">
         <div ref={stage} className="flex flex-col gap-3">
@@ -245,7 +238,7 @@ export function FoundingTeams() {
         </div>
         <ul className="flex flex-col gap-7">
           {POINTS.map((point, i) => (
-            <li key={point.title} data-reveal style={stagger(i)}>
+            <li key={point.title}>
               {/* Dimmed on an inner box: the reveal owns the item's own opacity. */}
               <div className={`flex gap-4 transition-opacity duration-500 ${lit === null || lit === i ? '' : 'opacity-40'}`}>
                 <span className={`shrink-0 transition-transform duration-500 ${lit === i ? 'scale-110' : ''}`}>{point.icon}</span>
