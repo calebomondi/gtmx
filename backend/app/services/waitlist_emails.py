@@ -47,9 +47,9 @@ def pilot(today: date | None = None) -> tuple[str, str, str]:
     paragraphs = [
         "You're in line for the Thalace pilot.",
         f"{_pilot_when(today)} Within {settings.waitlist_pilot_contact_days} days we'll email you to set up your "
-        "Lace and a short kickoff call.",
+        "Lace.",
         "Pilots get their own Lace free, talk to the team directly, and shape what Lace learns next. All we ask "
-        "is a 20-minute feedback call every two weeks.",
+        "is your feedback and suggestions as you use it: what works, what doesn't, and what you wish it did.",
         "The Thalace team",
     ]
     return "You're in line for the Thalace pilot", "\n\n".join(paragraphs), _html(paragraphs)
