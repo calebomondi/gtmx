@@ -90,6 +90,19 @@
     color: var(--color-brand-ink);
   }
 
+  /* The header on the hero: no bar, only a soft paper fade behind it so its
+     words never land on the radar's squares or finds (site-header.tsx). */
+  .header-veil {
+    background: linear-gradient(var(--color-paper) 35%, transparent);
+  }
+  /* The header easing between open and a floating pill. */
+  .header-bar {
+    transition-property: max-width, height, margin, padding, border-radius, background-color, box-shadow;
+    box-sizing: border-box;
+    transition-duration: 300ms;
+    transition-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+
   /* Marker-pen highlight behind words that carry the point. */
   .marker {
     background: linear-gradient(transparent 58%, var(--color-brand) 58%, var(--color-brand) 92%, transparent 92%);
@@ -508,6 +521,9 @@
   }
   .js [data-dots] .dot-taken .spot-eye {
     opacity: 1;
+  }
+  .header-bar {
+    transition: none;
   }
   .js [data-dots] .dot-new,
   .spot-next {
