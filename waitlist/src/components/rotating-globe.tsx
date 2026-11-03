@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { prefersStill } from '../lib/motion'
+import { watchPassage } from '../lib/use-scroll-progress'
 
 import { CELL_DEGREES, WORLD_GRID } from './world-grid'
 
@@ -21,6 +22,10 @@ const FIND_LIFE_S = 3.6
 /** Turning to a place someone named: how quickly, and how long it stays there with its pin. */
 const AIM_RATE = 2.4
 const AIM_HOLD_S = 4
+/** How far scrolling the globe across the screen turns it, on top of its own
+ * turn: none mid-screen, where a place it was asked for faces you, and up to
+ * half this either side as it scrolls in and out. */
+const SCROLL_TURN = 0.8 * Math.PI
 
 const RAD = Math.PI / 180
 
@@ -127,7 +132,7 @@ function draw(ctx: CanvasRenderingContext2D, size: number, center: number, finds
 }
 
 /** The world as square boxes on a slowly turning globe, with finds lighting
- * up on land as it turns. Given a `place`, it turns there, pins it, holds a
+ * up on land as it turns; scrolling the page turns it further, and back. Given a `place`, it turns there, pins it, holds a
  * moment, and turns on. Turns only on screen; still with reduced motion,
  * where it simply faces the place. */
 export function RotatingGlobe({ place = null }: { place?: Place | null }) {
@@ -152,6 +157,10 @@ export function RotatingGlobe({ place = null }: { place?: Place | null }) {
     let last = 0
     let nextFind = 0
     let finds: Find[] = []
+    // How far the page has carried the globe across the screen (0–1); the
+    // globe is drawn turned by it, and turns back when the page scrolls back.
+    let scrolled = 0.5
+    const facing = () => center - (scrolled - 0.5) * SCROLL_TURN
 
     show.current = (target) => {
       if (still) {
@@ -195,11 +204,11 @@ export function RotatingGlobe({ place = null }: { place?: Place | null }) {
       finds = finds.filter((f) => now - f.born < f.life)
       if (!target && now >= nextFind) {
         // A new find on land near the front, where it can be seen.
-        const front = LAND.filter((cell) => project(cell, center).z > 0.6)
+        const front = LAND.filter((cell) => project(cell, facing()).z > 0.6)
         if (front.length) finds.push({ cell: front[Math.floor(Math.random() * front.length)], born: now, life: FIND_LIFE_S })
         nextFind = now + FIND_EVERY_S
       }
-      draw(ctx, size, center, finds, now)
+      draw(ctx, size, facing(), finds, now)
       frame = requestAnimationFrame(tick)
     }
 
@@ -215,10 +224,12 @@ export function RotatingGlobe({ place = null }: { place?: Place | null }) {
       if (visible) frame = requestAnimationFrame(tick)
     })
     watcher.observe(el)
+    const stopScroll = watchPassage(el, (p) => { scrolled = p }, 1, 0)
     return () => {
       cancelAnimationFrame(frame)
       watcher.disconnect()
       sizer.disconnect()
+      stopScroll()
     }
   }, [still])
 

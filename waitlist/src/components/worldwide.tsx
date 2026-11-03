@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 
 import { usePlay } from '../lib/motion'
-import { stagger } from '../lib/stagger'
 import { RotatingGlobe, type Place } from './rotating-globe'
-import { LaceSquare } from './lace-square'
 import { Section } from './section'
 
 /** Reasons to reach out now, the kind Lace spots wherever you sell. */
@@ -79,31 +77,27 @@ const POINTS = [
 export function Worldwide() {
   return (
     <Section
-      decor={
-        // The globe's frame, turning far slower than the globe.
-        <LaceSquare className="spin-glacial top-[30%] rotate-6 left-[10%] w-[80vw] lg:top-[30%] lg:left-[5%] lg:w-[min(34vw,30rem)]" />
-      }
       title="It already knows where to look."
-      intro={<>There’s no list of countries to pick from. <strong>Lace reads where you sell from your own website</strong>, and goes wherever you point it.</>}
+      intro={<>There’s no list of countries to pick from. Lace reads where you sell from your own website, and goes wherever you point it.</>}
     >
       <div className="grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
-        <div data-reveal className="flex justify-center">
+        <div className="flex justify-center">
           <AskForAPlace />
         </div>
         <div className="flex flex-col gap-8">
           <div className="grid gap-5 sm:grid-cols-3">
-            {POINTS.map((point, i) => (
-              <div key={point.title} data-reveal style={stagger(i)}>
+            {POINTS.map((point) => (
+              <div key={point.title}>
                 <h3 className="font-semibold tracking-tight">{point.title}</h3>
                 <p className="mt-1.5 leading-relaxed text-muted">{point.body}</p>
               </div>
             ))}
           </div>
-          <div data-reveal style={stagger(3)}>
-            <p className="font-mono text-xs uppercase tracking-wider text-brand-ink">Reasons to reach out it spots, anywhere</p>
+          <div>
+            <p className="tag text-sm">Reasons to reach out it spots, anywhere</p>
             <ul className="mt-3 flex flex-wrap gap-2">
               {SIGNALS.map((signal) => (
-                <li key={signal} className="rounded-full border border-brand/60 bg-highlight/50 px-2.5 py-1 font-mono text-[11px] tracking-wide text-ink">
+                <li key={signal} className="rounded-full border border-brand/60 bg-highlight/50 px-2.5 py-1 text-xs text-ink">
                   {signal}
                 </li>
               ))}

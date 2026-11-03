@@ -1,8 +1,7 @@
 import { useRef, type ComponentType } from 'react'
 
 import { usePlay } from '../lib/motion'
-import { stagger } from '../lib/stagger'
-import { LaceSquare } from './lace-square'
+import { ScrollWords } from './scroll-words'
 import { Section } from './section'
 import { DraftScene, FindsScene, WatchesScene, type SceneProps } from './what-lace-does-scenes'
 
@@ -87,32 +86,29 @@ function Specimen({ Scene }: { Scene: ComponentType<SceneProps> }) {
   )
 }
 
+/** The three jobs, each named by its verb, large, over Lace doing it; the
+ * columns are kept apart by hairlines rather than boxed into cards. */
 export function WhatLaceDoes() {
   return (
     <Section
       id="what-lace-does"
-      decor={<>
-        {/* A chain, one square behind each column, each overlapping the next. */}
-        <LaceSquare className="top-[20%] left-[-30%] w-[90vw] -rotate-6 lg:top-[34%] lg:left-[3%] lg:w-[min(34vw,30rem)]" />
-        <LaceSquare className="top-[48%] right-[-30%] w-[90vw] rotate-3 lg:top-[42%] lg:right-auto lg:left-[33%] lg:w-[min(34vw,30rem)]" />
-        <LaceSquare className="top-[76%] left-[-20%] w-[90vw] -rotate-2 lg:top-[34%] lg:left-[63%] lg:w-[min(34vw,30rem)]" />
-      </>}
-      title="Finds. Watches. Works with you."
-      intro={<>One assistant for everything between you and your next deal, working from what it knows about your startup and the web as it is today. Everything it finds <strong>says where it found it, and waits for your OK</strong> before it is saved or sent.</>}
+      title={<ScrollWords text="Everything between you and your next deal." />}
+      intro="It works from what it knows about your startup and the web as it is today. Everything it finds says where it found it, and waits for your OK before it is saved or sent."
     >
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid border-y border-line lg:grid-cols-3 lg:divide-x lg:divide-line">
         {COLUMNS.map((column, c) => (
-          <div key={column.title} data-reveal style={stagger(c)} className="flex flex-col rounded-xl border border-line bg-paper/60 p-6 sm:p-7">
-            <Specimen Scene={column.Scene} />
-            <h3 className="mt-6 text-lg font-semibold tracking-tight">{column.title}</h3>
-            <ul className="mt-4 flex flex-col gap-5">
+          <div key={column.title}
+               className={`flex flex-col py-10 lg:px-8 lg:first:pl-0 lg:last:pr-0 ${c > 0 ? 'border-t border-line lg:border-t-0' : ''}`}>
+            <h3 className="text-5xl leading-none font-semibold tracking-[-0.04em] whitespace-nowrap sm:text-6xl lg:text-[2.75rem] xl:text-5xl">{column.title}.</h3>
+            <div className="mt-6"><Specimen Scene={column.Scene} /></div>
+            <dl className="mt-8 flex flex-col gap-6">
               {column.items.map((item) => (
-                <li key={item.title} className="group border-l-2 border-brand/40 pl-4 transition-colors hover:border-brand">
-                  <p className="font-semibold tracking-tight">{item.title}</p>
-                  <p className="mt-1 leading-relaxed text-muted">{item.body}</p>
-                </li>
+                <div key={item.title}>
+                  <dt className="font-semibold tracking-tight">{item.title}</dt>
+                  <dd className="mt-1 leading-relaxed text-muted">{item.body}</dd>
+                </div>
               ))}
-            </ul>
+            </dl>
           </div>
         ))}
       </div>

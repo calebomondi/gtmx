@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode, type SVGProps } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type RefObject, type SVGProps } from 'react'
 
 import { usePlay } from '../lib/motion'
-import { stagger } from '../lib/stagger'
+import { useScrollScenes, watchProgress } from '../lib/use-scroll-progress'
 import { Face, type Person } from './face'
 import { Lace } from './lace-mascot'
-import { LaceSquare } from './lace-square'
 import { Section } from './section'
 
 function Icon(props: SVGProps<SVGSVGElement>) {
@@ -85,7 +84,7 @@ function Said({ who, person, children, waiting = false }: {
   return (
     <div className="flex items-start justify-end gap-2">
       <div className="flex flex-col items-end gap-0.5">
-        <p className="font-mono text-[10px] uppercase tracking-wider text-muted">{who}</p>
+        <p className="text-[11px] font-medium text-muted">{who}</p>
         <p className={`max-w-[15rem] rounded-lg bg-highlight px-2.5 py-1.5 text-[13px] leading-snug ${waiting ? 'opacity-60' : ''}`}>
           {children}
         </p>
@@ -189,7 +188,7 @@ function TeamChat({ beat, still }: { beat: Beat; still: boolean }) {
         <Arrive beat={beat} from="searching" still={still}
                 className="flex w-fit items-center gap-2 rounded-full border border-brand/50 bg-highlight/50 px-3 py-1 text-[12px]">
           <span aria-hidden className="size-2 animate-pulse rounded-full bg-brand" />
-          Searching for partners · 2m
+          Searching for partners, 2 min in
           <span className="text-muted">Keep chatting</span>
         </Arrive>
         <Arrive beat={beat} from="answeredCofounder" still={still} className="flex items-start gap-2">
@@ -197,7 +196,7 @@ function TeamChat({ beat, still }: { beat: Beat; still: boolean }) {
           <p className="max-w-[17rem] text-[13px] leading-snug">Drafted for Neema, Acme Pay’s founder. It’s in Messaging when you’re ready.</p>
         </Arrive>
         <Arrive beat={beat} from="pushed" still={still} className="rounded-lg border border-line bg-panel p-3 shadow-lift">
-          <p className="font-mono text-[10px] uppercase tracking-wider text-brand-ink">To review · from your cofounder’s chat</p>
+          <p className="tag">From your cofounder’s chat, to review</p>
           <p className="mt-1 font-semibold tracking-tight">Launchpad accelerator</p>
           <p className="mt-0.5 text-[13px] leading-snug text-muted">Partner: runs programmes for the startups we sell to</p>
           <p className="mt-1.5 rounded-md bg-paper px-2 py-1 text-[12px]">“Met their programme lead at a demo day.”</p>
@@ -217,27 +216,42 @@ function TeamChat({ beat, still }: { beat: Beat; still: boolean }) {
   )
 }
 
+/** On wide screens the chat follows the scroll: it pins beside the points
+ * while they pass, each stretch of scroll moving it one beat on, and
+ * scrolling back rewinds it. Returns the beat the scroll has reached. */
+function useScrolledBeat(track: RefObject<HTMLDivElement | null>, on: boolean): Beat {
+  const [beat, setBeat] = useState<Beat>('start')
+  useEffect(() => {
+    const el = track.current
+    if (!on || !el) return
+    return watchProgress(el, (p) => setBeat(ORDER[Math.min(ORDER.length - 1, Math.floor(p * ORDER.length))]))
+  }, [track, on])
+  return beat
+}
+
 export function FoundingTeams() {
   const stage = useRef<HTMLDivElement>(null)
-  const { run, still, replay } = usePlay(stage)
-  const beat = useBeat(run, still)
+  const track = useRef<HTMLDivElement>(null)
+  const scrub = useScrollScenes()
+  const { run, still: played, replay } = usePlay(stage)
+  const scrolled = useScrolledBeat(track, scrub)
+  const timed = useBeat(run, played)
+  const still = scrub ? false : played
+  const beat = scrub ? scrolled : timed
   // While it plays, the point it's showing stands out; once done, all read alike.
   const lit = !still && beat !== 'approved' ? pointAt(beat) : null
   return (
     <Section
       id="teams"
-      decor={<>
-        {/* Two people, one Lace: a square each side, deepening where they meet. */}
-        <LaceSquare className="top-[4%] left-[-40%] w-[120vw] -rotate-4 lg:top-[9%] lg:left-[7%] lg:w-[min(48vw,44rem)]" />
-        <LaceSquare className="right-[-40%] bottom-[4%] w-[120vw] rotate-5 lg:right-[7%] lg:bottom-[5%] lg:w-[min(48vw,44rem)]" />
-      </>}
       title="One startup. One Lace. Everyone on it."
-      intro={<>A startup is rarely one person. Your Lace is <strong>shared by the whole founding team</strong>, so what one of you learns, all of you can build on.</>}
+      intro={<>A startup is rarely one person. Your Lace is shared by the whole founding team, so what one of you learns, all of you can build on.</>}
     >
-      <div className="grid gap-10 lg:grid-cols-[1fr_1fr] lg:items-center lg:gap-16">
+      <div ref={track} className={scrub ? 'h-[260vh]' : ''}>
+      <div className={`grid gap-10 lg:grid-cols-[1fr_1fr] lg:items-center lg:gap-16 ${
+        scrub ? 'sticky top-14 h-[calc(100dvh-3.5rem)] content-center' : ''}`}>
         <div ref={stage} className="flex flex-col gap-3">
-          <TeamChat key={run} beat={beat} still={still} />
-          {!still && beat === 'approved' && (
+          <TeamChat key={scrub ? 'scroll' : run} beat={beat} still={still} />
+          {!scrub && !still && beat === 'approved' && (
             <button type="button" onClick={replay} className="cursor-pointer self-start text-sm text-muted underline-offset-4 hover:text-ink hover:underline">
               Play it again
             </button>
@@ -245,7 +259,7 @@ export function FoundingTeams() {
         </div>
         <ul className="flex flex-col gap-7">
           {POINTS.map((point, i) => (
-            <li key={point.title} data-reveal style={stagger(i)}>
+            <li key={point.title}>
               {/* Dimmed on an inner box: the reveal owns the item's own opacity. */}
               <div className={`flex gap-4 transition-opacity duration-500 ${lit === null || lit === i ? '' : 'opacity-40'}`}>
                 <span className={`shrink-0 transition-transform duration-500 ${lit === i ? 'scale-110' : ''}`}>{point.icon}</span>
@@ -257,6 +271,7 @@ export function FoundingTeams() {
             </li>
           ))}
         </ul>
+      </div>
       </div>
     </Section>
   )

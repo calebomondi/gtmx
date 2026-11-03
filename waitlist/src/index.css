@@ -1,36 +1,39 @@
 @import "tailwindcss";
-@import "@fontsource-variable/geist";
+@import "@fontsource-variable/funnel-display";
+@import "@fontsource-variable/funnel-sans";
 @import "@fontsource-variable/geist-mono";
 
 /* Phones held sideways: little height, so the hero tightens to keep the
    signup in reach. */
 @custom-variant short (@media (max-height: 30rem));
 
-/* An assistant for every startup: warm off-white paper, strong
-   black type, and #FEA853 as the signature. On light surfaces orange is a
-   fill behind black text (it is too light to be text there); orange text
-   appears only on black, where it reads at ~9:1. */
+/* Everything is a Lace square. Funnel's squared-off curves echo Lace's own
+   shape: Funnel Display for headlines, Funnel Sans for text, and mono only
+   for data. Neutral paper so the orange alone is warm; #FEA853 is a fill
+   behind black text (too light to be text on paper), and ember is the
+   orange that reads as text on paper (4.7:1). */
 @theme {
-  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Funnel Sans Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Funnel Display Variable', 'Funnel Sans Variable', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'Geist Mono Variable', ui-monospace, monospace;
 
-  --color-paper: #fbf8f3;
+  --color-paper: #f6f5f1;
   --color-panel: #ffffff;
-  --color-ink: #121212;
-  --color-night: #141312;
+  --color-ink: #17150f;
+  --color-night: #1a1916;
   --color-muted: #5f5a54;
   --color-night-muted: #b3ada5;
-  --color-line: #e7e1d8;
+  --color-line: #dad6cd;
   --color-night-line: #2c2a27;
   --color-brand: #fea853;
   --color-brand-deep: #f08a24;
-  --color-brand-ink: #9a4a08;
+  --color-brand-ink: #b4500a;
   --color-highlight: #ffe1bb;
   --color-kept: #1f7a4d;
   --color-dropped: #b42318;
 
-  --shadow-lift: 0 1px 0 rgb(18 18 18 / 0.04), 0 18px 40px -22px rgb(18 18 18 / 0.35);
-  --shadow-card: 0 1px 1px rgb(18 18 18 / 0.04), 0 8px 16px -8px rgb(18 18 18 / 0.12),
+  --shadow-lift: 0 1px 0 rgb(23 21 15 / 0.04), 0 18px 40px -22px rgb(23 21 15 / 0.35);
+  --shadow-card: 0 1px 1px rgb(23 21 15 / 0.04), 0 8px 16px -8px rgb(23 21 15 / 0.12),
     0 32px 64px -32px rgb(154 74 8 / 0.35);
 }
 
@@ -44,6 +47,10 @@
   }
   body {
     @apply bg-paper font-sans text-ink antialiased;
+  }
+  /* Headlines in Funnel Display: the squared curves carry the brand. */
+  h1, h2, h3 {
+    font-family: var(--font-display);
   }
   ::selection {
     @apply bg-brand text-ink;
@@ -68,35 +75,43 @@
     @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-md bg-brand font-semibold text-ink transition duration-200 hover:bg-panel active:translate-y-px;
   }
 
-  /* The page's background shape (lace-square.tsx): Lace's rounded square in
-     translucent orange, deepening where two overlap. */
-  .lace-square {
-    position: absolute;
-    aspect-ratio: 1;
-    border-radius: 9%;
-    background: rgb(254 168 83 / 0.17);
-  }
-  /* Your tools: a rack of small squares, fading out towards the proposals. */
-  .lace-rack {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36'%3E%3Crect x='13' y='13' width='10' height='10' rx='1' fill='%23fea853' fill-opacity='0.2'/%3E%3C/svg%3E");
-    mask-image: radial-gradient(ellipse 55% 75% at 0% 85%, black, transparent);
-  }
-  /* The frame behind the globe, turning far slower than the globe itself. */
-  .spin-glacial {
-    animation: spin-slow 240s linear infinite;
+  /* The hero's paper, with a warm wash at the bottom left; its field of
+     squares is drawn over it (hero-radar.tsx). */
+  .hero-paper {
+    background-color: var(--color-paper);
+    background-image: radial-gradient(40rem 24rem at 5% 90%, rgb(254 168 83 / 0.14), transparent 60%);
   }
 
-  /* The hero's paper: a faint ledger grid under a warm orange glow. */
-  .hero-paper {
-    background-image:
-      radial-gradient(40rem 24rem at 5% 90%, rgb(254 168 83 / 0.14), transparent 60%),
-      linear-gradient(rgb(18 18 18 / 0.045) 1px, transparent 1px),
-      linear-gradient(90deg, rgb(18 18 18 / 0.045) 1px, transparent 1px);
-    background-size: auto, 44px 44px, 44px 44px;
+  /* A small label on a find or a draft: sentence case, in the text face. */
+  .tag {
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 600;
+    color: var(--color-brand-ink);
   }
-  /* The hero's moving glow (hero-glow.tsx), over the paper and under the content. */
-  .hero-glow {
-    background: radial-gradient(closest-side, rgb(254 168 83 / 0.4), transparent);
+
+  /* The header on the hero: no bar, only a soft paper fade behind it so its
+     words never land on the radar's squares or finds (site-header.tsx). */
+  .header-veil {
+    background: linear-gradient(var(--color-paper) 35%, transparent);
+  }
+  /* The header easing between open and a floating pill. */
+  .header-bar {
+    transition-property: max-width, height, margin, padding, border-radius, background-color, box-shadow;
+    box-sizing: border-box;
+    transition-duration: 300ms;
+    transition-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+
+  /* The floating header's weave: Lace's squares, faint, fading out under the
+     mark on the left and the links on the right. */
+  .header-pill::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Crect x='4.5' y='4.5' width='3' height='3' rx='0.9' fill='%2317150f' fill-opacity='0.11'/%3E%3C/svg%3E");
+    mask-image: linear-gradient(90deg, transparent 10%, black 24%, black 46%, transparent 62%);
+    pointer-events: none;
   }
 
   /* Marker-pen highlight behind words that carry the point. */
@@ -106,21 +121,8 @@
   }
 }
 
-/* -- Scroll reveal: `useScrollReveal` adds [data-shown]. Without JS (no .js on
-   <html>) nothing is hidden, so content never depends on the script. -- */
-.js [data-reveal] {
-  opacity: 0;
-  transform: translateY(22px);
-  transition:
-    opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1),
-    transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
-  transition-delay: calc(var(--i, 0) * 90ms);
-}
-.js [data-reveal][data-shown] {
-  opacity: 1;
-  transform: none;
-}
-
+/* -- Played once in view: `useScrollReveal` adds [data-shown]. Without JS (no
+   .js on <html>) nothing is hidden, so content never depends on the script. -- */
 /* A line that draws itself once its section is in view. */
 .js [data-draw] {
   transform: scaleX(0);
@@ -136,23 +138,107 @@
 }
 
 /* Pilot dots fill in one after another. */
+/* A pilot spot (pilot.tsx): an empty outline, or a startup's Lace. */
+.spot {
+  position: relative;
+  display: block;
+  width: 1.5rem;
+  aspect-ratio: 1;
+  border-radius: 24%;
+  border: 2px solid rgb(23 21 15 / 0.2);
+}
+@media (min-width: 40rem) {
+  .spot { width: 1.875rem; }
+}
+.spot.dot-taken {
+  border-color: transparent;
+  background: var(--color-brand);
+}
+.spot-eye {
+  position: absolute;
+  top: 34%;
+  width: 18%;
+  aspect-ratio: 1;
+  border-radius: 22%;
+  background: var(--color-ink);
+}
+/* The first open spot asks for you: it breathes in the brand colour, with a
+   small "Yours?" over it, once the taken spots have lit up. */
+.spot-next {
+  border-color: var(--color-brand);
+  cursor: pointer;
+  animation: spot-breathe 2.4s ease-in-out infinite;
+}
+.spot-next:hover,
+.spot-next:focus-visible {
+  background: var(--color-highlight);
+  animation-play-state: paused;
+}
+/* A tooltip over the square, pointing at it. */
+.spot-ask {
+  position: absolute;
+  z-index: 1;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  translate: -50% 0;
+  white-space: nowrap;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--color-ink);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-paper);
+}
+.spot-ask::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  translate: -50% 0;
+  border: 4px solid transparent;
+  border-top-color: var(--color-ink);
+}
+.js [data-dots] .spot-ask {
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  transition-delay: calc(var(--i, 0) * 35ms + 600ms);
+}
+.js [data-dots][data-shown] .spot-ask {
+  opacity: 1;
+}
+@keyframes spot-breathe {
+  0%, 100% { scale: 1; box-shadow: 0 0 0 0 rgb(254 168 83 / 0.45); }
+  50% { scale: 1.1; box-shadow: 0 0 0 5px rgb(254 168 83 / 0); }
+}
+
+/* Taken spots light up in order once the section is in view. */
 .js [data-dots] .dot-taken {
   background: transparent;
-  transition: background-color 0.3s ease;
+  border-color: rgb(23 21 15 / 0.2);
+  transition: background-color 0.3s ease, border-color 0.3s ease;
   transition-delay: calc(var(--i, 0) * 35ms + 200ms);
 }
+.js [data-dots] .dot-taken .spot-eye {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  transition-delay: calc(var(--i, 0) * 35ms + 400ms);
+}
 .js [data-dots][data-shown] .dot-taken {
-  background: var(--color-ink);
+  background: var(--color-brand);
+  border-color: transparent;
+}
+.js [data-dots][data-shown] .dot-taken .spot-eye {
+  opacity: 1;
 }
 
 /* A spot taken while the page is open: it pops in. */
 .js [data-dots] .dot-new {
-  background: var(--color-ink);
+  background: var(--color-brand);
   animation: dot-pop 0.6s ease-out;
   transition-delay: 0s;
 }
 @keyframes dot-pop {
-  0% { transform: scale(0.4); box-shadow: 0 0 0 0 var(--color-ink); }
+  0% { transform: scale(0.4); box-shadow: 0 0 0 0 var(--color-brand); }
   60% { transform: scale(1.35); box-shadow: 0 0 0 6px transparent; }
   100% { transform: scale(1); }
 }
@@ -434,7 +520,6 @@
   html {
     scroll-behavior: auto;
   }
-  .js [data-reveal],
   .js [data-draw],
   .js [data-dots] .dot-taken {
     opacity: 1;
@@ -442,10 +527,21 @@
     transition: none;
   }
   .js [data-dots] .dot-taken {
-    background: var(--color-ink);
+    background: var(--color-brand);
+    border-color: transparent;
   }
-  .js [data-dots] .dot-new {
+  .js [data-dots] .dot-taken .spot-eye {
+    opacity: 1;
+  }
+  .header-bar {
+    transition: none;
+  }
+  .js [data-dots] .dot-new,
+  .spot-next {
     animation: none;
+  }
+  .js [data-dots] .spot-ask {
+    opacity: 1;
   }
   *,
   *::before,
