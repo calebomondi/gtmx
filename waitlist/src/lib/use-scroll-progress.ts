@@ -28,6 +28,29 @@ export function watchProgress(track: HTMLElement, onProgress: (p: number) => voi
   }
 }
 
+/** Follow an element as it passes up the screen, from 0 (its top at `from`,
+ * a share of the screen's height from the top) to 1 (its top at `to`). Not
+ * pinned: the page scrolls on as it plays. Call from an effect, and return
+ * what it returns to stop. */
+export function watchPassage(el: HTMLElement, onProgress: (p: number) => void, from = 0.9, to = 0.4): () => void {
+  let frame = 0
+  const update = () => {
+    frame = 0
+    const top = el.getBoundingClientRect().top
+    const h = window.innerHeight
+    onProgress(Math.min(1, Math.max(0, (from * h - top) / ((from - to) * h))))
+  }
+  const schedule = () => { frame ||= requestAnimationFrame(update) }
+  update()
+  window.addEventListener('scroll', schedule, { passive: true })
+  window.addEventListener('resize', schedule)
+  return () => {
+    cancelAnimationFrame(frame)
+    window.removeEventListener('scroll', schedule)
+    window.removeEventListener('resize', schedule)
+  }
+}
+
 /** Whether scroll-driven scenes run: on screens at least `minWidth` wide, and
  * never with reduced motion. Follows the window as it's resized. */
 export function useScrollScenes(minWidth = 1024): boolean {
