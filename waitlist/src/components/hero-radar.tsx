@@ -16,6 +16,8 @@ const LENS_GROW = 3.2
 const FIND_SHOW_MS = 2600
 const FIND_FADE_MS = 500
 const KEEP_CLEAR_PX = 14
+/** How far towards the middle the squares are drawn as the demo takes over. */
+const PULL = 0.32
 /** How far a find on show warms the squares around it. */
 const GLOW_PX = 110
 const FONT = '600 12px "Funnel Sans Variable", ui-sans-serif, system-ui, sans-serif'
@@ -46,13 +48,16 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
  * find surfaces for a moment (a tender, a partner, a lead) and sinks back.
  * The pointer is a lens that lifts the squares under it. Draws only while
  * the hero is on screen; with reduced motion, one still frame. */
-export function HeroRadar({ hero, origin, copy, demo }: {
+export function HeroRadar({ hero, origin, copy, demo, pull }: {
   hero: RefObject<HTMLElement | null>
   /** Where pings start: Lace in the headline. */
   origin: RefObject<HTMLElement | null>
   /** What finds must not land on: the headline column and the demo. */
   copy: RefObject<HTMLElement | null>
   demo: RefObject<HTMLElement | null>
+  /** How far the hero has handed over to the demo (0–1): the squares are
+   * drawn in towards the middle and fade as it grows. */
+  pull?: RefObject<number>
 }) {
   const canvas = useRef<HTMLCanvasElement>(null)
 
@@ -153,15 +158,16 @@ export function HeroRadar({ hero, origin, copy, demo }: {
           const hushed = quiet !== null && x > quiet.left && x < quiet.right && y > quiet.top && y < quiet.bottom
           if (hushed) lift *= 0.45
           let size = DOT + lift * 5
-          let px = x
-          let py = y
+          const drawn = pull?.current ?? 0
+          let px = x + (width / 2 - x) * drawn * PULL
+          let py = y + (height / 2 - y) * drawn * PULL
           if (pointer) {
             const near = Math.max(0, 1 - Math.hypot(x - pointer.x, y - pointer.y) / LENS_PX)
             size += near * near * LENS_GROW
             px += (pointer.x - x) * near * 0.08
             py += (pointer.y - y) * near * 0.08
           }
-          ctx.globalAlpha = (hushed ? 0.04 : 0.1) + lift * 0.75
+          ctx.globalAlpha = ((hushed ? 0.04 : 0.1) + lift * 0.75) * (1 - drawn * 0.55)
           ctx.fillStyle = lift > 0.08 ? brand : ink
           roundRect(ctx, px - size / 2, py - size / 2, size, size, size * 0.3)
           ctx.fill()
@@ -229,7 +235,7 @@ export function HeroRadar({ hero, origin, copy, demo }: {
       area.removeEventListener('pointermove', onMove)
       area.removeEventListener('pointerleave', onLeave)
     }
-  }, [hero, origin, copy, demo])
+  }, [hero, origin, copy, demo, pull])
 
   return <canvas ref={canvas} aria-hidden className="pointer-events-none absolute inset-0 -z-10 size-full" />
 }
