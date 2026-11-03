@@ -137,6 +137,55 @@
   border-radius: 22%;
   background: var(--color-ink);
 }
+/* The first open spot asks for you: it breathes in the brand colour, with a
+   small "Yours?" over it, once the taken spots have lit up. */
+.spot-next {
+  border-color: var(--color-brand);
+  cursor: pointer;
+  animation: spot-breathe 2.4s ease-in-out infinite;
+}
+.spot-next:hover,
+.spot-next:focus-visible {
+  background: var(--color-highlight);
+  animation-play-state: paused;
+}
+/* A tooltip over the square, pointing at it. */
+.spot-ask {
+  position: absolute;
+  z-index: 1;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  translate: -50% 0;
+  white-space: nowrap;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--color-ink);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-paper);
+}
+.spot-ask::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  translate: -50% 0;
+  border: 4px solid transparent;
+  border-top-color: var(--color-ink);
+}
+.js [data-dots] .spot-ask {
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  transition-delay: calc(var(--i, 0) * 35ms + 600ms);
+}
+.js [data-dots][data-shown] .spot-ask {
+  opacity: 1;
+}
+@keyframes spot-breathe {
+  0%, 100% { scale: 1; box-shadow: 0 0 0 0 rgb(254 168 83 / 0.45); }
+  50% { scale: 1.1; box-shadow: 0 0 0 5px rgb(254 168 83 / 0); }
+}
+
 /* Taken spots light up in order once the section is in view. */
 .js [data-dots] .dot-taken {
   background: transparent;
@@ -459,8 +508,12 @@
   .js [data-dots] .dot-taken .spot-eye {
     opacity: 1;
   }
-  .js [data-dots] .dot-new {
+  .js [data-dots] .dot-new,
+  .spot-next {
     animation: none;
+  }
+  .js [data-dots] .spot-ask {
+    opacity: 1;
   }
   *,
   *::before,

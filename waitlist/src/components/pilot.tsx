@@ -37,7 +37,12 @@ function SpotLaces({ pilot }: { pilot: PilotSpots | null }) {
       aria-label={pilot ? `${taken} of ${total} pilot spots taken` : 'Pilot spots loading'}
       className={`grid w-fit grid-cols-10 gap-1.5 sm:gap-2 ${pilot ? '' : 'animate-pulse opacity-50'}`}
     >
-      {Array.from({ length: total }, (_, i) => (
+      {Array.from({ length: total }, (_, i) => i === taken && pilot && pilot.left > 0 ? (
+        // The first open spot: it breathes, asks, and takes you to the signup.
+        <a key={i} href="#join" style={stagger(i)} aria-label="Apply for this spot" className="spot spot-next">
+          <span aria-hidden className="spot-ask">Yours?</span>
+        </a>
+      ) : (
         <span
           key={i}
           style={stagger(i)}
