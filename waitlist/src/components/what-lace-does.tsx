@@ -1,6 +1,7 @@
 import { useRef, type ComponentType } from 'react'
 
 import { usePlay } from '../lib/motion'
+import { ScrollWords } from './scroll-words'
 import { Section } from './section'
 import { DraftScene, FindsScene, WatchesScene, type SceneProps } from './what-lace-does-scenes'
 
@@ -91,7 +92,7 @@ export function WhatLaceDoes() {
   return (
     <Section
       id="what-lace-does"
-      title="Everything between you and your next deal."
+      title={<ScrollWords text="Everything between you and your next deal." />}
       intro="It works from what it knows about your startup and the web as it is today. Everything it finds says where it found it, and waits for your OK before it is saved or sent."
     >
       <div className="grid border-y border-line lg:grid-cols-3 lg:divide-x lg:divide-line">

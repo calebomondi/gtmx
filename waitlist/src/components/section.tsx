@@ -20,7 +20,7 @@ export function Section({
 }: {
   id?: string
   tone?: Tone
-  title: string
+  title: ReactNode
   intro?: ReactNode
   /** stacked: the heading above the content. split: on wide screens the
    * heading holds a left column, pinned, beside the content. */
