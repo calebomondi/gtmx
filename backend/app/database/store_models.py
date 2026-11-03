@@ -63,10 +63,14 @@ class LaceStore(Base):
     # The founder's own USD cap on what the Store may send out in a day. The
     # signed policy enforces it; this is the value the team last signed.
     daily_budget_usd: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
-    # Who signs for the Store: the founder's NEAR account and full-access key
-    # (public data only). Set in setup, fixed once the agent exists.
+    # Who signs for the Store: the founder's passkey (public data only), set in
+    # setup and fixed once the agent exists. The public key is P-256 SPKI,
+    # base64url. The NEAR account the API derives from it is owner_account_id.
     owner_account_id: Mapped[str | None] = mapped_column(String(ADDRESS_LEN), nullable=True)
     owner_public_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    owner_credential_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    owner_rp_id: Mapped[str | None] = mapped_column(String(253), nullable=True)
+    owner_origin: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # The Agent API agent and its NEAR Intents account, where sales land.
     agent_id: Mapped[str | None] = mapped_column(String(API_ID_LEN), nullable=True, unique=True)
     wallet_account_id: Mapped[str | None] = mapped_column(String(ADDRESS_LEN), nullable=True)
