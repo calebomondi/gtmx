@@ -3,6 +3,7 @@ import { Faq } from './components/faq'
 import { FoundingTeams } from './components/founding-teams'
 import { Hero } from './components/hero'
 import { HowItWorks } from './components/how-it-works'
+import { PageBackdrop } from './components/page-backdrop'
 import { Pilot } from './components/pilot'
 import { SiteHeader } from './components/site-header'
 import { TryIt } from './components/try-it'
@@ -17,6 +18,7 @@ export default function App() {
   useScrollReveal()
   return (
     <>
+      <PageBackdrop />
       <SiteHeader />
       <main>
         <Hero pilot={pilot} onPilotSpotsLeft={setPilotSpotsLeft} />

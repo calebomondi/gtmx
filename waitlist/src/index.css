@@ -78,6 +78,7 @@
   /* The hero's paper, with a warm wash at the bottom left; its field of
      squares is drawn over it (hero-radar.tsx). */
   .hero-paper {
+    background-color: var(--color-paper);
     background-image: radial-gradient(40rem 24rem at 5% 90%, rgb(254 168 83 / 0.14), transparent 60%);
   }
 
