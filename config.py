@@ -179,6 +179,11 @@ class Settings(BaseSettings):
     store_settlement_asset: str = "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"
     # A new Store's daily cap on what it may send out, until the founder sets one.
     store_default_daily_budget_usd: int = 50
+    # Encrypts each Store's grant token at rest: a Fernet key
+    # (Fernet.generate_key()). Empty: no Store can go live.
+    store_grant_key: str = ""
+    # How long the grant our backend acts under lasts (the API allows 365).
+    store_grant_days: int = 360
 
     # -- Observability (all opt-in: empty means off) --
     sentry_dsn: str = ""

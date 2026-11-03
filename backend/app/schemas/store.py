@@ -5,12 +5,12 @@ carries it."""
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, StringConstraints, field_serializer, model_validator
 
 from agents.schemas.store import (FULL_SHARE_BPS, STORE_SLUG_PATTERN, OfferDelivery, OfferStatus, PayeeRoute,
-                                  StoreStatus)
+                                  StoreIntentStatus, StoreIntentType, StoreStatus)
 from backend.app.services.store import MAX_PAYEES
 
 Slug = Annotated[str, StringConstraints(pattern=STORE_SLUG_PATTERN)]
@@ -31,10 +31,20 @@ class StoreResponse(BaseModel):
     settlement_asset: str
     daily_budget_usd: Decimal
     owner_account_id: str | None
+    # Whether a passkey to sign with was added.
+    has_owner: bool
     # Where sales land: the Store's own NEAR Intents account, once it exists.
     wallet_account_id: str | None
     frozen_at: datetime | None
     live_since: datetime | None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _owner(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            return data
+        return {**{k: getattr(data, k) for k in cls.model_fields if hasattr(data, k)},
+                "has_owner": getattr(data, "owner_public_key", None) is not None}
 
     @field_serializer("daily_budget_usd")
     def _budget(self, value: Decimal) -> str:
@@ -118,3 +128,38 @@ class PayeeResponse(BaseModel):
     address: str
     memo: str | None
     share_bps: int
+
+
+Base64Url = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]+$")]
+
+
+class PasskeyOwner(BaseModel):
+    """A passkey the owner just registered on this site: public data only."""
+    credential_id: Annotated[Base64Url, StringConstraints(max_length=512)]
+    # P-256, SPKI, base64url: what the browser's getPublicKey() returns.
+    public_key: Annotated[Base64Url, StringConstraints(min_length=80, max_length=128)]
+    rp_id: Annotated[str, StringConstraints(max_length=253)]
+    origin: Annotated[str, StringConstraints(max_length=255)]
+
+
+class SignatureRequest(BaseModel):
+    """What the owner's browser signs, unchanged, and what it means."""
+    correlation_id: str
+    type: StoreIntentType
+    # {standard, payload}: for a passkey, `payload` is the WebAuthn request options.
+    intent: dict[str, Any]
+    preview: dict[str, Any]
+    expires_at: datetime
+
+
+class SignedRequest(BaseModel):
+    # The intent plus the passkey's assertion, as the browser produced it.
+    signed_data: dict[str, Any]
+
+
+class SignatureStatus(BaseModel):
+    correlation_id: str
+    type: StoreIntentType
+    status: StoreIntentStatus
+    failure_code: str | None
+    store: StoreResponse

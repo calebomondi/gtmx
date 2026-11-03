@@ -38,6 +38,11 @@ async def _free_slug(db: AsyncSession, base: str) -> str:
     return next(f"{base}-{n}" for n in range(2, len(taken) + 3) if f"{base}-{n}" not in taken)
 
 
+def rules_signed(store: LaceStore) -> bool:
+    """Whether the owner has signed the Store's rules into its wallet's policy."""
+    return store.agent_id is not None or store.status != "setup"
+
+
 async def get_store(db: AsyncSession, lace_id: uuid.UUID) -> LaceStore | None:
     return await db.scalar(select(LaceStore).where(LaceStore.lace_id == lace_id))
 
@@ -69,11 +74,11 @@ async def update_details(db: AsyncSession, lace_id: uuid.UUID, *, name: str | No
                          daily_budget_usd: Decimal | None = None) -> LaceStore:
     store = await _require(db, lace_id)
     if daily_budget_usd is not None and daily_budget_usd != store.daily_budget_usd:
-        if store.status != "setup":
+        if rules_signed(store):
             raise ConflictError(RULES_ARE_SIGNED)
         store.daily_budget_usd = daily_budget_usd
     if slug is not None and slug != store.slug:
-        if store.status != "setup":
+        if rules_signed(store):
             raise ConflictError("A live Store keeps its address, so links to it keep working.")
         if await db.scalar(select(func.count()).where(LaceStore.slug == slug)):
             raise ConflictError("That address is taken.")
@@ -141,7 +146,7 @@ async def set_payees(db: AsyncSession, lace_id: uuid.UUID, payees: list[dict]) -
     """Replace the split. Shares are basis points of each sale; what no payee
     takes stays in the Store's wallet."""
     store = await _require(db, lace_id)
-    if store.status != "setup":
+    if rules_signed(store):
         raise ConflictError(RULES_ARE_SIGNED)
     if len(payees) > MAX_PAYEES:
         raise InvalidInputError(f"A sale splits between at most {MAX_PAYEES} payees.")
