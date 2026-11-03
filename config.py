@@ -168,6 +168,14 @@ class Settings(BaseSettings):
     # x-real-ip behind our nginx, x-forwarded-for on Render (first entry).
     client_ip_header: str = "x-real-ip"
 
+    # -- Store: a Lace that sells, its money held by the NEAR Intents Agent API --
+    # The partner key (naa_..., from partners.near-intents.org). Empty: no
+    # Store can go live, and the Store tab says so.
+    near_intents_agent_api_key: str = ""
+    near_intents_agent_api_url: str = "https://api.agentsonintents.com"
+    # Above the 30 s a status read is held open waiting for a change.
+    near_intents_timeout_s: float = 45.0
+
     # -- Observability (all opt-in: empty means off) --
     sentry_dsn: str = ""
     sentry_environment: str = "development"
