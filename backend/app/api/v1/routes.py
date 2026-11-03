@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from backend.app.api.deps import in_pilot, rate_limited
 from backend.app.api.v1.endpoints import (
     activity, admin, connections, events, feedback, lace_finds, lace_members, lace_regulations, laces, pilot, runs,
-    store, users, waitlist,
+    store, storefront, users, waitlist,
 )
 
 api_router = APIRouter()
@@ -16,6 +16,8 @@ _PILOT = [*_LIMITED, Depends(in_pilot)]
 # per IP inside the service instead of per user.
 api_router.include_router(waitlist.router, prefix="/waitlist", tags=["waitlist"])
 api_router.include_router(pilot.router, prefix="/pilot", tags=["pilot"])
+# Public: a live Store and its orders, for buyers who have no account.
+api_router.include_router(storefront.router, prefix="/storefront", tags=["storefront"])
 api_router.include_router(runs.router, prefix="/runs", tags=["runs"], dependencies=_PILOT)
 api_router.include_router(activity.router, prefix="/activity", tags=["activity"], dependencies=_PILOT)
 api_router.include_router(users.router, prefix="/users", tags=["users"], dependencies=_LIMITED)
