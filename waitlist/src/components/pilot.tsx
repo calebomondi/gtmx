@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react'
 import type { PilotSpots } from '../lib/api'
 import { pilotStart } from '../lib/pilot-start'
 import { stagger } from '../lib/stagger'
-import { LaceSquare } from './lace-square'
 import { Section } from './section'
 
 // How long a newly taken dot pops before it settles.
@@ -52,7 +51,7 @@ function SpotDots({ pilot }: { pilot: PilotSpots | null }) {
 function List({ title, items }: { title: string; items: string[] }) {
   return (
     <div className="rounded-xl bg-panel p-6 shadow-lift">
-      <h3 className="font-mono text-xs uppercase tracking-wider text-brand-ink">{title}</h3>
+      <h3 className="font-sans text-[15px] font-semibold">{title}</h3>
       <ul className="mt-4 flex flex-col gap-3">
         {items.map((item) => (
           <li key={item} className="flex gap-3 leading-snug">
@@ -76,14 +75,11 @@ export function Pilot({ pilot }: { pilot: PilotSpots | null }) {
   return (
     <Section
       id="pilot"
-      label="The pilot"
       title={pilotTitle(pilot)}
       intro="Join the waitlist and tick “Join the pilot”. We’ll email you to set up your Lace."
     >
       <div className="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
-        <div data-reveal className="relative isolate flex flex-col gap-6">
-          {/* A pass: the count and its spots on one tilted square. */}
-          <LaceSquare className="-top-8 -left-8 -z-10 w-[min(100%,26rem)] -rotate-3" />
+        <div className="relative isolate flex flex-col gap-6">
           {pilot ? (
             <p className="flex flex-wrap items-end gap-x-4 gap-y-1">
               <span className="text-[6.5rem] leading-[0.8] font-semibold tracking-[-0.05em] tabular-nums sm:text-[9rem]">
@@ -102,12 +98,10 @@ export function Pilot({ pilot }: { pilot: PilotSpots | null }) {
           </a>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
-          <div data-reveal style={stagger(1)} className="relative isolate">
-            {/* The page's one solid square: here is where you act. */}
-            <LaceSquare className="-top-5 -right-5 -z-10 w-24 rotate-6 bg-brand sm:w-28" />
+          <div className="relative isolate">
             <List title="What you get" items={GET} />
           </div>
-          <div data-reveal style={stagger(2)}><List title="What we ask" items={ASK} /></div>
+          <div><List title="What we ask" items={ASK} /></div>
         </div>
       </div>
     </Section>

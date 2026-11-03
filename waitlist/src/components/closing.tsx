@@ -1,6 +1,5 @@
 import { SignupCard } from '../features/signup/signup-card'
 import type { PilotSpots } from '../lib/api'
-import { stagger } from '../lib/stagger'
 import { BrandMark } from './brand-mark'
 import { FooterWordmark } from './footer-wordmark'
 import { Lace } from './lace-mascot'
@@ -12,7 +11,7 @@ export function Closing({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null;
   return (
     <footer className="on-dark overflow-hidden bg-night text-paper">
       <div className="mx-auto grid max-w-7xl gap-10 px-5 pt-20 pb-12 sm:px-8 sm:pt-28 lg:grid-cols-[1.1fr_1fr] lg:items-center">
-        <div data-reveal className="flex flex-col gap-5">
+        <div className="flex flex-col gap-5">
           <h2 className="text-[2.5rem] leading-[1.02] font-semibold tracking-[-0.035em] text-balance sm:text-6xl">
             Your next lead, partner or deal is out there. <span className="text-brand">Your Lace finds it.</span>
           </h2>
@@ -20,7 +19,7 @@ export function Closing({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null;
             One email puts you on the list. Tick the pilot on the next step if you want your Lace early.
           </p>
         </div>
-        <div data-reveal style={stagger(1)} className="relative">
+        <div className="relative">
           {/* Lace peeks over the signup, waiting for you. */}
           <Lace state="alert" size={64} decorative className="absolute -top-10 right-8 z-10 drop-shadow-lg" />
           <div className="rounded-2xl bg-paper p-5 text-ink shadow-[0_0_0_6px_var(--color-brand)] sm:p-7">

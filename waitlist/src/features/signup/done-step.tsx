@@ -2,7 +2,7 @@
 export function DoneStep({ email, wantsPilot }: { email: string; wantsPilot: boolean }) {
   return (
     <div className="flex flex-col gap-2" role="status">
-      <p className="font-mono text-xs uppercase tracking-wider text-kept">Done</p>
+      <p className="text-sm font-semibold text-kept">Done</p>
       <h2 className="text-xl font-semibold text-balance">
         {wantsPilot ? "You're in line for the pilot." : "You're on the waitlist."}
       </h2>

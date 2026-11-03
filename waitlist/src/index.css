@@ -75,29 +75,18 @@
     @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-md bg-brand font-semibold text-ink transition duration-200 hover:bg-panel active:translate-y-px;
   }
 
-  /* The page's background shape (lace-square.tsx): Lace's rounded square in
-     translucent orange, deepening where two overlap. */
-  .lace-square {
-    position: absolute;
-    aspect-ratio: 1;
-    border-radius: 9%;
-    background: rgb(254 168 83 / 0.17);
-  }
-  /* Your tools: a rack of small squares, fading out towards the proposals. */
-  .lace-rack {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36'%3E%3Crect x='13' y='13' width='10' height='10' rx='1' fill='%23fea853' fill-opacity='0.2'/%3E%3C/svg%3E");
-    mask-image: radial-gradient(ellipse 55% 75% at 0% 85%, black, transparent);
-  }
-  /* The frame behind the globe, turning far slower than the globe itself. */
-  .spin-glacial {
-    animation: spin-slow 240s linear infinite;
-  }
-
-  /* The hero's paper: a faint ledger grid under a warm orange glow. */
   /* The hero's paper, with a warm wash at the bottom left; its field of
      squares is drawn over it (hero-radar.tsx). */
   .hero-paper {
     background-image: radial-gradient(40rem 24rem at 5% 90%, rgb(254 168 83 / 0.14), transparent 60%);
+  }
+
+  /* A small label on a find or a draft: sentence case, in the text face. */
+  .tag {
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 600;
+    color: var(--color-brand-ink);
   }
 
   /* Marker-pen highlight behind words that carry the point. */
@@ -107,21 +96,8 @@
   }
 }
 
-/* -- Scroll reveal: `useScrollReveal` adds [data-shown]. Without JS (no .js on
-   <html>) nothing is hidden, so content never depends on the script. -- */
-.js [data-reveal] {
-  opacity: 0;
-  transform: translateY(22px);
-  transition:
-    opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1),
-    transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
-  transition-delay: calc(var(--i, 0) * 90ms);
-}
-.js [data-reveal][data-shown] {
-  opacity: 1;
-  transform: none;
-}
-
+/* -- Played once in view: `useScrollReveal` adds [data-shown]. Without JS (no
+   .js on <html>) nothing is hidden, so content never depends on the script. -- */
 /* A line that draws itself once its section is in view. */
 .js [data-draw] {
   transform: scaleX(0);
@@ -435,7 +411,6 @@
   html {
     scroll-behavior: auto;
   }
-  .js [data-reveal],
   .js [data-draw],
   .js [data-dots] .dot-taken {
     opacity: 1;

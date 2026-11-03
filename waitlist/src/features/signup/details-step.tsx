@@ -54,7 +54,7 @@ export function DetailsStep({
   return (
     <form onSubmit={submit} className="flex flex-col gap-6">
       <div>
-        <p className="font-mono text-xs uppercase tracking-wider text-kept">On the list</p>
+        <p className="text-sm font-semibold text-kept">On the list</p>
         <h2 className="mt-1 text-xl font-semibold text-balance">You're in, {email}.</h2>
         <p className="mt-1 text-sm text-muted">Two minutes more and we can set up your Lace. Everything here is optional.</p>
       </div>
