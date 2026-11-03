@@ -184,6 +184,21 @@ class Settings(BaseSettings):
     store_grant_key: str = ""
     # How long the grant our backend acts under lasts (the API allows 365).
     store_grant_days: int = 360
+    # What buyers may pay with: stablecoins only, so a price in USD is the
+    # same number of tokens. Each is credited as the settlement asset.
+    store_pay_assets: list[str] = Field(default_factory=lambda: [
+        "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",  # USDC, NEAR
+        "nep141:usdt.tether-token.near",  # USDT, NEAR
+        "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",  # USDC, Base
+        "nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near",  # USDC, Arbitrum
+        "nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near",  # USDC, Solana
+        "nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near",  # USDC, Ethereum
+    ])
+    # How often unpaid orders are checked for their payment.
+    store_watch_interval_s: float = 20.0
+    store_orders_per_ip_per_hour: int = 20
+    # The token list (symbols, chains, decimals) is read this often at most.
+    store_tokens_cache_s: float = 600.0
 
     # -- Observability (all opt-in: empty means off) --
     sentry_dsn: str = ""

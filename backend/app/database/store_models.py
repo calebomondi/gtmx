@@ -158,6 +158,7 @@ class StoreOrder(Base):
     __table_args__ = (
         CheckConstraint(_one_of("status", ORDER_STATUSES), name="status"),
         Index("ix_store_orders_store_id_created_at", "store_id", "created_at"),
+        Index("ix_store_orders_ip_hash_created_at", "ip_hash", "created_at"),
         Index("ix_store_orders_open", "status", "created_at",
               postgresql_where=text("status IN ('awaiting_payment', 'paid')")),
     )
@@ -171,6 +172,8 @@ class StoreOrder(Base):
     # The buyer's own handle on the order (its status page), not guessable.
     public_token: Mapped[str] = mapped_column(String(48), nullable=False, unique=True)
     buyer_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    # Salted hash of the buyer's IP, to rate limit checkouts; never the IP.
+    ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # The price when ordered, whatever the offer says later.
     price_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     pay_asset: Mapped[str] = mapped_column(String(ASSET_ID_LEN), nullable=False)

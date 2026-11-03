@@ -6,20 +6,11 @@ import secrets
 
 from fastapi import APIRouter, BackgroundTasks, Request
 
-from backend.app.api.deps import DbSession
+from backend.app.api.deps import DbSession, client_ip
 from backend.app.schemas.waitlist import PilotSpots, WaitlistDetails, WaitlistJoin, WaitlistJoined, WaitlistSaved
 from backend.app.services import waitlist as waitlist_service
-from config import settings
 
 router = APIRouter()
-
-
-def _client_ip(request: Request) -> str | None:
-    # The peer is the proxy in front of us, which names the visitor in
-    # `client_ip_header`: X-Real-IP from our nginx, or X-Forwarded-For on
-    # Render, whose first entry is the client the edge saw.
-    forwarded = request.headers.get(settings.client_ip_header, "")
-    return forwarded.split(",")[0].strip() or (request.client.host if request.client else None)
 
 
 @router.post("", response_model=WaitlistJoined, status_code=201)
@@ -28,7 +19,7 @@ async def join_waitlist(payload: WaitlistJoin, request: Request, background: Bac
     if payload.nickname:
         # A bot filled the hidden field: answer like a success, save nothing.
         return WaitlistJoined(token=secrets.token_urlsafe(32), pilot_spots_left=spots.left)
-    signup, token, _created = await waitlist_service.join(db, str(payload.email), payload.source, _client_ip(request))
+    signup, token, _created = await waitlist_service.join(db, str(payload.email), payload.source, client_ip(request))
     background.add_task(waitlist_service.send_joined_email, signup.id)
     return WaitlistJoined(token=token, pilot_spots_left=spots.left)
 

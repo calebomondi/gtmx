@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated, Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +21,7 @@ from backend.app.database.lace_models import Lace, LaceMember
 from backend.app.services import lace_members
 from backend.app.services import limits
 from backend.app.services import pilot
+from config import settings
 from utils.log import current_user_id
 
 _bearer = HTTPBearer(auto_error=False)
@@ -149,3 +150,11 @@ async def rate_limited(user: CurrentUser) -> AuthUser:
     """Router-level guard on the REST API: per-user requests per minute."""
     limits.check_request_rate(user.id)
     return user
+
+
+def client_ip(request: Request) -> str | None:
+    """The visitor's IP. The peer is the proxy in front of us, which names the
+    visitor in `client_ip_header`: X-Real-IP from our nginx, or
+    X-Forwarded-For on Render, whose first entry is the client the edge saw."""
+    forwarded = request.headers.get(settings.client_ip_header, "")
+    return forwarded.split(",")[0].strip() or (request.client.host if request.client else None)

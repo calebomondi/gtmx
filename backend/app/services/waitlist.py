@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.schemas.waitlist import PilotSpots, WaitlistDetails, WaitlistSource
-from backend.app.services import email, waitlist_emails
+from backend.app.services import email, visitors, waitlist_emails
 from backend.app.services.competitors import checked_website
 from backend.app.services.errors import NotFoundError, RateLimitedError
 from config import settings
@@ -24,10 +24,6 @@ _RATE_WINDOW = timedelta(hours=1)
 
 def _sha256(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
-
-
-def _ip_hash(ip: str | None) -> str | None:
-    return _sha256(f"{settings.waitlist_ip_salt}:{ip}") if ip else None
 
 
 async def _check_rate(db: AsyncSession, ip_hash: str | None) -> None:
@@ -47,7 +43,7 @@ async def join(db: AsyncSession, address: str, source: WaitlistSource,
                ip: str | None) -> tuple[models.WaitlistSignup, str, bool]:
     """Add the email to the waitlist, or refresh it if it's already there.
     Returns (signup, token for the details step, whether it is new)."""
-    ip_hash = _ip_hash(ip)
+    ip_hash = visitors.ip_hash(ip)
     await _check_rate(db, ip_hash)
     token = secrets.token_urlsafe(32)
     now = datetime.now(UTC)
