@@ -12,16 +12,18 @@ import { LaceDocuments } from "./lace-documents"
 import { LaceFacts } from "./lace-facts"
 import { LaceJurisdiction } from "./lace-jurisdiction"
 import { LaceManage } from "./lace-manage"
+import { LaceStoreSettings } from "./lace-store-settings"
 import { LaceWatch } from "./lace-watch"
 import type { LaceApps } from "./use-lace-apps"
 import { useLaceBrief } from "./use-lace-brief"
 import type { LaceRegulations } from "./use-lace-regulations"
+import type { LaceStore } from "./use-lace-store"
 import { SECTIONS, type SettingsSection } from "./settings-sections"
 
 /** A Lace's settings and memory, one section at a time: the sections down
  * the left (across the top on a phone), the chosen one on the right. */
-export function LaceSettings({ laceId, name, status, role, facts, apps, regulations, open, initialSection,
-                               onOpenChange, onChanged }: {
+export function LaceSettings({ laceId, name, status, role, facts, apps, regulations, store, open, initialSection,
+                               onOpenChange, onOpenStore, onChanged }: {
   laceId: string
   name: string
   status: LaceStatus
@@ -30,10 +32,13 @@ export function LaceSettings({ laceId, name, status, role, facts, apps, regulati
   facts: FactDto[]
   apps: LaceApps
   regulations: LaceRegulations
+  store: LaceStore
   open: boolean
   /** Where it opens; the first section otherwise. */
   initialSection?: SettingsSection | null
   onOpenChange: (open: boolean) => void
+  /** Go to the Store's tab. */
+  onOpenStore: () => void
   /** The Lace was archived or restored. */
   onChanged: () => void
 }) {
@@ -48,6 +53,7 @@ export function LaceSettings({ laceId, name, status, role, facts, apps, regulati
     brief: <div className="flex flex-col gap-4"><LaceBrief schedule={schedule} /><LaceBriefApps apps={apps} /></div>,
     apps: <LaceAppsSection laceId={laceId} name={name} apps={apps} />,
     where: <LaceJurisdiction name={name} regulations={regulations} />,
+    store: <LaceStoreSettings name={name} store={store} onOpen={onOpenStore} />,
     knows: <LaceFacts facts={facts} />,
     documents: <LaceDocuments laceId={laceId} name={name} />,
     manage: <LaceManage laceId={laceId} name={name} status={status} onChanged={onChanged} />,

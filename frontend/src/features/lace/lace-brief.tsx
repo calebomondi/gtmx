@@ -29,7 +29,7 @@ function HourSelect({ id, value, onChange }: { id: string; value: number; onChan
 
 export function Choice({ active, onClick, children }: { active: boolean; onClick: () => void; children: string }) {
   return (
-    <Button size="sm" variant={active ? "default" : "outline"} aria-pressed={active} onClick={onClick}>
+    <Button type="button" size="sm" variant={active ? "default" : "outline"} aria-pressed={active} onClick={onClick}>
       {children}
     </Button>
   )

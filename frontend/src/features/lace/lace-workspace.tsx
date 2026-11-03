@@ -36,12 +36,14 @@ import { useLaceActivity } from "./use-lace-activity"
 import { useLaceChat } from "./use-lace-chat"
 import { useLaceOpportunities } from "./use-lace-opportunities"
 import { useLaceRegulations } from "./use-lace-regulations"
+import { LaceStoreTab } from "./lace-store"
+import { useLaceStore } from "./use-lace-store"
 
 function isTab(value: string | undefined): value is LaceTab {
   return LACE_TABS.includes(value as LaceTab)
 }
 
-/** One Lace: Feed, the chat and Messaging, reached from three round buttons.
+/** One Lace: Feed, the chat, Messaging and (when shown) its Store, reached from round buttons.
  * It opens on Feed. Keyed on the Lace id, so moving to another Lace starts
  * fresh. */
 export default function LaceWorkspacePage() {
@@ -79,6 +81,9 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
   const opps = useLaceOpportunities(laceId, activity.items[0]?.id ?? "")
   // Likewise when a search for laws finished or a tracked bill moved.
   const regulations = useLaceRegulations(laceId, activity.items[0]?.id ?? "")
+  // The settings switch it on; the rail shows its tab while it's shown.
+  const store = useLaceStore(laceId)
+  const storeShown = store.store?.shown ?? false
   // Back from connecting an app from the settings: open them again there.
   // Open on coming back from connecting an app, or when sent here to change a setting (?settings).
   const [settingsSection] = useState(() => sectionFromUrl(window.location.search))
@@ -128,6 +133,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
     unread: activity.unread,
     feedBusy: chat.searching || chat.findingAccounts || chat.findingOpportunities,
     messagingBusy: chat.drafting,
+    storeShown,
   }
   const found = foundSections(chat, opps, open)
   // Kinds of find a background job is filling now: their chips spin.
@@ -185,12 +191,15 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
                       onDiscuss={discuss} />
           )}
           {tab === "messaging" && <LaceMessaging laceId={laceId} name={name} chat={chat} />}
+          {tab === "store" && (store.loading || storeShown
+            ? <LaceStoreTab name={name} role={chat.lace?.role ?? "member"} store={store} />
+            : <Navigate to={`/lace/${laceId}`} replace />)}
         </main>
       </div>
       <LaceTabBar {...nav} className="md:hidden" />
       <LaceSettings laceId={laceId} name={name} status={chat.lace?.status ?? "active"} role={chat.lace?.role ?? "member"} facts={chat.facts}
-                    apps={apps} regulations={regulations} open={settingsOpen} initialSection={settingsSection}
-                    onOpenChange={setSettingsOpen}
+                    apps={apps} regulations={regulations} store={store} open={settingsOpen} initialSection={settingsSection}
+                    onOpenChange={setSettingsOpen} onOpenStore={() => { setSettingsOpen(false); select("store") }}
                     onChanged={() => void chat.reload()} />
     </div>
   )
