@@ -90,6 +90,30 @@
     color: var(--color-brand-ink);
   }
 
+  /* The header on the hero: no bar, only a soft paper fade behind it so its
+     words never land on the radar's squares or finds (site-header.tsx). */
+  .header-veil {
+    background: linear-gradient(var(--color-paper) 35%, transparent);
+  }
+  /* The header easing between open and a floating pill. */
+  .header-bar {
+    transition-property: max-width, height, margin, padding, border-radius, background-color, box-shadow;
+    box-sizing: border-box;
+    transition-duration: 300ms;
+    transition-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+
+  /* The floating header's weave: Lace's squares, faint, fading out under the
+     mark on the left and the links on the right. */
+  .header-pill::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Crect x='4.5' y='4.5' width='3' height='3' rx='0.9' fill='%2317150f' fill-opacity='0.11'/%3E%3C/svg%3E");
+    mask-image: linear-gradient(90deg, transparent 10%, black 24%, black 46%, transparent 62%);
+    pointer-events: none;
+  }
+
   /* Marker-pen highlight behind words that carry the point. */
   .marker {
     background: linear-gradient(transparent 58%, var(--color-brand) 58%, var(--color-brand) 92%, transparent 92%);
@@ -508,6 +532,9 @@
   }
   .js [data-dots] .dot-taken .spot-eye {
     opacity: 1;
+  }
+  .header-bar {
+    transition: none;
   }
   .js [data-dots] .dot-new,
   .spot-next {
