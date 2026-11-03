@@ -197,6 +197,10 @@ class Settings(BaseSettings):
     # How often unpaid orders are checked for their payment.
     store_watch_interval_s: float = 20.0
     store_orders_per_ip_per_hour: int = 20
+    # A payment in another coin is converted on arrival, and NEAR Intents
+    # doesn't report what was credited: payees split the price less this
+    # much (basis points), and the rest stays in the Store's wallet.
+    store_conversion_allowance_bps: int = 100
     # The token list (symbols, chains, decimals) is read this often at most.
     store_tokens_cache_s: float = 600.0
 

@@ -1,4 +1,4 @@
-"""In-process scheduler: watches Store orders for their payments, keeps every active Lace's competitor monitoring,
+"""In-process scheduler: watches Store orders for their payments and delivers and pays them out, keeps every active Lace's competitor monitoring,
 opportunity and regulation searches, tracked bills and briefs going, and syncs replies to sent outreach
 from users' Gmail and linked DM inboxes. Single-instance
 by design for launch (one backend process); a multi-instance deployment needs
@@ -15,7 +15,7 @@ from backend.app.database.connect import AsyncSessionLocal
 from backend.app.database.lace_models import Lace, LaceBrief
 from backend.app.runs import manager
 from backend.app.services import inbox as inbox_service
-from backend.app.services import lace_activity, lace_brief_email, store_checkout, lace_briefs, lace_competitors, lace_opportunities, lace_regulations, social_inbox
+from backend.app.services import lace_activity, lace_brief_email, store_checkout, store_fulfilment, lace_briefs, lace_competitors, lace_opportunities, lace_regulations, social_inbox
 from backend.app.services.lace_activity import BRIEF_TITLE, BRIEF_WRITING
 from config import settings
 from data_sources.legislation import mzalendo
@@ -174,6 +174,11 @@ async def sync_inboxes() -> int:
     return arrived + await sync_lace_channels()
 
 
+async def store_round() -> int:
+    """Payments that landed, then what follows them: deliveries and payouts."""
+    return await store_checkout.watch_orders() + await store_fulfilment.fulfil()
+
+
 async def _loop(job, name: str, interval_s: float) -> None:
     await asyncio.sleep(settings.monitor_initial_delay_s)
     while True:
@@ -194,7 +199,7 @@ def start() -> None:
             _loop(sweep, "Monitoring sweep", settings.monitor_scan_interval_s), name="monitor-scheduler"))
     if settings.monitor_enabled:
         _tasks.append(asyncio.create_task(
-            _loop(store_checkout.watch_orders, "Store payments", settings.store_watch_interval_s), name="store-payments"))
+            _loop(store_round, "Store payments", settings.store_watch_interval_s), name="store-payments"))
     if settings.inbox_sync_enabled:
         _tasks.append(asyncio.create_task(
             _loop(sync_inboxes, "Inbox sync", settings.inbox_sync_interval_s), name="inbox-scheduler"))
