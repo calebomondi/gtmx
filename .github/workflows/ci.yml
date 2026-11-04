@@ -52,6 +52,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
+    # The suite takes ~5 minutes; a hung test fails the job instead of
+    # holding the runner for the 6-hour default.
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16-alpine
