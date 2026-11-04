@@ -31,6 +31,9 @@ from config import settings
 # The real one, kept before no_settle_in replaces it for each test.
 _SETTLE_IN = run_manager.settle_in
 
+# How long cleanup waits on a lock before failing the test instead of hanging.
+CLEANUP_LOCK_TIMEOUT_S = 30
+
 _ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
 
 
@@ -106,6 +109,12 @@ def clean_tables():
     yield
     tables = sql.SQL(", ").join(sql.Identifier(t.name) for t in Base.metadata.sorted_tables)
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        # A run cut off when its test's event loop stopped leaves its
+        # connection idle in a transaction, holding locks TRUNCATE would wait
+        # on forever: end those, and fail rather than wait on anything else.
+        conn.execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database()"
+                     " AND pid <> pg_backend_pid() AND state LIKE 'idle in transaction%'")
+        conn.execute(f"SET lock_timeout = '{CLEANUP_LOCK_TIMEOUT_S}s'")
         conn.execute(sql.SQL("TRUNCATE {} RESTART IDENTITY CASCADE").format(tables))
 
 
