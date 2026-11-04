@@ -1,6 +1,6 @@
-import { Blocks, BookOpen, FileText, MapPin, Newspaper, Radar, Settings2, type LucideIcon } from "lucide-react"
+import { Blocks, BookOpen, FileText, ListChecks, MapPin, Newspaper, Radar, Settings2, type LucideIcon } from "lucide-react"
 
-export type SettingsSection = "watch" | "brief" | "apps" | "where" | "knows" | "documents" | "manage"
+export type SettingsSection = "watch" | "brief" | "apps" | "where" | "instructions" | "knows" | "documents" | "manage"
 
 export interface Section {
   id: SettingsSection
@@ -21,6 +21,8 @@ export const SECTIONS: Section[] = [
     about: (name) => `The apps ${name} works in. It acts in them only when you approve, and only in the ones switched on here.` },
   { id: "where", label: "Where we operate", icon: MapPin,
     about: (name) => `Where you're registered and operate. ${name} watches the laws that apply there.` },
+  { id: "instructions", label: "Instructions", icon: ListChecks,
+    about: (name) => `How your team wants ${name} to work. It follows these in every chat and search they apply to.` },
   { id: "knows", label: "What it knows", icon: BookOpen,
     about: () => "Learned from your site, its research and you. Each fact keeps its source." },
   { id: "documents", label: "Documents", icon: FileText,

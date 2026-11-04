@@ -124,6 +124,8 @@ class Settings(BaseSettings):
     lace_document_max_mb: int = 15
     lace_document_max_chars: int = 400_000
     max_documents_per_lace: int = 50
+    # Standing instructions a Lace keeps; past this the team drops one first.
+    max_instructions_per_lace: int = 30
     max_documents_per_message: int = 5
     max_lace_onboardings_per_day: int = 10
     max_lace_turns_per_day: int = 200

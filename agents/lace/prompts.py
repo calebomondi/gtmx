@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from agents.context_budget import count_tokens
 from agents.schemas.icp import ICP
-from agents.schemas.lace import FACT_TOPICS, AccountSummary, CompetitorSummary, DocumentSummary, Fact, LaceProfile, RunningJob, Suggestions
+from agents.schemas.lace import FACT_TOPICS, AccountSummary, CompetitorSummary, DocumentSummary, Fact, Instruction, InstructionScope, LaceProfile, RunningJob, Suggestions
 from agents.schemas.opportunities import OpportunitySummary
 
 # The brief rides on every model call, so it stays small. Facts past the cap
@@ -69,6 +69,9 @@ How you work:
   answer with what you found.
 - When you learn something lasting about the startup, save it with record_fact,
   with its source. When the founder tells you something, save it as theirs.
+- When the founder tells you how to work from now on ("only competitors in
+  Kenya", "no events outside Africa", "shorter emails"), keep it with
+  remember_instruction straight away, then follow it.
 - When a fact is outdated, record the new one with replaces_id.
 - Never invent a company, person, contact, number or source. If you could not
   find it, say so.
@@ -171,6 +174,10 @@ What you know about {startup}:
 
 Who {startup} sells to (its ideal customer profile):
 {icp}
+
+Standing instructions from the team (follow them in everything they apply
+to; change one only when the founder asks):
+{instructions}
 
 On file (what the founder saved; the list tools give details):
 {on_file}
@@ -281,9 +288,18 @@ def local_now(timezone: str, now: datetime | None = None) -> str:
     return f"{at:%A} {at.day} {at:%B %Y, %H:%M} ({timezone})"
 
 
+def render_instructions(instructions: list[Instruction], scope: InstructionScope | None = None) -> str:
+    """The standing instructions, as lines with their ids for the Lace, or
+    (with `scope`) only those a job of that kind follows, without ids; ""
+    when none applies to a job."""
+    if scope is None:
+        return "\n".join(f"- [{i.id}] ({i.applies_to}) {i.text}" for i in instructions) or "None yet."
+    return "\n".join(f"- {i.text}" for i in instructions if i.applies_to in (scope, "everything"))
+
+
 def system_prompt(profile: LaceProfile, facts: list[Fact], icp: ICP | None = None,
                   now: datetime | None = None, documents: list[DocumentSummary] | None = None,
-                  on_file: str = "Nothing saved yet.") -> str:
+                  on_file: str = "Nothing saved yet.", instructions: list[Instruction] | None = None) -> str:
     return _SYSTEM.format(
         name=profile.name,
         startup=profile.startup_name or profile.website,
@@ -293,6 +309,7 @@ def system_prompt(profile: LaceProfile, facts: list[Fact], icp: ICP | None = Non
         icp=render_icp(icp),
         documents=render_documents(documents or []),
         on_file=on_file,
+        instructions=render_instructions(instructions or []),
     )
 
 

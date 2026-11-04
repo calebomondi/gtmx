@@ -38,7 +38,7 @@ def test_search_saves_accounts_and_the_lace_reports_back(client, lace, lace_runt
     _with_icp(lace)
     seen = {}
 
-    def fake(profile, facts, icp, exclude, countries):
+    def fake(profile, facts, icp, exclude, countries, instructions=""):
         seen.update(exclude=exclude, countries=countries, industries=icp.industries)
         return [_found("Weak", "weak"), _found("Strong", "strong"), _found("Unmade", None)]
 
@@ -76,7 +76,7 @@ def test_no_icp_means_the_search_works_one_out_first(client, lace, lace_runtime,
     monkeypatch.setattr(lace_jobs.lace_icp, "define_icp",
                         lambda profile, facts, rivals, guidance: ICP(buyer_type="b2b", industries=["Clinics"]))
 
-    def fake(profile, facts, icp, exclude, countries):
+    def fake(profile, facts, icp, exclude, countries, instructions=""):
         seen["industries"] = icp.industries
         return [_found("Alpha", "strong")]
     monkeypatch.setattr(lace_jobs, "find_accounts", fake)
@@ -101,7 +101,7 @@ def test_the_icp_job_saves_it_and_tells_the_lace(client, lace, lace_runtime, use
 
 def test_a_dismissed_account_stays_dismissed(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
     _with_icp(lace)
-    monkeypatch.setattr(lace_jobs, "find_accounts", lambda *a: [_found("Alpha", "strong")])
+    monkeypatch.setattr(lace_jobs, "find_accounts", lambda *a, **k: [_found("Alpha", "strong")])
     lace_runtime.extend([AIMessage(content="Found Alpha."), AIMessage(content="Found Alpha again.")])
 
     run = client.portal.call(manager.start_lace_job, "lace_accounts", user.id, uuid.UUID(lace), {})
@@ -130,7 +130,7 @@ def test_accounts_are_private(client, lace, lace_runtime):  # noqa: F811
 
 def test_when_nothing_fits_the_lace_is_told_to_say_so(client, lace, lace_runtime, monkeypatch):  # noqa: F811
     _with_icp(lace)
-    monkeypatch.setattr(lace_jobs, "find_accounts", lambda *a: [_found("Tea Estate", "weak"), _found("Retailer", "weak")])
+    monkeypatch.setattr(lace_jobs, "find_accounts", lambda *a, **k: [_found("Tea Estate", "weak"), _found("Retailer", "weak")])
     lace_runtime.extend([_call("find_accounts"), AIMessage(content="On it."), AIMessage(content="Nothing fits yet.")])
     client.post(f"{API}/laces/{lace}/messages", json={"text": "find me customers"})
     turns = client.portal.call(_wait_for_turns, lace, 2)

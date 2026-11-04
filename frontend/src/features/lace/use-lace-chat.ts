@@ -32,6 +32,7 @@ import {
   setLaceCompetitorStatus,
   updateLaceOutreach,
   type BlockAnswerDto,
+  type CardBlockDto,
   type FactDto,
   type LaceAccountDto,
   type LaceCompetitorDto,
@@ -133,6 +134,10 @@ export interface LaceChat {
   saveAccount: (accountId: string) => Promise<void>
   /** Save an opportunity (open) or drop it (dismissed). True when done. */
   decideOpportunity: (opportunityId: string, status: "open" | "dismissed") => Promise<boolean>
+  /** Opportunities decided in this chat, which their cards show over the status they were shown with. */
+  decidedOpportunities: ReadonlyMap<string, "open" | "dismissed">
+  /** Save every suggestion among these cards in one go (competitors tracked, leads and opportunities saved). */
+  saveAll: (cards: CardBlockDto[]) => Promise<void>
 }
 
 function message(err: unknown): string {
@@ -440,15 +445,24 @@ export function useLaceChat(laceId: string, thread: ChatThread = "team"): LaceCh
     }
   }, [laceId])
 
+  const [decidedOpportunities, setDecidedOpportunities] = useState<ReadonlyMap<string, "open" | "dismissed">>(new Map())
   const decideOpportunity = useCallback(async (opportunityId: string, status: "open" | "dismissed") => {
     try {
       await setLaceOpportunityStatus(laceId, opportunityId, status)
+      setDecidedOpportunities((prev) => new Map(prev).set(opportunityId, status))
       return true
     } catch (err) {
       setError(message(err))
       return false
     }
   }, [laceId])
+
+  const saveAll = useCallback(async (cards: CardBlockDto[]) => {
+    const save: Partial<Record<CardBlockDto["kind"], (id: string) => Promise<unknown>>> = {
+      competitor: saveCompetitor, account: saveAccount, opportunity: (id) => decideOpportunity(id, "open"),
+    }
+    await Promise.all(cards.map((card) => save[card.kind]?.(card.id)))
+  }, [saveCompetitor, saveAccount, decideOpportunity])
 
   const findContacts = useCallback(async (accountId: string) => {
     try {
@@ -535,6 +549,6 @@ export function useLaceChat(laceId: string, thread: ChatThread = "team"): LaceCh
     loading: loading || conversation.thread !== thread, error,
     working, turnBy, step, steps, jobs, draft, send, answer, reload, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, sendingSoon,
     undoSend, markSent, markRead, decideAction, findContacts, draftToContact, contacts, approveContact, approveAccountContacts, removeContact, saveCompetitor, saveAccount, decideOpportunity, suggestedCompetitors,
-    suggestedAccounts,
+    suggestedAccounts, decidedOpportunities, saveAll,
   }
 }

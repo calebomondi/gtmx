@@ -51,6 +51,29 @@ def test_cards_the_reply_showed_are_not_added_twice(client, lace, lace_runtime, 
     assert client.portal.call(lace_runs._with_found_cards, private, [job.id], []) == []
 
 
+def test_a_search_that_finds_one_again_does_not_show_it_again(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    from agents.schemas.competition import CompetitorProfile
+    from backend.app.runs import manager
+    from backend.tests.test_runs import _wait_for_status
+    _hunt(client, lace, lace_runtime, monkeypatch, AIMessage(content="I found Rival."))
+    other = CompetitorProfile(name="Other", website="https://other.test/", description="Payroll for dentists.")
+    monkeypatch.setattr(lace_jobs, "find_competitors", lambda profile, facts, focus: [RIVAL, other])
+    lace_runtime.append(AIMessage(content="I found Other too."))
+    run = client.portal.call(manager.start_lace_job, "lace_competitors", user.id, uuid.UUID(lace), {"focus": "dentists"})
+    client.portal.call(_wait_for_status, run.id, {"completed"})
+    client.portal.call(_wait_for_turns, lace, 3)
+    # Rival's card is in the chat from the first search; only Other is new here.
+    reply = client.get(f"{API}/laces/{lace}/messages").json()[-1]
+    assert [card["title"] for card in reply["ui"] if card["type"] == "card"] == ["Other"]
+
+
+def test_a_card_shows_once_in_a_reply():
+    card = {"type": "card", "kind": "competitor", "id": "1", "title": "Rival"}
+    other = {"type": "card", "kind": "account", "id": "1", "title": "Rival Ltd"}
+    question = {"type": "choices", "question": "Which?", "options": ["A", "B"]}
+    assert lace_runs._unique_cards([card, question, card, other, question]) == [card, question, other, question]
+
+
 def test_the_lace_cannot_save_a_suggestion(client, lace, lace_runtime, monkeypatch):  # noqa: F811
     _hunt(client, lace, lace_runtime, monkeypatch, AIMessage(content="I found Rival."))
     lace_runtime.extend([_call("update_saved", {"kind": "competitor", "ids": [_rival_id()], "verdict": "save"}),
