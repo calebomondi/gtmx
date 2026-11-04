@@ -28,8 +28,9 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
 from agents.context_budget import count_tokens
-from agents.lace.prompts import DOCUMENTS_LISTED, render_on_file, render_running, system_prompt
-from agents.lace.apps import LaceApps
+from agents.lace.prompts import DOCUMENTS_LISTED, render_apps, render_on_file, render_running, system_prompt
+from agents.lace.apps import AppError, LaceApps
+from utils.log import logger
 from agents.lace.store import LaceJobs, LaceStore
 from agents.lace.tools import build_tools
 from agents.llm.main import TokenSink, invoke_with_tools
@@ -140,13 +141,27 @@ def build_lace_graph(
     chat: PRIVATE_WITHHELD and prompts.PRIVATE_CHAT_NOTE)."""
     settings = settings or get_settings()
     tools = [t for t in build_tools(store, settings, jobs, apps) if t.name not in withheld]
+    # Looked up once per graph (one turn), not at every step of it.
+    apps_note: list[str | None] = []
+
+    async def apps_overview() -> str | None:
+        if apps is None:
+            return None
+        if not apps_note:
+            try:
+                apps_note.append(render_apps(await apps.overview()))
+            except AppError as exc:
+                logger.warning("The apps of this Lace couldn't be listed for its prompt: %s", exc)
+                apps_note.append(None)
+        return apps_note[0]
 
     async def agent(state: LaceState) -> dict:
         (profile, facts, icp, documents, rivals, accounts, opportunities, suggestions, rules,
-         instructions) = await asyncio.gather(
+         instructions, listed_apps) = await asyncio.gather(
             store.profile(), store.facts(None, BRIEF_FACTS), store.icp(), store.documents(DOCUMENTS_LISTED + 1),
             store.competitors(ON_FILE_SCAN), store.accounts(ON_FILE_SCAN), store.opportunities(ON_FILE_SCAN),
-            store.suggestions(ON_FILE_SCAN), store.regulations("suggested", ON_FILE_SCAN), store.instructions())
+            store.suggestions(ON_FILE_SCAN), store.regulations("suggested", ON_FILE_SCAN), store.instructions(),
+            apps_overview())
         on_file = render_on_file(rivals, accounts, opportunities, suggestions, len(rules))
         messages = state["messages"]
         prompt: list[AnyMessage] = [SystemMessage(content=system_prompt(profile, facts, icp, documents=documents,
@@ -154,6 +169,8 @@ def build_lace_graph(
                                                                         instructions=instructions))]
         if chat_note:
             prompt.append(SystemMessage(content=chat_note))
+        if listed_apps:
+            prompt.append(SystemMessage(content=listed_apps))
         if jobs is not None and (running := render_running(await jobs.running())):
             prompt.append(SystemMessage(content=running))
         prompt += close_dangling_tool_calls(history_window(messages, settings.lace_history_token_budget))
