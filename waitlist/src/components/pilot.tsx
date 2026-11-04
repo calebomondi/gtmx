@@ -60,7 +60,13 @@ function List({ title, items }: { title: string; items: string[] }) {
     <div className="border-t border-line pt-5">
       <h3 className="font-sans text-[15px] font-semibold">{title}</h3>
       <ul className="mt-3 flex flex-col gap-2.5 text-muted">
-        {items.map((item) => <li key={item} className="leading-snug">{item}</li>)}
+        {items.map((item) => (
+          <li key={item} className="flex gap-2.5 leading-snug">
+            {/* Lace's square, set on the first line of the point. */}
+            <span aria-hidden className="mt-[0.4em] size-1.5 shrink-0 rounded-[2px] bg-brand" />
+            {item}
+          </li>
+        ))}
       </ul>
     </div>
   )

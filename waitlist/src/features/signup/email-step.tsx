@@ -39,7 +39,7 @@ export function EmailStep({
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-3">
       <label htmlFor={`${id}-email`} className="text-sm font-medium">
-        Work email
+        Founder or startup email
       </label>
       <div className="flex flex-col gap-2 sm:flex-row">
         <input
@@ -49,7 +49,7 @@ export function EmailStep({
           required
           autoComplete="email"
           inputMode="email"
-          placeholder="you@company.com"
+          placeholder="you@yourstartup.com"
           value={email}
           onChange={(e) => {
             setEmail(e.target.value)
@@ -69,7 +69,7 @@ export function EmailStep({
       </div>
       {missing === 'email' && (
         <p id={`${id}-email-error`} role="alert" className="-mt-1 text-sm text-dropped">
-          Enter your work email.
+          Enter your email.
         </p>
       )}
       {/* Hidden from people, filled by bots. */}
