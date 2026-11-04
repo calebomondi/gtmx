@@ -14,6 +14,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.schemas.lace import ActivityKind, LaceRole, SavedKind
+from backend.app.database.models import Run
 from backend.app.database.lace_models import LaceAccount, LaceCompetitor, LaceContact, LaceEvent, LaceOpportunity, LaceOutreach
 from backend.app.services import lace_activity, lace_events
 from backend.app.services.errors import ConflictError, ForbiddenError, InvalidInputError, NotFoundError
@@ -102,14 +103,17 @@ async def mine(db: AsyncSession, lace_id: uuid.UUID, owner_id: uuid.UUID, limit:
 
 async def suggested_from(db: AsyncSession, lace_id: uuid.UUID, owner_id: uuid.UUID | None,
                          run_ids: list[uuid.UUID], limit: int) -> list[tuple[SavedKind, uuid.UUID]]:
-    """What these searches found that still waits for the founder to save or
-    dismiss, in the chat they ran for (the team's, or `owner_id`'s), newest
-    first."""
+    """What these searches found for the first time that still waits for the
+    founder to save or dismiss, in the chat they ran for (the team's, or
+    `owner_id`'s), newest first. One an earlier search already put in front of
+    them is left out: its card is in the chat already."""
     found: list[tuple[datetime, SavedKind, uuid.UUID]] = []
     for kind, spec in KINDS.items():
-        rows = (await db.execute(select(spec.model.id, spec.model.first_seen_at).where(
+        rows = (await db.execute(select(spec.model.id, spec.model.first_seen_at)
+                                 .join(Run, Run.id == spec.model.found_by_run_id).where(
             spec.model.lace_id == lace_id, spec.model.owned_by(owner_id), spec.model.status == "suggested",
-            spec.model.found_by_run_id.in_(run_ids)).order_by(spec.model.first_seen_at.desc()).limit(limit))).all()
+            spec.model.found_by_run_id.in_(run_ids), spec.model.first_seen_at >= Run.created_at)
+            .order_by(spec.model.first_seen_at.desc()).limit(limit))).all()
         found += [(seen, kind, row_id) for row_id, seen in rows]
     return [(kind, row_id) for _, kind, row_id in sorted(found, key=lambda f: f[0], reverse=True)[:limit]]
 
