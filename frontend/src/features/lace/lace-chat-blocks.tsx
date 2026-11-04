@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Separator } from "@/components/ui/separator"
 import type { ActionBlockDto, BlockAnswerDto, CardBlockDto, UiBlockDto } from "@/lib/api"
 
-import { cardState, contactsLine, type CardState } from "./chat-cards"
+import { cardState, contactsLine, waitingCards, type CardState } from "./chat-cards"
 import { ActionCard } from "./lace-action-card"
 import { ChatQuestion } from "./lace-chat-questions"
 import { isQuestion } from "./questions"
@@ -30,7 +30,6 @@ function Actions({ card, state, chat, onReview }: {
   chat: LaceChat
   onReview: () => void
 }) {
-  const [decided, setDecided] = useState<"open" | "dismissed" | null>(null)
   switch (state.kind) {
     case "competitor":
       if (state.standing === "gone") return <Badge variant="secondary">Dismissed</Badge>
@@ -75,10 +74,9 @@ function Actions({ card, state, chat, onReview }: {
       )
     }
     case "opportunity": {
-      const decide = (status: "open" | "dismissed") =>
-        void chat.decideOpportunity(card.id, status).then((done) => done && setDecided(status))
-      // What was decided here, else where it stood when the chat was loaded.
-      const standing = decided ?? card.status
+      const decide = (status: "open" | "dismissed") => void chat.decideOpportunity(card.id, status)
+      // What was decided in this chat, else where it stood when the chat was loaded.
+      const standing = chat.decidedOpportunities.get(card.id) ?? card.status
       if (standing === "open") return <Badge variant="secondary"><Check /> Saved</Badge>
       if (standing === "dismissed") return <Badge variant="secondary">Not for us</Badge>
       if (standing === "gone") return <Badge variant="secondary">Removed</Badge>
@@ -116,16 +114,15 @@ function Actions({ card, state, chat, onReview }: {
   }
 }
 
-function LaceCard({ card, chat, ids, onReview }: {
+type CardData = Parameters<typeof cardState>[1]
+
+function LaceCard({ card, chat, data, onReview }: {
   card: CardBlockDto
   chat: LaceChat
-  ids: { saved: ReadonlySet<string>; suggested: ReadonlySet<string> }
+  data: CardData
   onReview: () => void
 }) {
-  const state = cardState(card, {
-    competitorIds: ids.saved, suggestedCompetitorIds: ids.suggested, accounts: chat.accounts,
-    suggestedAccounts: chat.suggestedAccounts, outreach: chat.outreach,
-  })
+  const state = cardState(card, data)
   return (
     <Card size="sm" className="gap-2">
       <CardHeader>
@@ -151,11 +148,19 @@ export function ChatBlocks({ blocks, chat, live, answers, onReview }: {
   answers: ReadonlyMap<string, BlockAnswerDto>
   onReview: () => void
 }) {
-  const ids = {
-    saved: new Set(chat.competitors.map((c) => c.id)),
-    suggested: new Set(chat.suggestedCompetitors.map((c) => c.id)),
+  const [savingAll, setSavingAll] = useState(false)
+  const data: CardData = {
+    competitorIds: new Set(chat.competitors.map((c) => c.id)),
+    suggestedCompetitorIds: new Set(chat.suggestedCompetitors.map((c) => c.id)),
+    accounts: chat.accounts, suggestedAccounts: chat.suggestedAccounts, outreach: chat.outreach,
   }
   const cards = blocks.filter((b): b is CardBlockDto => b.type === "card")
+  const waiting = waitingCards(cards, data, chat.decidedOpportunities)
+  const saveAll = async () => {
+    setSavingAll(true)
+    await chat.saveAll(waiting)
+    setSavingAll(false)
+  }
   const questions = blocks.filter(isQuestion)
   const actions = blocks.filter((b): b is ActionBlockDto => b.type === "action")
   // Only under the latest reply, while the Lace is free: tapping one sends it.
@@ -167,9 +172,14 @@ export function ChatBlocks({ blocks, chat, live, answers, onReview }: {
       {cards.length > 0 && (
         <div className="grid gap-2 sm:grid-cols-2">
           {cards.map((card) => (
-            <LaceCard key={`${card.kind}:${card.id}`} card={card} chat={chat} ids={ids} onReview={onReview} />
+            <LaceCard key={`${card.kind}:${card.id}`} card={card} chat={chat} data={data} onReview={onReview} />
           ))}
         </div>
+      )}
+      {waiting.length > 1 && (
+        <Button size="sm" variant="outline" className="w-fit" onClick={() => void saveAll()} disabled={savingAll}>
+          {savingAll ? <Loader2 className="animate-spin" /> : <CheckCheck />} Save all {waiting.length}
+        </Button>
       )}
       {actions.map((block) => <ActionCard key={block.id} block={block} chat={chat} />)}
       {questions.map((block) => (

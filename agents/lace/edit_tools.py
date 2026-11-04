@@ -60,8 +60,9 @@ def build_edit_tools(store: LaceStore) -> list[BaseTool]:
         names = ", ".join(item.name for item in result.for_founder)
         saved = f" {done}: {', '.join(i.name for i in result.changed)}." if result.changed else ""
         return ToolResult.success(
-            f"{names} are suggestions: only the founder saves those. They will see them as cards under your reply to "
-            f"save or dismiss; say so.{saved}", {**result.model_dump(), "ui": [c.model_dump() for c in shown]})
+            f"{names} are suggestions: only the founder saves those. Their cards are under your reply, with a Save "
+            f"all button when there are several; say so in a sentence.{saved}",
+            {**result.model_dump(), "ui": [c.model_dump() for c in shown]})
 
     @tool(parse_docstring=True)
     @guarded

@@ -377,7 +377,7 @@ async def _converse(run_id: uuid.UUID, thread: LaceThread, message: HumanMessage
                 elif isinstance(message, ToolMessage):
                     await events.publish(run_id, "tool_result", _tool_summary(message))
                     blocks += _ui_blocks(message)
-    blocks = await _with_found_cards(thread, found_by or [], blocks)
+    blocks = await _with_found_cards(thread, found_by or [], _unique_cards(blocks))
     blocks = await _with_follow_ups(reply, blocks, asked, await _situation(thread))
     if blocks:
         tidy = without_repeated_options(reply, {b.get("type") for b in blocks})
@@ -394,6 +394,21 @@ def _founder_words(message: HumanMessage | str) -> str:
     if message.additional_kwargs.get(EVENT_FLAG):
         return ""
     return str(message.additional_kwargs.get(FOUNDER_TEXT_KEY, message.content))
+
+
+def _unique_cards(blocks: list[dict]) -> list[dict]:
+    """The turn's blocks with each card once, where it first appeared: the
+    Lace may show the same find twice in one turn."""
+    seen: set[tuple] = set()
+    out = []
+    for block in blocks:
+        if block.get("type") == "card":
+            key = (block.get("kind"), block.get("id"))
+            if key in seen:
+                continue
+            seen.add(key)
+        out.append(block)
+    return out
 
 
 async def _with_found_cards(thread: LaceThread, found_by: list[uuid.UUID], blocks: list[dict]) -> list[dict]:

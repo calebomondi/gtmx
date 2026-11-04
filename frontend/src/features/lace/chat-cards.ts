@@ -42,3 +42,13 @@ export function contactsLine(account: LaceAccountDto): string | null {
   if (account.contacts_checked_at) return "No one named found yet"
   return null
 }
+
+/** The cards among these whose finds still wait for the founder, which Save all saves. */
+export function waitingCards(cards: CardBlockDto[], data: Parameters<typeof cardState>[1],
+                             decidedOpportunities: ReadonlyMap<string, string>): CardBlockDto[] {
+  return cards.filter((card) => {
+    const state = cardState(card, data)
+    if (state.kind === "opportunity") return (decidedOpportunities.get(card.id) ?? card.status) === "suggested"
+    return (state.kind === "competitor" || state.kind === "account") && state.standing === "suggested"
+  })
+}
