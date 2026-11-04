@@ -166,10 +166,19 @@ def test_find_contacts_from_a_card(client, lace, lace_runtime, user, monkeypatch
     assert client.post(url).status_code == 404
 
 
-def test_suggested_replies_stay_under_the_reply(client, lace, lace_runtime):  # noqa: F811
-    lace_runtime.extend([_call("suggest_replies", {"options": ["Check their LinkedIn", "Find their OTA guide"]}),
-                         AIMessage(content="Want me to dig deeper into one of them?")])
+def test_suggested_replies_stay_under_the_reply(client, lace, lace_runtime, monkeypatch):  # noqa: F811
+    from backend.app.runs import lace as lace_runs
+    written = []
+
+    def follow_ups(reply, asked, situation):
+        written.append((reply, asked, situation))
+        return ["Check their LinkedIn", "Find their OTA guide"]
+    monkeypatch.setattr(lace_runs, "follow_ups", follow_ups)
+    lace_runtime.extend([AIMessage(content="Hamtech sells booking software to hotels in Mombasa.")])
     _say(client, lace, "who are Hamtech?")
     client.portal.call(_wait_for_turns, lace, 1)
     reply = client.get(f"{API}/laces/{lace}/messages").json()[-1]
     assert reply["ui"] == [{"type": "suggestions", "options": ["Check their LinkedIn", "Find their OTA guide"]}]
+    # Written from the founder's question and what's on file, after the answer.
+    [(answer, asked, situation)] = written
+    assert answer.startswith("Hamtech sells") and asked == "who are Hamtech?" and "Leads saved" in situation
