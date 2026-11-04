@@ -19,20 +19,16 @@ def _record(*contacts) -> AccountRecord:
                          key_contacts=list(contacts))
 
 
-def test_recipient_prefers_a_named_email_then_linkedin_then_the_org_email():
+def test_first_messages_go_by_email_only():
     org = ContactRecord(email="info@sunculture.com")
     linkedin = ContactRecord(name="Dan Owuor", title="Head of Software", linkedin="https://linkedin.com/in/dan")
     named = ContactRecord(name="Samir Ibrahim", title="CEO", email="samir@sunculture.com")
     assert recipient_for(_record(org, linkedin, named)) == Recipient("email", "Samir Ibrahim", "CEO", "samir@sunculture.com")
-    assert recipient_for(_record(org, linkedin)).channel == "linkedin"
-    assert recipient_for(_record(org)) == Recipient("email", None, None, "info@sunculture.com")
+    # A named person on LinkedIn or X only isn't written to: the organisation's email is.
+    on_x = ContactRecord(name="Wanjiru", x="@wanjiru", instagram="@wanjiru.k")
+    assert recipient_for(_record(org, linkedin, on_x)) == Recipient("email", None, None, "info@sunculture.com")
+    assert recipient_for(_record(linkedin, on_x)) is None
     assert recipient_for(_record()) is None
-
-
-def test_a_named_persons_own_social_account_comes_before_the_org_email():
-    org = ContactRecord(email="info@sunculture.com")
-    on_x = ContactRecord(name="Dan Owuor", x="@dan_o", instagram="@dan.o")
-    assert recipient_for(_record(org, on_x)) == Recipient("x", "Dan Owuor", None, "https://x.com/dan_o")
 
 
 def test_each_specialist_answers_from_its_own_facts():
@@ -69,15 +65,6 @@ async def test_draft_outreach_tool_starts_a_job(settings):
     tool = {t.name: t for t in build_tools(MemoryStore(), settings, jobs)}["draft_outreach"]
     out = json.loads(await tool.ainvoke({"account_ids": ["a1"]}))
     assert out["ok"] and jobs.started == [("draft_outreach", {"account_ids": ["a1"]})]
-
-
-def test_with_no_one_reachable_the_organisations_own_account_is_messaged():
-    record = _record().model_copy(update={"socials": {"linkedin": "https://linkedin.com/company/sunculture",
-                                                       "instagram": "https://instagram.com/sunculture",
-                                                       "x": "https://x.com/SunCulture"}})
-    assert recipient_for(record) == Recipient("x", None, None, "https://x.com/SunCulture")
-    only_linkedin = _record().model_copy(update={"socials": {"linkedin": "https://linkedin.com/company/sunculture"}})
-    assert recipient_for(only_linkedin) is None  # a company page cannot be messaged
 
 
 def test_every_channel_has_a_writing_rule_and_only_email_a_subject():

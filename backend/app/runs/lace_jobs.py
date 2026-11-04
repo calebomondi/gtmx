@@ -372,7 +372,8 @@ def drafts_update(drafts: list[LaceOutreach], unreachable: list[str], failed: li
     lines = [f"{d.recipient_company} [draft {d.id}]: to {d.recipient_name or d.recipient_address} by {d.channel}"
              + (f', subject "{d.subject}"' if d.subject else "") for d in drafts]
     if unreachable:
-        lines.append("Not drafted, nobody to reach yet (use find_contacts): " + ", ".join(unreachable))
+        lines.append("Not drafted, no email found yet (find_contacts looks for one, or ask the founder for it; first "
+                     "messages go by email only): " + ", ".join(unreachable))
     if failed:
         lines.append("Drafting failed for (try again later): " + ", ".join(failed))
     if awaiting:
