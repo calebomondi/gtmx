@@ -11,7 +11,7 @@ from typing import Literal, Protocol
 from agents.schemas.icp import ICP
 from agents.schemas.opportunities import OpportunitySummary
 from agents.schemas.regulations import Jurisdiction, RegulationStatus, RegulationSummary
-from agents.schemas.lace import ProposedAction, AccountSummary, CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Suggestions, Fact, FactTopic, ItemsChanged, LaceProfile, NamedItem, NewContact, NewFact, RunningJob, SavedKind, SavedVerdict, SourcePage
+from agents.schemas.lace import ProposedAction, AccountSummary, CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Suggestions, Fact, FactTopic, Instruction, InstructionScope, ItemsChanged, LaceProfile, NamedItem, NewContact, NewFact, RunningJob, SavedKind, SavedVerdict, SourcePage
 
 
 class LaceStore(Protocol):
@@ -85,6 +85,18 @@ class LaceStore(Protocol):
         """One shared document and its text; None when it is not this Lace's."""
         ...
 
+    async def instructions(self) -> list[Instruction]:
+        """The team's standing instructions, oldest first."""
+        ...
+
+    async def add_instruction(self, text: str, applies_to: InstructionScope) -> Instruction:
+        """Keep a standing instruction. Raises InstructionsFull at the cap."""
+        ...
+
+    async def remove_instruction(self, instruction_id: str) -> Instruction | None:
+        """Drop one; None when it is not this Lace's."""
+        ...
+
     # Changes the founder asked for. Ids that are not this Lace's are reported
     # as missing, never touched.
 
@@ -131,6 +143,11 @@ class LaceStore(Protocol):
 
 JobKind = Literal["find_competitors", "check_competitors", "find_accounts", "find_contacts", "draft_outreach",
                   "find_opportunities", "define_icp", "read_tiktok_comments", "find_regulations"]
+
+
+class InstructionsFull(Exception):
+    """The Lace holds as many standing instructions as it may; the message
+    says so to the founder as is."""
 
 
 class JobRefused(Exception):

@@ -311,6 +311,7 @@ class IcpSessionState(TypedDict):
     # -- Account discovery outputs --
     account_discovery_queries: Optional[list[str]] = Field(default=None, description="Queries generated for account discovery")
     exclude_domains: list[str] = Field(default_factory=list, description="Domains that are never targets: the offer's own company and its tracked competitors")
+    founder_instructions: str = Field(default="", description="The founder's standing instructions for the search, as lines; they outrank the ICP")
     account_discovery_docs: Optional[list[dict]] = Field(default=None, description="Documents retrieved for account discovery")
     accounts: Optional[AccountList] = Field(default=None, description="AccountDiscovery account candidates")
 

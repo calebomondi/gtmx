@@ -142,14 +142,16 @@ def build_lace_graph(
     tools = [t for t in build_tools(store, settings, jobs, apps) if t.name not in withheld]
 
     async def agent(state: LaceState) -> dict:
-        profile, facts, icp, documents, rivals, accounts, opportunities, suggestions, rules = await asyncio.gather(
+        (profile, facts, icp, documents, rivals, accounts, opportunities, suggestions, rules,
+         instructions) = await asyncio.gather(
             store.profile(), store.facts(None, BRIEF_FACTS), store.icp(), store.documents(DOCUMENTS_LISTED + 1),
             store.competitors(ON_FILE_SCAN), store.accounts(ON_FILE_SCAN), store.opportunities(ON_FILE_SCAN),
-            store.suggestions(ON_FILE_SCAN), store.regulations("suggested", ON_FILE_SCAN))
+            store.suggestions(ON_FILE_SCAN), store.regulations("suggested", ON_FILE_SCAN), store.instructions())
         on_file = render_on_file(rivals, accounts, opportunities, suggestions, len(rules))
         messages = state["messages"]
         prompt: list[AnyMessage] = [SystemMessage(content=system_prompt(profile, facts, icp, documents=documents,
-                                                                        on_file=on_file))]
+                                                                        on_file=on_file,
+                                                                        instructions=instructions))]
         if chat_note:
             prompt.append(SystemMessage(content=chat_note))
         if jobs is not None and (running := render_running(await jobs.running())):

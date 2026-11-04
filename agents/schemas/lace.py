@@ -205,6 +205,19 @@ class NamedItem(BaseModel):
     name: str
 
 
+InstructionScope = Literal["everything", "competitors", "leads", "opportunities", "outreach"]
+INSTRUCTION_SCOPES: tuple[str, ...] = InstructionScope.__args__
+INSTRUCTION_CHARS = 300
+
+
+class Instruction(BaseModel):
+    """A standing instruction from the team: how the Lace should work from now
+    on, in every chat and every background job it applies to."""
+    id: str
+    text: str
+    applies_to: InstructionScope
+
+
 class RunningJob(BaseModel):
     """A background job of the Lace's still working, as it is told about it."""
     what: str = Field(description="e.g. 'search for target accounts'")

@@ -6,9 +6,9 @@ from datetime import datetime, timezone
 
 from langchain_core.messages import AIMessage
 
-from agents.lace.store import JobRefused
+from agents.lace.store import InstructionsFull, JobRefused
 from agents.schemas.regulations import JURISDICTION_PATTERN, Jurisdiction
-from agents.schemas.lace import CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Fact, ItemsChanged, NamedItem, Suggestions, LaceProfile, NewFact, SourcePage
+from agents.schemas.lace import CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Fact, Instruction, ItemsChanged, NamedItem, Suggestions, LaceProfile, NewFact, SourcePage
 
 
 class MemoryStore:
@@ -30,6 +30,8 @@ class MemoryStore:
         self.place = Jurisdiction()
         # RegulationSummary rows; set_regulations changes their status.
         self.rules: list = []
+        self.kept: list[Instruction] = []
+        self.max_instructions = 30
 
     async def profile(self) -> LaceProfile:
         return LaceProfile(name="Ada", website=self.website, startup_name=self.startup_name)
@@ -61,6 +63,21 @@ class MemoryStore:
 
     async def drafts(self, limit=50):
         return self.drafted[:limit]
+
+    async def instructions(self):
+        return list(self.kept)
+
+    async def add_instruction(self, text, applies_to):
+        if len(self.kept) >= self.max_instructions:
+            raise InstructionsFull("This Lace keeps up to 30 standing instructions.")
+        self.kept.append(Instruction(id=f"i{len(self.kept) + 1}", text=text, applies_to=applies_to))
+        return self.kept[-1]
+
+    async def remove_instruction(self, instruction_id):
+        found = next((i for i in self.kept if i.id == instruction_id), None)
+        if found:
+            self.kept.remove(found)
+        return found
 
     async def documents(self, limit=50):
         return [summary for summary, _ in reversed(self.shared.values())][:limit]

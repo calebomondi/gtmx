@@ -254,6 +254,12 @@ def search_accounts(state: IcpSessionState) -> dict:
     return {"account_discovery_docs": docs}
 
 
+def _instructions_block(state: IcpSessionState) -> str:
+    rules = (state.get("founder_instructions") or "").strip()
+    return (f"FOUNDER'S STANDING INSTRUCTIONS (they outrank the ICP: leave out any target they rule out)\n{rules}\n\n"
+            if rules else "")
+
+
 def extract_accounts(state: IcpSessionState) -> dict:
     icp: Optional[ICP] = state.get("icp_data")
     docs = state.get("account_discovery_docs") or []
@@ -268,7 +274,8 @@ def extract_accounts(state: IcpSessionState) -> dict:
         "channels/communities/events/creators/platforms) worth reaching out to.\n\n"
         f"ICP:\n{icp.model_dump_json(indent=2) if icp else 'None'}\n\n"
         f"REACH EMPHASIS\n{_reach_emphasis(icp)}\n\n"
-        f"Research context:\n{context or 'No research context available.'}\n\n"
+        + _instructions_block(state)
+        + f"Research context:\n{context or 'No research context available.'}\n\n"
         "Rules:\n"
         f"- Find between 4 and {MAX_ACCOUNT_CANDIDATES} REAL targets that fit the ICP. Each must be grounded "
         "in the research context and MUST have a `trigger_event` — a current, verifiable signal observed "

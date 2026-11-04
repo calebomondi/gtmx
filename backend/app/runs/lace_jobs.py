@@ -26,7 +26,7 @@ from agents.pipelines.outreach import gtm_replies
 from agents.lace.store import JobBlocked
 from agents.pipelines.monitor import check_competitor
 from agents.schemas.accounts import AccountRecord
-from agents.schemas.lace import ActivityKind
+from agents.schemas.lace import ActivityKind, InstructionScope
 from agents.schemas.opportunities import OPPORTUNITY_KINDS
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
@@ -34,7 +34,7 @@ from backend.app.database.lace_models import LaceAccount, LaceOutreach
 from backend.app.runs import events
 from backend.app.runs.errors import user_facing_error
 
-from backend.app.services import lace_accounts, lace_activity, lace_competitors, lace_contacts, lace_events, lace_opportunities, lace_outreach
+from backend.app.services import lace_accounts, lace_activity, lace_competitors, lace_contacts, lace_events, lace_instructions, lace_opportunities, lace_outreach
 from backend.app.services.lace_activity import names, plural
 from backend.app.services.lace_contacts import contact_key
 from backend.app.services import calendar as calendar_service
@@ -106,6 +106,20 @@ def _failure(exc: Exception) -> str:
     return str(exc) if isinstance(exc, JobBlocked) else user_facing_error(exc)
 
 
+async def _instructions(lace_id: uuid.UUID, scope: InstructionScope) -> str:
+    async with AsyncSessionLocal() as db:
+        return await lace_instructions.for_job(db, lace_id, scope)
+
+
+def with_instructions(asked: str | None, rules: str) -> str | None:
+    """What the founder asked of this job, then the team's standing
+    instructions for its kind; None when there is neither."""
+    parts = [asked.strip()] if asked and asked.strip() else []
+    if rules:
+        parts.append(f"The team's standing instructions (always follow them):\n{rules}")
+    return "\n\n".join(parts) or None
+
+
 async def competitors_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
     """Hunt for the Lace's competitors, save them, and queue an update telling
     the Lace what came of it, in the same transaction as the results. A failed
@@ -114,7 +128,8 @@ async def competitors_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -
     profile, facts = await asyncio.gather(store.profile(), store.facts(None, BRIEF_FACTS))
     try:
         with events.reporting_steps(run_id):
-            found = await asyncio.to_thread(find_competitors, profile, facts, params.get("focus"))
+            focus = with_instructions(params.get("focus"), await _instructions(lace_id, "competitors"))
+            found = await asyncio.to_thread(find_competitors, profile, facts, focus)
     except Exception as exc:
         await report_failure(lace_id, "competitor search", exc, params)
         raise
@@ -182,6 +197,7 @@ async def _define_icp(store: DbLaceStore, guidance: str | None):
     report("Working out who your ideal customers are")
     profile, facts, rivals = await asyncio.gather(
         store.profile(), store.facts(None, ICP_FACTS), store.competitors(ICP_COMPETITORS))
+    guidance = with_instructions(guidance, await _instructions(store.lace_id, "leads"))
     icp = await asyncio.to_thread(lace_icp.define_icp, profile, facts, rivals, guidance)
     await store.save_icp(icp)
     return icp
@@ -218,7 +234,9 @@ async def accounts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> N
         with events.reporting_steps(run_id):
             if icp is None:
                 icp = await _define_icp(store, None)
-            found = await asyncio.to_thread(find_accounts, profile, facts, icp, exclude, params.get("country"))
+            rules = await _instructions(lace_id, "leads")
+            found = await asyncio.to_thread(find_accounts, profile, facts, icp, exclude, params.get("country"),
+                                            instructions=rules)
     except Exception as exc:
         await report_failure(lace_id, "search for leads", exc, params)
         raise
@@ -293,7 +311,8 @@ async def drafts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> Non
                                                                           private_to(params))]
         cleared = await lace_contacts.approved_keys(db, [account_id for account_id, _, _ in accounts])
     sender = await outreach_service.sender_for_user(user_id)
-    person, note = params.get("person"), params.get("note")
+    person = params.get("person")
+    note = with_instructions(params.get("note"), await _instructions(lace_id, "outreach"))
     if person:
         # The founder asked for this one person, on this channel (and approved
         # them in asking).
@@ -534,7 +553,9 @@ async def opportunities_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict)
     try:
         with events.reporting_steps(run_id):
             report("Looking for " + ", ".join(kinds) + " opportunities")
-            found = await asyncio.to_thread(find_opportunities, profile, facts, icp, settings, kinds)
+            rules = await _instructions(lace_id, "opportunities")
+            found = await asyncio.to_thread(find_opportunities, profile, facts, icp, settings, kinds,
+                                            instructions=rules)
     except Exception as exc:
         await report_failure(lace_id, "opportunity search", exc, params)
         raise
