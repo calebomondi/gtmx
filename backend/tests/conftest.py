@@ -28,6 +28,9 @@ from backend.app.services import website_check
 from backend.tests.helpers import make_user
 from config import settings
 
+# How long cleanup waits on a lock before failing the test instead of hanging.
+CLEANUP_LOCK_TIMEOUT_S = 30
+
 _ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
 
 
@@ -89,6 +92,12 @@ def clean_tables():
     yield
     tables = sql.SQL(", ").join(sql.Identifier(t.name) for t in Base.metadata.sorted_tables)
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        # A run cut off when its test's event loop stopped leaves its
+        # connection idle in a transaction, holding locks TRUNCATE would wait
+        # on forever: end those, and fail rather than wait on anything else.
+        conn.execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database()"
+                     " AND pid <> pg_backend_pid() AND state LIKE 'idle in transaction%'")
+        conn.execute(f"SET lock_timeout = '{CLEANUP_LOCK_TIMEOUT_S}s'")
         conn.execute(sql.SQL("TRUNCATE {} RESTART IDENTITY CASCADE").format(tables))
 
 
