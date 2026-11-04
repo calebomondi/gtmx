@@ -267,8 +267,8 @@ async def draft_to_contact(lace: MemberLace, contact_id: uuid.UUID, payload: Con
     Messaging for the founder to edit and send."""
     account_id, person = await lace_contacts.person_to_draft(db, lace.id, contact_id, payload.channel)
     try:
-        run = await manager.start_lace_job("lace_drafts", user.id, lace.id, {
-            "account_ids": [str(account_id)], "person": person, "note": payload.note, "actor_id": str(user.id)})
+        run = (await manager.request_lace_job("lace_drafts", user.id, lace.id, {
+            "account_ids": [str(account_id)], "person": person, "note": payload.note, "actor_id": str(user.id)})).run
     except JobRefused as exc:
         raise ConflictError(str(exc)) from None
     return JobStartedResponse(run_id=run.id)
@@ -392,8 +392,8 @@ async def find_account_contacts(lace: MemberLace, account_id: uuid.UUID, user: C
     # One of your private accounts is searched in your private chat.
     private = {"private_to": str(account.owner_id)} if account.owner_id else {}
     try:
-        run = await manager.start_lace_job("lace_contacts", user.id, lace.id, {"account_ids": [str(account_id)],
-                                                                             "actor_id": str(user.id), **private})
+        run = (await manager.request_lace_job("lace_contacts", user.id, lace.id, {
+            "account_ids": [str(account_id)], "actor_id": str(user.id), **private})).run
     except JobRefused as exc:
         raise ConflictError(str(exc)) from None
     return JobStartedResponse(run_id=run.id)

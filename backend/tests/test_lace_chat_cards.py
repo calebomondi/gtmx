@@ -148,11 +148,11 @@ def test_find_contacts_from_a_card(client, lace, lace_runtime, user, monkeypatch
     monkeypatch.setattr(lace_jobs, "complete_contacts", lambda record, titles, cfg: record)
     account = str(_account(lace, "SunCulture"))
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
-        conn.execute("INSERT INTO runs (id, user_id, lace_id, kind, status) VALUES (%s, %s, %s, 'lace_contacts',"
-                     " 'running')", (uuid.uuid4(), user.id, lace))
+        conn.execute("INSERT INTO runs (id, user_id, lace_id, kind, status, input) VALUES (%s, %s, %s, 'lace_contacts',"
+                     " 'running', %s)", (uuid.uuid4(), user.id, lace, psycopg.types.json.Jsonb({"account_ids": [account]})))
     url = f"{API}/laces/{lace}/accounts/{account}/find-contacts"
-    busy = client.post(url)
-    assert busy.status_code == 409 and "already running" in busy.json()["detail"]
+    busy = client.post(url)  # the same search, already under way
+    assert busy.status_code == 409 and "That same contact search is already under way" in busy.json()["detail"]
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
         conn.execute("UPDATE runs SET status = 'completed' WHERE lace_id = %s", (lace,))
     lace_runtime.append(AIMessage(content="Nobody found yet."))

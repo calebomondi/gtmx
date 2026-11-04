@@ -11,7 +11,7 @@ from typing import Literal, Protocol
 from agents.schemas.icp import ICP
 from agents.schemas.opportunities import OpportunitySummary
 from agents.schemas.regulations import Jurisdiction, RegulationStatus, RegulationSummary
-from agents.schemas.lace import ProposedAction, AccountSummary, CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Suggestions, Fact, FactTopic, ItemsChanged, LaceProfile, NamedItem, NewContact, NewFact, RunningJob, SavedKind, SavedVerdict, SourcePage
+from agents.schemas.lace import ProposedAction, AccountSummary, CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Suggestions, Fact, FactTopic, ItemsChanged, JobStart, LaceProfile, NamedItem, NewContact, NewFact, RunningJob, SavedKind, SavedVerdict, SourcePage
 
 
 class LaceStore(Protocol):
@@ -134,8 +134,8 @@ JobKind = Literal["find_competitors", "check_competitors", "find_accounts", "fin
 
 
 class JobRefused(Exception):
-    """A background job could not start: one is already running, or a limit
-    was reached. The message is said to the founder as is."""
+    """A background job could not start or queue: the same one is already
+    running or waiting, too many wait, or a limit was reached. The message is said to the founder as is."""
 
 
 class JobBlocked(Exception):
@@ -148,10 +148,12 @@ class LaceJobs(Protocol):
     """Starts work too long for one turn. The job reports back by waking the
     Lace with an update when it is done."""
 
-    async def start(self, kind: JobKind, params: dict) -> str:
-        """The job's id. Raises JobRefused."""
+    async def start(self, kind: JobKind, params: dict) -> JobStart:
+        """Start the job, or queue it behind the one of its kind that is
+        running. Raises JobRefused."""
         ...
 
     async def running(self) -> list[RunningJob]:
-        """The jobs this chat started that are still working, oldest first."""
+        """The jobs this chat started that are still working or waiting,
+        oldest first."""
         ...

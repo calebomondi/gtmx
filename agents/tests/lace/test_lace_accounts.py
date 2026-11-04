@@ -38,12 +38,26 @@ def test_discovery_runs_on_the_icp_and_each_account_gets_a_case():
         return FIT
 
     found = find_accounts(PROFILE, [make_fact("1", "Acme sells payroll to clinics.")], ICP_IN, ["acme.test", "rival.test"],
-                          country="Kenya", discover=discover, assess=assess)
+                          countries=["Kenya"], discover=discover, assess=assess)
     assert [(r.name, f) for r, f in found] == [("Alpha", FIT), ("Beta", None)]
     assert {r.geo for r, _ in found} == {"Kenya"}
     assert seen["icp_data"].geo == ["Kenya"] and seen["target_market"] == ["Kenya"]
     assert seen["exclude_domains"] == ["acme.test", "rival.test"] and seen["offer_name"] == "Acme"
     assert "payroll to clinics" in seen["offer"] and seen["seller"] == "Acme"
+
+
+def test_several_countries_are_searched_in_one_go_and_keep_their_own_places():
+    seen = {}
+
+    def discover(state):
+        seen.update(state)
+        return {"accounts": AccountList(accounts=[_account("Alpha"), _account("Beta").model_copy(update={"geo": "Lagos"})])}
+
+    found = find_accounts(PROFILE, [], ICP_IN, [], countries=["Kenya", "Nigeria"], discover=discover,
+                          assess=lambda *a: FIT)
+    assert seen["target_market"] == ["Kenya", "Nigeria"]
+    # Which of the two an unplaced find is in is unknown, so none is guessed.
+    assert [r.geo for r, _ in found] == [None, "Lagos"]
 
 
 def test_without_a_country_every_icp_geography_is_searched():
@@ -65,8 +79,19 @@ async def test_find_accounts_starts_without_an_icp(settings):
     store = MemoryStore([make_fact("1", "Clinic groups pay us.", topic="customers"),
                          make_fact("2", "Aga Khan Clinics was our first customer.", topic="customers")])
     tool = {t.name: t for t in build_tools(store, settings, jobs)}["find_accounts"]
-    assert json.loads(await tool.ainvoke({"country": "Kenya"}))["ok"]
-    assert jobs.started == [("find_accounts", {"country": "Kenya"})]
+    out = json.loads(await tool.ainvoke({"countries": ["Kenya", " Nigeria ", "Kenya", ""]}))
+    assert out["ok"] and out["summary"].startswith("Started looking for target accounts in Kenya, Nigeria.")
+    assert jobs.started == [("find_accounts", {"countries": ["Kenya", "Nigeria"]})]
+
+
+async def test_a_search_behind_another_says_it_is_queued_not_started(settings):
+    jobs = RecordingJobs(ahead=1)
+    store = MemoryStore([make_fact("1", "Clinic groups pay us.", topic="customers")])
+    store.saved_icp = ICP_IN
+    tool = {t.name: t for t in build_tools(store, settings, jobs)}["find_accounts"]
+    out = json.loads(await tool.ainvoke({"countries": ["Uganda"]}))
+    assert out["ok"] and out["summary"].startswith("Queued, not started yet: another search for leads")
+    assert "1 ahead of it" in out["summary"] and "Tell the founder it is queued" in out["summary"]
 
 
 async def test_without_knowing_who_buys_the_lace_asks_first(settings):
