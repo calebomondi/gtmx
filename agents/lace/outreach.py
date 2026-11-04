@@ -17,14 +17,15 @@ from dataclasses import dataclass
 from agents.lace.accounts import record_brief
 from agents.lace.prompts import render_brief
 from agents.pipelines.outreach import gtm_specialist
-from agents.schemas.accounts import PERSON_SOCIALS, AccountRecord
+from agents.schemas.accounts import AccountRecord
 from agents.schemas.lace import CompetitorSummary, Fact, LaceProfile
 from agents.schemas.outreach import OutreachDraft
 
 RESEARCH_TOKENS = 700
 # The organisation's own accounts a message can go to, best first. Not its
 # LinkedIn page: a company page cannot be messaged.
-ORG_DM_CHANNELS = ("x", "instagram", "facebook", "tiktok")
+# The only channel a first message goes out on.
+FIRST_TOUCH = "email"
 COMPETITORS_SHOWN = 8
 # The facts each consulted specialist answers from.
 _DOMAIN_TOPICS = {
@@ -46,21 +47,16 @@ class Recipient:
 
 
 def recipient_for(record: AccountRecord) -> Recipient | None:
-    """Who the first message goes to: a named person with an email, else a
-    named person on LinkedIn, then on their own X, Instagram, Facebook or
-    TikTok, else the organisation's own email, else its own account on those.
-    None when there is nothing to reach them on."""
-    people = [c for c in record.key_contacts if c.name]
-    for channel in ("email", "linkedin", *PERSON_SOCIALS):
-        for c in people:
-            if address := c.addresses().get(channel):
-                return Recipient(channel, c.name, c.title, address)
+    """Who the first email goes to: a named person with an email, else the
+    organisation's own email. First messages go by email only; social
+    accounts are for engaging (posts, comments, replies to messages they
+    send). None when no email is known: find_contacts looks for one."""
+    people = [c for c in record.key_contacts if c.name and c.email]
+    if people:
+        return Recipient(FIRST_TOUCH, people[0].name, people[0].title, people[0].email)
     for c in record.key_contacts:
         if c.email:
-            return Recipient("email", None, None, c.email)
-    for platform in ORG_DM_CHANNELS:
-        if record.socials.get(platform):
-            return Recipient(platform, None, None, record.socials[platform])
+            return Recipient(FIRST_TOUCH, None, None, c.email)
     return None
 
 

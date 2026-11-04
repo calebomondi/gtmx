@@ -424,7 +424,7 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
     @tool(parse_docstring=True)
     @guarded
     async def draft_outreach(account_ids: list[str] | None = None) -> ToolResult:
-        """Draft a first message to leads, each to the best person you found there, grounded in their trigger and your facts. The drafts wait for the founder to review, edit and send: you never send anything. Runs in the background; you get an update when they are ready.
+        """Draft a first email to leads, each to the best person there with an email (else the organisation's), grounded in their trigger and your facts. First messages go by email only: a lead with no email known is skipped and named. The drafts wait for the founder to review, edit and send: you never send anything. Runs in the background; you get an update when they are ready.
 
         Args:
             account_ids: Ids from list_accounts to write to. Otherwise the strongest-fit targets with someone to reach and no message yet.

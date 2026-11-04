@@ -383,6 +383,9 @@ export function setLaceAccountStatus(laceId: string, accountId: string, status: 
 
 export type OutreachChannel = "email" | "linkedin" | "x" | "instagram" | "facebook" | "tiktok" | "telegram"
 
+/** The only channel a Lace writes first messages on; the others are for replying and engaging. */
+export const FIRST_TOUCH: OutreachChannel = "email"
+
 export interface LaceOutreachDto {
   id: string
   account_id: string | null
