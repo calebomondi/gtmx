@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from agents.context_budget import count_tokens
 from agents.schemas.icp import ICP
+from agents.lace.apps import AppStatus
 from agents.schemas.lace import FACT_TOPICS, AccountSummary, CompetitorSummary, DocumentSummary, Fact, Instruction, InstructionScope, LaceProfile, RunningJob, Suggestions
 from agents.schemas.opportunities import OpportunitySummary
 
@@ -306,6 +307,54 @@ def system_prompt(profile: LaceProfile, facts: list[Fact], icp: ICP | None = Non
         on_file=on_file,
         instructions=render_instructions(instructions or []),
     )
+
+
+# What the Lace does with each app, through its tools. Sending and posting
+# only ever happen on the founder's approval.
+APP_USES = {
+    "gmail": "the emails the founder approves go out from it, and replies to them come back to you",
+    "outlook": "the emails the founder approves go out from it, and replies to them come back to you",
+    "googlecalendar": "free times are offered from it when a reply asks for a meeting",
+    "linkedin": "posts you propose (post_on_social) go out on it once approved; it can't be read",
+    "instagram": "comments on their posts (read_my_comments) and messages to the linked account",
+    "facebook": "posts on the linked Page you propose, comments on its posts, and its messages",
+    "x": "posts and replies you propose (post_on_social, engage_on_x); profiles and posts read",
+    "tiktok": "how their videos did (how_my_posts_did) and their comments (read_tiktok_comments)",
+    "telegram": "announcements you propose (post_to_telegram), through their bot",
+    "zoho": "the pipeline (crm_pipeline), checks before outreach (crm_lookup), and leads added once approved",
+    "hubspot": "the pipeline (crm_pipeline), checks before outreach (crm_lookup), and leads added once approved",
+    "googlesheets": "sheets they share a link to (read_sheet)",
+    "notion": "their pages (search_notion, read_notion_page) and pages you propose (write_notion_page)",
+    "slack": "what the team said (search_slack) and messages you propose (post_to_slack)",
+    "asana": "their open tasks (list_tasks) and follow-ups you propose (create_follow_up_task)",
+    "calendly": "their booking links (booking_links) and who booked (calendly_meetings)",
+}
+
+
+def render_apps(apps: list[AppStatus]) -> str:
+    """What the Lace is told about the founder's apps, so it never claims one
+    is connected, or not, without checking."""
+    lines = []
+    for app in apps:
+        if not app.connected:
+            continue
+        whose = "this Lace's own account" if app.account == "own" else "the founder's shared account"
+        name = f" ({app.account_name})" if app.account_name else ""
+        if app.needs_attention:
+            lines.append(f"- {app.label}: connected{name} but needs the founder to sign in again in this Lace's "
+                         "settings (Apps & accounts); until then you can't use it.")
+        elif not app.enabled:
+            lines.append(f"- {app.label}: connected{name} but switched off for you in this Lace's settings; you "
+                         "can't use it until the founder switches it on.")
+        else:
+            uses = APP_USES.get(app.platform, "")
+            lines.append(f"- {app.label}: on, {whose}{name}." + (f" {uses[:1].upper()}{uses[1:]}." if uses else ""))
+    missing = [app.label for app in apps if not app.connected]
+    if missing:
+        lines.append(f"- Not connected: {', '.join(missing)}. The founder connects apps in this Lace's settings, "
+                     "under Apps & accounts.")
+    return ("Your apps (this is current: when the founder asks whether one is connected, answer from this list, "
+            "and never say one works when it isn't on here):\n" + "\n".join(lines))
 
 
 def render_running(jobs: list[RunningJob]) -> str | None:
