@@ -217,6 +217,9 @@ class Settings(BaseSettings):
     # How far back (days) research may look for sources. Kept short so the
     # analysis reflects CURRENT conditions, not history.
     market_recency_days: int = 365
+    # A lead's reason to reach out now (its trigger) older than this isn't
+    # current, whatever the date of the page that mentions it.
+    lead_trigger_max_age_days: int = 180
     competitor_search_timeout_s: float = 20.0
     competitor_scrape_timeout_s: float = 30.0
     # Opening a new Lace's website before it is made: one that can't be read is refused.

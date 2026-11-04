@@ -237,3 +237,29 @@ def test_contact_pages_hang_off_the_site_root_and_skip_job_boards(monkeypatch):
     fetched.clear()
     listing = _account().model_copy(update={"website": "https://www.brightermonday.co.ke/listings/procurement-officer"})
     assert contacts._site_pages(listing, None) == [] and fetched == []
+
+
+@pytest.mark.parametrize("value, day", [
+    ("2026-03-14", "2026-03-14"), ("2026-03-14T09:00:00Z", "2026-03-14"), ("2025-12", "2025-12-31"),
+    ("2026-02", "2026-02-28"), ("2025", "2025-12-31"), ("last week", None), (None, None), ("2026-13", None),
+])
+def test_a_trigger_date_is_read_generously(value, day):
+    from datetime import date
+    assert discovery.trigger_day(value) == (date.fromisoformat(day) if day else None)
+
+
+def test_a_trigger_from_long_ago_is_no_reason_to_reach_out_now(monkeypatch):
+    """SunCulture's 'why now' was a TIME100 listing from October 2025, shown in November 2026."""
+    from datetime import date
+
+    class Today(date):
+        @classmethod
+        def today(cls):
+            return date(2026, 11, 4)
+    monkeypatch.setattr(discovery, "date", Today)
+    old = _named("SunCulture", "sunculture.com", "CEO named to TIME100 Climate 2025")
+    fresh = _named("Grofunder", "grofunder.com", "Launched its investor platform")
+    undated = _named("Acme", "acme.example", "Acme is hiring two ML engineers")
+    old.trigger_event.date, fresh.trigger_event.date = "2025-10-30", "2026-09"
+    kept = discovery.verify_accounts({"accounts": AccountList(accounts=[old, fresh, undated])})
+    assert [a.name for a in kept["accounts"].accounts] == ["Grofunder", "Acme"]

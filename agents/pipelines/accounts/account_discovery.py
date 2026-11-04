@@ -274,6 +274,9 @@ def extract_accounts(state: IcpSessionState) -> dict:
         "in the research context and MUST have a `trigger_event` — a current, verifiable signal observed "
         "in the sources that makes outreach timely now. If a candidate has no current trigger, exclude it. "
         "Never invent a target, a trigger, or a source. Leave `socials` empty — enrichment fills it.\n"
+        f"- Give each trigger its `date` as the source states it (when the event happened, not when the page "
+        f"was published). Today is {date.today().isoformat()}: a trigger from more than "
+        f"{get_settings().lead_trigger_max_age_days // 30} months ago is not current, so exclude that target.\n"
         f"  {_trigger_line()}\n"
         "- For each target set: name, account_type (company/community/event/creator/platform), "
         "a one-to-two sentence `summary` of what the target does and who it serves (from the sources), "
@@ -805,6 +808,33 @@ def _trigger_names_account(acc: AccountRecord, source_text: str) -> bool:
     return name_in_text(acc.name, source_text)
 
 
+def trigger_day(value: str | None) -> date | None:
+    """The last day a trigger's stated date can mean (YYYY-MM-DD, YYYY-MM or
+    YYYY), so a month or year is read generously; None when unreadable."""
+    text = (value or "").strip()
+    try:
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}.*", text):
+            return date.fromisoformat(text[:10])
+        if re.fullmatch(r"\d{4}-\d{2}", text):
+            year, month = int(text[:4]), int(text[5:7])
+            if not 1 <= month <= 12:
+                return None
+            return date(year + month // 12, month % 12 + 1, 1) - timedelta(days=1)
+        if re.fullmatch(r"\d{4}", text):
+            return date(int(text), 12, 31)
+    except ValueError:
+        return None
+    return None
+
+
+def stale_trigger(trigger: TriggerEvent, today: date, max_age_days: int) -> bool:
+    """Whether a trigger's own date puts it past the age that still makes it
+    a reason to reach out now. An undated one isn't judged stale here: the
+    page it came from already passed the search's recency gate."""
+    day = trigger_day(trigger.date)
+    return day is not None and (today - day).days > max_age_days
+
+
 def verify_accounts(state: IcpSessionState) -> dict:
     """Hard-constraint pass: drop trigger-less targets, require the trigger's
     source to exist in the retrieved docs, dedupe by domain (or platform::name
@@ -832,6 +862,11 @@ def verify_accounts(state: IcpSessionState) -> dict:
             continue
         if acc.trigger_event is None:
             logger.warning(f"❌ Dropping '{acc.name}' — no current trigger_event.")
+            continue
+        if stale_trigger(acc.trigger_event, date.today(), get_settings().lead_trigger_max_age_days):
+            logger.info("Dropping %s -- its trigger is from %s, too long ago to be a reason to reach out now",
+                        acc.name, acc.trigger_event.date)
+            report(f"Dropped {acc.name}: its news is from {acc.trigger_event.date}")
             continue
         src = acc.trigger_event.source if isinstance(acc.trigger_event, TriggerEvent) else None
         if not src:
