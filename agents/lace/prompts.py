@@ -190,6 +190,11 @@ PRIVATE_CHAT_NOTE = """This is a private chat with {who}, one of the startup's f
 - Drafts you write go to the team's Messaging as usual, marked as {who}'s."""
 
 
+# How the Lace tells a fact's origin apart in its brief: the founder's word
+# outranks the site, and the web is what others say.
+_ORIGIN_MARKS = {"user": " (the founder said)", "research": " (from the web)"}
+
+
 def render_brief(facts: list[Fact], cap: int = BRIEF_TOKEN_CAP) -> str:
     """Facts grouped by topic, the founder's own word first and marked, then by
     confidence, cut to `cap` tokens."""
@@ -204,7 +209,7 @@ def render_brief(facts: list[Fact], cap: int = BRIEF_TOKEN_CAP) -> str:
     used = 0
     for topic in FACT_TOPICS:
         for fact in by_topic.get(topic, []):
-            mark = " (the founder said)" if fact.origin == "user" else ""
+            mark = _ORIGIN_MARKS.get(fact.origin, "")
             line = f"- [{topic}]{mark} {fact.claim}"
             cost = count_tokens(line)
             if used + cost > cap:
