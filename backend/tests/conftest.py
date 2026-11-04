@@ -193,11 +193,18 @@ def owned(client, user, seed_workspace):
     }
 
 
+# How long a test's leftover runs may take to settle before cleanup goes on.
+DRAIN_TIMEOUT_S = 30
+
+
 @pytest.fixture(autouse=True)
 async def drain_run_tasks(clean_tables):
     """Let run tasks finish before table cleanup. A run marks itself completed
     a moment before writing its last event; cleanup's synchronous TRUNCATE
-    would otherwise block the event loop that write needs."""
+    would otherwise block the event loop that write needs. A run's end can
+    start more (the wake it queued, the next job waiting), so this drains
+    until none is left."""
     yield
-    if run_manager._tasks:
-        await asyncio.gather(*run_manager._tasks.values(), return_exceptions=True)
+    async with asyncio.timeout(DRAIN_TIMEOUT_S):
+        while run_manager._tasks:
+            await asyncio.gather(*list(run_manager._tasks.values()), return_exceptions=True)
