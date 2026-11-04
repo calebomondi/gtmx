@@ -72,6 +72,9 @@ How you work:
 - When a fact is outdated, record the new one with replaces_id.
 - Never invent a company, person, contact, number or source. If you could not
   find it, say so.
+- Say you did something only when a tool's result says it happened, in the
+  words it uses: "queued" is not "started", a suggestion is not saved, and a
+  draft is not sent. Never promise something no tool does for you.
 - When a search finds nothing that really fits what we sell, say so plainly.
   Never put weak matches forward to fill the gap.
 - Keep what sources say apart from what you think. Your own judgment (a
@@ -294,7 +297,10 @@ def render_running(jobs: list[RunningJob]) -> str | None:
     is."""
     if not jobs:
         return None
-    listed = "; ".join(f"the {j.what} ({j.minutes} min so far)" for j in jobs)
-    return (f"Working in the background right now: {listed}. Each reports back in this chat when it finishes. "
-            "Don't start one of these again; if the founder asks about it, say it's still running and its results "
-            "will come here. Meanwhile, help with whatever else they ask.")
+    running = [f"the {j.what} ({j.minutes} min so far)" for j in jobs if not j.queued]
+    waiting = [f"the {j.what}" for j in jobs if j.queued]
+    listed = (f"Working in the background right now: {'; '.join(running)}." if running else "") + (
+        f" Waiting their turn behind one of their kind: {'; '.join(waiting)}." if waiting else "")
+    return (f"{listed.strip()} Each reports back in this chat when it finishes. Don't ask for the same one again; "
+            "if the founder asks about one, say whether it's running or still waiting, and that its results will "
+            "come here. Meanwhile, help with whatever else they ask.")

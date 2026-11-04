@@ -8,7 +8,7 @@ from langchain_core.messages import AIMessage
 
 from agents.lace.store import JobRefused
 from agents.schemas.regulations import JURISDICTION_PATTERN, Jurisdiction
-from agents.schemas.lace import CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Fact, ItemsChanged, NamedItem, Suggestions, LaceProfile, NewFact, SourcePage
+from agents.schemas.lace import CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Fact, ItemsChanged, JobStart, NamedItem, Suggestions, LaceProfile, NewFact, SourcePage
 
 
 class MemoryStore:
@@ -145,16 +145,16 @@ class MemoryStore:
 
 
 class RecordingJobs:
-    def __init__(self, refuse: str | None = None):
+    def __init__(self, refuse: str | None = None, ahead: int = 0):
         self.started: list[tuple[str, dict]] = []
-        self.refuse = refuse
+        self.refuse, self.ahead = refuse, ahead
         self.busy: list = []
 
     async def start(self, kind, params):
         if self.refuse:
             raise JobRefused(self.refuse)
         self.started.append((kind, params))
-        return f"job-{len(self.started)}"
+        return JobStart(id=f"job-{len(self.started)}", ahead=self.ahead)
 
     async def running(self):
         return list(self.busy)

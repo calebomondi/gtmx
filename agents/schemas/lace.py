@@ -208,7 +208,14 @@ class NamedItem(BaseModel):
 class RunningJob(BaseModel):
     """A background job of the Lace's still working, as it is told about it."""
     what: str = Field(description="e.g. 'search for target accounts'")
-    minutes: int = Field(description="How long it has run so far")
+    minutes: int = Field(description="How long it has run (or waited) so far")
+    queued: bool = Field(default=False, description="Waiting for one of its kind to finish before it starts")
+
+
+class JobStart(BaseModel):
+    """What asking for a background job did: started it, or queued it."""
+    id: str
+    ahead: int = Field(default=0, description="Jobs of its kind running or waiting before it; 0 when it started now")
 
 
 class ItemsChanged(BaseModel):

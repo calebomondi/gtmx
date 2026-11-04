@@ -34,11 +34,14 @@ async def test_brief_rides_in_the_system_prompt(settings):
 
 async def test_the_lace_knows_what_runs_in_the_background(store, settings):
     jobs = RecordingJobs()
-    jobs.busy = [RunningJob(what="search for target accounts", minutes=3)]
+    jobs.busy = [RunningJob(what="search for target accounts", minutes=3),
+                 RunningJob(what="search for target accounts", minutes=1, queued=True)]
     model = ScriptedModel(AIMessage(content="It's still running."), AIMessage(content="ok"))
     await build_lace_graph(store, settings=settings, jobs=jobs, model_step=model).ainvoke(_ask("any news?"))
     notes = [m.content for m in model.calls[0][0] if isinstance(m, SystemMessage)]
-    assert any("the search for target accounts (3 min so far)" in n and "Don't start one" in n for n in notes)
+    assert any("Working in the background right now: the search for target accounts (3 min so far)." in n
+               and "Waiting their turn behind one of their kind: the search for target accounts." in n
+               and "Don't ask for the same one again" in n for n in notes)
     # Nothing running: nothing said about it.
     jobs.busy = []
     await build_lace_graph(store, settings=settings, jobs=jobs, model_step=model).ainvoke(_ask("hi"))
