@@ -38,6 +38,27 @@ class AppStatus(BaseModel):
 
 
 class LaceApps(Protocol):
+    async def email_search(self, query: str, days: int) -> list[dict] | None:
+        """Mail in the founder's Gmail matching a Gmail search query, within the
+        last `days`, newest first, bounded: {thread_id, from, subject, date,
+        snippet}. None when no Gmail is on for this Lace. Raises AppError."""
+        ...
+
+    async def email_thread(self, thread_id: str) -> list[dict] | None:
+        """One Gmail thread's messages, oldest first: {from, date, text},
+        each bounded. None when no Gmail is on. Raises AppError."""
+        ...
+
+    async def calendar_events(self, days_ahead: int) -> list[dict] | None:
+        """The founder's Google Calendar events from now: {title, start, end,
+        attendees: [{name, email}]}. None when it isn't on. Raises AppError."""
+        ...
+
+    async def x_mentions(self) -> list[dict] | None:
+        """Recent posts on X mentioning the founder's connected account:
+        {author, handle, text, date, url}. None when X isn't on. Raises AppError."""
+        ...
+
     async def overview(self) -> list[AppStatus]:
         """Every app: connected or not, whose account, and whether this Lace
         may use it. Raises AppError when it can't be found out."""

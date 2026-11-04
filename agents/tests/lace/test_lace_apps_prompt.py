@@ -20,7 +20,8 @@ def test_each_app_says_whether_the_lace_can_use_it():
     text = render_apps([GMAIL, SLACK, X, HUBSPOT, NOTION])
     lines = text.splitlines()
     assert lines[1] == ("- Gmail: on, the founder's shared account (caleb@thalace.com). The emails the founder "
-                        "approves go out from it, and replies to them come back to you.")
+                        "approves go out from it, replies come back to you, and you can search and read their mail "
+                        "(search_email, read_email_thread).")
     assert "Slack: connected but switched off for you" in lines[2]
     assert "X: connected but needs the founder to sign in again" in lines[3]
     assert lines[4].startswith("- Notion: on, this Lace's own account. Their pages (search_notion")

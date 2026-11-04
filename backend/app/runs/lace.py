@@ -141,7 +141,7 @@ def _graph(thread: LaceThread, jobs: LaceJobs | None = None, actor_id: uuid.UUID
     In a member's private chat it works on their finds and cannot change the
     team's."""
     store = DbLaceStore(AsyncSessionLocal, thread.lace_id, actor_id, thread.owner_id)
-    apps = DbLaceApps(AsyncSessionLocal, thread.lace_id)
+    apps = DbLaceApps(AsyncSessionLocal, thread.lace_id, actor_id)
     speaker = speaker_note(who)
     if thread.owner_id is None:
         return build_lace_graph(store, checkpointer=get_checkpointer(), jobs=jobs, apps=apps,

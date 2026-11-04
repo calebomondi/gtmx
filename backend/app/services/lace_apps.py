@@ -13,6 +13,7 @@ from agents.lace.apps import AppError, AppStatus, CommentsOn, XRecord
 from backend.app.database.lace_models import Lace, LaceApp, LaceChannel
 from backend.app.services import connections as connection_service
 from backend.app.services import crm, lace_app_settings
+from backend.app.services.inbox import mail_text
 from backend.app.services.lace_channels import items
 from config import settings
 from data_sources.socials import x_api
@@ -23,6 +24,17 @@ from utils.log import logger
 
 # How long listing the apps may take before a turn goes on without the list.
 OVERVIEW_TIMEOUT_S = 8.0
+# Reading the founder's mail, calendar and mentions: how much comes back.
+EMAIL_RESULTS = 15
+THREAD_MESSAGES = 20
+EMAIL_CHARS = 2_000
+CALENDAR_EVENTS = 50
+X_MENTIONS = 20
+_GMAIL_SEARCH = "GMAIL_FETCH_EMAILS"
+_GMAIL_THREAD = "GMAIL_FETCH_MESSAGE_BY_THREAD_ID"
+_CALENDAR_EVENTS = "GOOGLECALENDAR_EVENTS_LIST"
+_X_ME = "TWITTER_USER_LOOKUP_ME"
+_X_MENTIONS = "TWITTER_GET_USER_MENTIONS"
 # Composio tools, verified against the live catalog.
 _X_USER = "TWITTER_USER_LOOKUP_BY_USERNAME"
 _X_POST = "TWITTER_POST_LOOKUP_BY_POST_ID"
@@ -61,9 +73,79 @@ class _Live:
 
 
 class DbLaceApps:
-    def __init__(self, sessions: async_sessionmaker[AsyncSession], lace_id: uuid.UUID):
+    def __init__(self, sessions: async_sessionmaker[AsyncSession], lace_id: uuid.UUID,
+                 reader_id: uuid.UUID | None = None):
+        """`reader_id`: who the turn works for; only the Lace's owner may have
+        it read their own mail and calendar (see _personal)."""
         self._sessions = sessions
         self._lace_id = lace_id
+        self._reader_id = reader_id
+
+    async def _personal(self, platform: str) -> _Live | None:
+        """The live account for reading `platform`'s private content (mail,
+        calendar). An account connected for this Lace belongs to the startup,
+        so the team reads it; the founder's own shared one only they do."""
+        live = await self._live(platform)
+        if live is None or live.entity != connection_service.founder_entity(await self._owner()):
+            return live
+        if self._reader_id != await self._owner():
+            raise AppError(f"This {connection_service.label(platform)} is the Lace owner's own account: only they "
+                           "can have you read it. Ask them, or connect one for this Lace in its settings.")
+        return live
+
+    async def _owner(self) -> uuid.UUID | None:
+        async with self._sessions() as session:
+            lace = await session.get(Lace, self._lace_id)
+        return lace.user_id if lace else None
+
+    async def email_search(self, query: str, days: int) -> list[dict] | None:
+        live = await self._personal("gmail")
+        if live is None:
+            return None
+        data = await self._run(live, "gmail", _GMAIL_SEARCH, {
+            "query": f"{query} newer_than:{days}d".strip(), "max_results": EMAIL_RESULTS, "include_payload": False})
+        return [{"thread_id": m.get("threadId"), "from": m.get("sender"), "subject": m.get("subject"),
+                 "date": m.get("messageTimestamp"), "snippet": mail_text(m).strip()[:TEXT_CHARS]}
+                for m in _listed(data, "messages")[:EMAIL_RESULTS]]
+
+    async def email_thread(self, thread_id: str) -> list[dict] | None:
+        live = await self._personal("gmail")
+        if live is None:
+            return None
+        data = await self._run(live, "gmail", _GMAIL_THREAD, {"thread_id": thread_id})
+        return [{"from": m.get("sender"), "date": m.get("messageTimestamp"), "text": mail_text(m).strip()[:EMAIL_CHARS]}
+                for m in _listed(data, "messages")[:THREAD_MESSAGES]]
+
+    async def calendar_events(self, days_ahead: int) -> list[dict] | None:
+        live = await self._personal("googlecalendar")
+        if live is None:
+            return None
+        now = datetime.now(UTC)
+        data = await self._run(live, "googlecalendar", _CALENDAR_EVENTS, {
+            "timeMin": now.isoformat(), "timeMax": (now + timedelta(days=days_ahead)).isoformat(),
+            "singleEvents": True, "orderBy": "startTime", "maxResults": CALENDAR_EVENTS})
+        return [{"title": e.get("summary") or "(no title)", "start": _when(e.get("start")), "end": _when(e.get("end")),
+                 "attendees": [{"name": a.get("displayName"), "email": a.get("email")}
+                               for a in e.get("attendees") or [] if isinstance(a, dict) and not a.get("self")]}
+                for e in _listed(data, "items")[:CALENDAR_EVENTS]]
+
+    async def x_mentions(self) -> list[dict] | None:
+        live = await self._live("x")
+        if live is None:
+            return None
+        me = x_api._data(await self._run(live, "x", _X_ME, {}) or {})
+        if not me.get("id"):
+            raise AppError("X didn't say which account is connected; try again later.")
+        data = await self._run(live, "x", _X_MENTIONS, {
+            "id": me["id"], "max_results": X_MENTIONS, "expansions": ["author_id"],
+            "tweet_fields": ["created_at"], "user_fields": ["username", "name"]})
+        record = data if isinstance(data, dict) else {}
+        users = {u.get("id"): u for u in ((record.get("includes") or {}).get("users") or []) if isinstance(u, dict)}
+        posts = record.get("data") if isinstance(record.get("data"), list) else []
+        return [{"author": users.get(p.get("author_id"), {}).get("name"),
+                 "handle": users.get(p.get("author_id"), {}).get("username"), "text": (p.get("text") or "")[:TEXT_CHARS],
+                 "date": p.get("created_at"), "url": f"https://x.com/i/web/status/{p.get('id')}"}
+                for p in posts[:X_MENTIONS] if isinstance(p, dict)]
 
     async def overview(self) -> list[AppStatus]:
         try:
@@ -345,3 +427,16 @@ def _notion_title(record: dict) -> str:
 def _comment(platform: str, post_url, post_text, comment_id, author, text, date) -> dict:
     return {"platform": platform, "post_url": post_url, "post_text": (post_text or "")[:TEXT_CHARS],
             "comment_id": comment_id, "author": author, "text": (text or "")[:TEXT_CHARS], "date": date}
+
+
+def _listed(data, key: str) -> list[dict]:
+    """A list in a Composio result, whether or not it wraps the API's own."""
+    found = data.get(key) if isinstance(data, dict) else None
+    if found is None and isinstance(data, dict) and isinstance(data.get("data"), dict):
+        found = data["data"].get(key)
+    return [item for item in found or [] if isinstance(item, dict)]
+
+
+def _when(moment) -> str | None:
+    """A calendar event's start or end: its time, or its date for all-day events."""
+    return (moment.get("dateTime") or moment.get("date")) if isinstance(moment, dict) else None

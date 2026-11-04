@@ -124,7 +124,8 @@ def reply_only(text: str) -> str:
     return text[:cut].rstrip() or text.strip()
 
 
-def _text(message: dict) -> str:
+def mail_text(message: dict) -> str:
+    """A fetched message's text: its body, else its preview."""
     for key in ("messageText", "preview"):
         value = message.get(key)
         if isinstance(value, str) and value.strip():
@@ -144,7 +145,7 @@ def _inbound(sent: Outreach, message: dict, status: str) -> Outreach:
         recipient_name=_display_name(sender) or sent.recipient_name,
         recipient_company=sent.recipient_company, recipient_address=_address(sender) or None,
         subject=(message.get("subject") or "")[:255] or None,
-        body=reply_only(_text(message))[:_BODY_CHARS],
+        body=reply_only(mail_text(message))[:_BODY_CHARS],
         sent_at=timestamp(message.get("messageTimestamp")),
     )
 
@@ -154,7 +155,7 @@ def _bounced_send(message: dict, threads: dict[str, Outreach]) -> Outreach | Non
     text names its recipient."""
     if message.get("threadId") in threads:
         return threads[message["threadId"]]
-    text = _text(message).lower()
+    text = mail_text(message).lower()
     return next((s for s in threads.values() if s.recipient_address and s.recipient_address.lower() in text), None)
 
 

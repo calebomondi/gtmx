@@ -321,13 +321,16 @@ def system_prompt(profile: LaceProfile, facts: list[Fact], icp: ICP | None = Non
 # What the Lace does with each app, through its tools. Sending and posting
 # only ever happen on the founder's approval.
 APP_USES = {
-    "gmail": "the emails the founder approves go out from it, and replies to them come back to you",
+    "gmail": ("the emails the founder approves go out from it, replies come back to you, and you can search and "
+              "read their mail (search_email, read_email_thread)"),
     "outlook": "the emails the founder approves go out from it, and replies to them come back to you",
-    "googlecalendar": "free times are offered from it when a reply asks for a meeting",
+    "googlecalendar": ("their meetings ahead (my_calendar), and free times are offered from it when a reply asks "
+                       "for a meeting"),
     "linkedin": "posts you propose (post_on_social) go out on it once approved; it can't be read",
     "instagram": "comments on their posts (read_my_comments) and messages to the linked account",
     "facebook": "posts on the linked Page you propose, comments on its posts, and its messages",
-    "x": "posts and replies you propose (post_on_social, engage_on_x); profiles and posts read",
+    "x": ("posts and replies you propose (post_on_social, engage_on_x); profiles and posts read, and who "
+          "mentions them (my_x_mentions)"),
     "tiktok": "how their videos did (how_my_posts_did) and their comments (read_tiktok_comments)",
     "telegram": "announcements you propose (post_to_telegram), through their bot",
     "zoho": "the pipeline (crm_pipeline), checks before outreach (crm_lookup), and leads added once approved",
