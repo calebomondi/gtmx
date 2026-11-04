@@ -177,9 +177,9 @@ class RecordingJobs:
         return list(self.busy)
 
 
-def make_fact(id: str, claim: str, topic="offer", confidence="high") -> Fact:
+def make_fact(id: str, claim: str, topic="offer", confidence="high", origin="crawl") -> Fact:
     return Fact(id=id, topic=topic, claim=claim, source_url="https://acme.test",
-                confidence=confidence, recorded_at=datetime.now(timezone.utc))
+                confidence=confidence, origin=origin, recorded_at=datetime.now(timezone.utc))
 
 
 class ScriptedModel:
