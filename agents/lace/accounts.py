@@ -52,15 +52,15 @@ def _default_assess(offer: str, account: str, seller: str) -> AccountFit:
 
 
 def find_accounts(profile: LaceProfile, facts: list[Fact], icp: ICP, exclude_domains: list[str],
-                  country: str | None = None, discover: Discover = run_account_discovery_by_country,
+                  countries: list[str] | None = None, discover: Discover = run_account_discovery_by_country,
                   assess: Assess = _default_assess,
                   instructions: str = "") -> list[tuple[AccountRecord, AccountFit | None]]:
     """Target accounts with a current trigger, each with the case for it (None
-    where the case could not be made). `country` narrows the search to one
-    place; otherwise the ICP's geographies are searched one by one.
-    `instructions` are the team's standing instructions for leads, as lines."""
-    if country:
-        icp = icp.model_copy(update={"geo": [country]})
+    where the case could not be made). `countries` are the places searched,
+    one by one; otherwise the ICP's geographies are. `instructions` are the
+    team's standing instructions for leads, as lines."""
+    if countries:
+        icp = icp.model_copy(update={"geo": list(countries)})
     state = {
         "offer_name": profile.startup_name or profile.website,
         "icp_data": icp,
@@ -70,9 +70,9 @@ def find_accounts(profile: LaceProfile, facts: list[Fact], icp: ICP, exclude_dom
         "messages": [],
     }
     accounts = list(getattr(discover(state).get("accounts"), "accounts", None) or [])
-    if country:
+    if countries and len(countries) == 1:
         # The search was scoped to it; discovery does not always say so per record.
-        accounts = [a if a.geo else a.model_copy(update={"geo": country}) for a in accounts]
+        accounts = [a if a.geo else a.model_copy(update={"geo": countries[0]}) for a in accounts]
 
     offer_facts = [f for f in facts if f.topic in ("offer", "pricing", "positioning", "customers")]
     offer = render_brief(offer_facts, cap=OFFER_TOKENS)

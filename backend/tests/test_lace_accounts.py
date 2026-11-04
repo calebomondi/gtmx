@@ -38,19 +38,23 @@ def test_search_saves_accounts_and_the_lace_reports_back(client, lace, lace_runt
     _with_icp(lace)
     seen = {}
 
-    def fake(profile, facts, icp, exclude, country, instructions=""):
-        seen.update(exclude=exclude, country=country, industries=icp.industries)
+    def fake(profile, facts, icp, exclude, countries, instructions=""):
+        seen.update(exclude=exclude, countries=countries, industries=icp.industries)
         return [_found("Weak", "weak"), _found("Strong", "strong"), _found("Unmade", None)]
 
     monkeypatch.setattr(lace_jobs, "find_accounts", fake)
-    lace_runtime.extend([_call("find_accounts", {"country": "Kenya"}), AIMessage(content="On it."),
+    lace_runtime.extend([_call("find_accounts", {"countries": ["Kenya", "Nigeria"]}), AIMessage(content="On it."),
                          AIMessage(content="Strong raised a round and needs payroll.")])
-    client.post(f"{API}/laces/{lace}/messages", json={"text": "find me customers in Kenya"})
+    client.post(f"{API}/laces/{lace}/messages", json={"text": "find me customers in Kenya and Nigeria"})
     turns = client.portal.call(_wait_for_turns, lace, 2)
 
-    assert seen == {"exclude": ["acme.test", "rival.test"], "country": "Kenya", "industries": ["Clinics"]}
+    assert seen == {"exclude": ["acme.test", "rival.test"], "countries": ["Kenya", "Nigeria"],
+                    "industries": ["Clinics"]}
     update = turns[-1].input["updates"][0]
-    assert "in Kenya finished: 2 leads (2 new, 0 already on file)" in update and "Strong raised a round" in update
+    assert "in Kenya, Nigeria finished: 2 leads (2 new, 0 already on file)" in update
+    # Each lead says where it is, and a place that gave none is named.
+    assert "Strong (https://www.strong.test/; Kenya): Strong raised a round" in update
+    assert "No lead turned up in Nigeria: say so plainly." in update
     # A weak fit is left out, named for the Lace only, never put forward.
     assert "1 weaker match left out: Weak. Don't put these forward." in update
     # Found accounts wait for the founder: none is a target until saved.
@@ -72,7 +76,7 @@ def test_no_icp_means_the_search_works_one_out_first(client, lace, lace_runtime,
     monkeypatch.setattr(lace_jobs.lace_icp, "define_icp",
                         lambda profile, facts, rivals, guidance: ICP(buyer_type="b2b", industries=["Clinics"]))
 
-    def fake(profile, facts, icp, exclude, country, instructions=""):
+    def fake(profile, facts, icp, exclude, countries, instructions=""):
         seen["industries"] = icp.industries
         return [_found("Alpha", "strong")]
     monkeypatch.setattr(lace_jobs, "find_accounts", fake)

@@ -88,7 +88,8 @@ _STEP_TEXT = {
     "find_regulations": lambda a: "Starting a search for the laws and regulations that apply",
     "list_regulations": lambda a: "Checking the laws and regulations on file",
     "update_regulations": lambda a: "Updating the laws and regulations we track",
-    "find_accounts": lambda a: "Starting a search for customers" + (f" in {a['country']}" if a.get("country") else ""),
+    "find_accounts": lambda a: "Starting a search for customers" + (f" in {', '.join(a['countries'])}"
+                                                                     if a.get("countries") else ""),
 }
 
 # Marks a message on the thread as an update for the Lace, not the founder's words.

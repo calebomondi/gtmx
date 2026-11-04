@@ -235,7 +235,7 @@ async def accounts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> N
             if icp is None:
                 icp = await _define_icp(store, None)
             rules = await _instructions(lace_id, "leads")
-            found = await asyncio.to_thread(find_accounts, profile, facts, icp, exclude, params.get("country"),
+            found = await asyncio.to_thread(find_accounts, profile, facts, icp, exclude, params.get("countries"),
                                             instructions=rules)
     except Exception as exc:
         await report_failure(lace_id, "search for leads", exc, params)
@@ -243,7 +243,7 @@ async def accounts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> N
     found, weak = good_fits(found, lambda item: item[1].strength if item[1] else None)
     async with AsyncSessionLocal() as db, db.begin():
         new, refreshed = await lace_accounts.upsert_found(db, lace_id, run_id, found, private_to(params))
-        await job_update(db, lace_id, params, accounts_update(found, new, refreshed, params.get("country"),
+        await job_update(db, lace_id, params, accounts_update(found, new, refreshed, params.get("countries") or [],
                                                               [record.name for record, _ in weak]), run_id)
         if new:
             await job_activity(db, lace_id, params, "accounts_found", f"Found {plural(new, 'new lead')}",
@@ -421,8 +421,16 @@ def _left_out(names: list[str]) -> str:
     return f"\n{plural(len(names), 'weaker match', 'weaker matches')} left out: {shown}. Don't put these forward."
 
 
-def accounts_update(found: list, new: int, refreshed: int, country: str | None, weak: list[str] | None = None) -> str:
-    where = f" in {country}" if country else ""
+def _missed(found: list, countries: list[str]) -> str:
+    """The places searched that gave no lead, so the Lace says so instead of
+    implying they were covered."""
+    places = [(record.geo or "").lower() for record, _ in found]
+    missed = [c for c in countries if not any(c.lower() in place for place in places)]
+    return f"\nNo lead turned up in {', '.join(missed)}: say so plainly." if missed and found else ""
+
+
+def accounts_update(found: list, new: int, refreshed: int, countries: list[str], weak: list[str] | None = None) -> str:
+    where = f" in {', '.join(countries)}" if countries else ""
     if not found:
         checked = (f" It checked {plural(len(weak), 'company', 'companies')}, but none fits what we sell well enough."
                    if weak else "")
@@ -430,14 +438,15 @@ def accounts_update(found: list, new: int, refreshed: int, country: str | None, 
                 f"verifiable reason to buy that fits.{checked} {NOTHING_FITS}")
     lines = []
     for record, fit in found:
-        line = f"{record.name} ({record.website or record.account_type})"
+        line = f"{record.name} ({record.website or record.account_type}; {record.geo or 'place unknown'})"
         if record.trigger_event:
             line += f": {record.trigger_event.event}"
         if fit:
             line += f". Need: {fit.need} [{fit.strength} fit]"
         lines.append(line)
     return (f"The search for leads{where} finished: {len(found)} leads ({new} new, {refreshed} "
-            "already on file), each with a current trigger:\n" + "\n".join(lines) + _left_out(weak or [])
+            "already on file), each with a current trigger:\n" + "\n".join(lines) + _missed(found, countries)
+            + _left_out(weak or [])
             + "\nNew ones wait for the founder to save or dismiss: show them (ids from list_suggestions); once saved, find_contacts finds who to reach.")
 
 

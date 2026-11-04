@@ -161,7 +161,7 @@ def test_lace_finds_customers_in_kenya(client, runtime, user):
     print(f"\n--- ICP industries {icp and icp.get('industries')}, geo {icp and icp.get('geo')}, beachhead {icp and icp.get('beachhead')}")
     assert icp
 
-    job = client.portal.call(manager.start_lace_job, "lace_accounts", user.id, lace_id, {"country": "Kenya"})
+    job = client.portal.call(manager.start_lace_job, "lace_accounts", user.id, lace_id, {"countries": ["Kenya"]})
     job = client.portal.call(_wait_for_status, job.id, {"completed", "failed"}, ACCOUNTS_TIMEOUT_S)
     assert job.status == "completed", job.error
     accounts = client.get(f"{API}/laces/{lace_id}/accounts").json()
