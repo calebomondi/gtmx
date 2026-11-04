@@ -466,5 +466,16 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
         return job_result(start, "Started reading their TikTok comments. You will get an update here when "
                           "it's done.", "reading of TikTok comments")
 
+    @tool(parse_docstring=True)
+    @guarded
+    async def refresh_understanding() -> ToolResult:
+        """Read the startup's website again and look it up on the web, when the founder says the site changed or asks you to re-learn the startup. New facts are noted, and what the site said before and no longer says is dropped; what the founder told you or confirmed stays. Runs in the background; you get an update when it is done."""
+        try:
+            start = await jobs.start("refresh_understanding", {})
+        except JobRefused as exc:
+            return ToolResult.failure(str(exc))
+        return job_result(start, "Started re-reading the site. You will get an update here when it is done.",
+                          "re-read of the site")
+
     return [*tools, find_competitors, check_competitors, find_accounts, define_icp, find_contacts, draft_outreach,
-            find_opportunities, read_tiktok_comments]
+            find_opportunities, read_tiktok_comments, refresh_understanding]
