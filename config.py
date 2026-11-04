@@ -208,6 +208,8 @@ class Settings(BaseSettings):
     # Grace period after boot before the first sweep, so a restart (or a local
     # dev reload) doesn't immediately fan out paid monitoring runs.
     monitor_initial_delay_s: float = 120.0
+    # How often each Lace listens on its social accounts on its own (hours).
+    listening_interval_h: int = 24
 
     # -- Regulations --
     # How often each Lace searches again for the laws and regulations that

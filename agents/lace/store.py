@@ -143,7 +143,7 @@ class LaceStore(Protocol):
 
 JobKind = Literal["find_competitors", "check_competitors", "find_accounts", "find_contacts", "draft_outreach",
                   "find_opportunities", "define_icp", "read_tiktok_comments", "find_regulations",
-                  "refresh_understanding"]
+                  "refresh_understanding", "listen"]
 
 
 class InstructionsFull(Exception):

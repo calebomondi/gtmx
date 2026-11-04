@@ -479,5 +479,16 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
         return job_result(start, "Started re-reading the site. You will get an update here when it is done.",
                           "re-read of the site")
 
+    @tool(parse_docstring=True)
+    @guarded
+    async def listen_now() -> ToolResult:
+        """Listen on the founder's connected X, Instagram and Facebook now: mentions and comments since the last listen, sorted into leads worth engaging, questions, feedback and praise. It also runs on its own once a day. Runs in the background; you get an update when it is done."""
+        try:
+            start = await jobs.start("listen", {})
+        except JobRefused as exc:
+            return ToolResult.failure(str(exc))
+        return job_result(start, "Started listening on their social accounts. You will get an update here when it's "
+                          "done.", "listen on social accounts")
+
     return [*tools, find_competitors, check_competitors, find_accounts, define_icp, find_contacts, draft_outreach,
-            find_opportunities, read_tiktok_comments, refresh_understanding]
+            find_opportunities, read_tiktok_comments, refresh_understanding, listen_now]
