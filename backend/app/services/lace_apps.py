@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from agents.lace.apps import AppError, CommentsOn, XRecord
+from agents.lace.apps import AppError, AppStatus, CommentsOn, XRecord
 from backend.app.database.lace_models import Lace, LaceApp, LaceChannel
 from backend.app.services import connections as connection_service
 from backend.app.services import crm, lace_app_settings
@@ -22,6 +22,8 @@ from data_sources.socials.tiktok import recent_videos as tiktok_videos
 from data_sources.socials.x import recent_posts as x_posts
 from utils.log import logger
 
+# How long listing the apps may take before a turn goes on without the list.
+OVERVIEW_TIMEOUT_S = 8.0
 # Reading the founder's mail, calendar and mentions: how much comes back.
 EMAIL_RESULTS = 15
 THREAD_MESSAGES = 20
@@ -144,6 +146,20 @@ class DbLaceApps:
                  "handle": users.get(p.get("author_id"), {}).get("username"), "text": (p.get("text") or "")[:TEXT_CHARS],
                  "date": p.get("created_at"), "url": f"https://x.com/i/web/status/{p.get('id')}"}
                 for p in posts[:X_MENTIONS] if isinstance(p, dict)]
+
+    async def overview(self) -> list[AppStatus]:
+        try:
+            async with asyncio.timeout(OVERVIEW_TIMEOUT_S), self._sessions() as session:
+                lace = await session.get(Lace, self._lace_id)
+                if lace is None:
+                    return []
+                listed = await lace_app_settings.list_for_lace(session, lace)
+        except Exception as exc:  # noqa: BLE001 -- Composio raises many types; the prompt goes on without the list
+            raise AppError(f"apps unavailable ({type(exc).__name__})") from exc
+        return [AppStatus(platform=a["platform"], label=a["label"], connected=a["status"] is not None,
+                          needs_attention=a["status"] is not None and not a["connected"], enabled=a["enabled"],
+                          account=a["account"], account_name=a["account_name"])
+                for a in listed if a["available"]]
 
     async def _live(self, platform: str) -> _Live | None:
         """The live account this Lace uses for `platform`, if any."""

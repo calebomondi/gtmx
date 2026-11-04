@@ -19,18 +19,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
-from backend.app.database.lace_models import Lace
+from backend.app.database.lace_models import Lace, LaceCompetitor
 from backend.app.runs import events
+from agents.lace.buyers import knows_buyers
 from agents.lace.store import JobRefused
+from agents.lace.tools import BUYER_FACTS_READ
 from agents.schemas.lace import JobStart, RunningJob
 from agents.schemas.lace_ui import BlockAnswer
 from backend.app.runs import lace as lace_runs
 from backend.app.runs.lace import LaceThread
-from backend.app.runs import lace_jobs, regulation_jobs, social_jobs
+from backend.app.runs import lace_jobs, regulation_jobs, social_jobs, understanding_jobs
 from backend.app.runs.errors import user_facing_error
 from backend.app.services import limits
 from backend.app.services import runs as run_service
 from backend.app.services import lace_events
+from backend.app.services.lace_store import DbLaceStore
 from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError, RateLimitedError
 from backend.app.services.runs import TERMINAL_STATUSES, set_run_fields
 from config import settings
@@ -174,9 +177,39 @@ async def _queued_message(lace_id: uuid.UUID, params: dict):
 
 async def start_lace_onboarding(user_id: uuid.UUID, lace_id: uuid.UUID) -> models.Run:
     run = await _start_lace_run("lace_onboarding", user_id, LaceThread(lace_id), None)
+
+    async def then() -> None:
+        await settle_in(user_id, lace_id)
+        await start_next_queued(lace_id)
     _spawn(run.id, user_id, _then_wake(lace_runs.onboarding_segment(run.id, lace_id), user_id, LaceThread(lace_id)),
-           settings.lace_onboarding_timeout_s, then=_next_queued(lace_id))
+           settings.lace_onboarding_timeout_s, then=then)
     return run
+
+
+async def settle_in(user_id: uuid.UUID, lace_id: uuid.UUID) -> list[str]:
+    """Once a Lace has read its site, start what makes it useful before the
+    founder asks: a competitor search when none is on file, and the ideal
+    customer profile when it knows who buys (otherwise its first message asks,
+    in a form). A job refused (a daily cap) is left for the founder to ask
+    for. Returns the run kinds started."""
+    async with AsyncSessionLocal() as db:
+        lace = await db.get(Lace, lace_id)
+        if lace is None or lace.status != "active":
+            return []
+        rivals = await db.scalar(select(func.count()).select_from(LaceCompetitor)
+                                 .where(LaceCompetitor.lace_id == lace_id))
+        has_icp = lace.icp is not None
+    facts = await DbLaceStore(AsyncSessionLocal, lace_id).facts(None, BUYER_FACTS_READ)
+    wanted = ([("lace_competitors", {"focus": None})] if not rivals else []) + (
+        [("lace_icp", {"guidance": None})] if not has_icp and knows_buyers(facts) else [])
+    started = []
+    for kind, params in wanted:
+        try:
+            await start_lace_job(kind, user_id, lace_id, params)
+            started.append(kind)
+        except JobRefused as exc:
+            logger.info("Settling in Lace %s: %s not started: %s", lace_id, kind, exc)
+    return started
 
 
 async def start_lace_turn(user_id: uuid.UUID, thread: LaceThread, text: str, author: dict,
@@ -313,14 +346,16 @@ async def post_brief(user_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UUID
 _TOOL_JOB_RUN_KINDS = {"find_competitors": "lace_competitors", "check_competitors": "lace_monitor",
                        "find_accounts": "lace_accounts", "find_contacts": "lace_contacts", "define_icp": "lace_icp",
                        "draft_outreach": "lace_drafts", "find_opportunities": "lace_opportunities",
-                       "read_tiktok_comments": "lace_comments", "find_regulations": "lace_regulations"}
+                       "read_tiktok_comments": "lace_comments", "find_regulations": "lace_regulations",
+                       "refresh_understanding": "lace_refresh"}
 _JOB_SEGMENTS = {"lace_competitors": lace_jobs.competitors_job, "lace_monitor": lace_jobs.monitor_job,
                  "lace_accounts": lace_jobs.accounts_job, "lace_contacts": lace_jobs.contacts_job,
                  "lace_icp": lace_jobs.icp_job,
                  "lace_drafts": lace_jobs.drafts_job, "lace_reply": lace_jobs.reply_job,
                  "lace_opportunities": lace_jobs.opportunities_job,
                  "lace_comments": social_jobs.tiktok_comments_job,
-                 "lace_regulations": regulation_jobs.regulations_job}
+                 "lace_regulations": regulation_jobs.regulations_job,
+                 "lace_refresh": understanding_jobs.refresh_job}
 # Jobs of one kind run one at a time per Lace; this many more may wait their turn.
 MAX_QUEUED_JOBS = 3
 
@@ -509,7 +544,7 @@ _JOB_NAMES = {"lace_competitors": "competitor search", "lace_monitor": "competit
               "lace_accounts": "search for leads", "lace_contacts": "contact search",
               "lace_icp": "ideal customer profile", "lace_drafts": "drafting", "lace_reply": "reading of replies",
               "lace_opportunities": "opportunity search", "lace_comments": "reading of TikTok comments",
-              "lace_regulations": "search for laws and regulations"}
+              "lace_regulations": "search for laws and regulations", "lace_refresh": "re-read of the site"}
 
 
 async def _report_interrupted_jobs(run_ids: list[uuid.UUID]) -> None:

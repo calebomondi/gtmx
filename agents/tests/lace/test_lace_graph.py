@@ -122,6 +122,9 @@ def test_brief_puts_confident_facts_first_and_respects_its_cap():
     many = [make_fact(str(i), f"Fact number {i} about the offer.") for i in range(400)]
     assert render_brief(many, cap=100).endswith("(more facts on file: use get_facts)")
     assert render_brief([]).startswith("Nothing yet")
+    # What others say is told apart from the site and the founder.
+    web = make_fact("3", "Raised $2M in 2025.", topic="company", origin="research")
+    assert "- [company] (from the web) Raised $2M in 2025." in render_brief([web])
 
 
 def test_dangling_tool_calls_get_an_interrupted_result():

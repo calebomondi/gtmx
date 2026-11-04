@@ -4,8 +4,9 @@ is reported rather than papered over."""
 import re
 
 from agents.lace import onboarding
-from agents.lace.onboarding import candidates, onboard, pick_pages
-from agents.schemas.lace import ExtractedFact, PagePick, SiteUnderstanding
+from agents.context_budget import count_tokens
+from agents.lace.onboarding import candidates, onboard, pick_pages, research_web, share_budget, web_queries
+from agents.schemas.lace import ExtractedFact, PagePick, SiteUnderstanding, WebFacts
 from data_sources.scraping.firecrawl import FirecrawlError, Page, PageFailure, SiteLink
 from lace_fakes import MemoryStore
 
@@ -20,6 +21,10 @@ SITE = [SiteLink(u, t) for u, t in [
 ]]
 CANDIDATES = {"https://www.acme.test/pricing", "https://acme.test/about", "https://acme.test/products/payroll",
               "https://acme.test/customers", "https://acme.test/clinic-os"}
+
+
+def _no_web(startup, website, gist, cfg):
+    return []
 
 
 def _never(messages):
@@ -93,7 +98,7 @@ async def test_onboard_records_cited_facts_and_the_startup_name(monkeypatch, set
         ])
 
     store = MemoryStore()
-    result = await onboard(store, settings, extract=extract, pick=_never)
+    result = await onboard(store, settings, extract=extract, pick=_never, research=_no_web)
 
     assert result.facts_recorded == 2 and result.startup_name == "Acme Health"
     assert result.pages_failed == ["https://acme.test/about"]
@@ -110,17 +115,19 @@ async def test_onboard_reports_its_progress_in_order(monkeypatch, settings):
     _fake_site(monkeypatch, [Page(url="https://acme.test/", title="Acme", markdown="x " * 500)])
     seen: list[tuple[float, str]] = []
     await onboard(MemoryStore(), settings, extract=lambda m: SiteUnderstanding(startup_name="Acme"), pick=_never,
-                  progress=lambda fraction, text: seen.append((fraction, text)))
+                  progress=lambda fraction, text: seen.append((fraction, text)), research=_no_web)
     fractions = [f for f, _ in seen]
-    assert fractions == sorted(fractions) and fractions[-1] == onboarding.UNDERSTOOD
+    assert fractions == sorted(fractions) and fractions[-1] == onboarding.RESEARCHED
     texts = [t for _, t in seen]
     assert texts[:2] == ["Mapping your site", "Choosing the pages to read"] and texts[3] == "Learning what you sell"
+    assert texts[4:] == ["Looking you up on the web", "Noted 0 things about you"]
     assert re.fullmatch(r"Read (\d+) of \1 pages", texts[2])
 
 
 async def test_onboard_reads_the_homepage_when_the_map_fails(monkeypatch, settings):
     read = _fake_site(monkeypatch, [Page(url="https://acme.test", title="", markdown="x " * 500)], map_fails=True)
-    await onboard(MemoryStore(), settings, extract=lambda m: SiteUnderstanding(startup_name="Acme"), pick=_never)
+    await onboard(MemoryStore(), settings, extract=lambda m: SiteUnderstanding(startup_name="Acme"), pick=_never,
+                  research=_no_web)
     assert read["urls"] == ["https://acme.test"]
 
 
@@ -131,7 +138,7 @@ async def test_unreadable_site_records_nothing_and_says_so(monkeypatch, settings
         raise AssertionError("nothing to extract from")
 
     store = MemoryStore()
-    result = await onboard(store, settings, extract=extract, pick=_never)
+    result = await onboard(store, settings, extract=extract, pick=_never, research=_no_web)
     assert result.site_unreadable and result.facts_recorded == 0
     assert await store.facts() == []
 
@@ -149,3 +156,92 @@ def test_opening_message_asks_the_open_questions_or_for_a_description():
                             facts_recorded=0, open_questions=[])
     opening_message("sys", dead, write)
     assert "could not" in seen[1] and "https://acme.test" in seen[1]
+
+
+def test_pages_share_one_budget_and_short_ones_are_read_whole():
+    short, long_a, long_b = "Short page. " * 10, "Long page A. " * 4000, "Long page B. " * 4000
+    out = share_budget([long_a, short, long_b], 6000)
+    assert out[1] == short
+    assert all(count_tokens(t) <= 3000 for t in (out[0], out[2])) and count_tokens(out[0]) > 2500
+    # A one-page site gets the whole budget.
+    [whole] = share_budget(["Only page. " * 3000], 20_000)
+    assert whole == "Only page. " * 3000
+
+
+def _web_hits():
+    return {
+        '"Acme Health"': [{"url": "https://news.test/acme-raises", "title": "Acme raises $2M", "highlights": ["Acme Health, the clinic payroll startup at acme.test, raised $2M."]},
+                          {"url": "https://acme.test/about", "title": "About", "highlights": ["Our own page"]},
+                          {"url": "https://ke.acme.test/", "title": "Acme Kenya", "highlights": ["Our own subdomain"]}],
+        "acme.test": [{"url": "https://news.test/acme-raises", "title": "dup", "highlights": []},
+                      {"url": "https://dir.test/acme", "title": "Acme on a directory", "highlights": ["Founded in Nairobi in 2024."]}],
+    }
+
+
+def test_the_web_adds_facts_from_other_sites_only_never_high():
+    seen = {}
+
+    def extract(messages):
+        seen["system"], seen["listing"] = messages[0].content, messages[1].content
+        return WebFacts(facts=[
+            ExtractedFact(topic="company", claim="Acme Health raised $2M.", source_url="https://news.test/acme-raises", confidence="high"),
+            ExtractedFact(topic="company", claim="Founded in Nairobi in 2024.", source_url="https://dir.test/acme", confidence="low"),
+            ExtractedFact(topic="offer", claim="Made up.", source_url="https://elsewhere.test/", confidence="medium"),
+        ])
+
+    hits = _web_hits()
+    found = research_web("Acme Health", "acme.test", "- Acme sells payroll to clinics.", None,
+                         search=lambda q, cfg: hits[q], extract=extract)
+    assert [(f.claim, f.confidence) for f in found] == [("Acme Health raised $2M.", "medium"),
+                                                        ("Founded in Nairobi in 2024.", "low")]
+    # Its own site is not looked at again, and each page is listed once.
+    assert "acme.test/about" not in seen["listing"] and "ke.acme.test" not in seen["listing"]
+    assert seen["listing"].count("news.test/acme-raises") == 1
+    assert "Acme sells payroll to clinics." in seen["system"]
+
+
+def test_web_queries_are_the_name_and_the_domain():
+    assert web_queries("Acme Health", "https://www.acme.test/") == ['"Acme Health"', "acme.test"]
+
+
+async def test_onboard_records_web_facts_apart_and_goes_on_when_the_web_fails(monkeypatch, settings):
+    _fake_site(monkeypatch, [Page(url="https://acme.test/", title="Acme", markdown="Payroll for clinics. " * 50)])
+
+    def extract(messages):
+        return SiteUnderstanding(startup_name="Acme Health", facts=[ExtractedFact(
+            topic="offer", claim="Acme sells payroll to clinics.", source_url="https://acme.test/", confidence="high")])
+
+    asked = {}
+
+    def research(startup, website, gist, cfg):
+        asked.update(startup=startup, gist=gist)
+        return [ExtractedFact(topic="company", claim="Acme raised $2M.", source_url="https://news.test/a", confidence="medium")]
+
+    store = MemoryStore()
+    result = await onboard(store, settings, extract=extract, pick=_never, research=research)
+    assert (result.facts_recorded, result.from_web) == (2, 1)
+    assert asked == {"startup": "Acme Health", "gist": "- Acme sells payroll to clinics."}
+    assert {(f.claim, f.origin) for f in await store.facts()} == {
+        ("Acme sells payroll to clinics.", "crawl"), ("Acme raised $2M.", "research")}
+
+    def broken(*args):
+        raise RuntimeError("search down")
+
+    store = MemoryStore()
+    result = await onboard(store, settings, extract=extract, pick=_never, research=broken)
+    assert (result.facts_recorded, result.from_web) == (1, 0)
+
+
+async def test_the_lace_can_read_its_site_again(settings):
+    import json
+
+    from agents.lace.tools import build_tools
+    from lace_fakes import RecordingJobs
+    jobs = RecordingJobs()
+    tool = {t.name: t for t in build_tools(MemoryStore(), settings, jobs)}["refresh_understanding"]
+    out = json.loads(await tool.ainvoke({}))
+    assert out["ok"] and out["summary"].startswith("Started re-reading the site")
+    assert jobs.started == [("refresh_understanding", {})]
+    queued = json.loads(await {t.name: t for t in build_tools(MemoryStore(), settings, RecordingJobs(ahead=1))}[
+        "refresh_understanding"].ainvoke({}))
+    assert queued["summary"].startswith("Queued, not started yet: another re-read of the site")

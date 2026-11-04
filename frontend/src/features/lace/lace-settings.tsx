@@ -50,7 +50,7 @@ export function LaceSettings({ laceId, name, status, role, facts, apps, regulati
     apps: <LaceAppsSection laceId={laceId} name={name} apps={apps} />,
     where: <LaceJurisdiction name={name} regulations={regulations} />,
     instructions: <LaceInstructions laceId={laceId} name={name} />,
-    knows: <LaceFacts facts={facts} />,
+    knows: <LaceFacts facts={facts} laceId={laceId} name={name} />,
     documents: <LaceDocuments laceId={laceId} name={name} />,
     manage: <LaceManage laceId={laceId} name={name} status={status} onChanged={onChanged} />,
   }

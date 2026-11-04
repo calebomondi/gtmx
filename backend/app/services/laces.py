@@ -106,12 +106,13 @@ async def delete_lace(db: AsyncSession, lace: Lace) -> None:
 
 
 async def prepare_onboarding_retry(db: AsyncSession, lace: Lace) -> None:
-    """Clears what a failed onboarding saved, so reading the site again
-    doesn't record its facts twice. Only for a Lace that never finished."""
+    """Clears what a failed onboarding saved (the site's facts and what it
+    found on the web), so reading the site again doesn't record them twice.
+    Only for a Lace that never finished: nothing else has recorded facts yet."""
     if lace.status != "onboarding":
         raise ConflictError(f"{lace.name} has already read your site.")
     await ensure_idle(db, lace)
-    await db.execute(delete(LaceFact).where(LaceFact.lace_id == lace.id, LaceFact.origin == "crawl"))
+    await db.execute(delete(LaceFact).where(LaceFact.lace_id == lace.id, LaceFact.origin.in_(("crawl", "research"))))
     await db.commit()
 
 
