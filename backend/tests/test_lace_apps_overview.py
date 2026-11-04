@@ -35,3 +35,13 @@ def test_an_unreachable_composio_is_an_app_error(client, lace):  # noqa: F811
     # Tests can't reach Composio (see conftest), as when it is down.
     with pytest.raises(AppError, match="apps unavailable"):
         client.portal.call(DbLaceApps(AsyncSessionLocal, uuid.UUID(lace)).overview)
+
+
+def test_an_app_read_by_handle_is_listed_even_when_it_cant_be_connected(client, lace, monkeypatch):  # noqa: F811
+    async def listed(db, lace_row):
+        x = _app("x", "X", status=None, connected=False, enabled=True, available=False)
+        return [{**x, "settings": {"handle": "mokuakaleb"}},
+                _app("tiktok", "TikTok", status=None, connected=False, enabled=True, available=False)]
+    monkeypatch.setattr(lace_app_settings, "list_for_lace", listed)
+    [x] = client.portal.call(DbLaceApps(AsyncSessionLocal, uuid.UUID(lace)).overview)
+    assert (x.platform, x.connected, x.handle) == ("x", False, "mokuakaleb")
