@@ -17,11 +17,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from agents.schemas.icp import ICP
 from agents.schemas.opportunities import OpportunitySummary
 from agents.schemas.regulations import Jurisdiction, RegulationStatus, RegulationSummary
-from agents.schemas.lace import ProposedAction, AccountSummary, CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Fact, ItemsChanged, NamedItem, NewContact, SavedKind, SavedVerdict, Suggestions, FactTopic, LaceProfile, NewFact, SourcePage
+from agents.schemas.lace import ProposedAction, AccountSummary, CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Fact, Instruction, InstructionScope, ItemsChanged, NamedItem, NewContact, SavedKind, SavedVerdict, Suggestions, FactTopic, LaceProfile, NewFact, SourcePage
 from backend.app.database.lace_models import Lace, LaceAccount, LaceCompetitor, LaceContact, LaceFact, LaceOutreach, LaceSource
-from backend.app.services import lace_app_actions, lace_accounts, lace_competitors, lace_contacts, lace_documents, lace_finds, lace_opportunities, lace_outreach, lace_regulations
+from backend.app.services import lace_app_actions, lace_accounts, lace_competitors, lace_contacts, lace_documents, lace_finds, lace_instructions, lace_opportunities, lace_outreach, lace_regulations
 from backend.app.services import laces as lace_service
 from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError
+from config import settings
 from backend.app.services.laces import current_facts_query
 
 
@@ -77,6 +78,10 @@ class DbLaceStore:
         self._lace_id = lace_id
         self._actor_id = actor_id
         self._owner_id = owner_id
+
+    @property
+    def lace_id(self) -> uuid.UUID:
+        return self._lace_id
 
     async def _saved(self, session: AsyncSession, kind: SavedKind, limit: int) -> list:
         """The team's saved finds of a kind, then (in a private chat) the member's own."""
@@ -221,6 +226,27 @@ class DbLaceStore:
             except NotFoundError:
                 return None
         return lace_documents.summary(row), row.text
+
+    async def instructions(self) -> list[Instruction]:
+        async with self._sessions() as session:
+            rows = await lace_instructions.list_for_lace(session, self._lace_id, settings.max_instructions_per_lace)
+        return [lace_instructions.summary(r) for r in rows]
+
+    async def add_instruction(self, text: str, applies_to: InstructionScope) -> Instruction:
+        async with self._sessions() as session:
+            row = await lace_instructions.add(session, self._lace_id, text, applies_to, self._actor_id)
+        return lace_instructions.summary(row)
+
+    async def remove_instruction(self, instruction_id: str) -> Instruction | None:
+        row_id = _parse_id(instruction_id)
+        if row_id is None:
+            return None
+        async with self._sessions() as session:
+            try:
+                row = await lace_instructions.remove(session, self._lace_id, row_id)
+            except NotFoundError:
+                return None
+        return lace_instructions.summary(row)
 
     async def set_saved(self, kind: SavedKind, ids: list[str], verdict: SavedVerdict) -> ItemsChanged:
         """Remove items, or save back removed ones. A suggestion is never saved

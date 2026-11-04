@@ -71,7 +71,7 @@ What {startup} sells and to whom:
 {facts}
 
 Its ideal customers:
-{icp}"""
+{icp}{instructions}"""
 
 _EXTRACT_PROMPT = """From the search results below, list real opportunities for
 {startup}. Today is {today}.
@@ -98,6 +98,7 @@ _EXTRACT_PROMPT = """From the search results below, list real opportunities for
 What {startup} sells and to whom:
 {facts}
 
+{instructions}
 Results:
 {results}"""
 
@@ -185,13 +186,18 @@ def find_opportunities(profile: LaceProfile, facts: list[Fact], icp: ICP | None,
                        kinds: Sequence[OpportunityKind] = OPPORTUNITY_KINDS, today: date | None = None,
                        plan: Plan = _default_plan, extract: Extract = _default_extract,
                        search: Search = _default_search, read: Read = _default_read,
-                       check: Check = _default_check) -> list[Opportunity]:
+                       check: Check = _default_check, instructions: str = "") -> list[Opportunity]:
+    """Current, sourced opportunities of these kinds. `instructions` are the
+    team's standing instructions for opportunities, as lines: the searches and
+    what is kept both follow them."""
     today = today or date.today()
     startup = profile.startup_name or profile.website
     brief = render_brief([f for f in facts if f.topic in ("company", "offer", "customers", "market", "icp")])
+    rules = (f"\n\nThe team's standing instructions (follow them; leave out anything they rule out):\n"
+             f"{instructions.strip()}\n" if instructions.strip() else "")
     queries = plan([SystemMessage(content=_PLAN_PROMPT.format(
         startup=startup, today=today.isoformat(), per_kind=QUERIES_PER_KIND, facts=brief, icp=render_icp(icp),
-        kinds="\n".join(f"- {k}: {_KIND_GUIDE[k]}" for k in kinds),
+        kinds="\n".join(f"- {k}: {_KIND_GUIDE[k]}" for k in kinds), instructions=rules,
     )), HumanMessage(content="Write the searches.")]).queries
     wanted = [q for q in queries if q.kind in kinds]
     per_kind: dict[str, int] = {}
@@ -217,7 +223,7 @@ def find_opportunities(profile: LaceProfile, facts: list[Fact], icp: ICP | None,
         for url, hit in results.items()
     )
     extracted = extract([SystemMessage(content=_EXTRACT_PROMPT.format(
-        startup=startup, today=today.isoformat(), facts=brief, results=listing,
+        startup=startup, today=today.isoformat(), facts=brief, results=listing, instructions=rules,
     )), HumanMessage(content="List the opportunities.")]).opportunities
 
     sourced: dict[str, Opportunity] = {}
