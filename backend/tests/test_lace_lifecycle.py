@@ -5,6 +5,7 @@ import uuid
 
 import psycopg
 
+from agents.schemas.lace import NewFact
 from backend.app.runs import lace as lace_runs
 from backend.app.services import connections as connection_service
 from backend.tests.helpers import make_user
@@ -74,6 +75,8 @@ def test_a_failed_onboarding_can_be_tried_again(client, lace_runtime, monkeypatc
 
     async def failing_onboard(store, cfg, progress):
         await real_onboard(store, cfg, progress)  # saves its fact, then fails
+        await store.record_fact(NewFact(topic="company", claim="Acme raised $2M.", source_url="https://news.test/a",
+                                        confidence="medium", origin="research"))  # and one from the web
         raise RuntimeError("model down")
     monkeypatch.setattr(lace_runs, "onboard", failing_onboard)
     body = client.post(f"{API}/laces", json={"name": "Shanga", "website": "acme.test"}).json()
@@ -86,7 +89,7 @@ def test_a_failed_onboarding_can_be_tried_again(client, lace_runtime, monkeypatc
     assert retry.status_code == 202
     client.portal.call(_wait_for_status, uuid.UUID(retry.json()["run_id"]), {"completed"})
     assert client.get(f"{API}/laces/{lace_id}").json()["status"] == "active"
-    # The first attempt's fact was cleared, not recorded twice.
+    # The first attempt's facts, the site's and the web's, were cleared, not recorded twice.
     assert [f["claim"] for f in client.get(f"{API}/laces/{lace_id}/facts").json()] == ["Acme sells payroll to clinics."]
     # Once onboarded, there is nothing to try again.
     assert client.post(f"{API}/laces/{lace_id}/onboarding").status_code == 409
