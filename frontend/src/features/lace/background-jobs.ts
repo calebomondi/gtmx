@@ -15,6 +15,7 @@ export const JOB_INFO: Record<string, { label: string; fills: FoundSection["key"
   lace_reply: { label: "Reading replies", fills: null },
   lace_comments: { label: "Reading your TikTok comments", fills: null },
   lace_refresh: { label: "Re-reading your site", fills: null },
+  lace_listening: { label: "Listening on your socials", fills: null },
 }
 
 export function jobLabel(kind: string): string {

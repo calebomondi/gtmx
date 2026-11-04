@@ -327,10 +327,12 @@ APP_USES = {
     "googlecalendar": ("their meetings ahead (my_calendar), and free times are offered from it when a reply asks "
                        "for a meeting"),
     "linkedin": "posts you propose (post_on_social) go out on it once approved; it can't be read",
-    "instagram": "comments on their posts (read_my_comments) and messages to the linked account",
-    "facebook": "posts on the linked Page you propose, comments on its posts, and its messages",
+    "instagram": ("comments on their posts (read_my_comments), messages to the linked account, and a daily "
+                  "listen for leads and feedback (listen_now)"),
+    "facebook": ("posts on the linked Page you propose, comments on its posts, its messages, and a daily listen "
+                 "(listen_now)"),
     "x": ("posts and replies you propose (post_on_social, engage_on_x); profiles and posts read, and who "
-          "mentions them (my_x_mentions)"),
+          "mentions them (my_x_mentions), and a daily listen (listen_now)"),
     "tiktok": "how their videos did (how_my_posts_did) and their comments (read_tiktok_comments)",
     "telegram": "announcements you propose (post_to_telegram), through their bot",
     "zoho": "the pipeline (crm_pipeline), checks before outreach (crm_lookup), and leads added once approved",

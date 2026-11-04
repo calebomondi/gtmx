@@ -28,7 +28,7 @@ from agents.schemas.lace import JobStart, RunningJob
 from agents.schemas.lace_ui import BlockAnswer
 from backend.app.runs import lace as lace_runs
 from backend.app.runs.lace import LaceThread
-from backend.app.runs import lace_jobs, regulation_jobs, social_jobs, understanding_jobs
+from backend.app.runs import lace_jobs, listening_jobs, regulation_jobs, social_jobs, understanding_jobs
 from backend.app.runs.errors import user_facing_error
 from backend.app.services import limits
 from backend.app.services import runs as run_service
@@ -347,7 +347,7 @@ _TOOL_JOB_RUN_KINDS = {"find_competitors": "lace_competitors", "check_competitor
                        "find_accounts": "lace_accounts", "find_contacts": "lace_contacts", "define_icp": "lace_icp",
                        "draft_outreach": "lace_drafts", "find_opportunities": "lace_opportunities",
                        "read_tiktok_comments": "lace_comments", "find_regulations": "lace_regulations",
-                       "refresh_understanding": "lace_refresh"}
+                       "refresh_understanding": "lace_refresh", "listen": "lace_listening"}
 _JOB_SEGMENTS = {"lace_competitors": lace_jobs.competitors_job, "lace_monitor": lace_jobs.monitor_job,
                  "lace_accounts": lace_jobs.accounts_job, "lace_contacts": lace_jobs.contacts_job,
                  "lace_icp": lace_jobs.icp_job,
@@ -355,7 +355,8 @@ _JOB_SEGMENTS = {"lace_competitors": lace_jobs.competitors_job, "lace_monitor": 
                  "lace_opportunities": lace_jobs.opportunities_job,
                  "lace_comments": social_jobs.tiktok_comments_job,
                  "lace_regulations": regulation_jobs.regulations_job,
-                 "lace_refresh": understanding_jobs.refresh_job}
+                 "lace_refresh": understanding_jobs.refresh_job,
+                 "lace_listening": listening_jobs.listening_job}
 # Jobs of one kind run one at a time per Lace; this many more may wait their turn.
 MAX_QUEUED_JOBS = 3
 
@@ -544,7 +545,8 @@ _JOB_NAMES = {"lace_competitors": "competitor search", "lace_monitor": "competit
               "lace_accounts": "search for leads", "lace_contacts": "contact search",
               "lace_icp": "ideal customer profile", "lace_drafts": "drafting", "lace_reply": "reading of replies",
               "lace_opportunities": "opportunity search", "lace_comments": "reading of TikTok comments",
-              "lace_regulations": "search for laws and regulations", "lace_refresh": "re-read of the site"}
+              "lace_regulations": "search for laws and regulations", "lace_refresh": "re-read of the site",
+              "lace_listening": "listen on social accounts"}
 
 
 async def _report_interrupted_jobs(run_ids: list[uuid.UUID]) -> None:
