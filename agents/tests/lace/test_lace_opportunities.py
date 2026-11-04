@@ -1,4 +1,5 @@
-"""Opportunities: searched per kind, kept only when sourced and still open."""
+"""Opportunities: searched per kind, kept only when sourced and still open,
+as their own page states: an event, tender or grant needs a date after today."""
 
 import json
 from datetime import date
@@ -6,7 +7,7 @@ from datetime import date
 from agents.lace.opportunities import QUERIES_PER_KIND, RECENCY_DAYS, find_opportunities
 from agents.lace.tools import build_tools
 from agents.schemas.lace import LaceProfile
-from agents.schemas.opportunities import Opportunity, OpportunityList, OpportunityPlan, OpportunityQuery
+from agents.schemas.opportunities import Opportunity, OpportunityDates, OpportunityList, OpportunityPlan, OpportunityQuery
 from config import get_settings
 from lace_fakes import MemoryStore, RecordingJobs, make_fact
 
@@ -20,8 +21,10 @@ def _o(url, kind="showcase", deadline=None, when=None, title="X"):
                        how_to_act="Apply.")
 
 
-def _run(extracted, kinds=("showcase", "sell", "partner"), queries=None):
-    seen = {"queries": []}
+def _run(extracted, kinds=("showcase", "sell", "partner"), queries=None, pages=None, dates=None):
+    """`pages` are the opportunity pages that read (url -> text); `dates` what
+    the check finds on each (url -> OpportunityDates, or an exception)."""
+    seen = {"queries": [], "read": [], "checked": []}
 
     def plan(messages):
         seen["plan_prompt"] = messages[0].content
@@ -37,8 +40,21 @@ def _run(extracted, kinds=("showcase", "sell", "partner"), queries=None):
         seen["extract_prompt"] = messages[0].content
         return OpportunityList(opportunities=extracted)
 
+    def read(urls, cfg):
+        seen["read"] = list(urls)
+        return dict(pages or {})
+
+    def check(messages):
+        url = next(u for u, text in (pages or {}).items() if text in messages[-1].content)
+        seen["checked"].append(url)
+        answer = (dates or {})[url]
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
     found = find_opportunities(PROFILE, [make_fact("1", "Shanga Labs builds rugged IoT hardware.")], None,
-                               get_settings(), kinds, TODAY, plan=plan, extract=extract, search=search)
+                               get_settings(), kinds, TODAY, plan=plan, extract=extract, search=search,
+                               read=read, check=check)
     return found, seen
 
 
@@ -96,3 +112,47 @@ def test_funding_is_searched_for_what_the_startup_qualifies_for():
     assert "grants, incubators, accelerators" in seen["plan_prompt"] and "sector, its stage and its country" in seen["plan_prompt"]
     assert "states who can apply and the startup meets it" in seen["extract_prompt"]
     assert "evergreen" in seen["extract_prompt"]
+
+
+def test_a_page_that_says_applications_closed_is_dropped():
+    # Latitude59 Kenya: the final is in December, but applications closed in October.
+    url = "https://expo.test/2026"
+    found, seen = _run([_o(url, when="2026-12-04")], pages={url: "Applications closed 2 October."},
+                       dates={url: OpportunityDates(deadline="2026-10-02", date="2026-12-04", open=False,
+                                                    note="applications closed")})
+    assert found == [] and seen["read"] == [url] and seen["checked"] == [url]
+
+
+def test_the_page_dates_replace_the_snippets():
+    url = "https://expo.test/2026"
+    found, _ = _run([_o(url)], pages={url: "Exhibitor applications close 15 November."},
+                    dates={url: OpportunityDates(deadline="2026-11-15", date="2026-11-20", open=True)})
+    assert [(o.deadline, o.date) for o in found] == [("2026-11-15", "2026-11-20")]
+
+
+def test_a_past_date_on_the_page_drops_it_even_if_the_model_says_open():
+    # Africa Blockchain Festival: held 15-17 October, before today.
+    url = "https://expo.test/2026"
+    found, _ = _run([_o(url)], pages={url: "15-17 October 2026, Nairobi."},
+                    dates={url: OpportunityDates(date="2026-10-15", open=True)})
+    assert found == []
+
+
+def test_an_event_with_no_date_anywhere_is_dropped_but_a_partner_is_kept():
+    found, _ = _run([_o("https://expo.test/2026"), _o("https://tenders.test/iot", kind="partner")])
+    assert [o.url for o in found] == ["https://tenders.test/iot"]
+
+
+def test_a_tender_or_grant_needs_a_deadline_not_just_an_event_date():
+    # Latitude59 Kenya's general page gives the December final but no closing date.
+    found, _ = _run([_o("https://expo.test/2026", kind="sell", when="2026-12-03"),
+                     _o("https://tenders.test/iot", kind="sell", deadline="2026-11-30")])
+    assert [o.url for o in found] == ["https://tenders.test/iot"]
+
+
+def test_an_unreadable_page_or_failed_check_keeps_what_the_search_said():
+    expo, tender = "https://expo.test/2026", "https://tenders.test/iot"
+    found, seen = _run([_o(expo, when="2026-11-20"), _o(tender, kind="sell", deadline="2026-11-30")],
+                       pages={tender: "Bids due 30 November."}, dates={tender: RuntimeError("model down")})
+    assert [o.url for o in found] == [expo, tender]
+    assert seen["checked"] == [tender]
