@@ -230,3 +230,18 @@ async def test_onboard_records_web_facts_apart_and_goes_on_when_the_web_fails(mo
     store = MemoryStore()
     result = await onboard(store, settings, extract=extract, pick=_never, research=broken)
     assert (result.facts_recorded, result.from_web) == (1, 0)
+
+
+async def test_the_lace_can_read_its_site_again(settings):
+    import json
+
+    from agents.lace.tools import build_tools
+    from lace_fakes import RecordingJobs
+    jobs = RecordingJobs()
+    tool = {t.name: t for t in build_tools(MemoryStore(), settings, jobs)}["refresh_understanding"]
+    out = json.loads(await tool.ainvoke({}))
+    assert out["ok"] and out["summary"].startswith("Started re-reading the site")
+    assert jobs.started == [("refresh_understanding", {})]
+    queued = json.loads(await {t.name: t for t in build_tools(MemoryStore(), settings, RecordingJobs(ahead=1))}[
+        "refresh_understanding"].ainvoke({}))
+    assert queued["summary"].startswith("Queued, not started yet: another re-read of the site")
