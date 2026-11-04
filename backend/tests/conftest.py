@@ -28,6 +28,9 @@ from backend.app.services import website_check
 from backend.tests.helpers import make_user
 from config import settings
 
+# The real one, kept before no_settle_in replaces it for each test.
+_SETTLE_IN = run_manager.settle_in
+
 # How long cleanup waits on a lock before failing the test instead of hanging.
 CLEANUP_LOCK_TIMEOUT_S = 30
 
@@ -76,6 +79,20 @@ def no_follow_ups(monkeypatch):
     """Every reply would ask a real model for suggested replies; tests that
     want some patch lace_runs.follow_ups themselves."""
     monkeypatch.setattr(lace_runs, "follow_ups", lambda reply, asked, situation: [])
+
+
+@pytest.fixture(autouse=True)
+def no_settle_in(monkeypatch):
+    """A new Lace would start its first searches as soon as it has read its
+    site; tests that want that use real_settle_in."""
+    async def nothing(user_id, lace_id):
+        return []
+    monkeypatch.setattr(run_manager, "settle_in", nothing)
+
+
+@pytest.fixture
+def real_settle_in(monkeypatch):
+    monkeypatch.setattr(run_manager, "settle_in", _SETTLE_IN)
 
 
 @pytest.fixture(autouse=True)

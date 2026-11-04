@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from agents.lace.apps import AppError, CommentsOn, XRecord
+from agents.lace.apps import AppError, AppStatus, CommentsOn, XRecord
 from backend.app.database.lace_models import Lace, LaceApp, LaceChannel
 from backend.app.services import connections as connection_service
 from backend.app.services import crm, lace_app_settings
@@ -21,6 +21,8 @@ from data_sources.socials.tiktok import recent_videos as tiktok_videos
 from data_sources.socials.x import recent_posts as x_posts
 from utils.log import logger
 
+# How long listing the apps may take before a turn goes on without the list.
+OVERVIEW_TIMEOUT_S = 8.0
 # Composio tools, verified against the live catalog.
 _X_USER = "TWITTER_USER_LOOKUP_BY_USERNAME"
 _X_POST = "TWITTER_POST_LOOKUP_BY_POST_ID"
@@ -62,6 +64,20 @@ class DbLaceApps:
     def __init__(self, sessions: async_sessionmaker[AsyncSession], lace_id: uuid.UUID):
         self._sessions = sessions
         self._lace_id = lace_id
+
+    async def overview(self) -> list[AppStatus]:
+        try:
+            async with asyncio.timeout(OVERVIEW_TIMEOUT_S), self._sessions() as session:
+                lace = await session.get(Lace, self._lace_id)
+                if lace is None:
+                    return []
+                listed = await lace_app_settings.list_for_lace(session, lace)
+        except Exception as exc:  # noqa: BLE001 -- Composio raises many types; the prompt goes on without the list
+            raise AppError(f"apps unavailable ({type(exc).__name__})") from exc
+        return [AppStatus(platform=a["platform"], label=a["label"], connected=a["status"] is not None,
+                          needs_attention=a["status"] is not None and not a["connected"], enabled=a["enabled"],
+                          account=a["account"], account_name=a["account_name"])
+                for a in listed if a["available"]]
 
     async def _live(self, platform: str) -> _Live | None:
         """The live account this Lace uses for `platform`, if any."""

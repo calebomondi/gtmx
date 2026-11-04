@@ -57,6 +57,8 @@ def default_daily_cap(kind: str) -> int:
         "lace_icp": settings.max_account_runs_per_day,
         "lace_comments": settings.max_account_runs_per_day,
         "lace_regulations": settings.max_account_runs_per_day,
+        # Reads the site and the web again: as costly as onboarding.
+        "lace_refresh": settings.max_lace_onboardings_per_day,
     }[kind]
 
 
