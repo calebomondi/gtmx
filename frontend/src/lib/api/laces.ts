@@ -241,6 +241,11 @@ export function getLace(laceId: string): Promise<LaceDto> {
   return apiFetch<LaceDto>(`/api/v1/laces/${laceId}`)
 }
 
+/** Re-read the site and the web in the background; the Lace reports back in the team chat. */
+export function refreshLaceUnderstanding(laceId: string): Promise<{ run_id: string }> {
+  return apiFetch(`/api/v1/laces/${laceId}/understanding/refresh`, { method: "POST" })
+}
+
 export function listLaceFacts(laceId: string): Promise<FactDto[]> {
   return apiFetch<FactDto[]>(`/api/v1/laces/${laceId}/facts`)
 }
