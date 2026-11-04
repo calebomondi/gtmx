@@ -154,7 +154,7 @@ class Settings(BaseSettings):
     waitlist_from_email: str = ""
     waitlist_pilot_spots: int = 50
     # When the current pilot cohort starts, shown on thalace.com. Set per cohort.
-    waitlist_pilot_starts_on: date = date(2026, 10, 24)
+    waitlist_pilot_starts_on: date = date(2026, 11, 1)
     # Days after signup the team reaches out to pilot opt-ins (said in the email).
     waitlist_pilot_contact_days: int = 14
     waitlist_signups_per_ip_per_hour: int = 5
