@@ -229,6 +229,10 @@ class Settings(BaseSettings):
     competitor_profile_workers: int = 6
     account_search_timeout_s: float = 20.0
     account_scrape_timeout_s: float = 30.0
+    # Time one account's social-profile lookups may take in a lead search;
+    # past it the rest are skipped. Its emails are always looked for: outreach
+    # goes by email.
+    account_socials_budget_s: float = 25.0
     account_enrich_workers: int = 6
     account_socials_workers: int = 6
     account_search_cache_ttl: float = 600.0
