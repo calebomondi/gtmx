@@ -12,6 +12,7 @@ It can be wired into a parent LangGraph or used as a CLI harness.
 from __future__ import annotations
 
 import json
+import time
 from datetime import date, timedelta
 from typing import Optional
 
@@ -42,6 +43,7 @@ from agents.pipelines.web_utils import (
 MAX_QUERY_RESULTS = 4
 _SEARCH_TIMEOUT_S = get_settings().account_search_timeout_s
 _SCRAPE_TIMEOUT_S = get_settings().account_scrape_timeout_s
+_SOCIALS_BUDGET_S = get_settings().account_socials_budget_s
 _ENRICH_WORKERS = get_settings().account_enrich_workers
 _SOCIALS_WORKERS = get_settings().account_socials_workers
 
@@ -523,6 +525,8 @@ def collect_socials_and_emails(state: IcpSessionState) -> dict:
 
     def _process(acc):
         report(f"Finding people to contact at {acc.name}")
+        started = time.monotonic()
+        socials_by = started + _SOCIALS_BUDGET_S
         # Seed socials from URLs we already collected (trigger source /
         # sources list) — those hosts are a free, authoritative hit and
         # let us skip the paid Exa search for that platform entirely.
@@ -558,6 +562,9 @@ def collect_socials_and_emails(state: IcpSessionState) -> dict:
                 # still have neither a social nor any email path for this account.
                 wanted = {"linkedin"}
             for platform_name in _platforms:
+                if time.monotonic() > socials_by:
+                    logger.info(f"⏱️ '{acc.name}': social lookups past {_SOCIALS_BUDGET_S:.0f}s, skipping the rest")
+                    break
                 if platform_name not in wanted:
                     if buyer_type == "b2b" and (acc.socials or any(c.email for c in acc.key_contacts)):
                         break  # enough for a B2B account
@@ -633,8 +640,11 @@ def collect_socials_and_emails(state: IcpSessionState) -> dict:
                             break
                     logger.info(f"🔗 venue '{acc.name}' {platform_key} -> {url}")
 
+        socials_s = time.monotonic() - started
         # Hydrate contact details for people who already have a LinkedIn URL.
         for contact in acc.key_contacts[:1 if _FAST_DISCOVERY else 3]:
+            if time.monotonic() > socials_by:
+                break
             if contact.linkedin and "linkedin.com/in" in contact.linkedin and (not contact.name or not contact.title):
                 raw = call_with_timeout(lambda: linkedin.get_profile(contact.linkedin, cfg), _SCRAPE_TIMEOUT_S, default=None, label='linkedin[contact]')
                 if isinstance(raw, dict):
@@ -682,9 +692,12 @@ def collect_socials_and_emails(state: IcpSessionState) -> dict:
                     acc.key_contacts.append(ContactRecord(email=chosen))
                     logger.info(f"📧 '{acc.name}' org email -> {chosen}")
 
+        emails_s = time.monotonic() - started - socials_s
         # Fill in contacts until there is a named person to reach, best first;
         # undeliverable addresses are dropped here.
         contacts.complete(acc, buyer_titles, cfg, MAX_ACCOUNT_CONTACTS)
+        logger.info(f"⏱️ '{acc.name}' contacts: socials {socials_s:.0f}s, emails {emails_s:.0f}s, "
+                    f"people {time.monotonic() - started - socials_s - emails_s:.0f}s")
 
     run_parallel(
         [lambda a=acc: (_enrich_one_account(a, cfg), _process(a))[1] for acc in accounts.accounts],
