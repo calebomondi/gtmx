@@ -99,12 +99,19 @@ class SiteUnderstanding(LenientModel):
     )
 
 
+class WebFacts(LenientModel):
+    """What onboarding learns about the startup from the web beyond its site."""
+    facts: list[ExtractedFact] = Field(default_factory=list)
+
+
 class OnboardingResult(BaseModel):
     startup_name: str | None
     pages_read: list[str]
     pages_failed: list[str]
     facts_recorded: int
     open_questions: list[str]
+    # Of facts_recorded, how many came from the web rather than the site.
+    from_web: int = 0
 
     @property
     def site_unreadable(self) -> bool:
