@@ -101,7 +101,7 @@ async def test_keeps_to_the_startup(ask):
     out = await build_lace_graph(store).ainvoke({"messages": [HumanMessage(content=ask)]})
     reply = out["messages"][-1].content
     print(f"\n{ask}\n-> {reply}")
-    assert _tools_used(out) <= {"suggest_replies"}  # no search for it
+    assert not _tools_used(out)  # no search for it
     assert len(reply) < 400 and "Acme" in reply
 
 
@@ -124,4 +124,4 @@ async def test_greets_the_founder_by_first_name():
     reply = out["messages"][-1].content
     print(f"\n-> {reply}")
     assert "Kalev" in reply and len(reply) < 300
-    assert _tools_used(out) <= {"suggest_replies"}
+    assert not _tools_used(out)

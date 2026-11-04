@@ -6,8 +6,7 @@ from langchain_core.tools import BaseTool, tool
 
 from agents.lace.tool_guard import guarded
 from agents.schemas.lace import ToolResult
-from agents.schemas.lace_ui import (ChecklistBlock, ChecklistItem, ChoicesBlock, FormBlock, FormField, SuggestionsBlock,
-                                    new_block_id)
+from agents.schemas.lace_ui import ChecklistBlock, ChecklistItem, ChoicesBlock, FormBlock, FormField, new_block_id
 
 MIN_CHOICES, MAX_CHOICES = 2, 5
 MIN_SUGGESTIONS, MAX_SUGGESTIONS = 2, 3
@@ -95,22 +94,4 @@ def build_ask_tools() -> list[BaseTool]:
             return ToolResult.failure(f"Keep the button label under {SUBMIT_CHARS} characters.")
         return _shown(FormBlock(id=new_block_id(), question=question.strip(), fields=fields, submit=label), "this form")
 
-    @tool(parse_docstring=True)
-    @guarded
-    async def suggest_replies(options: list[str]) -> ToolResult:
-        """Offer the founder likely replies to the question your answer ends on, as chips they can tap to send (e.g. after "Want me to dig deeper into one of them?": "Check Hamtech's LinkedIn", "Look for their OTA guide"). They can still type anything, so this is not for a decision you need answered (that is ask_choice). Call it once, before your final answer; then write the whole answer. Text you write alongside the call is not shown to the founder.
-
-        Args:
-            options: 2 or 3 short replies, each a few words, written as the founder would say them.
-        """
-        options = [o.strip() for o in options if o.strip()]
-        if not MIN_SUGGESTIONS <= len(options) <= MAX_SUGGESTIONS:
-            return ToolResult.failure(f"Give {MIN_SUGGESTIONS} or {MAX_SUGGESTIONS} options; got {len(options)}.")
-        if any(len(o) > CHOICE_CHARS for o in options):
-            return ToolResult.failure(f"Keep each option under {CHOICE_CHARS} characters.")
-        return ToolResult.success(
-            "The founder will see these suggested replies under your reply. What you wrote alongside this call is "
-            "not shown to them: now write your whole reply, as if for the first time, and don't suggest replies again.",
-            {"ui": [SuggestionsBlock(options=options).model_dump()]})
-
-    return [ask_choice, ask_checklist, ask_form, suggest_replies]
+    return [ask_choice, ask_checklist, ask_form]

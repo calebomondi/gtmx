@@ -70,9 +70,9 @@ def readable_websites(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def no_follow_ups(monkeypatch):
-    """A reply ending on a question would ask a real model for suggested
-    replies; tests that want some patch lace_runs.follow_ups themselves."""
-    monkeypatch.setattr(lace_runs, "follow_ups", lambda reply: [])
+    """Every reply would ask a real model for suggested replies; tests that
+    want some patch lace_runs.follow_ups themselves."""
+    monkeypatch.setattr(lace_runs, "follow_ups", lambda reply, asked, situation: [])
 
 
 @pytest.fixture(autouse=True)
