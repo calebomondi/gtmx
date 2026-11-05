@@ -37,6 +37,8 @@ class AppStatus(BaseModel):
     account_name: str | None = None
     # The founder's public handle saved for it (X, TikTok): read without connecting.
     handle: str | None = None
+    # Connected, but the Page or business account this Lace speaks for isn't linked yet.
+    needs_link: bool = False
 
 
 class LaceApps(Protocol):

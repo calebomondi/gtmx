@@ -176,7 +176,7 @@ class DbLaceApps:
         return [AppStatus(platform=a["platform"], label=a["label"], connected=a["status"] is not None,
                           needs_attention=a["status"] is not None and not a["connected"], enabled=a["enabled"],
                           account=a["account"], account_name=a["account_name"],
-                          handle=(a["settings"] or {}).get("handle"))
+                          handle=(a["settings"] or {}).get("handle"), needs_link=a.get("needs_link", False))
                 for a in listed if a["available"] or (a["settings"] or {}).get("handle")]
 
     async def _live(self, platform: str) -> _Live | None:
@@ -423,8 +423,9 @@ class DbLaceApps:
                 raise AppError("This Facebook account manages no Page, and only a Page's comments can be read.")
             if len(pages) > 1:
                 names = ", ".join(str(p.get("name") or p.get("id")) for p in pages[:PAGES_NAMED])
-                raise AppError(f"This Facebook account manages {len(pages)} Pages ({names}). The founder links the one "
-                               "this Lace speaks for under Messaging → Inboxes; then its comments can be read.")
+                raise AppError(f"This Facebook account manages {len(pages)} Pages ({names}), and none is linked to "
+                               "this Lace. Ask the founder to pick the one it speaks for (ask_to_link); then its "
+                               "comments can be read.")
             page = str(pages[0]["id"])
         page_posts = items(await self._run(live, "facebook", "FACEBOOK_GET_PAGE_POSTS", {
             "page_id": page, "limit": posts, "fields": "id,message,permalink_url,created_time"}))

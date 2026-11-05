@@ -10,7 +10,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
-import type { AppActionDto, LaceAppDto } from "@/lib/api"
+import type { AppActionDto, InboxPlatform, LaceAppDto } from "@/lib/api"
 import { formatRelativeTime } from "@/lib/format"
 import {
   APP_GROUPS, COMING_SOON, CONNECT_STEPS, HANDLE_READS, PLATFORM_LABEL, beginConnection, beginLaceConnection,
@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils"
 import { capabilitiesFor } from "../connected-accounts/accounts-type"
 import { AppSettingField } from "./app-setting-field"
 import { ActionCard } from "./lace-action-card"
+import { LinkAccountCard } from "./link-account-card"
 import type { LaceApps } from "./use-lace-apps"
 import type { LaceChat } from "./use-lace-chat"
 
@@ -139,6 +140,11 @@ function AppRow({ app, apps, laceId, name, onToggle, onDisconnectOwn }: {
           <ChevronDown className="transition-transform group-data-[panel-open]/more:rotate-180" />
         </CollapsibleTrigger>
       </div>
+      {app.needs_link && (
+        <div className="border-t p-3">
+          <LinkAccountCard laceId={laceId} name={name} platform={app.platform as InboxPlatform} onLinked={() => void apps.refresh()} />
+        </div>
+      )}
       {reads && (
         <div className="flex flex-col gap-1 border-t px-3 py-2.5">
           <AppSettingField apps={apps} app={app} setting="handle" label="Your public profile" prefix="@"

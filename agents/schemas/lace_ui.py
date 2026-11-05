@@ -108,8 +108,15 @@ class ActionBlock(BaseModel):
     url: str | None = None
 
 
-UiBlock = Annotated[ChoicesBlock | ChecklistBlock | FormBlock | CardBlock | SuggestionsBlock | ActionBlock,
-                    Field(discriminator="type")]
+class LinkAccountBlock(BaseModel):
+    """Asks the founder to pick which of their Pages or business accounts on
+    a platform this Lace speaks for; the app shows their accounts to pick from."""
+    type: Literal["link_account"] = "link_account"
+    platform: Literal["instagram", "facebook", "telegram"]
+
+
+UiBlock = Annotated[ChoicesBlock | ChecklistBlock | FormBlock | CardBlock | SuggestionsBlock | ActionBlock
+                    | LinkAccountBlock, Field(discriminator="type")]
 
 
 class BlockAnswer(BaseModel):
