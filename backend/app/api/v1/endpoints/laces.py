@@ -53,6 +53,7 @@ from backend.app.schemas.laces import (
     AppActionResponse,
     LaceAppResponse,
     LaceAppUpdate,
+    SendFromUpdate,
     MAX_APP_ACTIONS_PER_PAGE,
     OutreachUpdateRequest,
 )
@@ -461,6 +462,14 @@ async def update_lace_app(lace: AdminLace, platform: str, payload: LaceAppUpdate
     """Switch an app on or off for this Lace, or change its settings here."""
     await lace_app_settings.update(db, lace, platform, payload.enabled, payload.settings)
     return next(a for a in await lace_app_settings.list_for_lace(db, lace) if a["platform"] == platform)
+
+
+@router.put("/{lace_id}/send-from", response_model=list[LaceAppResponse])
+async def set_send_from(lace: AdminLace, payload: SendFromUpdate, db: DbSession):
+    """Pick the mailbox this Lace sends new email from (answers still go from
+    the mailbox their conversation is in)."""
+    await lace_app_settings.set_send_from(db, lace, payload.mailbox)
+    return await lace_app_settings.list_for_lace(db, lace)
 
 
 @router.post("/{lace_id}/connections/{platform}", response_model=ConnectStartResponse)

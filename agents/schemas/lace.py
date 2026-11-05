@@ -290,6 +290,10 @@ CONTACT_STATUSES: tuple[str, ...] = ContactStatus.__args__
 
 OutreachChannel = Literal["email", "linkedin", "x", "instagram", "facebook", "tiktok", "telegram"]
 OUTREACH_CHANNELS: tuple[str, ...] = OutreachChannel.__args__
+# The mail apps email goes through, in the order a Lace picks one when the
+# founder hasn't chosen.
+Mailbox = Literal["gmail", "outlook"]
+MAILBOXES: tuple[str, ...] = Mailbox.__args__
 
 # Business accounts whose inbound DMs a Lace reads (docs/lace-plan.md, Channels).
 InboxPlatform = Literal["instagram", "facebook", "telegram"]

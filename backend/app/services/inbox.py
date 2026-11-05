@@ -1,5 +1,5 @@
 """Replies and bounces for sent outreach, synced from the mailboxes the
-user's Laces send from (Gmail or Outlook; see outreach.email_account).
+user's Laces sent them from (Gmail or Outlook; see outreach.mailbox_for).
 
 One search per mailbox per sync (recent mail not from the user), matched
 to the threads of emails a Lace sent. A reply
@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.database import models
 from backend.app.services import connections as connection_service
 from backend.app.services import outlook
-from backend.app.services.outreach import email_account
+from backend.app.services.outreach import mailbox_for
 from config import settings
 from utils.log import logger
 
@@ -135,12 +135,13 @@ def mail_text(message: dict) -> str:
     return ""
 
 
-def _inbound(sent: Outreach, message: dict, status: str) -> Outreach:
-    """The received message, in the same table as the email it answers."""
+def _inbound(sent: Outreach, message: dict, status: str, mailbox: str) -> Outreach:
+    """The received message, in the same table as the email it answers, from
+    the mailbox it came in to."""
     sender = message.get("sender") or ""
     return type(sent)(
         lace_id=sent.lace_id, user_id=sent.user_id, account_id=sent.account_id,
-        channel="email", direction="inbound", status=status, thread_id=sent.thread_id,
+        channel="email", direction="inbound", status=status, thread_id=sent.thread_id, mailbox=mailbox,
         provider_message_id=message.get("messageId"),
         recipient_name=_display_name(sender) or sent.recipient_name,
         recipient_company=sent.recipient_company, recipient_address=_address(sender) or None,
@@ -161,16 +162,18 @@ def _bounced_send(message: dict, threads: dict[str, Outreach]) -> Outreach | Non
 
 async def _by_mailbox(db: AsyncSession, threads: dict[str, Outreach]
                       ) -> list[tuple[connection_service.ConnectionInfo, dict[str, Outreach]]]:
-    """The sent threads grouped by the mailbox their Lace sends from: a
-    Lace's own account, or the founder's shared one for the Laces without one."""
+    """The sent threads grouped by the mailbox each went out from (one sent
+    before mailboxes were recorded: the one its Lace sends from), whether a
+    Lace's own account or the founder's shared one."""
     groups: dict[str, tuple[connection_service.ConnectionInfo, dict[str, Outreach]]] = {}
-    for lace_id in {sent.lace_id for sent in threads.values()}:
-        lace = await db.get(models.Lace, lace_id)
-        mailbox = await email_account(db, lace) if lace else None
-        if mailbox is None:
-            continue
-        mine = {thread: sent for thread, sent in threads.items() if sent.lace_id == lace_id}
-        groups.setdefault(mailbox.id, (mailbox, {}))[1].update(mine)
+    found: dict[tuple[uuid.UUID, str | None], connection_service.ConnectionInfo | None] = {}
+    for thread, sent in threads.items():
+        key = (sent.lace_id, sent.mailbox)
+        if key not in found:
+            lace = await db.get(models.Lace, sent.lace_id)
+            found[key] = await mailbox_for(db, lace, sent) if lace else None
+        if (mailbox := found[key]) is not None:
+            groups.setdefault(mailbox.id, (mailbox, {}))[1][thread] = sent
     return list(groups.values())
 
 
@@ -195,7 +198,7 @@ async def sync_user(db: AsyncSession, user_id: uuid.UUID) -> SyncResult:
         ))).scalars())
     for mailbox, sent_threads in await _by_mailbox(db, threads):
         fetched = await asyncio.to_thread(_fetch, mailbox, settings.inbox_sync_window_days)
-        _store(db, fetched, sent_threads, known, result)
+        _store(db, fetched, sent_threads, known, result, mailbox.platform)
     try:
         await db.commit()
     except IntegrityError:  # a concurrent sync stored the same messages first
@@ -205,7 +208,7 @@ async def sync_user(db: AsyncSession, user_id: uuid.UUID) -> SyncResult:
 
 
 def _store(db: AsyncSession, fetched: list[dict], threads: dict[str, Outreach], known: set[str],
-           result: SyncResult) -> None:
+           result: SyncResult, mailbox: str) -> None:
     """Add the replies and bounces among `fetched` that answer `threads`."""
     for message in fetched:
         if not message.get("messageId") or message["messageId"] in known:
@@ -215,10 +218,10 @@ def _store(db: AsyncSession, fetched: list[dict], threads: dict[str, Outreach], 
             if sent is None:
                 continue
             sent.status, sent.error = "bounced", "This address bounced: the email was not delivered."
-            db.add(_inbound(sent, message, "bounced"))
+            db.add(_inbound(sent, message, "bounced", mailbox))
             result.bounced.append(sent)
         elif message.get("threadId") in threads:
-            reply = _inbound(threads[message["threadId"]], message, "received")
+            reply = _inbound(threads[message["threadId"]], message, "received", mailbox)
             db.add(reply)
             result.replies.append(reply)
         known.add(message["messageId"])
