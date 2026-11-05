@@ -40,6 +40,8 @@ _X_MENTIONS = "TWITTER_GET_USER_MENTIONS"
 _X_USER = "TWITTER_USER_LOOKUP_BY_USERNAME"
 _X_POST = "TWITTER_POST_LOOKUP_BY_POST_ID"
 _SHEET_TABS = "GOOGLESHEETS_GET_SHEET_NAMES"
+_SHEET_SEARCH = "GOOGLESHEETS_SEARCH_SPREADSHEETS"
+SHEET_SEARCH_RESULTS = 10
 _SHEET_VALUES = "GOOGLESHEETS_BATCH_GET"
 # The most rows and columns read from one tab (the header row included).
 SHEET_ROWS = 1000
@@ -183,7 +185,7 @@ class DbLaceApps:
             logger.exception("Composio %s failed for Lace %s", tool, self._lace_id)
             raise AppError(f"Couldn't reach {connection_service.label(platform)} ({type(exc).__name__})") from exc
         if result.get("error"):
-            raise AppError(f"{connection_service.label(platform)} refused it ({str(result['error'])[:200]})")
+            raise AppError(connection_service.refusal(platform, result["error"]))
         return result.get("data")
 
     async def x(self, record: XRecord, key: str) -> dict | None:
@@ -197,6 +199,21 @@ class DbLaceApps:
                                         "expansions": x_api.POST_EXPANSIONS, "user__fields": ["username", "name"]}
         data = await self._run(live, "x", tool, arguments)
         return data if isinstance(data, dict) else None
+
+    async def sheet_search(self, query: str) -> list[dict] | None:
+        live = await self._live("googlesheets")
+        if live is None:
+            return None
+        try:
+            data = await self._run(live, "googlesheets", _SHEET_SEARCH, {
+                "query": query, "search_type": "name", "max_results": SHEET_SEARCH_RESULTS,
+                "order_by": "modifiedTime desc"})
+        except AppError as exc:
+            raise AppError(f"{exc} Until then, ask for the sheet's link.") from exc
+        found = _listed(data, "spreadsheets") or _listed(data, "files")
+        return [{"id": f.get("id") or f.get("spreadsheetId"), "name": f.get("name") or f.get("title"),
+                 "url": f.get("webViewLink") or f"https://docs.google.com/spreadsheets/d/{f.get('id')}",
+                 "modified": f.get("modifiedTime")} for f in found[:SHEET_SEARCH_RESULTS] if f.get("id")]
 
     async def sheet(self, spreadsheet_id: str, tab: str | None) -> dict | None:
         live = await self._live("googlesheets")

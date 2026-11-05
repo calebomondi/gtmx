@@ -79,6 +79,12 @@ class LaceApps(Protocol):
         isn't connected. Raises AppError when the call fails."""
         ...
 
+    async def sheet_search(self, query: str) -> list[dict] | None:
+        """Spreadsheets in the founder's Drive whose names match, newest first:
+        {id, name, url, modified}. None when Google Sheets isn't on. Raises
+        AppError, saying so when the connection can't search Drive."""
+        ...
+
     async def sheet(self, spreadsheet_id: str, tab: str | None) -> dict | None:
         """One tab of a Google Sheet the founder can open (the first when
         `tab` is None): {tabs, tab, rows}, rows as lists of cell text with the

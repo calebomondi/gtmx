@@ -58,3 +58,33 @@ async def test_without_google_sheets_nothing_is_read(composio, monkeypatch):  # 
     stub_accounts(monkeypatch, set())
     assert await lace_apps.DbLaceApps(AsyncSessionLocal, _lace()).sheet("s1", None) is None
     assert composio["calls"] == []
+
+
+
+async def test_writing_rows_appends_or_updates_a_range(composio):  # noqa: F811
+    added = await sheet_actions.write(_ctx("googlesheets"), {
+        "spreadsheet_id": "s3", "rows": [["Acme", "lead"]], "tab": "Pipeline", "range": None})
+    assert composio["calls"][0] == ("GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND", {
+        "spreadsheetId": "s3", "range": "Pipeline", "valueInputOption": "USER_ENTERED",
+        "insertDataOption": "INSERT_ROWS", "values": [["Acme", "lead"]]})
+    assert added.result == "Added 1 rows to Pipeline."
+    updated = await sheet_actions.write(_ctx("googlesheets"), {
+        "spreadsheet_id": "s3", "rows": [["won"]], "tab": None, "range": "Sheet1!C2"})
+    assert composio["calls"][1] == ("GOOGLESHEETS_VALUES_UPDATE", {
+        "spreadsheet_id": "s3", "range": "Sheet1!C2", "value_input_option": "USER_ENTERED", "values": [["won"]]})
+    assert updated.result == "Updated Sheet1!C2 (1 rows)." and updated.url.endswith("/s3")
+
+
+async def test_a_missing_permission_says_to_reconnect(monkeypatch):
+    stub_accounts(monkeypatch, {"googlesheets"})
+    answers = {"GOOGLESHEETS_SEARCH_SPREADSHEETS": {"data": {"spreadsheets": [
+        {"id": "s1", "name": "Antler application", "modifiedTime": "2026-11-01"}]}, "error": None, "log_id": "l"}}
+    monkeypatch.setattr(lace_apps.connection_service, "execute_tool", lambda e, tool, args, c: answers[tool])
+    apps = lace_apps.DbLaceApps(AsyncSessionLocal, _lace())
+    assert await apps.sheet_search("Antler") == [{"id": "s1", "name": "Antler application",
+                                                  "url": "https://docs.google.com/spreadsheets/d/s1",
+                                                  "modified": "2026-11-01"}]
+    answers["GOOGLESHEETS_SEARCH_SPREADSHEETS"] = {"data": None, "log_id": None,
+                                                   "error": "403 ACCESS_TOKEN_SCOPE_INSUFFICIENT"}
+    with pytest.raises(lace_apps.AppError, match="without every permission it needs.*ask for the sheet's link"):
+        await apps.sheet_search("Antler")

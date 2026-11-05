@@ -26,3 +26,21 @@ async def export(ctx: RunContext, arguments: dict) -> Outcome:
         raise ActionFailed("Google Sheets didn't say which spreadsheet it made; look for it in your Drive.")
     return Outcome(f"Made “{arguments['title']}” with {len(rows)} rows.",
                    created.get("spreadsheetUrl") or _SHEET_URL.format(spreadsheet), done["log_id"])
+
+
+@runs("googlesheets", "write")
+async def write(ctx: RunContext, arguments: dict) -> Outcome:
+    """Rows the founder approved: appended after a tab's last row, or written
+    over a range they named."""
+    rows, spreadsheet = arguments["rows"], arguments["spreadsheet_id"]
+    if arguments.get("range"):
+        done = await call(ctx, "GOOGLESHEETS_VALUES_UPDATE", {
+            "spreadsheet_id": spreadsheet, "range": arguments["range"], "value_input_option": "USER_ENTERED",
+            "values": rows})
+        result = f"Updated {arguments['range']} ({len(rows)} rows)."
+    else:
+        done = await call(ctx, "GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND", {
+            "spreadsheetId": spreadsheet, "range": arguments.get("tab") or "A1", "valueInputOption": "USER_ENTERED",
+            "insertDataOption": "INSERT_ROWS", "values": rows})
+        result = f"Added {len(rows)} rows" + (f" to {arguments['tab']}." if arguments.get("tab") else ".")
+    return Outcome(result, _SHEET_URL.format(spreadsheet), done["log_id"])
