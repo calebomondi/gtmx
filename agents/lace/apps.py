@@ -52,8 +52,15 @@ class LaceApps(Protocol):
         ...
 
     async def calendar_events(self, days_ahead: int) -> list[dict] | None:
-        """The founder's Google Calendar events from now: {title, start, end,
-        attendees: [{name, email}]}. None when it isn't on. Raises AppError."""
+        """The founder's Google Calendar events from now: {id, title, start,
+        end, location, join, description, organizer, attendees: [{name, email,
+        response}]}. None when it isn't on. Raises AppError."""
+        ...
+
+    async def calendar_free_times(self, days: int, minutes: int) -> dict | None:
+        """Free `minutes`-long slots in working hours over the next `days`:
+        {timezone, slots: ["Mon 10 Nov, 14:00-14:30 (Africa/Nairobi)"]}. None
+        when Google Calendar isn't on. Raises AppError."""
         ...
 
     async def x_mentions(self) -> list[dict] | None:
@@ -77,6 +84,12 @@ class LaceApps(Protocol):
         """A profile (key: the handle) or a post (key: its id) from X, through
         the founder's connected X account: the API's record, or None when X
         isn't connected. Raises AppError when the call fails."""
+        ...
+
+    async def sheet_search(self, query: str) -> list[dict] | None:
+        """Spreadsheets in the founder's Drive whose names match, newest first:
+        {id, name, url, modified}. None when Google Sheets isn't on. Raises
+        AppError, saying so when the connection can't search Drive."""
         ...
 
     async def sheet(self, spreadsheet_id: str, tab: str | None) -> dict | None:

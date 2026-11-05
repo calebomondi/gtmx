@@ -115,6 +115,21 @@ def label(platform: str) -> str:
     return _LABEL.get(platform, platform.title())
 
 
+# How an app says its connection was granted less than it asked for (an
+# unticked box on Google's consent screen).
+_SCOPE_MISSING = ("insufficient authentication scopes", "access_token_scope_insufficient", "insufficientpermissions")
+
+
+def refusal(platform: str, error) -> str:
+    """An app's refusal as the founder should hear it: what to do when the
+    connection lacks a permission, else the app's own reason."""
+    reason = str(error)
+    if any(marker in reason.lower() for marker in _SCOPE_MISSING):
+        return (f"{label(platform)} is connected without every permission it needs. Reconnect it in this Lace's "
+                f"settings (Apps & accounts) and tick every access box on the sign-in screen.")
+    return f"{label(platform)} refused it: {reason[:200]}"
+
+
 @dataclass
 class ConnectionInfo:
     id: str

@@ -129,11 +129,13 @@ How you work:
   their TikTok videos (in the background), and how_my_posts_did says how
   their X posts or TikTok videos did; both read their public profile by the
   handle in your settings, so nothing needs connecting.
-- When the founder shares a Google Sheet, read it with read_sheet: a lead
+- When the founder mentions a Google Sheet, find it by name with
+  search_sheets if they gave no link, then read it with read_sheet: a lead
   list (say who is in it, and once the founder says to import them, add the
   people with add_contact), or a pipeline to sum up. Quote the
   totals and counts it works out; never add up rows yourself. export_to_sheet
-  proposes putting the saved accounts or contacts in a sheet.
+  proposes putting the saved accounts or contacts in a sheet; update_sheet
+  proposes adding rows to, or updating, one of theirs.
 - The founder may keep context in Notion (pricing, a playbook, customer
   notes): search_notion and read_notion_page find it. write_notion_page
   proposes a page (a brief, a report) under a page they choose.
@@ -324,8 +326,8 @@ APP_USES = {
     "gmail": ("the emails the founder approves go out from it, replies come back to you, and you can search and "
               "read their mail (search_email, read_email_thread)"),
     "outlook": "the emails the founder approves go out from it, and replies to them come back to you",
-    "googlecalendar": ("their meetings ahead (my_calendar), and free times are offered from it when a reply asks "
-                       "for a meeting"),
+    "googlecalendar": ("their meetings ahead in full (my_calendar), when they're free (find_free_times), and "
+                       "meetings you propose, move or cancel (schedule_meeting, reschedule_meeting, cancel_meeting)"),
     "linkedin": "posts you propose (post_on_social) go out on it once approved; it can't be read",
     "instagram": ("comments on their posts (read_my_comments), messages to the linked account, and a daily "
                   "listen for leads and feedback (listen_now)"),
@@ -337,7 +339,8 @@ APP_USES = {
     "telegram": "announcements you propose (post_to_telegram), through their bot",
     "zoho": "the pipeline (crm_pipeline), checks before outreach (crm_lookup), and leads added once approved",
     "hubspot": "the pipeline (crm_pipeline), checks before outreach (crm_lookup), and leads added once approved",
-    "googlesheets": "sheets they share a link to (read_sheet)",
+    "googlesheets": ("their sheets, found by name (search_sheets) or link (read_sheet), and rows you propose "
+                     "writing to one (update_sheet, export_to_sheet)"),
     "notion": "their pages (search_notion, read_notion_page) and pages you propose (write_notion_page)",
     "slack": "what the team said (search_slack) and messages you propose (post_to_slack)",
     "asana": "their open tasks (list_tasks) and follow-ups you propose (create_follow_up_task)",
