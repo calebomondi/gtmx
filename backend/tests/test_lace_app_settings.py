@@ -1,6 +1,6 @@
-"""Which apps a Lace may use: channels on for every Lace, work apps on only
-where switched on (or when there is one Lace); switching off stops the Lace
-using an app, however connected; settings are kept per Lace."""
+"""Which apps a Lace may use: every connected one, the founder's shared
+account where the Lace has none of its own, until switched off; switching off
+stops the Lace using an app, however connected; settings are kept per Lace."""
 
 import uuid
 
@@ -33,13 +33,16 @@ def test_every_app_is_listed_with_its_connection_and_switch(client, lace, lace_r
     assert apps["gmail"]["enabled"] and apps["hubspot"]["enabled"]
 
 
-def test_with_two_laces_work_apps_wait_to_be_switched_on(client, lace, lace_runtime, connected):  # noqa: F811
-    _create(client, name="Second", website="second.test")
-    apps = _apps(client, lace)
-    assert apps["gmail"]["enabled"] and apps["linkedin"]["enabled"]  # channels: on everywhere
-    assert not apps["hubspot"]["enabled"]  # a CRM: only where the founder says
-    on = client.put(f"{API}/laces/{lace}/apps/hubspot", json={"enabled": True}).json()
-    assert on["enabled"] and on["settings"] == {}
+def test_with_two_laces_each_uses_the_shared_accounts(client, lace, lace_runtime, connected):  # noqa: F811
+    second = _create(client, name="Second", website="second.test").json()["lace"]["id"]
+    for lace_id in (lace, second):
+        apps = _apps(client, lace_id)
+        assert apps["hubspot"]["account"] == "shared" and apps["hubspot"]["enabled"]
+        assert apps["gmail"]["enabled"] and apps["linkedin"]["enabled"]
+    # Switched off in one Lace, it stays on in the other.
+    off = client.put(f"{API}/laces/{lace}/apps/hubspot", json={"enabled": False}).json()
+    assert not off["enabled"] and off["settings"] == {}
+    assert _apps(client, second)["hubspot"]["enabled"]
 
 
 def test_settings_are_kept_per_lace(client, lace, lace_runtime, connected):  # noqa: F811

@@ -69,3 +69,32 @@ async def test_reading_facebook_comments_names_the_pages_to_pick_from(monkeypatc
     pages["data"] = []
     with pytest.raises(AppError, match="manages no Page"):
         await apps.my_comments("facebook", 5)
+
+
+def _with_page(page: str):
+    async def live(self, platform):
+        return lace_apps._Live("founder", f"ca_{platform}", page)
+    return live
+
+
+async def test_facebook_comments_come_inside_the_linked_pages_posts(monkeypatch):
+    _connections(monkeypatch, ["facebook"])
+    calls = []
+    posts = {"data": [
+        {"id": "p_1", "message": "Flu doesn't wait.", "permalink_url": "https://facebook.com/p_1",
+         "comments": {"data": [{"id": "c_1", "message": "Do you deliver to Nakuru?", "from": {"name": "Amina"},
+                                "created_time": "2026-11-05T10:00:00+0000"},
+                               {"id": "c_2", "message": "", "from": {"name": "Sticker"}}]}},
+        {"id": "p_2", "message": "No comments here"}]}
+
+    def execute(entity, tool, arguments, connection_id):
+        calls.append((tool, arguments))
+        return {"data": posts, "error": None, "log_id": "l"}
+    monkeypatch.setattr(lace_apps.connection_service, "execute_tool", execute)
+    monkeypatch.setattr(lace_apps.DbLaceApps, "_live", _with_page("pg_1"))
+    found = await lace_apps.DbLaceApps(AsyncSessionLocal, _lace()).my_comments("facebook", 5)
+    assert [(c["author"], c["text"]) for c in found] == [("Amina", "Do you deliver to Nakuru?")]
+    # One call, with the Page's token: no separate comments call, which Facebook refuses.
+    [(tool, arguments)] = calls
+    assert tool == "FACEBOOK_GET_PAGE_POSTS" and arguments["page_id"] == "pg_1"
+    assert "comments.limit(" in arguments["fields"]
