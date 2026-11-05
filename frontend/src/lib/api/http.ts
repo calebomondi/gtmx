@@ -16,13 +16,29 @@ export class ApiError extends Error {
   }
 }
 
+// The longest the app waits out "too many requests" before trying once more;
+// a longer wait (a daily limit) is shown to the founder instead.
+const MAX_RETRY_WAIT_S = 15
+
 /** Send with the user's token; when the API refuses it (expired, revoked), renew it once and send again. */
 async function fetchAuthed(path: string, init: RequestInit, headers: (token: string | null) => HeadersInit): Promise<Response> {
   const token = await getAccessToken()
-  const response = await fetch(`${API_BASE}${path}`, { ...init, headers: headers(token) })
+  const response = await sendPaced(path, { ...init, headers: headers(token) })
   if (response.status !== 401 || !token) return response
   const renewed = await refreshAccessToken()
-  return renewed ? fetch(`${API_BASE}${path}`, { ...init, headers: headers(renewed) }) : response
+  return renewed ? sendPaced(path, { ...init, headers: headers(renewed) }) : response
+}
+
+/** Send; when the API says too many requests for a short while (429 with a
+ * Retry-After), wait that long and send once more. A 429 means the API did
+ * nothing, so a write is safe to send again too. */
+async function sendPaced(path: string, init: RequestInit): Promise<Response> {
+  const response = await fetch(`${API_BASE}${path}`, init)
+  const wait = Number(response.headers.get("Retry-After"))
+  if (response.status !== 429 || !(wait > 0) || wait > MAX_RETRY_WAIT_S) return response
+  await new Promise((resolve) => setTimeout(resolve, wait * 1000))
+  if (init.signal?.aborted) return response
+  return fetch(`${API_BASE}${path}`, init)
 }
 
 export async function apiFetch<T>(

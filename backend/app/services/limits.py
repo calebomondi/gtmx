@@ -10,6 +10,7 @@ import time
 import uuid
 from collections import defaultdict, deque
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -82,16 +83,25 @@ async def ensure_can_start(db: AsyncSession, user_id: uuid.UUID, kind: str) -> N
         )
 
 
-_requests: dict[uuid.UUID, deque[float]] = defaultdict(deque)
+RequestKind = Literal["read", "write", "telemetry"]
+
+# One sliding window per user and kind of request. In memory, so per process:
+# right for one instance; several would need it in Postgres or Redis.
+_requests: dict[tuple[uuid.UUID, RequestKind], deque[float]] = defaultdict(deque)
 
 
-def check_request_rate(user_id: uuid.UUID) -> None:
-    """Sliding one-minute window of API requests per user."""
+def _per_minute(kind: RequestKind) -> int:
+    return {"read": settings.max_reads_per_minute, "write": settings.max_requests_per_minute,
+            "telemetry": settings.max_telemetry_per_minute}[kind]
+
+
+def check_request_rate(user_id: uuid.UUID, kind: RequestKind) -> None:
+    """Sliding one-minute window of this user's API requests of `kind`."""
     now = time.monotonic()
-    window = _requests[user_id]
+    window = _requests[(user_id, kind)]
     while window and now - window[0] > 60:
         window.popleft()
-    if len(window) >= settings.max_requests_per_minute:
+    if len(window) >= _per_minute(kind):
         retry = int(60 - (now - window[0])) + 1
         raise RateLimitedError("Too many requests. Please slow down for a moment.", retry_after_s=retry)
     window.append(now)
