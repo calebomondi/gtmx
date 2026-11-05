@@ -10,7 +10,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agents.lace.outreach import FIRST_TOUCH
+from agents.lace.outreach import BY_HAND, FIRST_TOUCH
 from agents.schemas.accounts import PERSON_SOCIALS, ContactRecord, social_profile_url
 from agents.schemas.lace import ContactSource, NewContact, OutreachChannel
 from backend.app.database.lace_models import LaceAccount, LaceContact
@@ -90,9 +90,9 @@ async def person_to_draft(db: AsyncSession, lace_id: uuid.UUID, contact_id: uuid
     contact = await db.scalar(select(LaceContact).where(LaceContact.id == contact_id, LaceContact.lace_id == lace_id))
     if contact is None:
         raise NotFoundError("Contact not found")
-    if channel != FIRST_TOUCH:
-        raise InvalidInputError("First messages go by email for now. Reach them there, or write to them on "
-                                f"{_ADDRESS_LABEL.get(channel, channel.title()).split()[0]} yourself.")
+    if channel != FIRST_TOUCH and channel not in BY_HAND:
+        raise InvalidInputError("First messages go by email, or a LinkedIn note you send. Reach them there, or "
+                                f"write to them on {_ADDRESS_LABEL.get(channel, channel.title()).split()[0]} yourself.")
     address = getattr(contact, channel)
     if not address:
         raise InvalidInputError(f"There's no {_ADDRESS_LABEL[channel]} for this person.")

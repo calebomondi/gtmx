@@ -4,7 +4,7 @@ import { Check, Copy, ExternalLink, Loader2, MessageCircleReply, Sparkles } from
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
-import { FIRST_TOUCH, type ContactDto, type LaceOutreachDto, type OutreachChannel } from "@/lib/api"
+import { BY_HAND, FIRST_TOUCH, type ContactDto, type LaceOutreachDto, type OutreachChannel } from "@/lib/api"
 import { formatRelativeTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -171,14 +171,21 @@ export function LaceContactDialog({ contact, channel: initialChannel, name, chat
             </div>
           )}
 
-          {current && current.channel !== FIRST_TOUCH && (
+          {current && current.channel !== FIRST_TOUCH && !BY_HAND.has(current.channel) && (
             <p className="text-xs text-muted-foreground">
               {name} writes first messages by email. On {CHANNEL_LABELS[current.channel]}, it answers people who
               write to you first; to start a conversation there, write to them yourself.
             </p>
           )}
 
-          {current && current.channel === FIRST_TOUCH && (
+          {current && BY_HAND.has(current.channel) && (
+            <p className="text-xs text-muted-foreground">
+              {name} drafts a {CHANNEL_LABELS[current.channel]} note for you to send yourself: copy it, send it on
+              {" "}{CHANNEL_LABELS[current.channel]}, then mark it sent.
+            </p>
+          )}
+
+          {current && (current.channel === FIRST_TOUCH || BY_HAND.has(current.channel)) && (
             <section className="flex flex-col gap-3 rounded-xl border border-theme/30 bg-gradient-to-br from-theme/10 via-card to-card p-3">
               <h3 className="flex items-center gap-2 text-sm font-medium">
                 <Sparkles className="size-4 text-theme" /> Ask {name} to draft on {CHANNEL_LABELS[current.channel]}
