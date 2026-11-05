@@ -88,8 +88,8 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
     track("lace_settings_opened", { laceId })
     setSettingsOpen(true)
   }
-  // Always loaded: the chat's quick asks, Social, and the rail's Social badge (a Page to link) read them.
-  const apps = useLaceApps(laceId, true)
+  // The chat's quick asks, Social, and the rail's Social badge (a Page to link) read them.
+  const apps = useLaceApps(laceId)
   const asks = quickAsks(apps.apps)
   const askApp = (text: string) => {
     track("quick_ask_used", { detail: asks.find((a) => a.text === text)?.label, laceId })
