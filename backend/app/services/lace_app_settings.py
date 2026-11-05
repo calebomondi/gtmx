@@ -79,7 +79,7 @@ async def list_for_lace(db: AsyncSession, lace: Lace) -> list[dict]:
             "enabled": row.enabled if row else (app.group == "channels" or one_lace),
             "settings": dict(row.settings) if row else {},
             # Connected, but this Lace speaks for none of the account's Pages or
-            # business accounts yet: the founder picks one (Messaging, or here).
+            # business accounts yet: the founder picks one (Social, or here).
             "needs_link": app.platform in INBOX_PLATFORMS and live is not None and live.status == "live"
                           and app.platform not in linked,
         })

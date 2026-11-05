@@ -101,7 +101,7 @@ function Actions({ card, state, chat, onReview }: {
           </>
         )
       }
-      // Email and X go from here; the other channels are sent by hand from Messaging.
+      // Email and X go from here; the other channels are sent by hand from Outreach or Social.
       const direct = message.channel === "email" || message.channel === "x"
       return (
         <>

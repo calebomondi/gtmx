@@ -2,21 +2,19 @@ import { useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { PenLine, Reply, Send, type LucideIcon } from "lucide-react"
 
-import type { ContactDto, InboxPlatform, OutreachChannel } from "@/lib/api"
+import type { ContactDto, OutreachChannel } from "@/lib/api"
 import { track } from "@/lib/events"
 
 import { MESSAGING_SECTIONS, type MessagingSection } from "./lace-activity-actions"
 import { LaceAccountSwitcher } from "./lace-account-switcher"
 import { LaceContactDialog } from "./lace-contact-dialog"
-import { DraftBrainstorm } from "./draft-brainstorm"
 import { LaceContacts } from "./lace-contacts"
 import { LacePanelTabs, PanelIntro, type PanelTab } from "./lace-panel-tabs"
-import { LaceThreads, type ThreadActions } from "./lace-threads"
+import { LaceThreads } from "./lace-threads"
+import { threadActions } from "./lace-thread-actions"
 import { messagingAccounts, onAccount, type AccountKey } from "./messaging-accounts"
 import { groupThreads, inFolder, isUnread, outreachTally } from "./outreach-threads"
-import type { LaceApps } from "./use-lace-apps"
 import type { LaceChat } from "./use-lace-chat"
-import { LinkAccountCard } from "./link-account-card"
 import { useConnections } from "./use-connections"
 import { useSection } from "./use-lace-section"
 
@@ -30,18 +28,13 @@ function Stat({ icon: Icon, value, label }: { icon: LucideIcon; value: number; l
   )
 }
 
-/** Reaching out. A header in the theme colour picks the account (all, or
- * one connected account, with a way to connect more) and tallies it; under
- * it, sub-tabs for that account's conversations (everything someone
- * answered), drafts to send, what was sent and awaits an answer, and the
- * contacts the Lace found. */
-export function LaceMessaging({ laceId, name, chat, apps }: {
-  laceId: string
-  name: string
-  chat: LaceChat
-  apps: LaceApps
-}) {
-  const unlinked = (apps.apps ?? []).filter((a) => a.needs_link).map((a) => a.platform as InboxPlatform)
+/** Reaching people: email the Lace drafts and sends on the founder's click,
+ * and LinkedIn notes the founder sends. A header in the theme colour picks
+ * the account and tallies it; under it, sub-tabs for its conversations
+ * (everything someone answered), drafts to send, what was sent and awaits
+ * an answer, and the contacts the Lace found. Social accounts live in
+ * Social. */
+export function LaceMessaging({ laceId, name, chat }: { laceId: string; name: string; chat: LaceChat }) {
   const [section, setSection] = useSection<MessagingSection>(MESSAGING_SECTIONS)
   const [params, setParams] = useSearchParams()
   // The person open in a dialog (by id, so it follows the list as it updates).
@@ -67,16 +60,7 @@ export function LaceMessaging({ laceId, name, chat, apps }: {
   const count = (folder: Parameters<typeof inFolder>[1]) => threads.filter((t) => inFolder(t, folder)).length
   const unreadReplies = outreach.filter(isUnread).length
   const toApprove = chat.contacts.filter((c) => !c.approved_at).length
-  const actions: ThreadActions = {
-    sendingSoon: chat.sendingSoon,
-    onSave: (id, changes) => void chat.saveDraft(id, changes),
-    onDiscard: (id) => void chat.discardDraft(id),
-    onSend: chat.sendDraft,
-    onUndo: chat.undoSend,
-    onMarkSent: (id) => void chat.markSent(id),
-    onRead: chat.markRead,
-    brainstorm: (draft) => <DraftBrainstorm draft={draft} chat={chat} name={name} />,
-  }
+  const actions = threadActions(chat, name)
   const inbox = (folder: "replies" | "drafts" | "awaiting", empty: { title: string; body: string }) => (
     <LaceThreads outreach={outreach} folder={folder} drafting={chat.drafting} actions={actions} empty={empty} />
   )
@@ -129,18 +113,14 @@ export function LaceMessaging({ laceId, name, chat, apps }: {
   ]
 
   return (
-    <LacePanelTabs label={`${name}'s Messaging`} tabs={tabs} value={section} onChange={setSection} header={
+    <LacePanelTabs label={`${name}'s Outreach`} tabs={tabs} value={section} onChange={setSection} header={
       <section aria-label="Accounts" className="flex flex-col gap-3 rounded-2xl border bg-gradient-to-br from-theme/12 via-card to-card p-4">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-          <h2 className="text-base font-medium">Messaging</h2>
+          <h2 className="text-base font-medium">Outreach</h2>
           <p className="text-xs text-muted-foreground">Nothing is sent until you send it</p>
         </div>
         <LaceAccountSwitcher laceId={laceId} name={name} accounts={accounts} value={account} onChange={selectAccount}
                              totalWaiting={chat.waiting} connections={connections} />
-        {unlinked.map((platform) => (
-          <LinkAccountCard key={platform} laceId={laceId} name={name} platform={platform}
-                           onLinked={() => void apps.refresh()} />
-        ))}
         <div className="grid grid-cols-3 gap-2">
           <Stat icon={PenLine} value={tally.drafts} label="To send" />
           <Stat icon={Send} value={tally.sent} label="Sent" />

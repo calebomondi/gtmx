@@ -202,7 +202,7 @@ PRIVATE_CHAT_NOTE = """This is a private chat with {who}, one of the startup's f
 - What your searches find here is {who}'s alone: suggestions and saved finds stay in this chat until {who} pushes them to the team for review. When you report finds, say they are private to {who} for now.
 - You still know everything the team's Lace knows and can use the team's saved competitors, accounts and opportunities.
 - You cannot change what the whole team's Lace knows from here (its facts, the ideal customer profile, contacts). If {who} tells you something worth keeping, suggest they say it in the team chat.
-- Drafts you write go to the team's Messaging as usual, marked as {who}'s."""
+- Drafts you write go to the team's Outreach as usual, marked as {who}'s."""
 
 
 # How the Lace tells a fact's origin apart in its brief: the founder's word

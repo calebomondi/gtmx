@@ -12,8 +12,11 @@ export const CHANNEL_PLATFORM: Record<OutreachChannel, Platform> = {
   telegram: "telegram",
 }
 
-/** Platforms Messaging offers to connect, in order: the ones outreach goes through. */
-export const MESSAGING_PLATFORMS: Platform[] = ["gmail", "linkedin", "instagram", "facebook", "x", "telegram"]
+/** Platforms Outreach offers to connect, in order: email, and LinkedIn for notes the founder sends. */
+export const MESSAGING_PLATFORMS: Platform[] = ["gmail", "linkedin"]
+
+/** The channels Outreach shows; social ones live in Social. */
+export const OUTREACH_CHANNELS: ReadonlySet<OutreachChannel> = new Set(["email", "linkedin"])
 
 export interface MessagingAccount {
   key: OutreachChannel
@@ -40,7 +43,7 @@ export function messagingAccounts(connections: ConnectionDto[], outreach: LaceOu
   const accounts: MessagingAccount[] = []
   for (const connection of connections) {
     const channel = channelOf(connection.platform)
-    if (!channel || accounts.some((a) => a.key === channel)) continue
+    if (!channel || !OUTREACH_CHANNELS.has(channel) || accounts.some((a) => a.key === channel)) continue
     accounts.push({
       key: channel, platform: CHANNEL_PLATFORM[channel], label: PLATFORM_LABEL[CHANNEL_PLATFORM[channel]],
       detail: connection.display_name, state: connection.status === "live" ? "connected" : "attention",
@@ -48,7 +51,7 @@ export function messagingAccounts(connections: ConnectionDto[], outreach: LaceOu
     })
   }
   for (const channel of new Set(outreach.map((m) => m.channel))) {
-    if (accounts.some((a) => a.key === channel)) continue
+    if (!OUTREACH_CHANNELS.has(channel) || accounts.some((a) => a.key === channel)) continue
     accounts.push({ key: channel, platform: CHANNEL_PLATFORM[channel], label: PLATFORM_LABEL[CHANNEL_PLATFORM[channel]],
                     detail: null, state: "none", waiting: waiting(channel) })
   }
@@ -56,5 +59,6 @@ export function messagingAccounts(connections: ConnectionDto[], outreach: LaceOu
 }
 
 export function onAccount(outreach: LaceOutreachDto[], account: AccountKey): LaceOutreachDto[] {
-  return account === "all" ? outreach : outreach.filter((m) => m.channel === account)
+  return account === "all" ? outreach.filter((m) => OUTREACH_CHANNELS.has(m.channel))
+    : outreach.filter((m) => m.channel === account)
 }
