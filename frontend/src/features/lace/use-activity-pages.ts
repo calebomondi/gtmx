@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
+import { whileVisible } from "@/lib/visible"
+
 // How often a feed looks for new activity.
 const POLL_MS = 30_000
 // Items per page: the backend's default page size.
@@ -51,7 +53,7 @@ export function useActivityPages<T extends { id: string; created_at: string }>(
       .catch((err) => !cancelled && setError(message(err)))
       .finally(() => !cancelled && setLoading(false))
     void load()
-    const timer = setInterval(load, POLL_MS)
+    const timer = setInterval(whileVisible(() => void load()), POLL_MS)
     return () => {
       cancelled = true
       clearInterval(timer)

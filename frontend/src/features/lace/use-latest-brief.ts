@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 
 import { getLatestLaceBrief, type LaceBriefDto } from "@/lib/api"
+import { whileVisible } from "@/lib/visible"
 
 // While the Lace writes its brief, look again this often.
 const WRITING_POLL_MS = 8_000
@@ -30,7 +31,7 @@ export function useLatestBrief(laceId: string, refreshKey: string): LatestBrief 
       .catch((err) => !cancelled && setError(err instanceof Error ? err.message : String(err)))
       .finally(() => !cancelled && setLoading(false))
     void load()
-    const timer = writing ? setInterval(load, WRITING_POLL_MS) : undefined
+    const timer = writing ? setInterval(whileVisible(() => void load()), WRITING_POLL_MS) : undefined
     return () => {
       cancelled = true
       clearInterval(timer)
