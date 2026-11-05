@@ -330,7 +330,7 @@ APP_USES = {
     "instagram": ("comments on their posts (read_my_comments), messages to the linked account, and a daily "
                   "listen for leads and feedback (listen_now)"),
     "facebook": ("posts on the linked Page you propose, comments on its posts, its messages, and a daily listen "
-                 "(listen_now)"),
+                 "(listen_now); all need the Page this Lace speaks for linked under Messaging → Inboxes"),
     "x": ("posts and replies you propose (post_on_social, engage_on_x); profiles and posts read, and who "
           "mentions them (my_x_mentions), and a daily listen (listen_now)"),
     "tiktok": "how their videos did (how_my_posts_did) and their comments (read_tiktok_comments)",

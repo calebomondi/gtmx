@@ -56,3 +56,16 @@ async def test_a_refused_or_failed_lookup_is_an_app_error(monkeypatch):
     monkeypatch.setattr(lace_apps.connection_service, "execute_tool", boom)
     with pytest.raises(AppError, match="ConnectionError"):
         await apps.x("profile", "acme")
+
+
+async def test_reading_facebook_comments_names_the_pages_to_pick_from(monkeypatch):
+    _connections(monkeypatch, ["facebook"])
+    pages = {"data": [{"id": "1", "name": "sociokritic"}, {"id": "2", "name": "Zendawa Africa"}]}
+    monkeypatch.setattr(lace_apps.connection_service, "execute_tool",
+                        lambda *a: {"data": pages, "error": None, "log_id": "l"})
+    apps = lace_apps.DbLaceApps(AsyncSessionLocal, _lace())
+    with pytest.raises(AppError, match=r"manages 2 Pages \(sociokritic, Zendawa Africa\).*Messaging → Inboxes"):
+        await apps.my_comments("facebook", 5)
+    pages["data"] = []
+    with pytest.raises(AppError, match="manages no Page"):
+        await apps.my_comments("facebook", 5)
