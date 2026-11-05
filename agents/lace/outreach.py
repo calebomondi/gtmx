@@ -24,8 +24,10 @@ from agents.schemas.outreach import OutreachDraft
 RESEARCH_TOKENS = 700
 # The organisation's own accounts a message can go to, best first. Not its
 # LinkedIn page: a company page cannot be messaged.
-# The only channel a first message goes out on.
+# The channel the Lace's outreach goes out on.
 FIRST_TOUCH = "email"
+# Where the Lace drafts a note only when the founder asks, for them to send by hand.
+BY_HAND = frozenset({"linkedin"})
 COMPETITORS_SHOWN = 8
 # The facts each consulted specialist answers from.
 _DOMAIN_TOPICS = {

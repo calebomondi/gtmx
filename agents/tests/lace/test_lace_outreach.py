@@ -71,3 +71,25 @@ def test_every_channel_has_a_writing_rule_and_only_email_a_subject():
     from agents.pipelines.outreach import gtm_specialist
     for channel in ("email", "linkedin", "x", "instagram", "facebook", "tiktok"):
         assert channel in gtm_specialist.CHANNEL_RULES and channel in gtm_specialist._WORD_LIMITS
+
+
+async def test_a_linkedin_note_is_drafted_only_for_someone_with_a_profile(settings):
+    from agents.schemas.lace import ContactSummary
+    store, jobs = MemoryStore(), RecordingJobs()
+    store.people = [
+        ContactSummary(id="p1", name="Dan Owuor", title="Head of Software", linkedin="https://linkedin.com/in/dan",
+                       company="SunCulture", account_id="a1", approved=False),
+        ContactSummary(id="p2", name="Wanjiru", email="w@sunculture.com", company="SunCulture", account_id="a1",
+                       approved=False),
+    ]
+    tool = {t.name: t for t in build_tools(store, settings, jobs)}["draft_linkedin_note"]
+    out = json.loads(await tool.ainvoke({"contact_id": "p1", "note": "  Mention the Nairobi meetup "}))
+    assert out["ok"] and jobs.started == [("draft_outreach", {
+        "account_ids": ["a1"], "note": "Mention the Nairobi meetup",
+        "person": {"channel": "linkedin", "name": "Dan Owuor", "title": "Head of Software",
+                   "address": "https://linkedin.com/in/dan"}})]
+    no_profile = json.loads(await tool.ainvoke({"contact_id": "p2"}))
+    assert not no_profile["ok"] and "no LinkedIn profile for Wanjiru" in no_profile["error"]
+    unknown = json.loads(await tool.ainvoke({"contact_id": "p9"}))
+    assert not unknown["ok"] and "list_contacts" in unknown["error"]
+    assert len(jobs.started) == 1
