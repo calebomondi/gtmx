@@ -446,7 +446,7 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
     @tool(parse_docstring=True)
     @guarded
     async def draft_linkedin_note(contact_id: str, note: str = "") -> ToolResult:
-        """Draft a LinkedIn note to one person, only when the founder asks for one. The founder sends it themselves on LinkedIn (copy, open their profile, mark it sent): you never send on LinkedIn. Email stays the way outreach goes otherwise. Runs in the background; you get an update when it's ready.
+        """Draft a LinkedIn note to one person, only when the founder asks for one. The founder sends it themselves on LinkedIn (copy it, open their profile, tap I've sent it): you never send on LinkedIn. Email stays the way outreach goes otherwise. Runs in the background; you get an update when it's ready.
 
         Args:
             contact_id: The person's id, from list_contacts; they need a LinkedIn profile.

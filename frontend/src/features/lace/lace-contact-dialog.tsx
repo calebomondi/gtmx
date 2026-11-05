@@ -181,7 +181,7 @@ export function LaceContactDialog({ contact, channel: initialChannel, name, chat
           {current && BY_HAND.has(current.channel) && (
             <p className="text-xs text-muted-foreground">
               {name} drafts a {CHANNEL_LABELS[current.channel]} note for you to send yourself: copy it, send it on
-              {" "}{CHANNEL_LABELS[current.channel]}, then mark it sent.
+              {" "}{CHANNEL_LABELS[current.channel]}, then tap I've sent it.
             </p>
           )}
 
