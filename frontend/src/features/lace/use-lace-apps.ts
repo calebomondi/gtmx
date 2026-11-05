@@ -3,7 +3,8 @@ import { useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 
 import {
-  deleteLaceConnection, listLaceAppActions, listLaceApps, updateLaceApp, type AppActionDto, type LaceAppDto,
+  deleteLaceConnection, listLaceAppActions, listLaceApps, setLaceSendFrom, updateLaceApp, type AppActionDto, type LaceAppDto,
+  type Mailbox,
 } from "@/lib/api"
 import { PLATFORM_LABEL, type Platform } from "@/lib/platforms"
 import { whileVisible } from "@/lib/visible"
@@ -23,6 +24,8 @@ export interface LaceApps {
   setEnabled: (platform: Platform, enabled: boolean) => Promise<void>
   /** Replace an app's settings for this Lace; false (with a toast) when refused. */
   setSettings: (platform: Platform, settings: Record<string, string>) => Promise<boolean>
+  /** Pick the mailbox new email goes from (with a toast when refused). */
+  setSendFrom: (mailbox: Mailbox) => Promise<void>
   /** Disconnect the Lace's own account for an app; it goes back to the shared one. */
   disconnectOwn: (app: LaceAppDto) => Promise<void>
 }
@@ -57,6 +60,14 @@ export function useLaceApps(laceId: string): LaceApps {
     const timer = setInterval(whileVisible(() => void loadActions().catch(() => undefined)), POLL_MS)
     return () => clearInterval(timer)
   }, [refresh, loadActions])
+
+  const setSendFrom = useCallback(async (mailbox: Mailbox) => {
+    try {
+      setApps(await setLaceSendFrom(laceId, mailbox))
+    } catch (err) {
+      toast.error(`Couldn't send from ${PLATFORM_LABEL[mailbox]}`, { description: err instanceof Error ? err.message : String(err) })
+    }
+  }, [laceId])
 
   const setEnabled = useCallback(async (platform: Platform, enabled: boolean) => {
     try {
@@ -116,6 +127,6 @@ export function useLaceApps(laceId: string): LaceApps {
 
   return {
     apps, actions, waiting: actions.filter((a) => a.status === "proposed").length, error, refresh, setEnabled,
-    setSettings, disconnectOwn,
+    setSettings, setSendFrom, disconnectOwn,
   }
 }

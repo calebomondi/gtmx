@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useSearchParams } from "react-router-dom"
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import { PenLine, Reply, Send, type LucideIcon } from "lucide-react"
 
 import type { ContactDto, OutreachChannel } from "@/lib/api"
@@ -12,8 +12,10 @@ import { LaceContacts } from "./lace-contacts"
 import { LacePanelTabs, PanelIntro, type PanelTab } from "./lace-panel-tabs"
 import { LaceThreads } from "./lace-threads"
 import { threadActions } from "./lace-thread-actions"
-import { mailboxNote, messagingAccounts, onAccount, type AccountKey } from "./messaging-accounts"
+import { connectedMailboxes, messagingAccounts, onAccount, type AccountKey } from "./messaging-accounts"
 import { groupThreads, inFolder, isUnread, outreachTally } from "./outreach-threads"
+import { SendFrom } from "./send-from"
+import type { LaceApps } from "./use-lace-apps"
 import type { LaceChat } from "./use-lace-chat"
 import { useConnections } from "./use-connections"
 import { useSection } from "./use-lace-section"
@@ -34,9 +36,11 @@ function Stat({ icon: Icon, value, label }: { icon: LucideIcon; value: number; l
  * (everything someone answered), drafts to send, what was sent and awaits
  * an answer, and the contacts the Lace found. Social accounts live in
  * Social. */
-export function LaceMessaging({ laceId, name, chat }: { laceId: string; name: string; chat: LaceChat }) {
+export function LaceMessaging({ laceId, name, chat, apps }: { laceId: string; name: string; chat: LaceChat; apps: LaceApps }) {
   const [section, setSection] = useSection<MessagingSection>(MESSAGING_SECTIONS)
-  const [params, setParams] = useSearchParams()
+  const [params] = useSearchParams()
+  const navigate = useNavigate()
+  const { hash } = useLocation()
   // The person open in a dialog (by id, so it follows the list as it updates).
   const [person, setPerson] = useState<{ id: string; channel: OutreachChannel | null } | null>(null)
   const openContact = (contact: ContactDto, channel: OutreachChannel | null) => {
@@ -45,17 +49,19 @@ export function LaceMessaging({ laceId, name, chat }: { laceId: string; name: st
   }
   const opened = person ? chat.contacts.find((c) => c.id === person.id) : undefined
   const connections = useConnections()
-  const accounts = messagingAccounts(connections.connections, chat.outreach)
-  const mailNote = mailboxNote(connections.connections, name)
-  const requested = params.get("account")
-  const account: AccountKey = accounts.some((a) => a.key === requested) ? (requested as OutreachChannel) : "all"
-  const selectAccount = (next: AccountKey) => setParams((prev) => {
-    if (next === "all") prev.delete("account")
-    else prev.set("account", next)
-    return prev
-  }, { replace: true })
+  const laceApps = apps.apps ?? []
+  const accounts = messagingAccounts(laceApps, connections.connections, chat.outreach)
+  const account: AccountKey = accounts.find((a) => a.key === params.get("account"))?.key ?? "all"
+  const canChoose = chat.lace?.role === "owner" || chat.lace?.role === "admin"
+  // Another account keeps the tab open (the hash).
+  const selectAccount = (next: AccountKey) => {
+    const search = new URLSearchParams(params)
+    if (next === "all") search.delete("account")
+    else search.set("account", next)
+    navigate({ search: search.toString(), hash }, { replace: true })
+  }
 
-  const outreach = onAccount(chat.outreach, account)
+  const outreach = onAccount(chat.outreach, account, laceApps)
   const tally = outreachTally(outreach)
   const threads = groupThreads(outreach)
   const count = (folder: Parameters<typeof inFolder>[1]) => threads.filter((t) => inFolder(t, folder)).length
@@ -122,7 +128,8 @@ export function LaceMessaging({ laceId, name, chat }: { laceId: string; name: st
         </div>
         <LaceAccountSwitcher laceId={laceId} name={name} accounts={accounts} value={account} onChange={selectAccount}
                              totalWaiting={chat.waiting} connections={connections} />
-        {mailNote && <p className="text-xs text-muted-foreground">{mailNote}</p>}
+        <SendFrom mailboxes={connectedMailboxes(laceApps)} name={name} canChoose={canChoose}
+                  onPick={(mailbox) => void apps.setSendFrom(mailbox)} />
         <div className="grid grid-cols-3 gap-2">
           <Stat icon={PenLine} value={tally.drafts} label="To send" />
           <Stat icon={Send} value={tally.sent} label="Sent" />

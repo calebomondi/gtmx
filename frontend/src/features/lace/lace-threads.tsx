@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import type { LaceOutreachChanges, LaceOutreachDto, OutreachChannel } from "@/lib/api"
 import { formatRelativeTime } from "@/lib/format"
+import { PLATFORM_LABEL } from "@/lib/platforms"
 import { cn } from "@/lib/utils"
 
 import { DraftCard } from "./lace-draft"
@@ -97,6 +98,8 @@ function ThreadView({ thread, folder, actions, onBack }: {
   const drafts = thread.messages.filter((m) => m.direction === "outbound" && (m.status === "draft" || m.status === "failed"))
   const replyTo = folder === "drafts" ? answering(thread, drafts) : null
   const said = folder === "drafts" ? (replyTo ? [replyTo] : []) : thread.messages.filter((m) => !drafts.includes(m))
+  // An email conversation's mailbox, once one of its messages recorded it.
+  const mailbox = thread.messages.find((m) => m.mailbox)?.mailbox
   const scroller = useScrollToEnd<HTMLDivElement>(thread.key, thread.messages.length)
   // Shown is read: its replies stop counting as new.
   const unread = thread.messages.filter(isUnread).map((m) => m.id).join(",")
@@ -115,6 +118,7 @@ function ThreadView({ thread, folder, actions, onBack }: {
           <p className="truncate font-medium">{thread.who}</p>
           <p className="truncate text-xs text-muted-foreground">
             {thread.company && thread.company !== thread.who ? `${thread.company} · ` : ""}{CHANNEL_LABELS[thread.channel]}
+            {mailbox ? ` · ${PLATFORM_LABEL[mailbox]}` : ""}
           </p>
         </div>
       </header>
