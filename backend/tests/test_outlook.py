@@ -116,8 +116,8 @@ def test_replies_sync_from_outlook(client, lace, lace_runtime, user, monkeypatch
         ("What does it cost?", "jane@alpha.test", "outlook")]
 
 
-def _sending(client, lace) -> list[str]:
-    return [a["platform"] for a in client.get(f"{API}/laces/{lace}/apps").json() if a["sends_email"]]
+def _sending(client, lace_id) -> list[str]:
+    return [a["platform"] for a in client.get(f"{API}/laces/{lace_id}/apps").json() if a["sends_email"]]
 
 
 def test_the_founder_picks_the_mailbox_new_email_goes_from(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
