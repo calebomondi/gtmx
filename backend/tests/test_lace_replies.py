@@ -97,6 +97,9 @@ def test_a_reply_is_read_answered_as_a_draft_and_reported(client, lace, lace_run
         kind, title, ref_type, ref_id = conn.execute("SELECT kind, title, ref_type, ref_id FROM lace_activity").fetchone()
         assert (kind, title, ref_type, str(ref_id)) == ("reply_received", "SunCulture replied (question)", "outreach",
                                                         inbound["id"])
+    # The Feed knows where the reply lives, here and across all Laces.
+    assert client.get(f"{API}/laces/{lace}/activity").json()[0]["channel"] == "email"
+    assert client.get(f"{API}/laces/activity").json()[0]["channel"] == "email"
     # Synced once: the same message is not stored twice.
     assert client.portal.call(scheduler.sync_inboxes) == 0
 

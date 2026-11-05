@@ -1,33 +1,47 @@
 import type { HeardKind, LaceAppDto, LaceOutreachDto, SocialItemDto, SocialPlatform, SocialPostDto } from "@/lib/api"
 import { PLATFORM_LABEL } from "@/lib/platforms"
 
+import { isUnread } from "./outreach-threads"
+
+/** An account in Social: one the Lace listens on, or Telegram, whose bot only gets messages. */
+export type SocialAccountPlatform = SocialPlatform | "telegram"
+
 /** The founder's accounts the Social view shows, in this order. */
-const SOCIAL_ORDER: SocialPlatform[] = ["instagram", "facebook", "x", "tiktok", "linkedin"]
+const SOCIAL_ORDER: SocialAccountPlatform[] = ["instagram", "facebook", "telegram", "x", "tiktok", "linkedin"]
 /** Platforms whose direct messages the Lace reads and answers. */
-export const DM_PLATFORMS: ReadonlySet<SocialPlatform> = new Set(["instagram", "facebook"])
+export const DM_PLATFORMS: ReadonlySet<SocialAccountPlatform> = new Set(["instagram", "facebook", "telegram"])
+
+/** Accounts the Lace listens on for comments and mentions, with posts to show. */
+export function listensOn(platform: SocialAccountPlatform): platform is SocialPlatform {
+  return platform !== "telegram"
+}
 
 export interface SocialAccount {
-  platform: SocialPlatform
+  platform: SocialAccountPlatform
   label: string
   /** connected: through the app; handle: read by the founder's public handle, nothing connected. */
   how: "connected" | "handle"
   handle: string | null
   /** Connected, but the Page or business account isn't linked to the Lace yet. */
   needsLink: boolean
-  /** Leads and questions waiting on the founder. */
+  /** Messages not yet read, and leads and questions heard since the founder last looked. */
   waiting: number
 }
 
-/** The founder's social accounts a Lace reads: connected ones, and those read by a saved handle. */
-export function socialAccounts(apps: LaceAppDto[], heard: SocialItemDto[]): SocialAccount[] {
+/** The founder's social accounts a Lace reads: connected ones, and those read
+ * by a saved handle. `seenAt` is when the founder last opened each account. */
+export function socialAccounts(apps: LaceAppDto[], heard: SocialItemDto[], outreach: LaceOutreachDto[],
+                               seenAt: (platform: SocialAccountPlatform) => number): SocialAccount[] {
   return SOCIAL_ORDER.flatMap((platform) => {
     const app = apps.find((a) => a.platform === platform)
     const handle = app?.settings.handle ?? null
     if (!app || (!app.connected && !handle)) return []
+    const fresh = heard.filter((i) => i.platform === platform && i.status === "new" && needsReply(i.verdict)
+                                      && Date.parse(i.heard_at) > seenAt(platform))
     return [{
       platform, label: PLATFORM_LABEL[platform], how: app.connected ? "connected" : "handle", handle,
       needsLink: app.needs_link,
-      waiting: heard.filter((i) => i.platform === platform && i.status === "new" && needsReply(i.verdict)).length,
+      waiting: fresh.length + messagesOn(outreach, platform).filter(isUnread).length,
     }]
   })
 }
@@ -83,6 +97,6 @@ export function postsSummary(posts: SocialPostDto[]): string | null {
 }
 
 /** Direct messages on a platform: what the Messages tab threads. */
-export function messagesOn(outreach: LaceOutreachDto[], platform: SocialPlatform): LaceOutreachDto[] {
+export function messagesOn(outreach: LaceOutreachDto[], platform: SocialAccountPlatform): LaceOutreachDto[] {
   return outreach.filter((m) => m.channel === platform)
 }

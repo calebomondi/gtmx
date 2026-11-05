@@ -378,6 +378,7 @@ class ActivityResponse(BaseModel):
     created_at: datetime
     read_at: datetime | None = None
     actor: MessageAuthor | None = Field(default=None, description="Who on the team did it or asked for it")
+    channel: OutreachChannel | None = Field(default=None, description="The channel of the message it's about, if any")
 
 
 class OutreachReadRequest(BaseModel):

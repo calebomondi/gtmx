@@ -1,12 +1,13 @@
-import type { ActivityDto, ActivityKind } from "@/lib/api"
+import type { ActivityDto, ActivityKind, OutreachChannel } from "@/lib/api"
 
 import type { LaceTab } from "./lace-tabs"
+import { SOCIAL_CHANNELS } from "./outreach-threads"
 
 /** The Feed's sub-tabs. */
 export type FeedSection = "activity" | "opportunities" | "accounts" | "competitors" | "compliance"
 export const FEED_SECTIONS: readonly FeedSection[] = ["activity", "opportunities", "accounts", "competitors", "compliance"]
 
-/** Messaging's sub-tabs. */
+/** Outreach's sub-tabs. */
 export type MessagingSection = "conversations" | "drafts" | "sent" | "contacts"
 export const MESSAGING_SECTIONS: readonly MessagingSection[] = ["conversations", "drafts", "sent", "contacts"]
 
@@ -21,6 +22,13 @@ export interface FeedTarget {
   section?: LaceSection
   /** Also open the Lace's people (someone asked to join). */
   people?: boolean
+  /** In Social, the account to open. */
+  account?: OutreachChannel
+}
+
+/** The path that opens a target, e.g. /lace/:id/social?account=instagram#messages. */
+export function targetPath(laceId: string, { tab, section, account }: FeedTarget): string {
+  return `/lace/${laceId}/${tab}${account ? `?account=${account}` : ""}${section ? sectionHash(section) : ""}`
 }
 
 /** Where each kind of activity takes the founder, and what the button says. */
@@ -35,7 +43,7 @@ export const ACTIVITY_ACTIONS: Record<ActivityKind, { label: string; target: Fee
   opportunities_found: { label: "See opportunities", target: { tab: "feed", section: "opportunities" } },
   job_failed: { label: "Talk it through", target: { tab: "chat" } },
   app_action: { label: "Talk it through", target: { tab: "chat" } },
-  comments_read: { label: "See who commented", target: { tab: "chat" } },
+  comments_read: { label: "See who commented", target: { tab: "social", section: "engagement" } },
   access_requested: { label: "Open People", target: { tab: "feed", people: true } },
   member_joined: { label: "Open People", target: { tab: "feed", people: true } },
   message_sent: { label: "See sent", target: { tab: "messaging", section: "sent" } },
@@ -48,10 +56,15 @@ export const ACTIVITY_ACTIONS: Record<ActivityKind, { label: string; target: Fee
   bill_moved: { label: "See compliance", target: { tab: "feed", section: "compliance" } },
 }
 
-/** A kind's action; a kind this app doesn't know yet (the server added it
- * first) opens the chat rather than breaking the Feed. */
-export function activityAction(kind: string): { label: string; target: FeedTarget } {
-  return ACTIVITY_ACTIONS[kind as ActivityKind] ?? { label: "Talk it through", target: { tab: "chat" } }
+/** An item's action; a kind this app doesn't know yet (the server added it
+ * first) opens the chat rather than breaking the Feed. A message on a social
+ * account opens in Social, on that account. */
+export function activityAction(item: Pick<ActivityDto, "kind" | "channel">): { label: string; target: FeedTarget } {
+  const action = ACTIVITY_ACTIONS[item.kind as ActivityKind] ?? { label: "Talk it through", target: { tab: "chat" } }
+  if (item.channel && SOCIAL_CHANNELS.has(item.channel) && action.target.tab === "messaging") {
+    return { label: action.label, target: { tab: "social", section: "messages", account: item.channel } }
+  }
+  return action
 }
 
 export interface NeedsYouItem {
@@ -66,7 +79,7 @@ export interface NeedsYouItem {
  * visit). */
 export function needsYou(waiting: number, failedSearches: ActivityDto[],
                          suggestions: Partial<Record<FeedSection, number>> = {}, toApprove = 0,
-                         pushed = 0): NeedsYouItem[] {
+                         pushed = 0, socialUnread = 0): NeedsYouItem[] {
   const items: NeedsYouItem[] = []
   if (pushed > 0) {
     items.push({ label: `${pushed} ${pushed === 1 ? "teammate's find" : "teammates' finds"} to approve`,
@@ -85,6 +98,10 @@ export function needsYou(waiting: number, failedSearches: ActivityDto[],
   if (waiting > 0) {
     items.push({ label: `${waiting} ${waiting === 1 ? "message waits" : "messages wait"} on you`,
                  target: { tab: "messaging", section: "conversations" } })
+  }
+  if (socialUnread > 0) {
+    items.push({ label: `${socialUnread} ${socialUnread === 1 ? "message" : "messages"} on your social accounts`,
+                 target: { tab: "social", section: "messages" } })
   }
   if (failedSearches.length > 0) {
     const n = failedSearches.length

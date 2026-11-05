@@ -18,7 +18,7 @@ interface RailProps {
   /** The Lace is searching (Feed) or drafting (Messaging) in the background. */
   feedBusy: boolean
   messagingBusy: boolean
-  /** Social accounts waiting on the founder (a Page to link). */
+  /** Social waiting on the founder: messages to read, a Page to link. */
   socialWaiting: number
   className?: string
 }

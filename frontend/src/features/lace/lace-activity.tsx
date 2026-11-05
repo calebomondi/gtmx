@@ -24,7 +24,7 @@ function Step<T extends ActivityDto>({ item, fresh, opened, last, onOpen, tag }:
   tag?: ReactNode
 }) {
   const { user } = useAuth()
-  const action = activityAction(item.kind)
+  const action = activityAction(item)
   const failed = item.kind === "job_failed"
   const by = item.actor && (item.actor.id === user?.id ? "You" : (item.actor.name ?? "Someone on your team"))
   return (

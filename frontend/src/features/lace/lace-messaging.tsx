@@ -12,7 +12,7 @@ import { LaceContacts } from "./lace-contacts"
 import { LacePanelTabs, PanelIntro, type PanelTab } from "./lace-panel-tabs"
 import { LaceThreads } from "./lace-threads"
 import { threadActions } from "./lace-thread-actions"
-import { messagingAccounts, onAccount, type AccountKey } from "./messaging-accounts"
+import { mailboxNote, messagingAccounts, onAccount, type AccountKey } from "./messaging-accounts"
 import { groupThreads, inFolder, isUnread, outreachTally } from "./outreach-threads"
 import type { LaceChat } from "./use-lace-chat"
 import { useConnections } from "./use-connections"
@@ -46,6 +46,7 @@ export function LaceMessaging({ laceId, name, chat }: { laceId: string; name: st
   const opened = person ? chat.contacts.find((c) => c.id === person.id) : undefined
   const connections = useConnections()
   const accounts = messagingAccounts(connections.connections, chat.outreach)
+  const mailNote = mailboxNote(connections.connections, name)
   const requested = params.get("account")
   const account: AccountKey = accounts.some((a) => a.key === requested) ? (requested as OutreachChannel) : "all"
   const selectAccount = (next: AccountKey) => setParams((prev) => {
@@ -121,6 +122,7 @@ export function LaceMessaging({ laceId, name, chat }: { laceId: string; name: st
         </div>
         <LaceAccountSwitcher laceId={laceId} name={name} accounts={accounts} value={account} onChange={selectAccount}
                              totalWaiting={chat.waiting} connections={connections} />
+        {mailNote && <p className="text-xs text-muted-foreground">{mailNote}</p>}
         <div className="grid grid-cols-3 gap-2">
           <Stat icon={PenLine} value={tally.drafts} label="To send" />
           <Stat icon={Send} value={tally.sent} label="Sent" />

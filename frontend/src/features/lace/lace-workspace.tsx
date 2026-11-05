@@ -11,7 +11,7 @@ import { usePageTitle } from "@/lib/use-page-title"
 
 import { JOB_INFO } from "./background-jobs"
 import type { DiscussState } from "./discuss"
-import { sectionHash, type FeedTarget } from "./lace-activity-actions"
+import { targetPath, type FeedTarget } from "./lace-activity-actions"
 import { LaceBackgroundWork } from "./lace-background-work"
 import { LaceConversation } from "./lace-conversation"
 import { foundSections, type FoundSection } from "./found-model"
@@ -88,8 +88,8 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
     track("lace_settings_opened", { laceId })
     setSettingsOpen(true)
   }
-  // The apps load with the settings and the chat, whose quick asks come from them.
-  const apps = useLaceApps(laceId, settingsOpen || tab === "chat" || tab === "social")
+  // Always loaded: the chat's quick asks, Social, and the rail's Social badge (a Page to link) read them.
+  const apps = useLaceApps(laceId, true)
   const asks = quickAsks(apps.apps)
   const askApp = (text: string) => {
     track("quick_ask_used", { detail: asks.find((a) => a.text === text)?.label, laceId })
@@ -110,9 +110,9 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
     if (next && !peopleOpen) track("lace_people_opened", { laceId })
     setPeopleShown(next)
   }
-  const open = ({ tab: next, section, people: toPeople }: FeedTarget) => {
-    navigate(`/lace/${laceId}/${next}${section ? sectionHash(section) : ""}`)
-    if (toPeople) setPeopleOpen(true)
+  const open = (target: FeedTarget) => {
+    navigate(targetPath(laceId, target))
+    if (target.people) setPeopleOpen(true)
   }
   // "Discuss with…": into the chat with the topic waiting in the input.
   const discuss = (prompt: string) =>
@@ -129,7 +129,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
     unread: activity.unread,
     feedBusy: chat.searching || chat.findingAccounts || chat.findingOpportunities,
     messagingBusy: chat.drafting,
-    socialWaiting: (apps.apps ?? []).filter((a) => a.needs_link).length,
+    socialWaiting: chat.socialUnread + (apps.apps ?? []).filter((a) => a.needs_link).length,
   }
   const found = foundSections(chat, opps, open)
   // Kinds of find a background job is filling now: their chips spin.

@@ -30,6 +30,11 @@ function threadKey(m: LaceOutreachDto): string {
   return m.thread_id ?? `${m.channel}:${(m.recipient_address ?? m.recipient_company).toLowerCase()}`
 }
 
+/** The channels Outreach shows (email, and LinkedIn notes the founder sends);
+ * the founder's social accounts live in Social. */
+export const OUTREACH_CHANNELS: ReadonlySet<OutreachChannel> = new Set(["email", "linkedin"])
+export const SOCIAL_CHANNELS: ReadonlySet<OutreachChannel> = new Set(["instagram", "facebook", "x", "tiktok", "telegram"])
+
 /** A draft to review and send, or a reply the Lace has not read yet. */
 export function waitsOnFounder(m: LaceOutreachDto): boolean {
   return (m.direction === "outbound" && m.status === "draft") || isUnread(m)

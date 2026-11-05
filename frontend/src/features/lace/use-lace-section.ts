@@ -5,8 +5,8 @@ import { sectionFromHash, sectionHash, type LaceSection } from "./lace-activity-
 /** Which sub-tab is open, kept in the URL hash so links (from Home, search,
  * an activity) open the right one and Back returns to the last. */
 export function useSection<S extends LaceSection>(sections: readonly S[]): [S, (next: S) => void] {
-  const { hash } = useLocation()
+  const { hash, search } = useLocation()
   const navigate = useNavigate()
   const current = sectionFromHash(hash, sections) ?? sections[0]
-  return [current, (next) => navigate({ hash: sectionHash(next) }, { replace: true })]
+  return [current, (next) => navigate({ search, hash: sectionHash(next) }, { replace: true })]
 }
