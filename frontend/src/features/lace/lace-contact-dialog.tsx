@@ -4,7 +4,7 @@ import { Check, Copy, ExternalLink, Loader2, MessageCircleReply, Sparkles } from
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
-import { BY_HAND, FIRST_TOUCH, type ContactDto, type LaceOutreachDto, type OutreachChannel } from "@/lib/api"
+import { BY_HAND, FIRST_TOUCH, type ContactDto, type LaceAppDto, type LaceOutreachDto, type OutreachChannel } from "@/lib/api"
 import { formatRelativeTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -64,11 +64,13 @@ function AddressRow({ reach }: { reach: Reach }) {
  * them there, the conversation on it (drafts editable and sendable in
  * place), and a box to ask the Lace to write to them on it. Starting on a new
  * channel after they answered on another is allowed but discouraged. */
-export function LaceContactDialog({ contact, channel: initialChannel, name, chat, onClose }: {
+export function LaceContactDialog({ contact, channel: initialChannel, name, chat, mailboxes, onClose }: {
   contact: ContactDto
   channel: OutreachChannel | null
   name: string
   chat: LaceChat
+  /** The Lace's connected mailboxes, for a new email's sender. */
+  mailboxes: LaceAppDto[]
   onClose: () => void
 }) {
   const reach = reachOf(contact)
@@ -150,7 +152,7 @@ export function LaceContactDialog({ contact, channel: initialChannel, name, chat
                            onSave={(changes) => void chat.saveDraft(m.id, changes)} onDiscard={() => void chat.discardDraft(m.id)}
                            onSend={() => chat.sendDraft(m.id)} onUndo={() => chat.undoSend(m.id)}
                            onMarkSent={() => void chat.markSent(m.id)}
-                           brainstorm={<DraftBrainstorm draft={m} chat={chat} name={name} />} />
+                           brainstorm={<DraftBrainstorm draft={m} chat={chat} name={name} />} mailboxes={mailboxes} />
               ))}
             </section>
           )}

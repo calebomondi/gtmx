@@ -163,3 +163,25 @@ def test_only_the_laces_admins_pick_its_mailbox(client, lace, lace_runtime, monk
     stub_accounts(monkeypatch, {"gmail", "outlook"})
     client.sign_in(make_user("Intruder"))
     assert client.put(f"{API}/laces/{lace}/send-from", json={"mailbox": "outlook"}).status_code == 404
+
+
+def test_the_founder_picks_a_new_emails_mailbox_as_they_send_it(client, lace, lace_runtime, user,  # noqa: F811
+                                                                monkeypatch):
+    calls = _outlook(monkeypatch)
+    stub_accounts(monkeypatch, {"gmail", "outlook"})
+    message = _message(lace, user.id)
+    picked = client.patch(f"{API}/laces/{lace}/outreach/{message}", json={"mailbox": "outlook"})
+    assert picked.json()["mailbox"] == "outlook"
+    sent = client.post(f"{API}/laces/{lace}/outreach/{message}/send").json()
+    assert (sent["status"], sent["mailbox"], calls[0][0]) == ("sent", "outlook", "OUTLOOK_SEND_EMAIL")
+
+
+def test_an_answers_mailbox_cant_be_changed(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    stub_accounts(monkeypatch, {"gmail", "outlook"})
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        answer = conn.execute("INSERT INTO lace_outreach (id, lace_id, user_id, channel, thread_id, mailbox,"
+                              " recipient_address, body, status) VALUES (%s, %s, %s, 'email', 't_gmail', 'gmail',"
+                              " 'jane@alpha.test', 'From $20.', 'draft') RETURNING id",
+                              (uuid.uuid4(), lace, user.id)).fetchone()[0]
+    moved = client.patch(f"{API}/laces/{lace}/outreach/{answer}", json={"mailbox": "outlook"})
+    assert moved.status_code == 409 and "conversation is in" in moved.json()["detail"]

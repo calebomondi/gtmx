@@ -30,13 +30,13 @@ export const PLATFORM_LABEL: Record<Platform, string> = {
 /** Empty string means "no icon asset" — the tile renders the name's first letter instead. */
 export const PLATFORM_ICON: Record<Platform, string> = {
   gmail: '/gmail.svg',
-  outlook: '',
+  outlook: '/outlook.svg',
   googlecalendar: '/google-calendar.svg',
   linkedin: '/linkedin.svg',
   instagram: '/instagram.svg',
   facebook: '/facebook.svg',
   tiktok: '/tiktok-mark.svg',
-  x: '',
+  x: '/x.svg',
   whatsapp: '/whatsapp.svg',
   zoho: '/zoho.svg',
   hubspot: '/hubspot.svg',
@@ -49,7 +49,7 @@ export const PLATFORM_ICON: Record<Platform, string> = {
 }
 
 /** Icons drawn in black, inverted on dark themes so they stay visible. */
-export const DARK_ICONS: ReadonlySet<Platform> = new Set(['notion'])
+export const DARK_ICONS: ReadonlySet<Platform> = new Set(['notion', 'x'])
 
 export type AppGroup = 'channels' | 'crm' | 'docs' | 'team' | 'meetings'
 
