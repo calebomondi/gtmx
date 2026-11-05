@@ -69,7 +69,7 @@ async def facebook_page(ctx: RunContext) -> str:
         return ctx.linked_account
     pages = items((await call(ctx, "FACEBOOK_LIST_MANAGED_PAGES", {}))["data"])
     if len(pages) != 1:
-        raise ActionFailed("Pick the Facebook Page this Lace uses: link it under Messaging → Inboxes.")
+        raise ActionFailed("Pick the Facebook Page this Lace uses: link it in Social.")
     return str(pages[0]["id"])
 
 

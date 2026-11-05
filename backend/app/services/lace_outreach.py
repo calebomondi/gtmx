@@ -42,10 +42,10 @@ _HANDOFF = {
     "linkedin": "LinkedIn messages are sent by you: copy the message, send it on LinkedIn, then mark it sent.",
     "instagram": "Instagram only lets apps answer people who wrote first, so start this chat yourself: copy the "
                  "message, send it on Instagram, then mark it sent. When they reply, your Lace sees it in "
-                 "Messaging and drafts every answer, which you send from here.",
+                 "Social and drafts every answer, which you send from here.",
     "facebook": "Facebook only lets a Page answer people who wrote first, so start this chat yourself: copy the "
                 "message, send it from your Page on Facebook, then mark it sent. When they reply, your Lace "
-                "sees it in Messaging and drafts every answer, which you send from here.",
+                "sees it in Social and drafts every answer, which you send from here.",
     "tiktok": "TikTok has no messaging for apps: copy the message, send it on TikTok, then mark it sent.",
     "telegram": "A Telegram bot can only answer people who wrote to it first: copy the message, send it on "
                 "Telegram, then mark it sent. Share your bot's link (t.me/yourbot) so people can write to it; "

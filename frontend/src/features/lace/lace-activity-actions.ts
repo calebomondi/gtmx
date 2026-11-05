@@ -10,7 +10,11 @@ export const FEED_SECTIONS: readonly FeedSection[] = ["activity", "opportunities
 export type MessagingSection = "conversations" | "drafts" | "sent" | "contacts"
 export const MESSAGING_SECTIONS: readonly MessagingSection[] = ["conversations", "drafts", "sent", "contacts"]
 
-export type LaceSection = FeedSection | MessagingSection
+/** Social's sub-tabs, for the platform picked. */
+export type SocialSection = "engagement" | "posts" | "messages"
+export const SOCIAL_SECTIONS: readonly SocialSection[] = ["engagement", "posts", "messages"]
+
+export type LaceSection = FeedSection | MessagingSection | SocialSection
 
 export interface FeedTarget {
   tab: LaceTab
