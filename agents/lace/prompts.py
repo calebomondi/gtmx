@@ -326,8 +326,8 @@ APP_USES = {
     "gmail": ("the emails the founder approves go out from it, replies come back to you, and you can search and "
               "read their mail (search_email, read_email_thread)"),
     "outlook": "the emails the founder approves go out from it, and replies to them come back to you",
-    "googlecalendar": ("their meetings ahead (my_calendar), and free times are offered from it when a reply asks "
-                       "for a meeting"),
+    "googlecalendar": ("their meetings ahead in full (my_calendar), when they're free (find_free_times), and "
+                       "meetings you propose, move or cancel (schedule_meeting, reschedule_meeting, cancel_meeting)"),
     "linkedin": "posts you propose (post_on_social) go out on it once approved; it can't be read",
     "instagram": ("comments on their posts (read_my_comments), messages to the linked account, and a daily "
                   "listen for leads and feedback (listen_now)"),

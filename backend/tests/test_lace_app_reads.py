@@ -77,10 +77,10 @@ async def test_calendar_events_name_the_others_attending(monkeypatch):
         {"start": {"date": "2026-11-06"}, "end": {"date": "2026-11-07"}}]}})
     lace, owner = _lace()
     events = await lace_apps.DbLaceApps(AsyncSessionLocal, lace, owner).calendar_events(7)
-    assert events == [
-        {"title": "Call with Acme", "start": "2026-11-05T10:00:00Z", "end": "2026-11-05T10:30:00Z",
-         "attendees": [{"name": "Jane", "email": "jane@acme.test"}]},
-        {"title": "(no title)", "start": "2026-11-06", "end": "2026-11-07", "attendees": []}]
+    assert [(e["title"], e["start"], e["end"], e["attendees"]) for e in events] == [
+        ("Call with Acme", "2026-11-05T10:00:00Z", "2026-11-05T10:30:00Z",
+         [{"name": "Jane", "email": "jane@acme.test", "response": None}]),
+        ("(no title)", "2026-11-06", "2026-11-07", [])]
 
 
 async def test_x_mentions_name_who_posted(monkeypatch):

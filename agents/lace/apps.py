@@ -52,8 +52,15 @@ class LaceApps(Protocol):
         ...
 
     async def calendar_events(self, days_ahead: int) -> list[dict] | None:
-        """The founder's Google Calendar events from now: {title, start, end,
-        attendees: [{name, email}]}. None when it isn't on. Raises AppError."""
+        """The founder's Google Calendar events from now: {id, title, start,
+        end, location, join, description, organizer, attendees: [{name, email,
+        response}]}. None when it isn't on. Raises AppError."""
+        ...
+
+    async def calendar_free_times(self, days: int, minutes: int) -> dict | None:
+        """Free `minutes`-long slots in working hours over the next `days`:
+        {timezone, slots: ["Mon 10 Nov, 14:00-14:30 (Africa/Nairobi)"]}. None
+        when Google Calendar isn't on. Raises AppError."""
         ...
 
     async def x_mentions(self) -> list[dict] | None:
