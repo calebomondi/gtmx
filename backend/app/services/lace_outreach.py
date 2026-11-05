@@ -91,6 +91,14 @@ async def unsent_draft(db: AsyncSession, lace_id: uuid.UUID, draft_id: uuid.UUID
 async def update(db: AsyncSession, message: LaceOutreach, changes: dict[str, Any]) -> LaceOutreach:
     if message.direction != "outbound" or message.status not in _EDITABLE_STATUSES:
         raise ConflictError("Only an unsent draft can be changed.")
+    if "mailbox" in changes:
+        # The founder picks where a new email goes from, as they send it; an
+        # answer goes from the mailbox its conversation is in.
+        if message.channel != "email":
+            raise ConflictError("Only an email goes from a mailbox.")
+        if message.thread_id and changes["mailbox"] != message.mailbox:
+            raise ConflictError("An answer goes from the mailbox its conversation is in.")
+        message.mailbox = changes["mailbox"]
     for field in EDITABLE_FIELDS:
         if field in changes:
             setattr(message, field, changes[field])

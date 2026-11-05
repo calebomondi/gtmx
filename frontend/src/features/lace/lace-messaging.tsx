@@ -14,7 +14,6 @@ import { LaceThreads } from "./lace-threads"
 import { threadActions } from "./lace-thread-actions"
 import { connectedMailboxes, messagingAccounts, onAccount, type AccountKey } from "./messaging-accounts"
 import { groupThreads, inFolder, isUnread, outreachTally } from "./outreach-threads"
-import { SendFrom } from "./send-from"
 import type { LaceApps } from "./use-lace-apps"
 import type { LaceChat } from "./use-lace-chat"
 import { useConnections } from "./use-connections"
@@ -52,7 +51,8 @@ export function LaceMessaging({ laceId, name, chat, apps }: { laceId: string; na
   const laceApps = apps.apps ?? []
   const accounts = messagingAccounts(laceApps, connections.connections, chat.outreach)
   const account: AccountKey = accounts.find((a) => a.key === params.get("account"))?.key ?? "all"
-  const canChoose = chat.lace?.role === "owner" || chat.lace?.role === "admin"
+  // Connected mailboxes: a new email's sender is picked on its draft.
+  const mailboxes = connectedMailboxes(laceApps).filter((m) => m.connected)
   // Another account keeps the tab open (the hash).
   const selectAccount = (next: AccountKey) => {
     const search = new URLSearchParams(params)
@@ -67,7 +67,7 @@ export function LaceMessaging({ laceId, name, chat, apps }: { laceId: string; na
   const count = (folder: Parameters<typeof inFolder>[1]) => threads.filter((t) => inFolder(t, folder)).length
   const unreadReplies = outreach.filter(isUnread).length
   const toApprove = chat.contacts.filter((c) => !c.approved_at).length
-  const actions = threadActions(chat, name)
+  const actions = threadActions(chat, name, mailboxes)
   const inbox = (folder: "replies" | "drafts" | "awaiting", empty: { title: string; body: string }) => (
     <LaceThreads outreach={outreach} folder={folder} drafting={chat.drafting} actions={actions} empty={empty} />
   )
@@ -112,6 +112,7 @@ export function LaceMessaging({ laceId, name, chat, apps }: { laceId: string; na
                         onOpen={openContact} />
           {opened && (
             <LaceContactDialog key={opened.id} contact={opened} channel={person?.channel ?? null} name={name} chat={chat}
+                               mailboxes={mailboxes}
                                onClose={() => setPerson(null)} />
           )}
         </>
@@ -128,8 +129,6 @@ export function LaceMessaging({ laceId, name, chat, apps }: { laceId: string; na
         </div>
         <LaceAccountSwitcher laceId={laceId} name={name} accounts={accounts} value={account} onChange={selectAccount}
                              totalWaiting={chat.waiting} connections={connections} />
-        <SendFrom mailboxes={connectedMailboxes(laceApps)} name={name} canChoose={canChoose}
-                  onPick={(mailbox) => void apps.setSendFrom(mailbox)} />
         <div className="grid grid-cols-3 gap-2">
           <Stat icon={PenLine} value={tally.drafts} label="To send" />
           <Stat icon={Send} value={tally.sent} label="Sent" />

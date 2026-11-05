@@ -6,8 +6,9 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import type { LaceOutreachDto, LaceOutreachChanges, OutreachChannel } from "@/lib/api"
+import type { LaceAppDto, LaceOutreachDto, LaceOutreachChanges, Mailbox, OutreachChannel } from "@/lib/api"
 
+import { DraftMailbox } from "./draft-mailbox"
 import { CHANNEL_LABELS } from "./outreach-threads"
 import { UNDO_SEND_MS } from "./use-lace-chat"
 
@@ -24,10 +25,13 @@ const START_BY_HAND = ANSWERABLE_IN_THREAD
  * it, send it there and mark it sent. A send counts down `UNDO_SEND_MS`,
  * with Undo, before it goes. `brainstorm` sits before Send: the Lace, to
  * work on the draft with. */
-export function DraftCard({ message, sendingSoon, onSave, onDiscard, onSend, onUndo, onMarkSent, brainstorm }: {
+export function DraftCard({ message, sendingSoon, onSave, onDiscard, onSend, onUndo, onMarkSent, brainstorm,
+                           mailboxes = [] }: {
   message: LaceOutreachDto
   sendingSoon: boolean
   brainstorm?: ReactNode
+  /** The Lace's connected mailboxes: with two, a new email's sender is picked here. */
+  mailboxes?: LaceAppDto[]
   onSave: (changes: LaceOutreachChanges) => void
   onDiscard: () => void
   onSend: () => void
@@ -87,6 +91,11 @@ export function DraftCard({ message, sendingSoon, onSave, onDiscard, onSend, onU
       )}
       <Textarea value={body} onChange={(e) => setBody(e.target.value)} disabled={!editable}
                 aria-label="Message" className="min-h-40 text-sm" />
+      {isEmail && !isReply && editable && (
+        <DraftMailbox mailboxes={mailboxes} disabled={sendingSoon}
+                      value={message.mailbox ?? (mailboxes.find((m) => m.sends_email)?.platform as Mailbox | undefined) ?? null}
+                      onPick={(mailbox) => onSave({ mailbox })} />
+      )}
       {message.error && <p className="text-xs text-destructive">{message.error}</p>}
       {editable && sendingSoon && (
         <div className="flex items-center gap-3" aria-live="polite">

@@ -426,7 +426,7 @@ export interface LaceOutreachDto {
   created_at: string
 }
 
-export type LaceOutreachChanges = Partial<Pick<LaceOutreachDto, "subject" | "body" | "recipient_address" | "recipient_name">>
+export type LaceOutreachChanges = Partial<Pick<LaceOutreachDto, "subject" | "body" | "recipient_address" | "recipient_name" | "mailbox">>
 
 export function listLaceOutreach(laceId: string): Promise<LaceOutreachDto[]> {
   return apiFetch<LaceOutreachDto[]>(`/api/v1/laces/${laceId}/outreach`)
@@ -743,11 +743,6 @@ export function startLaceConnection(laceId: string, platform: Platform, returnTo
 /** Disconnect the Lace's own account; it goes back to the shared one. */
 export function deleteLaceConnection(laceId: string, connectionId: string): Promise<void> {
   return apiFetch(`/api/v1/laces/${laceId}/connections/${connectionId}`, { method: "DELETE" })
-}
-
-/** Pick the mailbox new email goes from (null: the first connected); every app comes back. */
-export function setLaceSendFrom(laceId: string, mailbox: Mailbox | null): Promise<LaceAppDto[]> {
-  return apiFetch(`/api/v1/laces/${laceId}/send-from`, { method: "PUT", body: JSON.stringify({ mailbox }) })
 }
 
 export function updateLaceApp(laceId: string, platform: Platform,

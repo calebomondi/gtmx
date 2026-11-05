@@ -272,6 +272,8 @@ class OutreachUpdateRequest(BaseModel):
     body: str | None = Field(default=None, min_length=1, max_length=20_000)
     recipient_address: str | None = Field(default=None, max_length=2048)
     recipient_name: str | None = Field(default=None, max_length=255)
+    mailbox: Mailbox | None = Field(default=None, description="A new email's mailbox, picked as it's sent; null: "
+                                                              "the one the Lace sends from")
 
 
 class ChannelResponse(BaseModel):
