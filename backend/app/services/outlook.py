@@ -15,9 +15,11 @@ from backend.app.services import connections as connection_service
 from backend.app.services.connections import ConnectionInfo
 from utils.log import logger
 
-_SEND = "OUTLOOK_OUTLOOK_SEND_EMAIL"
-_REPLY = "OUTLOOK_OUTLOOK_REPLY_EMAIL"
-_LIST = "OUTLOOK_OUTLOOK_LIST_MESSAGES"
+# Composio renamed these from OUTLOOK_OUTLOOK_* (checked against its live
+# catalog, 2026-11-05).
+_SEND = "OUTLOOK_SEND_EMAIL"
+_REPLY = "OUTLOOK_REPLY_EMAIL"
+_LIST = "OUTLOOK_LIST_MESSAGES"
 # Sent emails looked through to find the one just sent; recent inbox mail per sync.
 SENT_LOOKUP = 5
 RECENT = 50
@@ -26,9 +28,8 @@ _BLANK_LINES = re.compile(r"\n\s*\n+")
 
 
 def _graph(data) -> dict:
-    """The Microsoft Graph response inside Composio's wrapper."""
-    inner = data.get("response_data") if isinstance(data, dict) else None
-    return inner if isinstance(inner, dict) else {}
+    """The Microsoft Graph response, inside Composio's wrapper or not."""
+    return connection_service.payload(data)
 
 
 def _messages(data) -> list[dict]:
@@ -39,7 +40,7 @@ def send(account: ConnectionInfo, to: str, subject: str, body: str) -> dict:
     """Send a new email. Returns {error, log_id, message_id, thread_id}; the
     ids are None when the sent email couldn't be found again."""
     result = connection_service.execute_tool(account.entity, _SEND, {
-        "to_email": to, "subject": subject, "body": body, "is_html": False, "save_to_sent_items": True,
+        "to": to, "subject": subject, "body": body, "is_html": False, "save_to_sent_items": True,
     }, account.id)
     sent = None if result.get("error") else _find_sent(account, to, subject)
     return {"error": result.get("error"), "log_id": result.get("log_id"),

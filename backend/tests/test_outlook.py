@@ -28,7 +28,7 @@ def _outlook(monkeypatch, inbox_mail=(), sent_to="jane@alpha.test"):
 
     def execute(entity, tool, arguments, connection_id):
         calls.append((tool, arguments))
-        if tool == "OUTLOOK_OUTLOOK_LIST_MESSAGES" and arguments["folder"] == "SentItems":
+        if tool == "OUTLOOK_LIST_MESSAGES" and arguments["folder"] == "SentItems":
             value = [{"id": MESSAGE, "conversationId": THREAD,
                       "toRecipients": [{"emailAddress": {"address": sent_to.upper()}}]}]
         else:
@@ -51,12 +51,23 @@ def test_inbox_mail_reads_as_the_reply_sync_expects(monkeypatch):
         "messageText": "Sounds good & cheap.", "messageTimestamp": "2026-10-24T10:00:00Z"}]
 
 
+def test_an_unwrapped_response_reads_the_same(monkeypatch):
+    """Composio stopped wrapping some apps' responses in response_data."""
+    monkeypatch.setattr(connection_service, "execute_tool", lambda *a: {"data": {"value": [{
+        "id": "m2", "conversationId": "c2", "subject": "Hi", "receivedDateTime": "2026-11-05T10:00:00Z",
+        "from": {"emailAddress": {"address": "tom@beta.test"}}, "bodyPreview": "Yes please"}]}, "error": None,
+        "log_id": "l"})
+    account = ConnectionInfo("ca_o", "outlook", "live", None, None, None, "u1")
+    [mail] = outlook.recent(account, "2026-11-01T00:00:00+00:00")
+    assert (mail["messageId"], mail["sender"], mail["messageText"]) == ("m2", "tom@beta.test", "Yes please")
+
+
 def test_a_new_email_goes_out_through_outlook_and_keeps_its_conversation(client, lace, lace_runtime, user,  # noqa: F811
                                                                        monkeypatch):
     calls = _outlook(monkeypatch)
     message = _message(lace, user.id)
     assert client.post(f"{API}/laces/{lace}/outreach/{message}/send").json()["status"] == "sent"
-    assert calls[0] == ("OUTLOOK_OUTLOOK_SEND_EMAIL", {"to_email": "jane@alpha.test", "subject": "Hi",
+    assert calls[0] == ("OUTLOOK_SEND_EMAIL", {"to": "jane@alpha.test", "subject": "Hi",
                                                        "body": "Hello Jane", "is_html": False,
                                                        "save_to_sent_items": True})
     with psycopg.connect(settings.database_url) as conn:
@@ -75,7 +86,7 @@ def test_an_answer_goes_into_the_outlook_conversation(client, lace, lace_runtime
                               " body, status) VALUES (%s, %s, %s, 'email', %s, 'jane@alpha.test', 'From $20.', 'draft')"
                               " RETURNING id", (uuid.uuid4(), lace, user.id, THREAD)).fetchone()[0]
     assert client.post(f"{API}/laces/{lace}/outreach/{answer}/send").json()["status"] == "sent"
-    assert calls == [("OUTLOOK_OUTLOOK_REPLY_EMAIL", {"message_id": MESSAGE, "comment": "From $20."})]
+    assert calls == [("OUTLOOK_REPLY_EMAIL", {"message_id": MESSAGE, "comment": "From $20."})]
 
 
 def test_gmail_is_used_when_the_lace_has_both(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
