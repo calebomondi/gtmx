@@ -68,6 +68,8 @@ ASANA_TASKS = 100
 CALENDLY_MEETINGS = 20
 # The founder's recent posts read for comments, and comments read per post.
 COMMENTS_PER_POST = 20
+# Pages named when the founder must pick the one a Lace uses.
+PAGES_NAMED = 6
 TEXT_CHARS = 300
 
 
@@ -417,8 +419,12 @@ class DbLaceApps:
         page = live.linked_account
         if not page:
             pages = items(await self._run(live, "facebook", "FACEBOOK_LIST_MANAGED_PAGES", {}))
-            if len(pages) != 1:
-                raise AppError("Link the Facebook Page this Lace uses (Messaging → Inboxes) to read its comments.")
+            if not pages:
+                raise AppError("This Facebook account manages no Page, and only a Page's comments can be read.")
+            if len(pages) > 1:
+                names = ", ".join(str(p.get("name") or p.get("id")) for p in pages[:PAGES_NAMED])
+                raise AppError(f"This Facebook account manages {len(pages)} Pages ({names}). The founder links the one "
+                               "this Lace speaks for under Messaging → Inboxes; then its comments can be read.")
             page = str(pages[0]["id"])
         page_posts = items(await self._run(live, "facebook", "FACEBOOK_GET_PAGE_POSTS", {
             "page_id": page, "limit": posts, "fields": "id,message,permalink_url,created_time"}))
