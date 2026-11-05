@@ -74,7 +74,7 @@ async def test_hubspot_deals_read_with_their_stage_names(composio, monkeypatch):
         "HUBSPOT_RETRIEVE_ALL_PIPELINES_FOR_SPECIFIED_OBJECT_TYPE": {"results": [
             {"id": "default", "stages": [{"id": "appointmentscheduled", "label": "Appointment"},
                                          {"id": "closedwon", "label": "Closed won"}]}]},
-        "HUBSPOT_HUBSPOT_LIST_DEALS": {"results": [
+        "HUBSPOT_LIST_DEALS": {"results": [
             {"id": "1", "properties": {"dealname": "Alpha", "dealstage": "closedwon", "amount": "1200",
                                        "closedate": "2026-10-01T00:00:00Z", "hs_is_closed": "true",
                                        "hs_is_closed_won": "true", "hs_lastmodifieddate": "2026-10-02T00:00:00Z"}},
