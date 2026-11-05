@@ -146,7 +146,8 @@ export function LaceAccountSwitcher({ laceId, name, accounts, value, onChange, t
       </AccountIcon>
       {accounts.map((account) => (
         <AccountIcon key={account.key} active={value === account.key} onClick={() => onChange(account.key)}
-                     label={[account.label, account.detail, STATE_TEXT[account.state]].filter(Boolean).join(" · ")}
+                     label={[account.label, account.detail, STATE_TEXT[account.state], account.sends ? "sends new email" : null]
+                       .filter(Boolean).join(" · ")}
                      waiting={account.waiting} attention={account.state === "attention"}>
           <PlatformIcon platform={account.platform} className="size-5" />
         </AccountIcon>

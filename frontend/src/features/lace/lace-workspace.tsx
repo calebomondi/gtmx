@@ -186,7 +186,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
             <LaceFeed laceId={laceId} name={name} chat={chat} activity={activity} opps={opps} regulations={regulations} apps={apps} onOpen={open}
                       onDiscuss={discuss} />
           )}
-          {tab === "messaging" && <LaceMessaging laceId={laceId} name={name} chat={chat} />}
+          {tab === "messaging" && <LaceMessaging laceId={laceId} name={name} chat={chat} apps={apps} />}
           {tab === "social" && <LaceSocial laceId={laceId} name={name} chat={chat} apps={apps} discuss={discuss} />}
         </main>
       </div>

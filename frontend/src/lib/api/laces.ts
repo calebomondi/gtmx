@@ -414,6 +414,9 @@ export interface LaceOutreachDto {
   body: string
   /** Set on sent emails, replies, and answers drafted in their thread. */
   thread_id: string | null
+  /** An email's mailbox: where it went out from or came in to; on a draft
+   * answer, the one it will go from. Null on email sent before this was kept. */
+  mailbox: Mailbox | null
   /** Inbound only: how the reply was read, e.g. "interested", "question". */
   intent: string | null
   error: string | null
@@ -718,7 +721,13 @@ export interface LaceAppDto {
   settings: Record<string, string>
   /** Connected, but no Page or business account is linked to this Lace yet. */
   needs_link: boolean
+  /** The mailbox this Lace sends new email from. */
+  sends_email: boolean
 }
+
+/** The mail apps email goes through, in the order a Lace picks one unless the founder chose. */
+export type Mailbox = "gmail" | "outlook"
+export const MAILBOXES: Mailbox[] = ["gmail", "outlook"]
 
 export function listLaceApps(laceId: string): Promise<LaceAppDto[]> {
   return apiFetch(`/api/v1/laces/${laceId}/apps`)
@@ -734,6 +743,11 @@ export function startLaceConnection(laceId: string, platform: Platform, returnTo
 /** Disconnect the Lace's own account; it goes back to the shared one. */
 export function deleteLaceConnection(laceId: string, connectionId: string): Promise<void> {
   return apiFetch(`/api/v1/laces/${laceId}/connections/${connectionId}`, { method: "DELETE" })
+}
+
+/** Pick the mailbox new email goes from (null: the first connected); every app comes back. */
+export function setLaceSendFrom(laceId: string, mailbox: Mailbox | null): Promise<LaceAppDto[]> {
+  return apiFetch(`/api/v1/laces/${laceId}/send-from`, { method: "PUT", body: JSON.stringify({ mailbox }) })
 }
 
 export function updateLaceApp(laceId: string, platform: Platform,
