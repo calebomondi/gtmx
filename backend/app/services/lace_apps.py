@@ -427,16 +427,16 @@ class DbLaceApps:
                                "this Lace. Ask the founder to pick the one it speaks for (ask_to_link); then its "
                                "comments can be read.")
             page = str(pages[0]["id"])
+        # The comments come inside the Page's posts, read with the Page's token:
+        # asked for on their own (FACEBOOK_GET_COMMENTS), Facebook answers with
+        # the founder's token and refuses for want of pages_read_engagement.
         page_posts = items(await self._run(live, "facebook", "FACEBOOK_GET_PAGE_POSTS", {
-            "page_id": page, "limit": posts, "fields": "id,message,permalink_url,created_time"}))
-        found = []
-        for post in page_posts:
-            comments = items(await self._run(live, "facebook", "FACEBOOK_GET_COMMENTS", {
-                "object_id": post["id"], "limit": COMMENTS_PER_POST, "fields": "id,message,from,created_time"}))
-            found += [_comment("facebook", post.get("permalink_url"), post.get("message"), c.get("id"),
-                               (c.get("from") or {}).get("name"), c.get("message"), c.get("created_time"))
-                      for c in comments if c.get("message")]
-        return found
+            "page_id": page, "limit": posts,
+            "fields": f"id,message,permalink_url,created_time,"
+                      f"comments.limit({COMMENTS_PER_POST}){{id,message,from,created_time}}"}))
+        return [_comment("facebook", post.get("permalink_url"), post.get("message"), c.get("id"),
+                         (c.get("from") or {}).get("name"), c.get("message"), c.get("created_time"))
+                for post in page_posts for c in items(post.get("comments")) if c.get("message")]
 
 
 async def asana_workspace(run) -> str:
