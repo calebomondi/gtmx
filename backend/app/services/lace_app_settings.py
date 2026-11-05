@@ -1,19 +1,20 @@
 """Which of its founder's connected apps a Lace may use, and each app's
 settings for that Lace.
 
-The default, when the founder hasn't chosen: channels (email, socials) are on
-for every Lace, as a founder's identity for outreach; work apps (CRM, sheets,
-team, meetings) are on only where the founder switches them on, or when they
-have just one Lace, so one startup's Lace never writes into another's CRM.
+Every connected app is on for every Lace until the founder switches it off
+there: a Lace with no account of its own uses the founder's shared one. A
+write into an app still waits for the founder's approval, so one startup's
+Lace never changes another's CRM unasked.
 """
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.database.lace_models import Lace, LaceApp
+from agents.schemas.lace import INBOX_PLATFORMS, MAILBOXES, Mailbox
+from backend.app.database.lace_models import Lace, LaceApp, LaceChannel
 from backend.app.services import connections as connection_service
 from functools import partial
 
@@ -45,17 +46,38 @@ def _app(platform: str) -> connection_service.App:
     return app
 
 
-async def _one_lace(db: AsyncSession, user_id: uuid.UUID) -> bool:
-    count = await db.scalar(select(func.count()).select_from(Lace).where(
-        Lace.user_id == user_id, Lace.status != "archived"))
-    return (count or 0) <= 1
-
-
 async def enabled(db: AsyncSession, lace: Lace, platform: str) -> bool:
     row = await db.scalar(select(LaceApp).where(LaceApp.lace_id == lace.id, LaceApp.platform == platform))
-    if row is not None:
-        return row.enabled
-    return await enabled_default(db, lace, platform)
+    return row.enabled if row is not None else True
+
+
+async def mailbox(db: AsyncSession, lace: Lace, platform: str,
+                  uses: dict[str, connection_service.ConnectionInfo] | None = None
+                  ) -> connection_service.ConnectionInfo | None:
+    """`lace`'s live account for mail app `platform`, if switched on for it."""
+    account = (uses if uses is not None else await connection_service.for_lace(db, lace)).get(platform)
+    if account is None or account.status != "live" or not await enabled(db, lace, platform):
+        return None
+    return account
+
+
+async def sending_mailbox(db: AsyncSession, lace: Lace,
+                          uses: dict[str, connection_service.ConnectionInfo] | None = None
+                          ) -> connection_service.ConnectionInfo | None:
+    """The mailbox `lace` sends new email from: the one the founder picked
+    (and no other, so mail never goes from an account they didn't choose),
+    else its Gmail, else its Outlook; its own or the founder's shared one."""
+    uses = uses if uses is not None else await connection_service.for_lace(db, lace)
+    for platform in ((lace.send_from,) if lace.send_from else MAILBOXES):
+        if (account := await mailbox(db, lace, platform, uses)) is not None:
+            return account
+    return None
+
+
+async def set_send_from(db: AsyncSession, lace: Lace, platform: Mailbox | None) -> None:
+    """Pick the mailbox new email goes from; None goes back to the first connected."""
+    lace.send_from = platform
+    await db.commit()
 
 
 async def list_for_lace(db: AsyncSession, lace: Lace) -> list[dict]:
@@ -64,7 +86,8 @@ async def list_for_lace(db: AsyncSession, lace: Lace) -> list[dict]:
     for this Lace."""
     rows = {r.platform: r for r in (await db.scalars(select(LaceApp).where(LaceApp.lace_id == lace.id))).all()}
     connected = await connection_service.for_lace(db, lace)
-    one_lace = await _one_lace(db, lace.user_id)
+    linked = set((await db.scalars(select(LaceChannel.platform).where(LaceChannel.lace_id == lace.id))).all())
+    sender = await sending_mailbox(db, lace, connected)
     out = []
     for app in connection_service.APPS:
         row, live = rows.get(app.platform), connected.get(app.platform)
@@ -74,8 +97,13 @@ async def list_for_lace(db: AsyncSession, lace: Lace) -> list[dict]:
             "connected": live is not None and live.status == "live", "status": live.status if live else None,
             "account": None if live is None else "own" if live.own else "shared",
             "account_name": live.display_name if live else None, "connection_id": live.id if live else None,
-            "enabled": row.enabled if row else (app.group == "channels" or one_lace),
+            "enabled": row.enabled if row else True,
             "settings": dict(row.settings) if row else {},
+            # Connected, but this Lace speaks for none of the account's Pages or
+            # business accounts yet: the founder picks one (Social, or here).
+            "needs_link": app.platform in INBOX_PLATFORMS and live is not None and live.status == "live"
+                          and app.platform not in linked,
+            "sends_email": sender is not None and sender.platform == app.platform,
         })
     return out
 
@@ -95,9 +123,8 @@ async def update(db: AsyncSession, lace: Lace, platform: str, enabled: bool | No
         values["settings"] = settings
     if not values:
         return
-    default_on = await enabled_default(db, lace, platform)
     stmt = insert(LaceApp).values(id=uuid.uuid4(), lace_id=lace.id, platform=platform,
-                                  **{"enabled": default_on, "settings": {}, **values})
+                                  **{"enabled": True, "settings": {}, **values})
     await db.execute(stmt.on_conflict_do_update(constraint="uq_lace_apps_lace_id_platform", set_=values))
     await db.commit()
 
@@ -114,7 +141,3 @@ def _checked(platform: str, settings: dict[str, str]) -> dict[str, str]:
             raise InvalidInputError(_INVALID[key])
         checked[key] = read
     return checked
-
-
-async def enabled_default(db: AsyncSession, lace: Lace, platform: str) -> bool:
-    return _app(platform).group == "channels" or await _one_lace(db, lace.user_id)

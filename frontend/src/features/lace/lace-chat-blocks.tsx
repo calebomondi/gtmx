@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import type { ActionBlockDto, BlockAnswerDto, CardBlockDto, UiBlockDto } from "@/lib/api"
+import type { ActionBlockDto, BlockAnswerDto, CardBlockDto, LinkAccountBlockDto, UiBlockDto } from "@/lib/api"
 
 import { cardState, contactsLine, waitingCards, type CardState } from "./chat-cards"
 import { ActionCard } from "./lace-action-card"
@@ -14,6 +14,7 @@ import { isQuestion } from "./questions"
 import { waitingAt } from "./contacts-model"
 import type { LaceChat } from "./use-lace-chat"
 import { DismissWithReason } from "./dismiss-reason"
+import { LinkAccountCard } from "./link-account-card"
 
 function OpenLink({ url }: { url: string | null }) {
   if (!url) return null
@@ -100,7 +101,7 @@ function Actions({ card, state, chat, onReview }: {
           </>
         )
       }
-      // Email and X go from here; the other channels are sent by hand from Messaging.
+      // Email and X go from here; the other channels are sent by hand from Outreach or Social.
       const direct = message.channel === "email" || message.channel === "x"
       return (
         <>
@@ -163,6 +164,8 @@ export function ChatBlocks({ blocks, chat, live, answers, onReview }: {
   }
   const questions = blocks.filter(isQuestion)
   const actions = blocks.filter((b): b is ActionBlockDto => b.type === "action")
+  const links = blocks.filter((b): b is LinkAccountBlockDto => b.type === "link_account")
+  const lace = chat.lace
   // Only under the latest reply, while the Lace is free: tapping one sends it.
   const suggestions = live && !chat.working
     ? blocks.flatMap((b) => (b.type === "suggestions" ? b.options : []))
@@ -182,6 +185,9 @@ export function ChatBlocks({ blocks, chat, live, answers, onReview }: {
         </Button>
       )}
       {actions.map((block) => <ActionCard key={block.id} block={block} chat={chat} />)}
+      {lace && links.map((block) => (
+        <LinkAccountCard key={block.platform} laceId={lace.id} name={lace.name} platform={block.platform} />
+      ))}
       {questions.map((block) => (
         <ChatQuestion key={block.id ?? block.question} block={block} answer={block.id ? answers.get(block.id) : undefined}
                       live={live && !chat.working} onAnswer={(answer) => void chat.answer(block, answer)} />

@@ -116,7 +116,7 @@ async def hubspot_deals(run: Run) -> list[dict]:
     stages = await _hubspot_stages(run)
     deals, after = [], None
     for _ in range(HUBSPOT_DEAL_PAGES):
-        rows, after = _results(await run("HUBSPOT_HUBSPOT_LIST_DEALS", {
+        rows, after = _results(await run("HUBSPOT_LIST_DEALS", {
             "limit": HUBSPOT_PAGE, "properties": _HUBSPOT_DEAL_FIELDS, **({"after": after} if after else {})}))
         for row in rows:
             p = row.get("properties") or {}

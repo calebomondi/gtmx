@@ -3,7 +3,7 @@ import { Check, Loader2 } from "lucide-react"
 import { motion } from "motion/react"
 
 import { elapsed, useNow } from "./background-jobs"
-import { LaceAvatar } from "./lace-avatar"
+import { LaceAvatar, REPLY_AVATAR_SIZE } from "./lace-avatar"
 
 // Earlier steps kept in view; older ones fold away.
 const SHOWN_STEPS = 4
@@ -19,7 +19,7 @@ export function LaceWorkTrail({ steps, fallback }: { steps: string[]; fallback: 
   const hidden = Math.max(0, steps.length - 1 - SHOWN_STEPS)
   return (
     <div className="flex gap-3" aria-live="polite">
-      <LaceAvatar animated />
+      <LaceAvatar animated size={REPLY_AVATAR_SIZE} />
       <div className="flex min-w-0 flex-1 flex-col gap-1.5 pt-1 text-sm">
         {hidden > 0 && <span className="text-xs text-muted-foreground">{hidden} earlier steps</span>}
         {done.map((step, i) => (

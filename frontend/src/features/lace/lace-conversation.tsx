@@ -9,7 +9,7 @@ import { useAuth } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 
 import { ChatThreadSwitch } from "./chat-thread-switch"
-import { LaceAvatar } from "./lace-avatar"
+import { LaceAvatar, REPLY_AVATAR_SIZE } from "./lace-avatar"
 import { ChatBlocks } from "./lace-chat-blocks"
 import { LaceReplySources } from "./lace-reply-sources"
 import { LaceWorkTrail } from "./lace-work-trail"
@@ -26,7 +26,7 @@ function Streaming({ text }: { text: string }) {
   const shown = useTypewriter(text)
   return (
     <div className="flex gap-3">
-      <LaceAvatar state="thinking" />
+      <LaceAvatar state="thinking" size={REPLY_AVATAR_SIZE} />
       <div className="min-w-0 flex-1">
         {/* The sources list is folded under the finished reply, so it never streams in. */}
         <ReplyMarkdown>{splitSources(shown).body}</ReplyMarkdown>
@@ -95,7 +95,7 @@ function Message({ message, sender, children }: {
   const { body, sources } = splitSources(message.content)
   return (
     <div className="flex gap-3">
-      <LaceAvatar animated={false} />
+      <LaceAvatar animated={false} size={REPLY_AVATAR_SIZE} />
       <div className="flex min-w-0 flex-1 flex-col gap-3">
         {message.update && (
           // Background work reporting back: set apart from the answer to

@@ -6,6 +6,7 @@ import {
   deleteLaceConnection, listLaceAppActions, listLaceApps, updateLaceApp, type AppActionDto, type LaceAppDto,
 } from "@/lib/api"
 import { PLATFORM_LABEL, type Platform } from "@/lib/platforms"
+import { whileVisible } from "@/lib/visible"
 
 // How often the actions waiting for the founder are looked at again.
 const POLL_MS = 30_000
@@ -26,11 +27,11 @@ export interface LaceApps {
   disconnectOwn: (app: LaceAppDto) => Promise<void>
 }
 
-/** A Lace's apps and its app actions. The apps (read live from the founder's
- * connections) load when `open` (its settings); the actions are kept current
- * all along, for the Feed. Coming back from connecting an app from this Lace
- * (?connected=<platform>) switches it on for this Lace. */
-export function useLaceApps(laceId: string, open: boolean): LaceApps {
+/** A Lace's apps and its app actions: both load once, then the actions are
+ * kept current (for the Feed and the chat's cards). Coming back from
+ * connecting an app from this Lace (?connected=<platform>) switches it on for
+ * this Lace. */
+export function useLaceApps(laceId: string): LaceApps {
   const [apps, setApps] = useState<LaceAppDto[] | null>(null)
   const [actions, setActions] = useState<AppActionDto[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -51,16 +52,11 @@ export function useLaceApps(laceId: string, open: boolean): LaceApps {
   }, [laceId, loadActions])
 
   useEffect(() => {
+    void refresh()
     // A missed look is retried on the next tick.
-    const look = () => void loadActions().catch(() => undefined)
-    look()
-    const timer = setInterval(look, POLL_MS)
+    const timer = setInterval(whileVisible(() => void loadActions().catch(() => undefined)), POLL_MS)
     return () => clearInterval(timer)
-  }, [loadActions])
-
-  useEffect(() => {
-    if (open) void refresh()
-  }, [open, refresh])
+  }, [refresh, loadActions])
 
   const setEnabled = useCallback(async (platform: Platform, enabled: boolean) => {
     try {

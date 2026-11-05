@@ -116,7 +116,12 @@ class Settings(BaseSettings):
     max_discovery_runs_per_day: int = 10
     max_competitor_runs_per_day: int = 20
     max_account_runs_per_day: int = 20
+    # API requests per user per minute, by kind: reads (loading pages), writes
+    # (saving, sending, starting work) and the app's own telemetry (heartbeats,
+    # analytics events), so a busy page never blocks a send.
+    max_reads_per_minute: int = 600
     max_requests_per_minute: int = 120
+    max_telemetry_per_minute: int = 120
     max_chat_messages_per_day: int = 200
     max_laces_per_user: int = 5
     # Documents a founder shares with a Lace: the largest upload, how much of

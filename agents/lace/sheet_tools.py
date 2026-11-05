@@ -1,6 +1,7 @@
-"""The Lace's Google Sheets tools: reading a sheet the founder shares (a lead
-list to import, a pipeline to sum up), with its numbers worked out in code,
-and exporting its accounts or contacts as a proposal the founder approves."""
+"""The Lace's Google Sheets tools: finding a sheet by name, reading one (a
+lead list to import, a pipeline to sum up) with its numbers worked out in
+code, and, as proposals the founder approves, exporting its accounts or
+contacts or writing rows to one of their sheets."""
 
 from typing import Literal
 
@@ -18,6 +19,9 @@ ROWS_SHOWN = 50
 # The most rows one export writes, and shown in its preview.
 EXPORT_MAX = 500
 PREVIEW_ROWS = 5
+# The most rows one write puts in a founder's sheet, and the longest name searched.
+WRITE_MAX = 200
+QUERY_CHARS = 100
 NOT_CONNECTED = ("Google Sheets isn't connected for this Lace, or is switched off. "
                  "The founder can connect it under Apps & accounts in your settings.")
 
@@ -92,4 +96,52 @@ def build_sheet_tools(store: LaceStore, apps: LaceApps) -> list[BaseTool]:
             app="googlesheets", action="export", title=f"Export {len(rows)} {what} to Google Sheets", preview=preview,
             arguments={"spreadsheet_id": spreadsheet, "title": name[:100], "header": header, "rows": rows}))
 
-    return [read_sheet, export_to_sheet]
+    @tool(parse_docstring=True)
+    @guarded
+    async def search_sheets(name: str) -> ToolResult:
+        """Find spreadsheets in the founder's Google Drive by name, when they mention a sheet without a link ("the Antler application sheet"). Then read one with read_sheet and its url.
+
+        Args:
+            name: Words from the sheet's name, e.g. "Antler application".
+        """
+        words = " ".join(name.split())[:QUERY_CHARS]
+        if not words:
+            return ToolResult.failure("Give words from the sheet's name.")
+        try:
+            found = await apps.sheet_search(words)
+        except AppError as exc:
+            return ToolResult.failure(str(exc))
+        if found is None:
+            return ToolResult.failure(NOT_CONNECTED)
+        if not found:
+            return ToolResult.success(f"No spreadsheet named like “{words}”. Ask the founder for its link.", [])
+        return ToolResult.success(f"{len(found)} spreadsheets match, newest first.", found)
+
+    @tool(parse_docstring=True)
+    @guarded
+    async def update_sheet(sheet_url: str, rows: list[list[str]], tab: str | None = None,
+                           cell_range: str | None = None) -> ToolResult:
+        """Propose writing to one of the founder's Google Sheets: rows added after the last row of a tab, or written over a range. It runs only if they approve it. Read the sheet first (read_sheet) so the columns line up.
+
+        Args:
+            sheet_url: The sheet's link (from the founder or search_sheets).
+            rows: The rows to write, each a list of cell values in the sheet's column order.
+            tab: The tab to add rows to; the first tab when not given.
+            cell_range: Write over this range instead of adding rows, in A1 notation, e.g. "Sheet1!B2:D4".
+        """
+        spreadsheet = sheet_id(sheet_url)
+        if spreadsheet is None:
+            return ToolResult.failure("That isn't a Google Sheets link (docs.google.com/spreadsheets/d/...).")
+        clean = [[str(cell) for cell in row] for row in rows if any(str(cell).strip() for cell in row)]
+        if not clean:
+            return ToolResult.failure("There are no rows to write.")
+        if len(clean) > WRITE_MAX:
+            return ToolResult.failure(f"Write at most {WRITE_MAX} rows at a time.")
+        where = f"over {cell_range}" if cell_range else f"after the last row of {tab or 'the first tab'}"
+        preview = "\n".join([f"{len(clean)} rows {where}:", *(" | ".join(r) for r in clean[:PREVIEW_ROWS]),
+                             *([f"…and {len(clean) - PREVIEW_ROWS} more"] if len(clean) > PREVIEW_ROWS else [])])
+        return await propose(store, ProposedAction(
+            app="googlesheets", action="write", title=f"Write {len(clean)} rows to a Google Sheet", preview=preview,
+            arguments={"spreadsheet_id": spreadsheet, "rows": clean, "tab": tab, "range": cell_range}))
+
+    return [read_sheet, export_to_sheet, search_sheets, update_sheet]

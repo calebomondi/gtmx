@@ -47,8 +47,10 @@ import {
 } from "@/lib/api"
 
 import { useAuth } from "@/lib/auth"
+import { whileVisible } from "@/lib/visible"
 
-import { waitsOnFounder } from "./outreach-threads"
+import { EVERY_LIST, listsToReload, type ChatList } from "./chat-lists"
+import { isUnread, OUTREACH_CHANNELS, SOCIAL_CHANNELS, waitsOnFounder } from "./outreach-threads"
 import { answerLine } from "./questions"
 
 const TERMINAL = new Set(["complete", "error", "cancelled"])
@@ -75,8 +77,10 @@ export interface LaceChat {
   outreach: LaceOutreachDto[]
   /** The people found at saved accounts. */
   contacts: ContactDto[]
-  /** Messages waiting on the founder: drafts to send, and replies not yet read. */
+  /** Outreach waiting on the founder: drafts to send, and replies not yet read. */
   waiting: number
+  /** Messages to the founder's social accounts not yet read. */
+  socialUnread: number
   /** The Lace is drafting messages in the background. */
   drafting: boolean
   /** The Lace is looking for opportunities in the background. */
@@ -182,7 +186,7 @@ export function useLaceChat(laceId: string, thread: ChatThread = "team"): LaceCh
   // What the last look saw: the background jobs running, and the newest
   // activity (undefined before the first look). A job ending or new activity
   // (a draft written, a reply synced) means the lists changed on the server.
-  const seenJobs = useRef<Set<string>>(new Set())
+  const seenJobs = useRef<Map<string, string>>(new Map())
   const newestActivity = useRef<string | null | undefined>(undefined)
   // Mirrors `working` for callbacks; written only from them, never in render.
   const busy = useRef(false)
@@ -190,29 +194,24 @@ export function useLaceChat(laceId: string, thread: ChatThread = "team"): LaceCh
   // Each part is kept as it loads: one list failing (a refused request, the
   // server restarting) must not cost the page the Lace's name or what it knows.
   // The first failure is rethrown for the caller to show.
-  const refresh = useCallback(async () => {
-    const [nextLace, nextMessages, nextFacts, nextCompetitors, nextSuggestedCompetitors, nextAccounts,
-      nextSuggestedAccounts, nextOutreach, nextContacts] = await Promise.allSettled([
-      getLace(laceId), listLaceMessages(laceId, thread), listLaceFacts(laceId), listLaceCompetitors(laceId, "tracked"),
-      listLaceCompetitors(laceId, "suggested"), listLaceAccounts(laceId, "target"),
-      listLaceAccounts(laceId, "suggested"), listLaceOutreach(laceId), listLaceContacts(laceId),
-    ])
-    const keep = <T,>(result: PromiseSettledResult<T>, set: (value: T) => void) => {
-      if (result.status === "fulfilled") set(result.value)
+  const load = useCallback(async (lists: readonly ChatList[]) => {
+    const keep = <T,>(load: Promise<T>, set: (value: T) => void) => load.then(set)
+    const loaders: Record<ChatList, () => Promise<unknown>[]> = {
+      lace: () => [keep(getLace(laceId), setLace)],
+      messages: () => [keep(listLaceMessages(laceId, thread), (next) => setConversation({ thread, messages: next }))],
+      facts: () => [keep(listLaceFacts(laceId), setFacts)],
+      competitors: () => [keep(listLaceCompetitors(laceId, "tracked"), setCompetitors),
+                          keep(listLaceCompetitors(laceId, "suggested"), setSuggestedCompetitors)],
+      accounts: () => [keep(listLaceAccounts(laceId, "target"), setAccounts),
+                       keep(listLaceAccounts(laceId, "suggested"), setSuggestedAccounts)],
+      outreach: () => [keep(listLaceOutreach(laceId), setOutreach)],
+      contacts: () => [keep(listLaceContacts(laceId), setContacts)],
     }
-    keep(nextLace, setLace)
-    keep(nextMessages, (next) => setConversation({ thread, messages: next }))
-    keep(nextFacts, setFacts)
-    keep(nextCompetitors, setCompetitors)
-    keep(nextSuggestedCompetitors, setSuggestedCompetitors)
-    keep(nextAccounts, setAccounts)
-    keep(nextSuggestedAccounts, setSuggestedAccounts)
-    keep(nextOutreach, setOutreach)
-    keep(nextContacts, setContacts)
-    const failed = [nextLace, nextMessages, nextFacts, nextCompetitors, nextSuggestedCompetitors, nextAccounts,
-      nextSuggestedAccounts, nextOutreach, nextContacts].find((result) => result.status === "rejected")
+    const results = await Promise.allSettled(lists.flatMap((list) => loaders[list]()))
+    const failed = results.find((result) => result.status === "rejected")
     if (failed) throw failed.reason
   }, [laceId, thread])
+  const refresh = useCallback(() => load(EVERY_LIST), [load])
 
   const follow = useCallback(async (runId: string) => {
     abort.current?.abort()
@@ -268,21 +267,23 @@ export function useLaceChat(laceId: string, thread: ChatThread = "team"): LaceCh
     const isTurn = (run: RunDto) => run.kind === "lace_turn" || run.kind === "lace_onboarding"
     const jobs = mine.filter((run) => !isTurn(run))
     setJobs([...jobs].reverse())
-    const running = new Set(jobs.map((run) => run.id))
-    const jobEnded = [...seenJobs.current].some((id) => !running.has(id))
+    const running = new Map(jobs.map((run) => [run.id, run.kind]))
+    const ended = [...seenJobs.current].filter(([id]) => !running.has(id)).map(([, kind]) => kind)
     seenJobs.current = running
     const newest = latest ? (latest[0]?.id ?? null) : newestActivity.current
     const reported = newestActivity.current !== undefined && newest !== newestActivity.current
     newestActivity.current = newest
-    // Drafts and replies land without a turn the page follows: load them now.
-    if (jobEnded || reported) void refresh().catch(() => undefined)
+    // Drafts and replies land without a turn the page follows: load what they changed now.
+    if (ended.length > 0 || reported) {
+      void load(listsToReload(ended, reported ? (latest?.[0]?.kind ?? null) : null)).catch(() => undefined)
+    }
     // A waiting message has no run to follow yet.
     // A waiting message has no run to follow yet; and each chat follows its own turns.
     const inThread = (run: RunDto) => thread === "mine" ? run.owner_id === me : run.owner_id === null
     const turn = mine.find((run) => isTurn(run) && run.status !== "queued" && inThread(run))
     setTurnBy(turn?.user_id ?? null)
     if (turn && !busy.current) void follow(turn.id)
-  }, [laceId, thread, me, follow, refresh])
+  }, [laceId, thread, me, follow, load])
 
   useEffect(() => {
     let cancelled = false
@@ -303,7 +304,7 @@ export function useLaceChat(laceId: string, thread: ChatThread = "team"): LaceCh
     // A missed check is retried on the next tick.
     const check = () => void checkRuns().catch(() => undefined)
     check()
-    const timer = setInterval(check, IDLE_POLL_MS)
+    const timer = setInterval(whileVisible(check), IDLE_POLL_MS)
     return () => clearInterval(timer)
   }, [working, checkRuns])
 
@@ -542,10 +543,11 @@ export function useLaceChat(laceId: string, thread: ChatThread = "team"): LaceCh
     }
   }, [refresh])
 
-  const waiting = outreach.filter(waitsOnFounder).length
+  const waiting = outreach.filter((m) => OUTREACH_CHANNELS.has(m.channel) && waitsOnFounder(m)).length
+  const socialUnread = outreach.filter((m) => SOCIAL_CHANNELS.has(m.channel) && isUnread(m)).length
 
   return {
-    lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, waiting, drafting, findingOpportunities,
+    lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, waiting, socialUnread, drafting, findingOpportunities,
     loading: loading || conversation.thread !== thread, error,
     working, turnBy, step, steps, jobs, draft, send, answer, reload, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, sendingSoon,
     undoSend, markSent, markRead, decideAction, findContacts, draftToContact, contacts, approveContact, approveAccountContacts, removeContact, saveCompetitor, saveAccount, decideOpportunity, suggestedCompetitors,

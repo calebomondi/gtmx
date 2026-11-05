@@ -77,6 +77,18 @@ _LABEL = {app.platform: app.label for app in APPS}
 APP_OF = {app.platform: app for app in APPS}
 
 
+# Where Composio has wrapped an app's own response; it no longer does for
+# some apps (Sheets, Notion), so readers accept both.
+_WRAPPERS = ("response_data", "spreadsheet_data", "block_child_data")
+
+
+def payload(data) -> dict:
+    """An app's own response inside a Composio result, wrapped or not."""
+    if not isinstance(data, dict):
+        return {}
+    return next((data[key] for key in _WRAPPERS if isinstance(data.get(key), dict)), data)
+
+
 def response_field(data, field: str) -> str | None:
     """A field of a platform API response, which Composio may or may not wrap in `data`."""
     if not isinstance(data, dict):
@@ -101,6 +113,21 @@ def lace_entity(lace_id: uuid.UUID) -> str:
 def label(platform: str) -> str:
     """The platform's name as the founder knows it: "LinkedIn", "X"."""
     return _LABEL.get(platform, platform.title())
+
+
+# How an app says its connection was granted less than it asked for (an
+# unticked box on Google's consent screen).
+_SCOPE_MISSING = ("insufficient authentication scopes", "access_token_scope_insufficient", "insufficientpermissions")
+
+
+def refusal(platform: str, error) -> str:
+    """An app's refusal as the founder should hear it: what to do when the
+    connection lacks a permission, else the app's own reason."""
+    reason = str(error)
+    if any(marker in reason.lower() for marker in _SCOPE_MISSING):
+        return (f"{label(platform)} is connected without every permission it needs. Reconnect it in this Lace's "
+                f"settings (Apps & accounts) and tick every access box on the sign-in screen.")
+    return f"{label(platform)} refused it: {reason[:200]}"
 
 
 @dataclass
@@ -166,8 +193,8 @@ def _linkedin_name(data: dict) -> str | None:
 # checked against each tool's published output schema (2026-10-12).
 _IDENTITY = {
     "gmail": ("GMAIL_GET_PROFILE", {"user_id": "me"}, lambda d: d.get("emailAddress")),
-    "outlook": ("OUTLOOK_OUTLOOK_GET_PROFILE", {"user_id": "me"},
-                lambda d: (d.get("response_data") or {}).get("mail") or (d.get("response_data") or {}).get("userPrincipalName")),
+    "outlook": ("OUTLOOK_GET_PROFILE", {"user_id": "me"},
+                lambda d: payload(d).get("mail") or payload(d).get("userPrincipalName")),
     "googlecalendar": ("GOOGLECALENDAR_GET_CALENDAR_PROFILE", {}, lambda d: d.get("id") or d.get("summary")),
     "linkedin": ("LINKEDIN_GET_MY_INFO", {}, _linkedin_name),
     "instagram": ("INSTAGRAM_GET_USER_INFO", {}, lambda d: _handle(d.get("username"))),

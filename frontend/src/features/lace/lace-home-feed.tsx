@@ -10,7 +10,7 @@ import { ensureLacesLoaded, useLaces } from "@/lib/laces-store"
 import { cn } from "@/lib/utils"
 import { usePageTitle } from "@/lib/use-page-title"
 
-import { sectionHash, type FeedSection, type FeedTarget } from "./lace-activity-actions"
+import { targetPath, type FeedSection } from "./lace-activity-actions"
 import { ActivityStepper } from "./lace-activity"
 import { LacePanelTabs, PanelIntro, type PanelTab } from "./lace-panel-tabs"
 import { useActivityPages } from "./use-activity-pages"
@@ -40,10 +40,6 @@ const HOME_FILTERS: readonly HomeFilter[] = [
     empty: "No competitor moves spotted yet." },
 ]
 const HOME_SECTIONS = HOME_FILTERS.map((filter) => filter.value)
-
-function href(laceId: string, { tab, section }: FeedTarget): string {
-  return `/lace/${laceId}/${tab}${section ? sectionHash(section) : ""}`
-}
 
 /** Home: every Lace's activity at once, a stepper per day, each item tagged
  * with its Lace and opening into it. Opportunities and Competitor moves are
@@ -90,7 +86,7 @@ export default function LaceHomeFeed() {
           <ActivityStepper
             items={items}
             isFresh={(item) => item.read_at === null}
-            onOpen={(item, target) => navigate(href(item.lace_id, target))}
+            onOpen={(item, target) => navigate(targetPath(item.lace_id, target))}
             tag={(item) => (
               <Link to={`/lace/${item.lace_id}`} className="mb-0.5 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
                 <Lace state="idle" size={MASCOT_PX} animated={false} decorative /> {item.lace_name}

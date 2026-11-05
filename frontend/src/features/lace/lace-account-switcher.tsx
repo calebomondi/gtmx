@@ -20,7 +20,7 @@ const STATE_TEXT: Record<MessagingAccount["state"], string> = {
 
 /** One account as a round icon: what waits on it as a badge on its corner,
  * an amber dot when it needs signing in again; its name in the tooltip. */
-function AccountIcon({ active, onClick, label, waiting, attention, children }: {
+export function AccountIcon({ active, onClick, label, waiting, attention, children }: {
   active: boolean
   onClick: () => void
   label: string
@@ -115,7 +115,7 @@ function ConnectDialog({ laceId, name, connections, open, onOpenChange }: {
         {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
         <Separator />
         <section className="flex flex-col gap-2">
-          <h3 className="text-sm font-medium">Inboxes {name} reads</h3>
+          <h3 className="text-sm font-medium">Pages and inboxes {name} speaks for</h3>
           <p className="text-xs text-muted-foreground">Business accounts whose messages {name} reads and drafts answers to.</p>
           <LaceChannels laceId={laceId} />
         </section>
@@ -146,7 +146,8 @@ export function LaceAccountSwitcher({ laceId, name, accounts, value, onChange, t
       </AccountIcon>
       {accounts.map((account) => (
         <AccountIcon key={account.key} active={value === account.key} onClick={() => onChange(account.key)}
-                     label={[account.label, account.detail, STATE_TEXT[account.state]].filter(Boolean).join(" · ")}
+                     label={[account.label, account.detail, STATE_TEXT[account.state], account.sends ? "sends new email" : null]
+                       .filter(Boolean).join(" · ")}
                      waiting={account.waiting} attention={account.state === "attention"}>
           <PlatformIcon platform={account.platform} className="size-5" />
         </AccountIcon>

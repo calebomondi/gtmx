@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from agents.schemas.lace_ui import BlockAnswer, UiBlock
 from agents.schemas.monitor import MoveImportance, MoveKind
 from agents.schemas.opportunities import OpportunityKind, OpportunityStatus
-from agents.schemas.lace import AppActionStatus, DismissReason, LaceRole, WatchEvery, AccountStatus, ActivityKind, ActivityRef, ContactSource, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
+from agents.schemas.lace import AppActionStatus, DismissReason, LaceRole, WatchEvery, AccountStatus, ActivityKind, ActivityRef, ContactSource, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, Mailbox, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
 
 
 def known_zone(value: str | None) -> str | None:
@@ -258,6 +258,8 @@ class OutreachResponse(BaseModel):
     subject: str | None
     body: str
     thread_id: str | None = Field(description="Set on sent emails, replies and answers in their thread")
+    mailbox: Mailbox | None = Field(default=None, description="An email's mailbox: where it went out from or came "
+                                                              "in to; on a draft answer, the one it will go from")
     intent: str | None = Field(description="inbound only: how the reply was read, e.g. interested, question")
     error: str | None
     sent_at: datetime | None
@@ -270,6 +272,8 @@ class OutreachUpdateRequest(BaseModel):
     body: str | None = Field(default=None, min_length=1, max_length=20_000)
     recipient_address: str | None = Field(default=None, max_length=2048)
     recipient_name: str | None = Field(default=None, max_length=255)
+    mailbox: Mailbox | None = Field(default=None, description="A new email's mailbox, picked as it's sent; null: "
+                                                              "the one the Lace sends from")
 
 
 class ChannelResponse(BaseModel):
@@ -378,6 +382,7 @@ class ActivityResponse(BaseModel):
     created_at: datetime
     read_at: datetime | None = None
     actor: MessageAuthor | None = Field(default=None, description="Who on the team did it or asked for it")
+    channel: OutreachChannel | None = Field(default=None, description="The channel of the message it's about, if any")
 
 
 class OutreachReadRequest(BaseModel):
@@ -398,6 +403,13 @@ class LaceAppResponse(BaseModel):
     connection_id: str | None = Field(default=None, description="To disconnect the Lace's own account")
     enabled: bool = Field(description="This Lace may use it")
     settings: dict[str, str] = Field(description="Its settings for this Lace, e.g. the Slack channel for the brief")
+    needs_link: bool = Field(default=False, description="Connected, but no Page or business account is linked to "
+                                                        "this Lace yet (Facebook, Instagram, Telegram)")
+    sends_email: bool = Field(default=False, description="The mailbox this Lace sends new email from")
+
+
+class SendFromUpdate(BaseModel):
+    mailbox: Mailbox | None = Field(description="The mailbox new email goes from; null: the first connected")
 
 
 class LaceAppUpdate(BaseModel):

@@ -331,20 +331,38 @@ def test_a_draft_to_one_person_is_an_email_with_the_founders_note(client, lace, 
         assert conn.execute("SELECT name FROM lace_contacts WHERE approved_at IS NOT NULL").fetchall() == [("Amina",)]
 
 
-def test_a_first_message_goes_only_by_email_to_a_contact_of_this_lace(client, lace, lace_runtime, user):  # noqa: F811
+def test_a_first_message_goes_by_email_or_linkedin_to_a_contact_of_this_lace(client, lace, lace_runtime, user):  # noqa: F811
     _account(lace, "Twiga", [ContactRecord(name="Peter", linkedin="https://linkedin.com/in/peter", x="https://x.com/p")],
              approved=False)
     with psycopg.connect(settings.database_url) as conn:
         peter = str(conn.execute("SELECT id FROM lace_contacts WHERE name = 'Peter'").fetchone()[0])
-    social = client.post(f"{API}/laces/{lace}/contacts/{peter}/draft", json={"channel": "linkedin"})
+    social = client.post(f"{API}/laces/{lace}/contacts/{peter}/draft", json={"channel": "x"})
     assert social.status_code == 422 and social.json()["detail"] == (
-        "First messages go by email for now. Reach them there, or write to them on LinkedIn yourself.")
+        "First messages go by email, or a LinkedIn note you send. Reach them there, or write to them on X yourself.")
     no_email = client.post(f"{API}/laces/{lace}/contacts/{peter}/draft", json={"channel": "email"})
     assert no_email.status_code == 422 and no_email.json()["detail"] == "There's no email address for this person."
     with psycopg.connect(settings.database_url) as conn:
         assert conn.execute("SELECT approved_at FROM lace_contacts").fetchone()[0] is None  # nothing was asked
     client.sign_in(make_user("Intruder"))
     assert client.post(f"{API}/laces/{lace}/contacts/{peter}/draft", json={"channel": "email"}).status_code == 404
+
+
+def test_a_linkedin_note_is_drafted_for_the_founder_to_send(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    written = _stub_writer(monkeypatch)
+    _account(lace, "Twiga", [ContactRecord(name="Peter", linkedin="https://linkedin.com/in/peter")], approved=False)
+    with psycopg.connect(settings.database_url) as conn:
+        peter = str(conn.execute("SELECT id FROM lace_contacts WHERE name = 'Peter'").fetchone()[0])
+    lace_runtime.append(AIMessage(content="I drafted a LinkedIn note to Peter."))
+
+    started = client.post(f"{API}/laces/{lace}/contacts/{peter}/draft", json={"channel": "linkedin"})
+    assert started.status_code == 202
+    client.portal.call(_wait_for_status, uuid.UUID(started.json()["run_id"]), {"completed"})
+    assert written == [("Twiga", "https://linkedin.com/in/peter", "Caleb")]
+    with psycopg.connect(settings.database_url) as conn:
+        draft = str(conn.execute("SELECT id FROM lace_outreach WHERE channel = 'linkedin'").fetchone()[0])
+    # Lace never sends on LinkedIn: the founder sends it and marks it sent.
+    assert client.post(f"{API}/laces/{lace}/outreach/{draft}/send").status_code == 409
+    assert client.post(f"{API}/laces/{lace}/outreach/{draft}/mark-sent").json()["status"] == "sent"
 
 
 def _reply_in(lace_id, user_id, channel="email") -> str:

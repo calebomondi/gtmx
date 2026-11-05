@@ -28,7 +28,7 @@ def _outlook(monkeypatch, inbox_mail=(), sent_to="jane@alpha.test"):
 
     def execute(entity, tool, arguments, connection_id):
         calls.append((tool, arguments))
-        if tool == "OUTLOOK_OUTLOOK_LIST_MESSAGES" and arguments["folder"] == "SentItems":
+        if tool == "OUTLOOK_LIST_MESSAGES" and arguments["folder"] == "SentItems":
             value = [{"id": MESSAGE, "conversationId": THREAD,
                       "toRecipients": [{"emailAddress": {"address": sent_to.upper()}}]}]
         else:
@@ -51,12 +51,23 @@ def test_inbox_mail_reads_as_the_reply_sync_expects(monkeypatch):
         "messageText": "Sounds good & cheap.", "messageTimestamp": "2026-10-24T10:00:00Z"}]
 
 
+def test_an_unwrapped_response_reads_the_same(monkeypatch):
+    """Composio stopped wrapping some apps' responses in response_data."""
+    monkeypatch.setattr(connection_service, "execute_tool", lambda *a: {"data": {"value": [{
+        "id": "m2", "conversationId": "c2", "subject": "Hi", "receivedDateTime": "2026-11-05T10:00:00Z",
+        "from": {"emailAddress": {"address": "tom@beta.test"}}, "bodyPreview": "Yes please"}]}, "error": None,
+        "log_id": "l"})
+    account = ConnectionInfo("ca_o", "outlook", "live", None, None, None, "u1")
+    [mail] = outlook.recent(account, "2026-11-01T00:00:00+00:00")
+    assert (mail["messageId"], mail["sender"], mail["messageText"]) == ("m2", "tom@beta.test", "Yes please")
+
+
 def test_a_new_email_goes_out_through_outlook_and_keeps_its_conversation(client, lace, lace_runtime, user,  # noqa: F811
                                                                        monkeypatch):
     calls = _outlook(monkeypatch)
     message = _message(lace, user.id)
     assert client.post(f"{API}/laces/{lace}/outreach/{message}/send").json()["status"] == "sent"
-    assert calls[0] == ("OUTLOOK_OUTLOOK_SEND_EMAIL", {"to_email": "jane@alpha.test", "subject": "Hi",
+    assert calls[0] == ("OUTLOOK_SEND_EMAIL", {"to": "jane@alpha.test", "subject": "Hi",
                                                        "body": "Hello Jane", "is_html": False,
                                                        "save_to_sent_items": True})
     with psycopg.connect(settings.database_url) as conn:
@@ -75,7 +86,7 @@ def test_an_answer_goes_into_the_outlook_conversation(client, lace, lace_runtime
                               " body, status) VALUES (%s, %s, %s, 'email', %s, 'jane@alpha.test', 'From $20.', 'draft')"
                               " RETURNING id", (uuid.uuid4(), lace, user.id, THREAD)).fetchone()[0]
     assert client.post(f"{API}/laces/{lace}/outreach/{answer}/send").json()["status"] == "sent"
-    assert calls == [("OUTLOOK_OUTLOOK_REPLY_EMAIL", {"message_id": MESSAGE, "comment": "From $20."})]
+    assert calls == [("OUTLOOK_REPLY_EMAIL", {"message_id": MESSAGE, "comment": "From $20."})]
 
 
 def test_gmail_is_used_when_the_lace_has_both(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
@@ -101,4 +112,76 @@ def test_replies_sync_from_outlook(client, lace, lace_runtime, user, monkeypatch
         async with AsyncSessionLocal() as db:
             return await inbox.sync_user(db, user.id)
     result = client.portal.call(sync)
-    assert [(r.body, r.recipient_address) for r in result.replies] == [("What does it cost?", "jane@alpha.test")]
+    assert [(r.body, r.recipient_address, r.mailbox) for r in result.replies] == [
+        ("What does it cost?", "jane@alpha.test", "outlook")]
+
+
+def _sending(client, lace_id) -> list[str]:
+    return [a["platform"] for a in client.get(f"{API}/laces/{lace_id}/apps").json() if a["sends_email"]]
+
+
+def test_the_founder_picks_the_mailbox_new_email_goes_from(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    calls = _outlook(monkeypatch)
+    stub_accounts(monkeypatch, {"gmail", "outlook"})
+    assert _sending(client, lace) == ["gmail"]  # nothing picked: Gmail first
+    picked = client.put(f"{API}/laces/{lace}/send-from", json={"mailbox": "outlook"})
+    assert [a["platform"] for a in picked.json() if a["sends_email"]] == ["outlook"]
+    message = _message(lace, user.id)
+    sent = client.post(f"{API}/laces/{lace}/outreach/{message}/send").json()
+    assert (sent["status"], sent["mailbox"], calls[0][0]) == ("sent", "outlook", "OUTLOOK_SEND_EMAIL")
+    assert client.put(f"{API}/laces/{lace}/send-from", json={"mailbox": None}).status_code == 200
+    assert _sending(client, lace) == ["gmail"]
+    assert client.put(f"{API}/laces/{lace}/send-from", json={"mailbox": "yahoo"}).status_code == 422
+
+
+def test_a_picked_mailbox_that_is_gone_is_never_swapped(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    calls = _outlook(monkeypatch)
+    stub_accounts(monkeypatch, {"gmail", "outlook"})
+    client.put(f"{API}/laces/{lace}/send-from", json={"mailbox": "outlook"})
+    stub_accounts(monkeypatch, {"gmail"})
+    refused = client.post(f"{API}/laces/{lace}/outreach/{_message(lace, user.id)}/send")
+    assert refused.status_code == 409 and "your Outlook" in refused.json()["detail"]
+    assert calls == [] and _sending(client, lace) == []
+
+
+def test_an_answer_goes_from_the_mailbox_its_conversation_is_in(client, lace, lace_runtime, user,  # noqa: F811
+                                                                monkeypatch):
+    calls = _outlook(monkeypatch)
+    stub_accounts(monkeypatch, {"gmail", "outlook"})
+    client.put(f"{API}/laces/{lace}/send-from", json={"mailbox": "outlook"})
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        answer = conn.execute("INSERT INTO lace_outreach (id, lace_id, user_id, channel, thread_id, mailbox,"
+                              " recipient_address, body, status) VALUES (%s, %s, %s, 'email', 't_gmail', 'gmail',"
+                              " 'jane@alpha.test', 'From $20.', 'draft') RETURNING id",
+                              (uuid.uuid4(), lace, user.id)).fetchone()[0]
+    assert client.post(f"{API}/laces/{lace}/outreach/{answer}/send").json()["mailbox"] == "gmail"
+    assert calls[0][0] == "GMAIL_REPLY_TO_THREAD"
+
+
+def test_only_the_laces_admins_pick_its_mailbox(client, lace, lace_runtime, monkeypatch):  # noqa: F811
+    from backend.tests.helpers import make_user
+    stub_accounts(monkeypatch, {"gmail", "outlook"})
+    client.sign_in(make_user("Intruder"))
+    assert client.put(f"{API}/laces/{lace}/send-from", json={"mailbox": "outlook"}).status_code == 404
+
+
+def test_the_founder_picks_a_new_emails_mailbox_as_they_send_it(client, lace, lace_runtime, user,  # noqa: F811
+                                                                monkeypatch):
+    calls = _outlook(monkeypatch)
+    stub_accounts(monkeypatch, {"gmail", "outlook"})
+    message = _message(lace, user.id)
+    picked = client.patch(f"{API}/laces/{lace}/outreach/{message}", json={"mailbox": "outlook"})
+    assert picked.json()["mailbox"] == "outlook"
+    sent = client.post(f"{API}/laces/{lace}/outreach/{message}/send").json()
+    assert (sent["status"], sent["mailbox"], calls[0][0]) == ("sent", "outlook", "OUTLOOK_SEND_EMAIL")
+
+
+def test_an_answers_mailbox_cant_be_changed(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    stub_accounts(monkeypatch, {"gmail", "outlook"})
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        answer = conn.execute("INSERT INTO lace_outreach (id, lace_id, user_id, channel, thread_id, mailbox,"
+                              " recipient_address, body, status) VALUES (%s, %s, %s, 'email', 't_gmail', 'gmail',"
+                              " 'jane@alpha.test', 'From $20.', 'draft') RETURNING id",
+                              (uuid.uuid4(), lace, user.id)).fetchone()[0]
+    moved = client.patch(f"{API}/laces/{lace}/outreach/{answer}", json={"mailbox": "outlook"})
+    assert moved.status_code == 409 and "conversation is in" in moved.json()["detail"]

@@ -42,10 +42,10 @@ _HANDOFF = {
     "linkedin": "LinkedIn messages are sent by you: copy the message, send it on LinkedIn, then mark it sent.",
     "instagram": "Instagram only lets apps answer people who wrote first, so start this chat yourself: copy the "
                  "message, send it on Instagram, then mark it sent. When they reply, your Lace sees it in "
-                 "Messaging and drafts every answer, which you send from here.",
+                 "Social and drafts every answer, which you send from here.",
     "facebook": "Facebook only lets a Page answer people who wrote first, so start this chat yourself: copy the "
                 "message, send it from your Page on Facebook, then mark it sent. When they reply, your Lace "
-                "sees it in Messaging and drafts every answer, which you send from here.",
+                "sees it in Social and drafts every answer, which you send from here.",
     "tiktok": "TikTok has no messaging for apps: copy the message, send it on TikTok, then mark it sent.",
     "telegram": "A Telegram bot can only answer people who wrote to it first: copy the message, send it on "
                 "Telegram, then mark it sent. Share your bot's link (t.me/yourbot) so people can write to it; "
@@ -91,6 +91,14 @@ async def unsent_draft(db: AsyncSession, lace_id: uuid.UUID, draft_id: uuid.UUID
 async def update(db: AsyncSession, message: LaceOutreach, changes: dict[str, Any]) -> LaceOutreach:
     if message.direction != "outbound" or message.status not in _EDITABLE_STATUSES:
         raise ConflictError("Only an unsent draft can be changed.")
+    if "mailbox" in changes:
+        # The founder picks where a new email goes from, as they send it; an
+        # answer goes from the mailbox its conversation is in.
+        if message.channel != "email":
+            raise ConflictError("Only an email goes from a mailbox.")
+        if message.thread_id and changes["mailbox"] != message.mailbox:
+            raise ConflictError("An answer goes from the mailbox its conversation is in.")
+        message.mailbox = changes["mailbox"]
     for field in EDITABLE_FIELDS:
         if field in changes:
             setattr(message, field, changes[field])
@@ -251,7 +259,7 @@ async def record_reading(db: AsyncSession, reply: LaceOutreach, intent: str, dra
         draft = LaceOutreach(lace_id=reply.lace_id, user_id=reply.user_id, account_id=reply.account_id, run_id=run_id,
                              channel=reply.channel, recipient_name=reply.recipient_name,
                              recipient_company=reply.recipient_company, recipient_address=reply.recipient_address,
-                             thread_id=reply.thread_id, body=draft_body)
+                             thread_id=reply.thread_id, mailbox=reply.mailbox, body=draft_body)
         db.add(draft)
     return draft
 

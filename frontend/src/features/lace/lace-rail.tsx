@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { MessagesSquare, Newspaper } from "lucide-react"
+import { MessagesSquare, Newspaper, Radio } from "lucide-react"
 
 import { Lace, type LaceState } from "@/components/lace-mascot"
 import { cn } from "@/lib/utils"
@@ -18,6 +18,8 @@ interface RailProps {
   /** The Lace is searching (Feed) or drafting (Messaging) in the background. */
   feedBusy: boolean
   messagingBusy: boolean
+  /** Social waiting on the founder: messages to read, a Page to link. */
+  socialWaiting: number
   className?: string
 }
 
@@ -58,7 +60,7 @@ function RoundButton({ active, label, onClick, children, count = 0, busy = false
   )
 }
 
-function Buttons({ tab, onSelect, name, mascot, waiting, unread, feedBusy, messagingBusy }: RailProps) {
+function Buttons({ tab, onSelect, name, mascot, waiting, unread, feedBusy, messagingBusy, socialWaiting }: RailProps) {
   return (
     <>
       <RoundButton active={tab === "chat"} label={`Chat with ${name}`} onClick={() => onSelect("chat")}
@@ -69,15 +71,18 @@ function Buttons({ tab, onSelect, name, mascot, waiting, unread, feedBusy, messa
       <RoundButton active={tab === "feed"} label="Feed" count={unread} busy={feedBusy} onClick={() => onSelect("feed")}>
         <Newspaper className="size-4" />
       </RoundButton>
-      <RoundButton active={tab === "messaging"} label="Messaging" count={waiting} busy={messagingBusy}
+      <RoundButton active={tab === "messaging"} label="Outreach" count={waiting} busy={messagingBusy}
                    onClick={() => onSelect("messaging")}>
         <MessagesSquare className="size-4" />
+      </RoundButton>
+      <RoundButton active={tab === "social"} label="Social" count={socialWaiting} onClick={() => onSelect("social")}>
+        <Radio className="size-4" />
       </RoundButton>
     </>
   )
 }
 
-/** Tablet and up: a slim pill of the three buttons, beside the content. */
+/** Tablet and up: a slim pill of the buttons, beside the content. */
 export function LaceRail(props: RailProps) {
   return (
     <nav aria-label={`${props.name}'s places`}
@@ -87,7 +92,7 @@ export function LaceRail(props: RailProps) {
   )
 }
 
-/** Phones: the same three buttons in a bar at the bottom, in thumb reach. */
+/** Phones: the same buttons in a bar at the bottom, in thumb reach. */
 export function LaceTabBar(props: RailProps) {
   return (
     <nav aria-label={`${props.name}'s places`}

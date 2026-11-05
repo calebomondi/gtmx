@@ -32,6 +32,7 @@ import {
   toggleLacePin,
   useLaces,
 } from "@/lib/laces-store"
+import { whileVisible } from "@/lib/visible"
 
 // How often the sidebar refreshes each Lace's mood (working, waiting on you).
 const LACES_REFRESH_MS = 30_000
@@ -83,7 +84,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   React.useEffect(() => {
     if (!authUser) return
     ensureLacesLoaded()
-    const timer = setInterval(() => void refetchLaces(), LACES_REFRESH_MS)
+    const timer = setInterval(whileVisible(() => void refetchLaces()), LACES_REFRESH_MS)
     return () => clearInterval(timer)
   }, [authUser])
 

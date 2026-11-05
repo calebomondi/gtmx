@@ -12,7 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from agents.lace.apps import AppError, AppStatus, CommentsOn, XRecord
 from backend.app.database.lace_models import Lace, LaceApp, LaceChannel
 from backend.app.services import connections as connection_service
-from backend.app.services import crm, lace_app_settings
+from backend.app.services import calendar, crm, lace_app_settings
+from backend.app.services.errors import ConflictError
 from backend.app.services.inbox import mail_text
 from backend.app.services.lace_channels import items
 from config import settings
@@ -30,6 +31,9 @@ EMAIL_RESULTS = 15
 THREAD_MESSAGES = 20
 EMAIL_CHARS = 2_000
 CALENDAR_EVENTS = 50
+# Free times offered when asked: how many, and at most how many a day.
+FREE_SLOTS = 8
+FREE_SLOTS_PER_DAY = 2
 X_MENTIONS = 20
 _GMAIL_SEARCH = "GMAIL_FETCH_EMAILS"
 _GMAIL_THREAD = "GMAIL_FETCH_MESSAGE_BY_THREAD_ID"
@@ -40,6 +44,8 @@ _X_MENTIONS = "TWITTER_GET_USER_MENTIONS"
 _X_USER = "TWITTER_USER_LOOKUP_BY_USERNAME"
 _X_POST = "TWITTER_POST_LOOKUP_BY_POST_ID"
 _SHEET_TABS = "GOOGLESHEETS_GET_SHEET_NAMES"
+_SHEET_SEARCH = "GOOGLESHEETS_SEARCH_SPREADSHEETS"
+SHEET_SEARCH_RESULTS = 10
 _SHEET_VALUES = "GOOGLESHEETS_BATCH_GET"
 # The most rows and columns read from one tab (the header row included).
 SHEET_ROWS = 1000
@@ -62,6 +68,8 @@ ASANA_TASKS = 100
 CALENDLY_MEETINGS = 20
 # The founder's recent posts read for comments, and comments read per post.
 COMMENTS_PER_POST = 20
+# Pages named when the founder must pick the one a Lace uses.
+PAGES_NAMED = 6
 TEXT_CHARS = 300
 
 
@@ -125,10 +133,18 @@ class DbLaceApps:
         data = await self._run(live, "googlecalendar", _CALENDAR_EVENTS, {
             "timeMin": now.isoformat(), "timeMax": (now + timedelta(days=days_ahead)).isoformat(),
             "singleEvents": True, "orderBy": "startTime", "maxResults": CALENDAR_EVENTS})
-        return [{"title": e.get("summary") or "(no title)", "start": _when(e.get("start")), "end": _when(e.get("end")),
-                 "attendees": [{"name": a.get("displayName"), "email": a.get("email")}
-                               for a in e.get("attendees") or [] if isinstance(a, dict) and not a.get("self")]}
-                for e in _listed(data, "items")[:CALENDAR_EVENTS]]
+        return [_meeting(e) for e in _listed(data, "items")[:CALENDAR_EVENTS]]
+
+    async def calendar_free_times(self, days: int, minutes: int) -> dict | None:
+        live = await self._personal("googlecalendar")
+        if live is None:
+            return None
+        try:
+            slots, tz = await asyncio.to_thread(calendar.read_free_slots, live.entity, live.connection_id, days, minutes,
+                                                FREE_SLOTS, FREE_SLOTS_PER_DAY)
+        except ConflictError as exc:
+            raise AppError(str(exc)) from exc
+        return {"timezone": tz, "slots": slots}
 
     async def x_mentions(self) -> list[dict] | None:
         live = await self._live("x")
@@ -160,7 +176,7 @@ class DbLaceApps:
         return [AppStatus(platform=a["platform"], label=a["label"], connected=a["status"] is not None,
                           needs_attention=a["status"] is not None and not a["connected"], enabled=a["enabled"],
                           account=a["account"], account_name=a["account_name"],
-                          handle=(a["settings"] or {}).get("handle"))
+                          handle=(a["settings"] or {}).get("handle"), needs_link=a.get("needs_link", False))
                 for a in listed if a["available"] or (a["settings"] or {}).get("handle")]
 
     async def _live(self, platform: str) -> _Live | None:
@@ -183,7 +199,7 @@ class DbLaceApps:
             logger.exception("Composio %s failed for Lace %s", tool, self._lace_id)
             raise AppError(f"Couldn't reach {connection_service.label(platform)} ({type(exc).__name__})") from exc
         if result.get("error"):
-            raise AppError(f"{connection_service.label(platform)} refused it ({str(result['error'])[:200]})")
+            raise AppError(connection_service.refusal(platform, result["error"]))
         return result.get("data")
 
     async def x(self, record: XRecord, key: str) -> dict | None:
@@ -197,6 +213,21 @@ class DbLaceApps:
                                         "expansions": x_api.POST_EXPANSIONS, "user__fields": ["username", "name"]}
         data = await self._run(live, "x", tool, arguments)
         return data if isinstance(data, dict) else None
+
+    async def sheet_search(self, query: str) -> list[dict] | None:
+        live = await self._live("googlesheets")
+        if live is None:
+            return None
+        try:
+            data = await self._run(live, "googlesheets", _SHEET_SEARCH, {
+                "query": query, "search_type": "name", "max_results": SHEET_SEARCH_RESULTS,
+                "order_by": "modifiedTime desc"})
+        except AppError as exc:
+            raise AppError(f"{exc} Until then, ask for the sheet's link.") from exc
+        found = _listed(data, "spreadsheets") or _listed(data, "files")
+        return [{"id": f.get("id") or f.get("spreadsheetId"), "name": f.get("name") or f.get("title"),
+                 "url": f.get("webViewLink") or f"https://docs.google.com/spreadsheets/d/{f.get('id')}",
+                 "modified": f.get("modifiedTime")} for f in found[:SHEET_SEARCH_RESULTS] if f.get("id")]
 
     async def sheet(self, spreadsheet_id: str, tab: str | None) -> dict | None:
         live = await self._live("googlesheets")
@@ -212,7 +243,7 @@ class DbLaceApps:
         quoted = chosen.replace("'", "''")
         data = await self._run(live, "googlesheets", _SHEET_VALUES, {
             "spreadsheet_id": spreadsheet_id, "ranges": [f"'{quoted}'!A1:{SHEET_COLUMNS}{SHEET_ROWS}"]})
-        ranges = ((data or {}).get("spreadsheet_data") or {}).get("valueRanges") or [] if isinstance(data, dict) else []
+        ranges = connection_service.payload(data).get("valueRanges") or []
         values = (ranges[0].get("values") if ranges and isinstance(ranges[0], dict) else None) or []
         return {"tabs": names, "tab": chosen, "rows": [[str(c) for c in row] for row in values if isinstance(row, list)]}
 
@@ -221,7 +252,7 @@ class DbLaceApps:
         if live is None:
             return None
         data = await self._run(live, "notion", _NOTION_SEARCH, {"query": query, "page_size": NOTION_RESULTS})
-        results = ((data or {}).get("response_data") or {}).get("results") or [] if isinstance(data, dict) else []
+        results = connection_service.payload(data).get("results") or []
         return [{"id": r.get("id"), "title": _notion_title(r), "url": r.get("url"), "kind": r.get("object")}
                 for r in results if isinstance(r, dict) and r.get("id")]
 
@@ -234,7 +265,7 @@ class DbLaceApps:
         for _ in range(NOTION_BLOCK_PAGES):
             data = await self._run(live, "notion", _NOTION_BLOCKS, {
                 "block_id": page_id, "page_size": 100, **({"start_cursor": cursor} if cursor else {})})
-            found = (data or {}).get("block_child_data") or {} if isinstance(data, dict) else {}
+            found = connection_service.payload(data)
             for block in found.get("results") or []:
                 kind = block.get("type") if isinstance(block, dict) else None
                 if kind in _NOTION_LINE:
@@ -388,19 +419,24 @@ class DbLaceApps:
         page = live.linked_account
         if not page:
             pages = items(await self._run(live, "facebook", "FACEBOOK_LIST_MANAGED_PAGES", {}))
-            if len(pages) != 1:
-                raise AppError("Link the Facebook Page this Lace uses (Messaging → Inboxes) to read its comments.")
+            if not pages:
+                raise AppError("This Facebook account manages no Page, and only a Page's comments can be read.")
+            if len(pages) > 1:
+                names = ", ".join(str(p.get("name") or p.get("id")) for p in pages[:PAGES_NAMED])
+                raise AppError(f"This Facebook account manages {len(pages)} Pages ({names}), and none is linked to "
+                               "this Lace. Ask the founder to pick the one it speaks for (ask_to_link); then its "
+                               "comments can be read.")
             page = str(pages[0]["id"])
+        # The comments come inside the Page's posts, read with the Page's token:
+        # asked for on their own (FACEBOOK_GET_COMMENTS), Facebook answers with
+        # the founder's token and refuses for want of pages_read_engagement.
         page_posts = items(await self._run(live, "facebook", "FACEBOOK_GET_PAGE_POSTS", {
-            "page_id": page, "limit": posts, "fields": "id,message,permalink_url,created_time"}))
-        found = []
-        for post in page_posts:
-            comments = items(await self._run(live, "facebook", "FACEBOOK_GET_COMMENTS", {
-                "object_id": post["id"], "limit": COMMENTS_PER_POST, "fields": "id,message,from,created_time"}))
-            found += [_comment("facebook", post.get("permalink_url"), post.get("message"), c.get("id"),
-                               (c.get("from") or {}).get("name"), c.get("message"), c.get("created_time"))
-                      for c in comments if c.get("message")]
-        return found
+            "page_id": page, "limit": posts,
+            "fields": f"id,message,permalink_url,created_time,"
+                      f"comments.limit({COMMENTS_PER_POST}){{id,message,from,created_time}}"}))
+        return [_comment("facebook", post.get("permalink_url"), post.get("message"), c.get("id"),
+                         (c.get("from") or {}).get("name"), c.get("message"), c.get("created_time"))
+                for post in page_posts for c in items(post.get("comments")) if c.get("message")]
 
 
 async def asana_workspace(run) -> str:
@@ -457,3 +493,17 @@ def _listed(data, key: str) -> list[dict]:
 def _when(moment) -> str | None:
     """A calendar event's start or end: its time, or its date for all-day events."""
     return (moment.get("dateTime") or moment.get("date")) if isinstance(moment, dict) else None
+
+
+def _meeting(event: dict) -> dict:
+    """A calendar event with what preparing for it needs: when, where, how to
+    join, who organised it, and who else is invited and whether they said yes."""
+    entry = next((p.get("uri") for p in (event.get("conferenceData") or {}).get("entryPoints") or []
+                  if isinstance(p, dict) and p.get("entryPointType") == "video"), None)
+    return {"id": event.get("id"), "title": event.get("summary") or "(no title)", "start": _when(event.get("start")),
+            "end": _when(event.get("end")), "location": event.get("location"),
+            "join": event.get("hangoutLink") or entry,
+            "description": (event.get("description") or "")[:EMAIL_CHARS],
+            "organizer": (event.get("organizer") or {}).get("email"),
+            "attendees": [{"name": a.get("displayName"), "email": a.get("email"), "response": a.get("responseStatus")}
+                          for a in event.get("attendees") or [] if isinstance(a, dict) and not a.get("self")]}

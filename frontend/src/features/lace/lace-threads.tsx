@@ -4,8 +4,9 @@ import { ArrowLeft, Inbox, Loader2, Mail, Search } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
-import type { LaceOutreachChanges, LaceOutreachDto, OutreachChannel } from "@/lib/api"
+import type { LaceAppDto, LaceOutreachChanges, LaceOutreachDto, OutreachChannel } from "@/lib/api"
 import { formatRelativeTime } from "@/lib/format"
+import { PLATFORM_LABEL } from "@/lib/platforms"
 import { cn } from "@/lib/utils"
 
 import { DraftCard } from "./lace-draft"
@@ -47,6 +48,8 @@ export interface ThreadActions {
   onRead: (ids: string[]) => void
   /** What sits before a draft's Send: the Lace, to work on it with. */
   brainstorm?: (draft: LaceOutreachDto) => ReactNode
+  /** The Lace's connected mailboxes, for a new email's sender. */
+  mailboxes?: LaceAppDto[]
 }
 
 /** The person's initials, with their channel's mark in the corner. */
@@ -97,6 +100,8 @@ function ThreadView({ thread, folder, actions, onBack }: {
   const drafts = thread.messages.filter((m) => m.direction === "outbound" && (m.status === "draft" || m.status === "failed"))
   const replyTo = folder === "drafts" ? answering(thread, drafts) : null
   const said = folder === "drafts" ? (replyTo ? [replyTo] : []) : thread.messages.filter((m) => !drafts.includes(m))
+  // An email conversation's mailbox, once one of its messages recorded it.
+  const mailbox = thread.messages.find((m) => m.mailbox)?.mailbox
   const scroller = useScrollToEnd<HTMLDivElement>(thread.key, thread.messages.length)
   // Shown is read: its replies stop counting as new.
   const unread = thread.messages.filter(isUnread).map((m) => m.id).join(",")
@@ -115,6 +120,7 @@ function ThreadView({ thread, folder, actions, onBack }: {
           <p className="truncate font-medium">{thread.who}</p>
           <p className="truncate text-xs text-muted-foreground">
             {thread.company && thread.company !== thread.who ? `${thread.company} · ` : ""}{CHANNEL_LABELS[thread.channel]}
+            {mailbox ? ` · ${PLATFORM_LABEL[mailbox]}` : ""}
           </p>
         </div>
       </header>
@@ -125,7 +131,8 @@ function ThreadView({ thread, folder, actions, onBack }: {
           <DraftCard key={m.id} message={m} sendingSoon={actions.sendingSoon.has(m.id)}
                      onSave={(changes) => actions.onSave(m.id, changes)} onDiscard={() => actions.onDiscard(m.id)}
                      onSend={() => actions.onSend(m.id)} onUndo={() => actions.onUndo(m.id)}
-                     onMarkSent={() => actions.onMarkSent(m.id)} brainstorm={actions.brainstorm?.(m)} />
+                     onMarkSent={() => actions.onMarkSent(m.id)} brainstorm={actions.brainstorm?.(m)}
+                     mailboxes={actions.mailboxes} />
         ))}
       </div>
     </div>

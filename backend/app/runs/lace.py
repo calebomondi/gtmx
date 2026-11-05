@@ -478,11 +478,6 @@ async def _with_follow_ups(reply: str, blocks: list[dict], asked: str = "", situ
 # Where a reply keeps the cards and choices shown under it.
 UI_KEY = "ui"
 # The tools whose results put something under the reply.
-_UI_TOOLS = frozenset({"ask_choice", "ask_checklist", "ask_form", "show",
-                       # Suggestions it was asked to save, shown for the founder to save.
-                       "update_saved",
-                       # Proposals in the founder's apps, shown with Approve and Decline.
-                       "post_on_social", "reply_to_comment", "engage_on_x"})
 # The blocks the founder answers.
 _QUESTION_TYPES = frozenset({"choices", "checklist", "form"})
 # Under a reply, these already give the founder something to click.
@@ -491,13 +486,14 @@ _UI_BLOCK = TypeAdapter(UiBlock)
 
 
 def _ui_blocks(message: ToolMessage) -> list[dict]:
-    if message.name not in _UI_TOOLS:
-        return []
+    """The cards, questions and proposals a tool put under the reply: any
+    tool whose result carries `ui` (asks, cards, every app proposal)."""
     try:
         result = json.loads(str(message.content))
     except ValueError:
         return []
-    return list((result.get("data") or {}).get("ui") or []) if result.get("ok") else []
+    data = result.get("data") if isinstance(result, dict) and result.get("ok") else None
+    return list(data.get("ui") or []) if isinstance(data, dict) else []
 
 
 async def _attach_ui(graph, thread: LaceThread, blocks: list[dict], text: str | None = None) -> None:

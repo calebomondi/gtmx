@@ -103,7 +103,8 @@ export function LaceFeed({ laceId, name, chat, activity, opps, regulations, apps
   const needs = needsYou(chat.waiting, activity.items.filter((a) => a.kind === "job_failed" && activity.isNew(a)), {
     opportunities: opps.suggested.length, accounts: chat.suggestedAccounts.length,
     competitors: chat.suggestedCompetitors.length,
-  }, chat.contacts.filter((c) => !c.approved_at).length, (reviews.items ?? []).filter((f) => f.can_review).length)
+  }, chat.contacts.filter((c) => !c.approved_at).length, (reviews.items ?? []).filter((f) => f.can_review).length,
+    chat.socialUnread)
 
   const tabs: PanelTab<FeedSection>[] = [
     {

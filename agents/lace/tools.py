@@ -27,6 +27,7 @@ from agents.lace.sheet_tools import build_sheet_tools
 from agents.lace.slack_tools import build_slack_tools
 from agents.lace.telegram_tools import build_telegram_tools
 from agents.lace.social_tools import build_social_tools
+from agents.lace.calendar_tools import build_calendar_tools
 from agents.lace.inbox_tools import build_inbox_tools
 from agents.lace.instruction_tools import build_instruction_tools
 from agents.lace.store import JobRefused, LaceJobs, LaceStore
@@ -67,6 +68,9 @@ SOCIAL_TOKEN_CAP = 3_000
 MAX_CARDS = 6
 # Facts read to tell whether enough is known about who buys.
 BUYER_FACTS_READ = 100
+# Contacts looked through for one by id, and the longest note asked for a draft.
+CONTACTS_SCAN = 500
+NOTE_CHARS = 500
 
 
 def _capped(markdown: str, cap: int) -> tuple[str, bool]:
@@ -343,7 +347,8 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
              # Acting in the founder's apps needs them: proposals, run on approval.
              *([*build_social_tools(store, apps), *build_sheet_tools(store, apps), *build_notion_tools(store, apps),
                 *build_slack_tools(store, apps), *build_asana_tools(store, apps), *build_crm_tools(store, apps),
-                *build_calendly_tools(store, apps), *build_telegram_tools(store), *build_inbox_tools(apps)]
+                *build_calendly_tools(store, apps), *build_telegram_tools(store), *build_inbox_tools(apps),
+                *build_calendar_tools(store, apps)]
                if apps is not None else [])]
     if jobs is None:
         return tools
@@ -440,6 +445,29 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
 
     @tool(parse_docstring=True)
     @guarded
+    async def draft_linkedin_note(contact_id: str, note: str = "") -> ToolResult:
+        """Draft a LinkedIn note to one person, only when the founder asks for one. The founder sends it themselves on LinkedIn (copy it, open their profile, tap I've sent it): you never send on LinkedIn. Email stays the way outreach goes otherwise. Runs in the background; you get an update when it's ready.
+
+        Args:
+            contact_id: The person's id, from list_contacts; they need a LinkedIn profile.
+            note: What the founder wants it to say, if they said.
+        """
+        contact = next((c for c in await store.contacts(limit=CONTACTS_SCAN) if c.id == contact_id.strip()), None)
+        if contact is None:
+            return ToolResult.failure(f"No contact has the id {contact_id}; list_contacts gives the ids.")
+        if not contact.linkedin:
+            return ToolResult.failure(f"There's no LinkedIn profile for {contact.name or 'this person'}.")
+        person = {"channel": "linkedin", "name": contact.name, "title": contact.title, "address": contact.linkedin}
+        try:
+            start = await jobs.start("draft_outreach", {"account_ids": [contact.account_id], "person": person,
+                                                        "note": note.strip()[:NOTE_CHARS] or None})
+        except JobRefused as exc:
+            return ToolResult.failure(str(exc))
+        return job_result(start, f"Started a LinkedIn note to {contact.name or 'them'}, for the founder to send "
+                          "themselves. You'll get an update here when it's ready.", "drafting job")
+
+    @tool(parse_docstring=True)
+    @guarded
     async def find_opportunities(kinds: list[OpportunityKind] | None = None) -> ToolResult:
         """Search for current opportunities: showcase (events, conferences, awards, press), sell (open tenders, RFPs, buyers looking), partner (complementary companies, integrations, resellers) and funding (grants, incubators, accelerators the startup qualifies for). Keeps only sourced ones that are still open and fit. Runs in the background; you get an update when it is done. It also runs on its own, as often as the founder set in this Lace's settings.
 
@@ -491,4 +519,4 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
                           "done.", "listen on social accounts")
 
     return [*tools, find_competitors, check_competitors, find_accounts, define_icp, find_contacts, draft_outreach,
-            find_opportunities, read_tiktok_comments, refresh_understanding, listen_now]
+            find_opportunities, read_tiktok_comments, refresh_understanding, listen_now, draft_linkedin_note]

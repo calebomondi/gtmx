@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated, Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -145,7 +145,19 @@ async def in_pilot(user: CurrentUser, db: DbSession) -> AuthUser:
     return user
 
 
-async def rate_limited(user: CurrentUser) -> AuthUser:
-    """Router-level guard on the REST API: per-user requests per minute."""
-    limits.check_request_rate(user.id)
+# Methods that only read: loading a page fires many at once.
+_READS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+async def rate_limited(request: Request, user: CurrentUser) -> AuthUser:
+    """Router-level guard on the REST API: per-user requests per minute, reads
+    and writes counted apart."""
+    limits.check_request_rate(user.id, "read" if request.method in _READS else "write")
+    return user
+
+
+async def telemetry_limited(user: CurrentUser) -> AuthUser:
+    """The app's own heartbeats and analytics events: their own budget, so
+    they never use up the founder's."""
+    limits.check_request_rate(user.id, "telemetry")
     return user

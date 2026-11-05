@@ -57,7 +57,7 @@ async def test_a_facebook_post_goes_to_the_page_linked_to_the_lace(composio):
     await social_actions.facebook_post(_ctx("facebook", linked="pg_1"), {"text": "Hello"})
     assert composio["calls"][-1] == ("FACEBOOK_CREATE_POST", {"page_id": "pg_1", "message": "Hello", "published": True})
     # Not linked, and two Pages to choose from: the founder picks one.
-    with pytest.raises(ActionFailed, match="link it under Messaging"):
+    with pytest.raises(ActionFailed, match="link it in Social"):
         await social_actions.facebook_post(_ctx("facebook"), {"text": "Hello"})
     composio["answers"]["FACEBOOK_LIST_MANAGED_PAGES"] = {"data": [{"id": "pg_4"}]}
     await social_actions.facebook_post(_ctx("facebook"), {"text": "Hello"})

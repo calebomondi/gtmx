@@ -141,7 +141,13 @@ export interface ActionBlockDto {
   url?: string | null
 }
 
-export type UiBlockDto = QuestionBlockDto | CardBlockDto | SuggestionsBlockDto | ActionBlockDto
+/** The Lace asks which Page (or business account, or bot) it speaks for on a platform. */
+export interface LinkAccountBlockDto {
+  type: "link_account"
+  platform: InboxPlatform
+}
+
+export type UiBlockDto = QuestionBlockDto | CardBlockDto | SuggestionsBlockDto | ActionBlockDto | LinkAccountBlockDto
 
 export interface AttachmentDto {
   id: string
@@ -388,8 +394,11 @@ export function setLaceAccountStatus(laceId: string, accountId: string, status: 
 
 export type OutreachChannel = "email" | "linkedin" | "x" | "instagram" | "facebook" | "tiktok" | "telegram"
 
-/** The only channel a Lace writes first messages on; the others are for replying and engaging. */
+/** The channel a Lace's outreach goes out on; the others are for replying and engaging. */
 export const FIRST_TOUCH: OutreachChannel = "email"
+
+/** Where a Lace drafts a note only on request, for the founder to send by hand. */
+export const BY_HAND: ReadonlySet<OutreachChannel> = new Set(["linkedin"])
 
 export interface LaceOutreachDto {
   id: string
@@ -405,6 +414,9 @@ export interface LaceOutreachDto {
   body: string
   /** Set on sent emails, replies, and answers drafted in their thread. */
   thread_id: string | null
+  /** An email's mailbox: where it went out from or came in to; on a draft
+   * answer, the one it will go from. Null on email sent before this was kept. */
+  mailbox: Mailbox | null
   /** Inbound only: how the reply was read, e.g. "interested", "question". */
   intent: string | null
   error: string | null
@@ -414,7 +426,7 @@ export interface LaceOutreachDto {
   created_at: string
 }
 
-export type LaceOutreachChanges = Partial<Pick<LaceOutreachDto, "subject" | "body" | "recipient_address" | "recipient_name">>
+export type LaceOutreachChanges = Partial<Pick<LaceOutreachDto, "subject" | "body" | "recipient_address" | "recipient_name" | "mailbox">>
 
 export function listLaceOutreach(laceId: string): Promise<LaceOutreachDto[]> {
   return apiFetch<LaceOutreachDto[]>(`/api/v1/laces/${laceId}/outreach`)
@@ -596,6 +608,8 @@ export interface ActivityDto {
   read_at: string | null
   /** Who on the team did it or asked for it; only on a Lace with a team. */
   actor: { id: string; name: string | null; avatar_url: string | null } | null
+  /** The channel of the message it's about (a reply, a send), if any. */
+  channel: OutreachChannel | null
 }
 
 /** Newest first; `before` (an item's created_at) pages back. */
@@ -705,7 +719,15 @@ export interface LaceAppDto {
   /** This Lace may use it. */
   enabled: boolean
   settings: Record<string, string>
+  /** Connected, but no Page or business account is linked to this Lace yet. */
+  needs_link: boolean
+  /** The mailbox this Lace sends new email from. */
+  sends_email: boolean
 }
+
+/** The mail apps email goes through, in the order a Lace picks one unless the founder chose. */
+export type Mailbox = "gmail" | "outlook"
+export const MAILBOXES: Mailbox[] = ["gmail", "outlook"]
 
 export function listLaceApps(laceId: string): Promise<LaceAppDto[]> {
   return apiFetch(`/api/v1/laces/${laceId}/apps`)

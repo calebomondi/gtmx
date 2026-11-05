@@ -53,12 +53,14 @@ from backend.app.schemas.laces import (
     AppActionResponse,
     LaceAppResponse,
     LaceAppUpdate,
+    SendFromUpdate,
     MAX_APP_ACTIONS_PER_PAGE,
     OutreachUpdateRequest,
 )
 # Registers the social actions' runners, which approving app actions runs.
 from backend.app.services import (  # noqa: F401 -- registers their runners
-    asana_actions, crm_actions, notion_actions, sheet_actions, slack_actions, social_actions, telegram_actions,
+    asana_actions, calendar_actions, crm_actions, notion_actions, sheet_actions, slack_actions, social_actions,
+    telegram_actions,
 )
 from backend.app.services import email, inbox, lace_app_actions, lace_app_settings, lace_accounts, lace_briefs, lace_cards, lace_documents, lace_activity, lace_contacts, lace_members, lace_search, lace_channels, lace_competitors, lace_exclusions, lace_opportunities, lace_outreach
 from backend.app.services import connections as connection_service
@@ -131,13 +133,15 @@ async def list_all_activity(user: CurrentUser, db: DbSession, before: datetime |
     """What all the founder's Laces did or found, newest first."""
     rows = await lace_activity.list_for_user(db, user.id, limit, before)
     actors = await lace_members.actors(db, [(a.lace_id, a.actor_id) for a, _ in rows if a.actor_id])
-    return [_activity(LaceActivityItem, a, actors, lace_id=lace.id, lace_name=lace.name) for a, lace in rows]
+    channels = await lace_activity.channels(db, [a for a, _ in rows])
+    return [_activity(LaceActivityItem, a, actors, channels, lace_id=lace.id, lace_name=lace.name) for a, lace in rows]
 
 
-def _activity(shape: type[ActivityResponse], item, actors: dict, **extra) -> ActivityResponse:
-    """An activity row as the API shows it, with who did it (lace_members.actors)."""
-    return shape(**ActivityResponse.model_validate(item).model_dump(exclude={"actor"}),
-                 actor=actors.get((item.lace_id, item.actor_id)), **extra)
+def _activity(shape: type[ActivityResponse], item, actors: dict, channels: dict, **extra) -> ActivityResponse:
+    """An activity row as the API shows it, with who did it (lace_members.actors)
+    and the channel of the message it's about (lace_activity.channels)."""
+    return shape(**ActivityResponse.model_validate(item).model_dump(exclude={"actor", "channel"}),
+                 actor=actors.get((item.lace_id, item.actor_id)), channel=channels.get(item.id), **extra)
 
 
 @router.get("/{lace_id}", response_model=LaceResponse)
@@ -225,7 +229,8 @@ async def list_activity(lace: MemberLace, db: DbSession, before: datetime | None
     item names who on the team did it or asked for it, on a Lace with a team."""
     rows = await lace_activity.list_for_lace(db, lace.id, limit, before)
     actors = await lace_members.actors(db, [(a.lace_id, a.actor_id) for a in rows if a.actor_id])
-    return [_activity(ActivityResponse, a, actors) for a in rows]
+    channels = await lace_activity.channels(db, rows)
+    return [_activity(ActivityResponse, a, actors, channels) for a in rows]
 
 
 @router.post("/{lace_id}/activity/read", response_model=ActivityReadResponse)
@@ -457,6 +462,14 @@ async def update_lace_app(lace: AdminLace, platform: str, payload: LaceAppUpdate
     """Switch an app on or off for this Lace, or change its settings here."""
     await lace_app_settings.update(db, lace, platform, payload.enabled, payload.settings)
     return next(a for a in await lace_app_settings.list_for_lace(db, lace) if a["platform"] == platform)
+
+
+@router.put("/{lace_id}/send-from", response_model=list[LaceAppResponse])
+async def set_send_from(lace: AdminLace, payload: SendFromUpdate, db: DbSession):
+    """Pick the mailbox this Lace sends new email from (answers still go from
+    the mailbox their conversation is in)."""
+    await lace_app_settings.set_send_from(db, lace, payload.mailbox)
+    return await lace_app_settings.list_for_lace(db, lace)
 
 
 @router.post("/{lace_id}/connections/{platform}", response_model=ConnectStartResponse)
