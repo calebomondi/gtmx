@@ -77,6 +77,18 @@ _LABEL = {app.platform: app.label for app in APPS}
 APP_OF = {app.platform: app for app in APPS}
 
 
+# Where Composio has wrapped an app's own response; it no longer does for
+# some apps (Sheets, Notion), so readers accept both.
+_WRAPPERS = ("response_data", "spreadsheet_data", "block_child_data")
+
+
+def payload(data) -> dict:
+    """An app's own response inside a Composio result, wrapped or not."""
+    if not isinstance(data, dict):
+        return {}
+    return next((data[key] for key in _WRAPPERS if isinstance(data.get(key), dict)), data)
+
+
 def response_field(data, field: str) -> str | None:
     """A field of a platform API response, which Composio may or may not wrap in `data`."""
     if not isinstance(data, dict):

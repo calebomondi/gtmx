@@ -3,6 +3,7 @@
 spreadsheet, or appending them to one the founder linked. Composio tools
 verified against the live catalog (2026-10-24)."""
 
+from backend.app.services import connections as connection_service
 from backend.app.services.lace_app_actions import ActionFailed, Outcome, RunContext, call, runs
 
 _SHEET_URL = "https://docs.google.com/spreadsheets/d/{}"
@@ -20,7 +21,7 @@ async def export(ctx: RunContext, arguments: dict) -> Outcome:
     done = await call(ctx, "GOOGLESHEETS_SHEET_FROM_JSON", {
         "title": arguments["title"], "sheet_name": "Sheet1",
         "sheet_json": [dict(zip(header, row)) for row in rows]})
-    created = (done["data"] or {}).get("response_data") or {}
+    created = connection_service.payload(done["data"])
     spreadsheet = created.get("spreadsheetId")
     if not spreadsheet:
         raise ActionFailed("Google Sheets didn't say which spreadsheet it made; look for it in your Drive.")

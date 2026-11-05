@@ -88,3 +88,20 @@ async def test_a_missing_permission_says_to_reconnect(monkeypatch):
                                                    "error": "403 ACCESS_TOKEN_SCOPE_INSUFFICIENT"}
     with pytest.raises(lace_apps.AppError, match="without every permission it needs.*ask for the sheet's link"):
         await apps.sheet_search("Antler")
+
+
+async def test_sheets_and_notion_read_unwrapped_responses(monkeypatch):
+    """Composio stopped wrapping some apps' responses (response_data,
+    spreadsheet_data): what they return is read either way."""
+    stub_accounts(monkeypatch, {"googlesheets", "notion"})
+    answers = {
+        "GOOGLESHEETS_GET_SHEET_NAMES": {"sheet_names": ["Sheet1"]},
+        "GOOGLESHEETS_BATCH_GET": {"spreadsheetId": "s1", "valueRanges": [{"values": [["Question", "Answer"]]}]},
+        "NOTION_SEARCH_NOTION_PAGE": {"results": [{"id": "p1", "object": "page", "url": "https://notion.so/p1",
+                                                   "properties": {"title": {"title": [{"plain_text": "Antler"}]}}}]},
+    }
+    monkeypatch.setattr(lace_apps.connection_service, "execute_tool",
+                        lambda e, tool, args, c: {"data": answers[tool], "error": None, "log_id": "l"})
+    apps = lace_apps.DbLaceApps(AsyncSessionLocal, _lace())
+    assert (await apps.sheet("s1", None))["rows"] == [["Question", "Answer"]]
+    assert [p["id"] for p in await apps.notion_search("Antler")] == ["p1"]

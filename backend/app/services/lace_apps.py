@@ -229,7 +229,7 @@ class DbLaceApps:
         quoted = chosen.replace("'", "''")
         data = await self._run(live, "googlesheets", _SHEET_VALUES, {
             "spreadsheet_id": spreadsheet_id, "ranges": [f"'{quoted}'!A1:{SHEET_COLUMNS}{SHEET_ROWS}"]})
-        ranges = ((data or {}).get("spreadsheet_data") or {}).get("valueRanges") or [] if isinstance(data, dict) else []
+        ranges = connection_service.payload(data).get("valueRanges") or []
         values = (ranges[0].get("values") if ranges and isinstance(ranges[0], dict) else None) or []
         return {"tabs": names, "tab": chosen, "rows": [[str(c) for c in row] for row in values if isinstance(row, list)]}
 
@@ -238,7 +238,7 @@ class DbLaceApps:
         if live is None:
             return None
         data = await self._run(live, "notion", _NOTION_SEARCH, {"query": query, "page_size": NOTION_RESULTS})
-        results = ((data or {}).get("response_data") or {}).get("results") or [] if isinstance(data, dict) else []
+        results = connection_service.payload(data).get("results") or []
         return [{"id": r.get("id"), "title": _notion_title(r), "url": r.get("url"), "kind": r.get("object")}
                 for r in results if isinstance(r, dict) and r.get("id")]
 
@@ -251,7 +251,7 @@ class DbLaceApps:
         for _ in range(NOTION_BLOCK_PAGES):
             data = await self._run(live, "notion", _NOTION_BLOCKS, {
                 "block_id": page_id, "page_size": 100, **({"start_cursor": cursor} if cursor else {})})
-            found = (data or {}).get("block_child_data") or {} if isinstance(data, dict) else {}
+            found = connection_service.payload(data)
             for block in found.get("results") or []:
                 kind = block.get("type") if isinstance(block, dict) else None
                 if kind in _NOTION_LINE:
