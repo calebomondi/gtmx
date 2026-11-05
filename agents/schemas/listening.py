@@ -8,6 +8,13 @@ from pydantic import Field
 from agents.schemas.coercion import LenientModel
 
 HeardKind = Literal["lead", "feedback", "question", "praise", "noise"]
+HEARD_KINDS: tuple[str, ...] = HeardKind.__args__
+# Where a Lace listens and reads posts from.
+SocialPlatform = Literal["x", "instagram", "facebook", "tiktok", "linkedin"]
+SOCIAL_PLATFORMS: tuple[str, ...] = SocialPlatform.__args__
+# Where the founder is with something heard: still to act on, acted on, or set aside.
+HeardStatus = Literal["new", "done", "dismissed"]
+HEARD_STATUSES: tuple[str, ...] = HeardStatus.__args__
 
 
 class HeardItem(LenientModel):

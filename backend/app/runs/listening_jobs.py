@@ -20,6 +20,7 @@ from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
 from backend.app.runs import events
 from backend.app.runs.lace_jobs import job_activity, job_update, report_failure
+from backend.app.services import lace_social
 from backend.app.services.inbox import timestamp
 from backend.app.services.lace_activity import plural
 from backend.app.services.lace_apps import DbLaceApps
@@ -54,14 +55,19 @@ class Listened:
     read: list[str] = field(default_factory=list)  # the platforms read
     failed: list[str] = field(default_factory=list)  # those that couldn't be, and why
     x_posts: list[dict] = field(default_factory=list)  # the founder's X posts since, read by handle
+    # Every recent post read, by platform, with how it did: kept for the Social view.
+    posts: dict[str, list[dict]] = field(default_factory=dict)
 
 
 def _said(platform: str, result: list[dict]) -> list[dict]:
+    """What people said, each with the platform's id for it when there is one
+    (a comment's id, a mention's link), so a listen keeps it once."""
     if platform == "tiktok":
         return [{"platform": "tiktok", "author": c.get("author"), "text": c.get("text"), "url": video["url"],
-                 "date": c.get("date")} for video in result for c in video["comments"]]
+                 "date": c.get("date"), "id": None} for video in result for c in video["comments"]]
     return [{"platform": platform, "author": r.get("handle") or r.get("author"), "text": r.get("text"),
-             "url": r.get("url") or r.get("post_url"), "date": r.get("date")} for r in result]
+             "url": r.get("url") or r.get("post_url"), "date": r.get("date"),
+             "id": r.get("comment_id") or (r.get("url") if platform == "x" else None)} for r in result]
 
 
 async def _hear(apps: DbLaceApps, since: datetime) -> Listened:
@@ -69,19 +75,21 @@ async def _hear(apps: DbLaceApps, since: datetime) -> Listened:
     the founder's public handle), and their X posts since `since`."""
     reads = {"x": apps.x_mentions(), "instagram": apps.my_comments("instagram", POSTS_READ),
              "facebook": apps.my_comments("facebook", POSTS_READ), "tiktok": apps.tiktok_comments(TIKTOK_VIDEOS),
-             "x_posts": apps.my_posts("x")}
+             "x_posts": apps.my_posts("x"), "tiktok_posts": apps.my_posts("tiktok")}
     results = await asyncio.gather(*reads.values(), return_exceptions=True)
     out = Listened()
     for platform, result in zip(reads, results):
-        label = _LABELS["x" if platform == "x_posts" else platform]
+        label = _LABELS[platform.removesuffix("_posts")]
         if isinstance(result, AppError):
             out.failed.append(f"{label} ({result})")
         elif isinstance(result, BaseException):
             raise result
         elif result is not None:
             out.read.append(label)
-            if platform == "x_posts":
-                out.x_posts = [p for p in result if p.get("date") and timestamp(p["date"]) > since]
+            if platform.endswith("_posts"):
+                out.posts[platform.removesuffix("_posts")] = result
+                if platform == "x_posts":
+                    out.x_posts = [p for p in result if p.get("date") and timestamp(p["date"]) > since]
             else:
                 out.heard += _said(platform, result)
     out.read = list(dict.fromkeys(out.read))
@@ -145,6 +153,9 @@ async def listening_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> 
             await report_failure(lace_id, "listen on social accounts", exc, params)
         raise
     async with AsyncSessionLocal() as db, db.begin():
+        for platform, read in listened.posts.items():
+            await lace_social.save_posts(db, lace_id, platform, read)
+        await lace_social.save_heard(db, lace_id, run_id, found)
         if found or listened.x_posts or not params.get("scheduled"):
             await job_update(db, lace_id, params, listening_update(found, len(fresh), listened))
         if found:
