@@ -4,7 +4,7 @@ import { Check, Copy, ExternalLink, Loader2, MessageCircleReply, Sparkles } from
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
-import type { ContactDto, LaceOutreachDto, OutreachChannel } from "@/lib/api"
+import { FIRST_TOUCH, type ContactDto, type LaceOutreachDto, type OutreachChannel } from "@/lib/api"
 import { formatRelativeTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -72,7 +72,8 @@ export function LaceContactDialog({ contact, channel: initialChannel, name, chat
   onClose: () => void
 }) {
   const reach = reachOf(contact)
-  const [channel, setChannel] = useState<OutreachChannel | null>(initialChannel ?? reach[0]?.channel ?? null)
+  const [channel, setChannel] = useState<OutreachChannel | null>(
+    initialChannel ?? reach.find((r) => r.channel === FIRST_TOUCH)?.channel ?? reach[0]?.channel ?? null)
   const [note, setNote] = useState("")
   const [asked, setAsked] = useState<OutreachChannel | null>(null)
   const [asking, setAsking] = useState(false)
@@ -170,7 +171,14 @@ export function LaceContactDialog({ contact, channel: initialChannel, name, chat
             </div>
           )}
 
-          {current && (
+          {current && current.channel !== FIRST_TOUCH && (
+            <p className="text-xs text-muted-foreground">
+              {name} writes first messages by email. On {CHANNEL_LABELS[current.channel]}, it answers people who
+              write to you first; to start a conversation there, write to them yourself.
+            </p>
+          )}
+
+          {current && current.channel === FIRST_TOUCH && (
             <section className="flex flex-col gap-3 rounded-xl border border-theme/30 bg-gradient-to-br from-theme/10 via-card to-card p-3">
               <h3 className="flex items-center gap-2 text-sm font-medium">
                 <Sparkles className="size-4 text-theme" /> Ask {name} to draft on {CHANNEL_LABELS[current.channel]}

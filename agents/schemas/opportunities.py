@@ -37,6 +37,16 @@ class Opportunity(LenientModel):
     )
 
 
+class OpportunityDates(LenientModel):
+    """What an opportunity's own page says about when it closes and happens,
+    read before it's shown: search snippets often carry only the event date,
+    or none, and an application window can close long before the event."""
+    deadline: str | None = Field(default=None, description="Last day to apply, register, bid or nominate, YYYY-MM-DD, only if the page states it")
+    date: str | None = Field(default=None, description="When it takes place (first day), YYYY-MM-DD, only if the page states it")
+    open: bool = Field(description="Whether someone could still apply or take part after today, from what the page says")
+    note: str = Field(default="", description="A few words on what the page says about timing")
+
+
 class OpportunityList(LenientModel):
     opportunities: list[Opportunity] = Field(default_factory=list)
 

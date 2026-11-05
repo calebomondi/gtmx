@@ -87,11 +87,11 @@ class SuggestionsBlock(BaseModel):
 
 
 class FollowUps(BaseModel):
-    """The replies a founder would likely tap after a reply that ends on an
-    offer, when the Lace didn't suggest any itself."""
+    """The replies a founder would likely tap next, under the Lace's answer."""
     options: list[str] = Field(
         default_factory=list,
-        description="2 or 3 replies, a few words each, as the founder would send them; none when the question offers no next step")
+        description="2 or 3 replies of different kinds, a few words each, as the founder would send them; "
+                    "none when the answer asks for something only the founder knows")
 
 
 class ActionBlock(BaseModel):

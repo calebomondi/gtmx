@@ -99,12 +99,19 @@ class SiteUnderstanding(LenientModel):
     )
 
 
+class WebFacts(LenientModel):
+    """What onboarding learns about the startup from the web beyond its site."""
+    facts: list[ExtractedFact] = Field(default_factory=list)
+
+
 class OnboardingResult(BaseModel):
     startup_name: str | None
     pages_read: list[str]
     pages_failed: list[str]
     facts_recorded: int
     open_questions: list[str]
+    # Of facts_recorded, how many came from the web rather than the site.
+    from_web: int = 0
 
     @property
     def site_unreadable(self) -> bool:
@@ -205,10 +212,30 @@ class NamedItem(BaseModel):
     name: str
 
 
+InstructionScope = Literal["everything", "competitors", "leads", "opportunities", "outreach"]
+INSTRUCTION_SCOPES: tuple[str, ...] = InstructionScope.__args__
+INSTRUCTION_CHARS = 300
+
+
+class Instruction(BaseModel):
+    """A standing instruction from the team: how the Lace should work from now
+    on, in every chat and every background job it applies to."""
+    id: str
+    text: str
+    applies_to: InstructionScope
+
+
 class RunningJob(BaseModel):
     """A background job of the Lace's still working, as it is told about it."""
     what: str = Field(description="e.g. 'search for target accounts'")
-    minutes: int = Field(description="How long it has run so far")
+    minutes: int = Field(description="How long it has run (or waited) so far")
+    queued: bool = Field(default=False, description="Waiting for one of its kind to finish before it starts")
+
+
+class JobStart(BaseModel):
+    """What asking for a background job did: started it, or queued it."""
+    id: str
+    ahead: int = Field(default=0, description="Jobs of its kind running or waiting before it; 0 when it started now")
 
 
 class ItemsChanged(BaseModel):

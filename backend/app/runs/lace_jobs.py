@@ -26,7 +26,7 @@ from agents.pipelines.outreach import gtm_replies
 from agents.lace.store import JobBlocked
 from agents.pipelines.monitor import check_competitor
 from agents.schemas.accounts import AccountRecord
-from agents.schemas.lace import ActivityKind
+from agents.schemas.lace import ActivityKind, InstructionScope
 from agents.schemas.opportunities import OPPORTUNITY_KINDS
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
@@ -34,7 +34,7 @@ from backend.app.database.lace_models import LaceAccount, LaceOutreach
 from backend.app.runs import events
 from backend.app.runs.errors import user_facing_error
 
-from backend.app.services import lace_accounts, lace_activity, lace_competitors, lace_contacts, lace_events, lace_opportunities, lace_outreach
+from backend.app.services import lace_accounts, lace_activity, lace_competitors, lace_contacts, lace_events, lace_instructions, lace_opportunities, lace_outreach
 from backend.app.services.lace_activity import names, plural
 from backend.app.services.lace_contacts import contact_key
 from backend.app.services import calendar as calendar_service
@@ -106,6 +106,20 @@ def _failure(exc: Exception) -> str:
     return str(exc) if isinstance(exc, JobBlocked) else user_facing_error(exc)
 
 
+async def _instructions(lace_id: uuid.UUID, scope: InstructionScope) -> str:
+    async with AsyncSessionLocal() as db:
+        return await lace_instructions.for_job(db, lace_id, scope)
+
+
+def with_instructions(asked: str | None, rules: str) -> str | None:
+    """What the founder asked of this job, then the team's standing
+    instructions for its kind; None when there is neither."""
+    parts = [asked.strip()] if asked and asked.strip() else []
+    if rules:
+        parts.append(f"The team's standing instructions (always follow them):\n{rules}")
+    return "\n\n".join(parts) or None
+
+
 async def competitors_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
     """Hunt for the Lace's competitors, save them, and queue an update telling
     the Lace what came of it, in the same transaction as the results. A failed
@@ -114,7 +128,8 @@ async def competitors_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -
     profile, facts = await asyncio.gather(store.profile(), store.facts(None, BRIEF_FACTS))
     try:
         with events.reporting_steps(run_id):
-            found = await asyncio.to_thread(find_competitors, profile, facts, params.get("focus"))
+            focus = with_instructions(params.get("focus"), await _instructions(lace_id, "competitors"))
+            found = await asyncio.to_thread(find_competitors, profile, facts, focus)
     except Exception as exc:
         await report_failure(lace_id, "competitor search", exc, params)
         raise
@@ -182,6 +197,7 @@ async def _define_icp(store: DbLaceStore, guidance: str | None):
     report("Working out who your ideal customers are")
     profile, facts, rivals = await asyncio.gather(
         store.profile(), store.facts(None, ICP_FACTS), store.competitors(ICP_COMPETITORS))
+    guidance = with_instructions(guidance, await _instructions(store.lace_id, "leads"))
     icp = await asyncio.to_thread(lace_icp.define_icp, profile, facts, rivals, guidance)
     await store.save_icp(icp)
     return icp
@@ -218,14 +234,16 @@ async def accounts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> N
         with events.reporting_steps(run_id):
             if icp is None:
                 icp = await _define_icp(store, None)
-            found = await asyncio.to_thread(find_accounts, profile, facts, icp, exclude, params.get("country"))
+            rules = await _instructions(lace_id, "leads")
+            found = await asyncio.to_thread(find_accounts, profile, facts, icp, exclude, params.get("countries"),
+                                            instructions=rules)
     except Exception as exc:
         await report_failure(lace_id, "search for leads", exc, params)
         raise
     found, weak = good_fits(found, lambda item: item[1].strength if item[1] else None)
     async with AsyncSessionLocal() as db, db.begin():
         new, refreshed = await lace_accounts.upsert_found(db, lace_id, run_id, found, private_to(params))
-        await job_update(db, lace_id, params, accounts_update(found, new, refreshed, params.get("country"),
+        await job_update(db, lace_id, params, accounts_update(found, new, refreshed, params.get("countries") or [],
                                                               [record.name for record, _ in weak]), run_id)
         if new:
             await job_activity(db, lace_id, params, "accounts_found", f"Found {plural(new, 'new lead')}",
@@ -293,7 +311,8 @@ async def drafts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> Non
                                                                           private_to(params))]
         cleared = await lace_contacts.approved_keys(db, [account_id for account_id, _, _ in accounts])
     sender = await outreach_service.sender_for_user(user_id)
-    person, note = params.get("person"), params.get("note")
+    person = params.get("person")
+    note = with_instructions(params.get("note"), await _instructions(lace_id, "outreach"))
     if person:
         # The founder asked for this one person, on this channel (and approved
         # them in asking).
@@ -353,7 +372,8 @@ def drafts_update(drafts: list[LaceOutreach], unreachable: list[str], failed: li
     lines = [f"{d.recipient_company} [draft {d.id}]: to {d.recipient_name or d.recipient_address} by {d.channel}"
              + (f', subject "{d.subject}"' if d.subject else "") for d in drafts]
     if unreachable:
-        lines.append("Not drafted, nobody to reach yet (use find_contacts): " + ", ".join(unreachable))
+        lines.append("Not drafted, no email found yet (find_contacts looks for one, or ask the founder for it; first "
+                     "messages go by email only): " + ", ".join(unreachable))
     if failed:
         lines.append("Drafting failed for (try again later): " + ", ".join(failed))
     if awaiting:
@@ -402,8 +422,16 @@ def _left_out(names: list[str]) -> str:
     return f"\n{plural(len(names), 'weaker match', 'weaker matches')} left out: {shown}. Don't put these forward."
 
 
-def accounts_update(found: list, new: int, refreshed: int, country: str | None, weak: list[str] | None = None) -> str:
-    where = f" in {country}" if country else ""
+def _missed(found: list, countries: list[str]) -> str:
+    """The places searched that gave no lead, so the Lace says so instead of
+    implying they were covered."""
+    places = [(record.geo or "").lower() for record, _ in found]
+    missed = [c for c in countries if not any(c.lower() in place for place in places)]
+    return f"\nNo lead turned up in {', '.join(missed)}: say so plainly." if missed and found else ""
+
+
+def accounts_update(found: list, new: int, refreshed: int, countries: list[str], weak: list[str] | None = None) -> str:
+    where = f" in {', '.join(countries)}" if countries else ""
     if not found:
         checked = (f" It checked {plural(len(weak), 'company', 'companies')}, but none fits what we sell well enough."
                    if weak else "")
@@ -411,14 +439,15 @@ def accounts_update(found: list, new: int, refreshed: int, country: str | None, 
                 f"verifiable reason to buy that fits.{checked} {NOTHING_FITS}")
     lines = []
     for record, fit in found:
-        line = f"{record.name} ({record.website or record.account_type})"
+        line = f"{record.name} ({record.website or record.account_type}; {record.geo or 'place unknown'})"
         if record.trigger_event:
             line += f": {record.trigger_event.event}"
         if fit:
             line += f". Need: {fit.need} [{fit.strength} fit]"
         lines.append(line)
     return (f"The search for leads{where} finished: {len(found)} leads ({new} new, {refreshed} "
-            "already on file), each with a current trigger:\n" + "\n".join(lines) + _left_out(weak or [])
+            "already on file), each with a current trigger:\n" + "\n".join(lines) + _missed(found, countries)
+            + _left_out(weak or [])
             + "\nNew ones wait for the founder to save or dismiss: show them (ids from list_suggestions); once saved, find_contacts finds who to reach.")
 
 
@@ -534,7 +563,9 @@ async def opportunities_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict)
     try:
         with events.reporting_steps(run_id):
             report("Looking for " + ", ".join(kinds) + " opportunities")
-            found = await asyncio.to_thread(find_opportunities, profile, facts, icp, settings, kinds)
+            rules = await _instructions(lace_id, "opportunities")
+            found = await asyncio.to_thread(find_opportunities, profile, facts, icp, settings, kinds,
+                                            instructions=rules)
     except Exception as exc:
         await report_failure(lace_id, "opportunity search", exc, params)
         raise

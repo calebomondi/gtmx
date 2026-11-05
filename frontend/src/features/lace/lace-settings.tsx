@@ -10,6 +10,7 @@ import { LaceBrief } from "./lace-brief"
 import { LaceBriefApps } from "./lace-brief-apps"
 import { LaceDocuments } from "./lace-documents"
 import { LaceFacts } from "./lace-facts"
+import { LaceInstructions } from "./lace-instructions"
 import { LaceJurisdiction } from "./lace-jurisdiction"
 import { LaceManage } from "./lace-manage"
 import { LaceWatch } from "./lace-watch"
@@ -48,7 +49,8 @@ export function LaceSettings({ laceId, name, status, role, facts, apps, regulati
     brief: <div className="flex flex-col gap-4"><LaceBrief schedule={schedule} /><LaceBriefApps apps={apps} /></div>,
     apps: <LaceAppsSection laceId={laceId} name={name} apps={apps} />,
     where: <LaceJurisdiction name={name} regulations={regulations} />,
-    knows: <LaceFacts facts={facts} />,
+    instructions: <LaceInstructions laceId={laceId} name={name} />,
+    knows: <LaceFacts facts={facts} laceId={laceId} name={name} />,
     documents: <LaceDocuments laceId={laceId} name={name} />,
     manage: <LaceManage laceId={laceId} name={name} status={status} onChanged={onChanged} />,
   }

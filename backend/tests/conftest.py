@@ -28,6 +28,12 @@ from backend.app.services import website_check
 from backend.tests.helpers import make_user
 from config import settings
 
+# The real one, kept before no_settle_in replaces it for each test.
+_SETTLE_IN = run_manager.settle_in
+
+# How long cleanup waits on a lock before failing the test instead of hanging.
+CLEANUP_LOCK_TIMEOUT_S = 30
+
 _ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
 
 
@@ -70,9 +76,23 @@ def readable_websites(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def no_follow_ups(monkeypatch):
-    """A reply ending on a question would ask a real model for suggested
-    replies; tests that want some patch lace_runs.follow_ups themselves."""
-    monkeypatch.setattr(lace_runs, "follow_ups", lambda reply: [])
+    """Every reply would ask a real model for suggested replies; tests that
+    want some patch lace_runs.follow_ups themselves."""
+    monkeypatch.setattr(lace_runs, "follow_ups", lambda reply, asked, situation: [])
+
+
+@pytest.fixture(autouse=True)
+def no_settle_in(monkeypatch):
+    """A new Lace would start its first searches as soon as it has read its
+    site; tests that want that use real_settle_in."""
+    async def nothing(user_id, lace_id):
+        return []
+    monkeypatch.setattr(run_manager, "settle_in", nothing)
+
+
+@pytest.fixture
+def real_settle_in(monkeypatch):
+    monkeypatch.setattr(run_manager, "settle_in", _SETTLE_IN)
 
 
 @pytest.fixture(autouse=True)
@@ -89,6 +109,12 @@ def clean_tables():
     yield
     tables = sql.SQL(", ").join(sql.Identifier(t.name) for t in Base.metadata.sorted_tables)
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        # A run cut off when its test's event loop stopped leaves its
+        # connection idle in a transaction, holding locks TRUNCATE would wait
+        # on forever: end those, and fail rather than wait on anything else.
+        conn.execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database()"
+                     " AND pid <> pg_backend_pid() AND state LIKE 'idle in transaction%'")
+        conn.execute(f"SET lock_timeout = '{CLEANUP_LOCK_TIMEOUT_S}s'")
         conn.execute(sql.SQL("TRUNCATE {} RESTART IDENTITY CASCADE").format(tables))
 
 
@@ -193,11 +219,18 @@ def owned(client, user, seed_workspace):
     }
 
 
+# How long a test's leftover runs may take to settle before cleanup goes on.
+DRAIN_TIMEOUT_S = 30
+
+
 @pytest.fixture(autouse=True)
 async def drain_run_tasks(clean_tables):
     """Let run tasks finish before table cleanup. A run marks itself completed
     a moment before writing its last event; cleanup's synchronous TRUNCATE
-    would otherwise block the event loop that write needs."""
+    would otherwise block the event loop that write needs. A run's end can
+    start more (the wake it queued, the next job waiting), so this drains
+    until none is left."""
     yield
-    if run_manager._tasks:
-        await asyncio.gather(*run_manager._tasks.values(), return_exceptions=True)
+    async with asyncio.timeout(DRAIN_TIMEOUT_S):
+        while run_manager._tasks:
+            await asyncio.gather(*list(run_manager._tasks.values()), return_exceptions=True)

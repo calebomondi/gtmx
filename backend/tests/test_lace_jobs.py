@@ -83,15 +83,17 @@ def test_a_failed_hunt_is_reported_too(client, lace, lace_runtime, monkeypatch):
     assert "competitor search failed: Not enough is known" in turns[-1].input["updates"][0]
 
 
-def test_only_one_hunt_at_a_time(client, lace, lace_runtime, user):  # noqa: F811
+def test_the_same_hunt_is_not_run_twice(client, lace, lace_runtime, user):  # noqa: F811
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
-        conn.execute("INSERT INTO runs (id, user_id, lace_id, kind, status) VALUES (%s, %s, %s, 'lace_competitors', 'running')",
+        conn.execute("INSERT INTO runs (id, user_id, lace_id, kind, status, input)"
+                     " VALUES (%s, %s, %s, 'lace_competitors', 'running', '{\"focus\": null}')",
                      (uuid.uuid4(), user.id, lace))
     lace_runtime.extend([_call("find_competitors"), AIMessage(content="Already on it.")])
     sent = client.post(f"{API}/laces/{lace}/messages", json={"text": "find competitors"}).json()
     client.portal.call(_wait_for_status, uuid.UUID(sent["run_id"]), {"completed"})
     [result] = [f for f in _events(client, sent["run_id"]) if f["type"] == "tool_result"]
-    assert result["tool"] == "find_competitors" and not result["ok"] and "already running" in result["summary"]
+    assert result["tool"] == "find_competitors" and not result["ok"]
+    assert "That same competitor search is already under way" in result["summary"]
     assert len(client.portal.call(_runs, lace, "lace_competitors")) == 1
 
 

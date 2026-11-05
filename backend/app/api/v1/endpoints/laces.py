@@ -187,6 +187,18 @@ async def retry_onboarding(lace: MemberLace, user: CurrentUser, db: DbSession):
     return LaceTurnResponse(run_id=run.id)
 
 
+@router.post("/{lace_id}/understanding/refresh", response_model=JobStartedResponse,
+             status_code=status.HTTP_202_ACCEPTED)
+async def refresh_understanding(lace: MemberLace, user: CurrentUser):
+    """Read the site and the web again in the background; what the site no
+    longer says is dropped. The Lace reports back in the team's chat."""
+    try:
+        run = (await manager.request_lace_job("lace_refresh", user.id, lace.id, {"actor_id": str(user.id)})).run
+    except JobRefused as exc:
+        raise ConflictError(str(exc)) from None
+    return JobStartedResponse(run_id=run.id)
+
+
 @router.get("/{lace_id}/facts", response_model=list[FactResponse])
 async def list_facts(lace: MemberLace, db: DbSession, topic: FactTopic | None = None,
                      limit: int = Query(default=100, ge=1, le=MAX_FACTS_PER_PAGE)):
@@ -267,8 +279,8 @@ async def draft_to_contact(lace: MemberLace, contact_id: uuid.UUID, payload: Con
     Messaging for the founder to edit and send."""
     account_id, person = await lace_contacts.person_to_draft(db, lace.id, contact_id, payload.channel)
     try:
-        run = await manager.start_lace_job("lace_drafts", user.id, lace.id, {
-            "account_ids": [str(account_id)], "person": person, "note": payload.note, "actor_id": str(user.id)})
+        run = (await manager.request_lace_job("lace_drafts", user.id, lace.id, {
+            "account_ids": [str(account_id)], "person": person, "note": payload.note, "actor_id": str(user.id)})).run
     except JobRefused as exc:
         raise ConflictError(str(exc)) from None
     return JobStartedResponse(run_id=run.id)
@@ -392,8 +404,8 @@ async def find_account_contacts(lace: MemberLace, account_id: uuid.UUID, user: C
     # One of your private accounts is searched in your private chat.
     private = {"private_to": str(account.owner_id)} if account.owner_id else {}
     try:
-        run = await manager.start_lace_job("lace_contacts", user.id, lace.id, {"account_ids": [str(account_id)],
-                                                                             "actor_id": str(user.id), **private})
+        run = (await manager.request_lace_job("lace_contacts", user.id, lace.id, {
+            "account_ids": [str(account_id)], "actor_id": str(user.id), **private})).run
     except JobRefused as exc:
         raise ConflictError(str(exc)) from None
     return JobStartedResponse(run_id=run.id)

@@ -9,6 +9,7 @@ restart fails in-flight segments (recover_after_restart).
 
 import asyncio
 import uuid
+from dataclasses import dataclass
 from collections.abc import Awaitable, Callable, Coroutine
 from datetime import UTC, datetime
 
@@ -18,18 +19,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import models
 from backend.app.database.connect import AsyncSessionLocal
-from backend.app.database.lace_models import Lace
+from backend.app.database.lace_models import Lace, LaceCompetitor
 from backend.app.runs import events
+from agents.lace.buyers import knows_buyers
 from agents.lace.store import JobRefused
-from agents.schemas.lace import RunningJob
+from agents.lace.tools import BUYER_FACTS_READ
+from agents.schemas.lace import JobStart, RunningJob
 from agents.schemas.lace_ui import BlockAnswer
 from backend.app.runs import lace as lace_runs
 from backend.app.runs.lace import LaceThread
-from backend.app.runs import lace_jobs, regulation_jobs, social_jobs
+from backend.app.runs import lace_jobs, listening_jobs, regulation_jobs, social_jobs, understanding_jobs
 from backend.app.runs.errors import user_facing_error
 from backend.app.services import limits
 from backend.app.services import runs as run_service
 from backend.app.services import lace_events
+from backend.app.services.lace_store import DbLaceStore
 from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError, RateLimitedError
 from backend.app.services.runs import TERMINAL_STATUSES, set_run_fields
 from config import settings
@@ -173,9 +177,39 @@ async def _queued_message(lace_id: uuid.UUID, params: dict):
 
 async def start_lace_onboarding(user_id: uuid.UUID, lace_id: uuid.UUID) -> models.Run:
     run = await _start_lace_run("lace_onboarding", user_id, LaceThread(lace_id), None)
+
+    async def then() -> None:
+        await settle_in(user_id, lace_id)
+        await start_next_queued(lace_id)
     _spawn(run.id, user_id, _then_wake(lace_runs.onboarding_segment(run.id, lace_id), user_id, LaceThread(lace_id)),
-           settings.lace_onboarding_timeout_s, then=_next_queued(lace_id))
+           settings.lace_onboarding_timeout_s, then=then)
     return run
+
+
+async def settle_in(user_id: uuid.UUID, lace_id: uuid.UUID) -> list[str]:
+    """Once a Lace has read its site, start what makes it useful before the
+    founder asks: a competitor search when none is on file, and the ideal
+    customer profile when it knows who buys (otherwise its first message asks,
+    in a form). A job refused (a daily cap) is left for the founder to ask
+    for. Returns the run kinds started."""
+    async with AsyncSessionLocal() as db:
+        lace = await db.get(Lace, lace_id)
+        if lace is None or lace.status != "active":
+            return []
+        rivals = await db.scalar(select(func.count()).select_from(LaceCompetitor)
+                                 .where(LaceCompetitor.lace_id == lace_id))
+        has_icp = lace.icp is not None
+    facts = await DbLaceStore(AsyncSessionLocal, lace_id).facts(None, BUYER_FACTS_READ)
+    wanted = ([("lace_competitors", {"focus": None})] if not rivals else []) + (
+        [("lace_icp", {"guidance": None})] if not has_icp and knows_buyers(facts) else [])
+    started = []
+    for kind, params in wanted:
+        try:
+            await start_lace_job(kind, user_id, lace_id, params)
+            started.append(kind)
+        except JobRefused as exc:
+            logger.info("Settling in Lace %s: %s not started: %s", lace_id, kind, exc)
+    return started
 
 
 async def start_lace_turn(user_id: uuid.UUID, thread: LaceThread, text: str, author: dict,
@@ -312,56 +346,128 @@ async def post_brief(user_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UUID
 _TOOL_JOB_RUN_KINDS = {"find_competitors": "lace_competitors", "check_competitors": "lace_monitor",
                        "find_accounts": "lace_accounts", "find_contacts": "lace_contacts", "define_icp": "lace_icp",
                        "draft_outreach": "lace_drafts", "find_opportunities": "lace_opportunities",
-                       "read_tiktok_comments": "lace_comments", "find_regulations": "lace_regulations"}
+                       "read_tiktok_comments": "lace_comments", "find_regulations": "lace_regulations",
+                       "refresh_understanding": "lace_refresh", "listen": "lace_listening"}
 _JOB_SEGMENTS = {"lace_competitors": lace_jobs.competitors_job, "lace_monitor": lace_jobs.monitor_job,
                  "lace_accounts": lace_jobs.accounts_job, "lace_contacts": lace_jobs.contacts_job,
                  "lace_icp": lace_jobs.icp_job,
                  "lace_drafts": lace_jobs.drafts_job, "lace_reply": lace_jobs.reply_job,
                  "lace_opportunities": lace_jobs.opportunities_job,
                  "lace_comments": social_jobs.tiktok_comments_job,
-                 "lace_regulations": regulation_jobs.regulations_job}
-_JOB_BUSY = {
-    "lace_competitors": "A competitor search is already running; I'll report when it's done.",
-    "lace_monitor": "I'm already checking the competitors; I'll report anything that matters.",
-    "lace_accounts": "A search for leads is already running; I'll report when it's done.",
-    "lace_icp": "I'm already working out the ideal customer profile; I'll report when it's done.",
-    "lace_contacts": "A contact search is already running; I'll report when it's done.",
-    "lace_drafts": "I'm already drafting messages; I'll report when they're ready.",
-    # A running reply job reads every unread reply before it ends, new ones too.
-    "lace_reply": "Replies are already being read.",
-    "lace_opportunities": "I'm already looking for opportunities; I'll report when it's done.",
-    "lace_comments": "I'm already reading their TikTok comments; I'll report when it's done.",
-    "lace_regulations": "I'm already looking for the laws and regulations that apply; I'll report when it's done.",
-}
+                 "lace_regulations": regulation_jobs.regulations_job,
+                 "lace_refresh": understanding_jobs.refresh_job,
+                 "lace_listening": listening_jobs.listening_job}
+# Jobs of one kind run one at a time per Lace; this many more may wait their turn.
+MAX_QUEUED_JOBS = 3
+
+
+@dataclass(frozen=True)
+class JobRequest:
+    run: models.Run
+    ahead: int  # jobs of its kind running or waiting before it; 0 when it started now
+
+
+async def _lock_jobs(db: AsyncSession, lace_id: uuid.UUID, run_kind: str) -> None:
+    """Serialise start-or-queue decisions for one Lace's jobs of one kind, for
+    the transaction, so two requests can't both see it idle and both start."""
+    await db.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(f"{lace_id}:{run_kind}", 0))))
+
+
+async def _open_jobs(db: AsyncSession, lace_id: uuid.UUID, run_kind: str) -> list[models.Run]:
+    """The Lace's jobs of this kind running or waiting, oldest first."""
+    return list((await db.scalars(select(models.Run).where(
+        models.Run.lace_id == lace_id, models.Run.kind == run_kind,
+        models.Run.status.not_in(TERMINAL_STATUSES)).order_by(models.Run.created_at))).all())
+
+
+async def _refuse_archived(db: AsyncSession, lace_id: uuid.UUID) -> None:
+    if await _archived(db, lace_id):
+        raise JobRefused("This Lace is archived. Restore it first.")
+
+
+async def _refuse_past_cap(db: AsyncSession, user_id: uuid.UUID, run_kind: str) -> None:
+    try:
+        await limits.ensure_can_start(db, user_id, run_kind)
+    except RateLimitedError as exc:
+        raise JobRefused(str(exc)) from None
+
+
+def _same_request(params: dict | None, other: dict | None) -> bool:
+    """The same job asked again, whoever on the team asked."""
+    def request(p: dict | None) -> dict:
+        return {k: v for k, v in (p or {}).items() if k != "actor_id"}
+    return request(params) == request(other)
 
 
 async def start_lace_job(run_kind: str, user_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> models.Run:
-    """Start a Lace's background job. It runs alongside the conversation and,
-    when it ends (either way), wakes the chat it was started from with
-    whatever it queued; one started from a member's private chat
-    (params["private_to"]) is theirs alone. Raises JobRefused while one of
-    the same kind is running or past the daily cap."""
-    owner_id = lace_jobs.private_to(params)
+    """Start a Lace's background job now, or refuse while one of its kind is
+    running or waiting (a scheduled check, a reading of replies: the one under
+    way covers it) or past the daily cap. See request_lace_job for the rest."""
     async with AsyncSessionLocal() as db:
-        if await _archived(db, lace_id):
-            raise JobRefused("This Lace is archived. Restore it first.")
-        busy = await db.scalar(select(func.count()).select_from(models.Run).where(
-            models.Run.lace_id == lace_id, models.Run.kind == run_kind,
-            models.Run.status.not_in(TERMINAL_STATUSES)))
-        if busy:
-            raise JobRefused(_JOB_BUSY[run_kind])
-        try:
-            await limits.ensure_can_start(db, user_id, run_kind)
-        except RateLimitedError as exc:
-            raise JobRefused(str(exc)) from None
-        run = models.Run(user_id=user_id, lace_id=lace_id, owner_id=owner_id, kind=run_kind, status="running",
-                         input=params, started_at=datetime.now(UTC))
+        await _lock_jobs(db, lace_id, run_kind)
+        await _refuse_archived(db, lace_id)
+        if await _open_jobs(db, lace_id, run_kind):
+            raise JobRefused(f"The {_JOB_NAMES[run_kind]} is already under way.")
+        await _refuse_past_cap(db, user_id, run_kind)
+        run = models.Run(user_id=user_id, lace_id=lace_id, owner_id=lace_jobs.private_to(params), kind=run_kind,
+                         status="running", input=params, started_at=datetime.now(UTC))
         db.add(run)
         await db.commit()
-    job = _JOB_SEGMENTS[run_kind](run.id, lace_id, params)
-    _spawn(run.id, user_id, _job_then_wake(job, user_id, lace_id, owner_id),
-           settings.background_run_timeout_s)
+    _run_job(run)
     return run
+
+
+async def request_lace_job(run_kind: str, user_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> JobRequest:
+    """Start a Lace's background job, or queue it behind the one of its kind
+    that is running; it starts on its own when that one ends. It runs
+    alongside the conversation and, when it ends (either way), wakes the chat
+    it was started from with whatever it queued; one started from a member's
+    private chat (params["private_to"]) is theirs alone. Raises JobRefused
+    when the same job is already running or waiting, when MAX_QUEUED_JOBS
+    wait, or past the daily cap."""
+    async with AsyncSessionLocal() as db:
+        await _lock_jobs(db, lace_id, run_kind)
+        await _refuse_archived(db, lace_id)
+        open_jobs = await _open_jobs(db, lace_id, run_kind)
+        name = _JOB_NAMES[run_kind]
+        for job in open_jobs:
+            if _same_request(job.input, params):
+                state = "waiting its turn" if job.status == _QUEUED else "under way"
+                raise JobRefused(f"That same {name} is already {state}; its results will come here.")
+        if len(open_jobs) > MAX_QUEUED_JOBS:
+            raise JobRefused(f"{len(open_jobs) - 1} more of this kind ({name}) are already waiting their turn; "
+                             "ask again once one has run.")
+        await _refuse_past_cap(db, user_id, run_kind)
+        run = models.Run(user_id=user_id, lace_id=lace_id, owner_id=lace_jobs.private_to(params), kind=run_kind,
+                         status=_QUEUED if open_jobs else "running",
+                         started_at=None if open_jobs else datetime.now(UTC), input=params)
+        db.add(run)
+        await db.commit()
+    if not open_jobs:
+        _run_job(run)
+    return JobRequest(run, len(open_jobs))
+
+
+def _run_job(run: models.Run) -> None:
+    run_id, user_id, lace_id, owner_id, kind = run.id, run.user_id, run.lace_id, run.owner_id, run.kind
+    job = _JOB_SEGMENTS[kind](run_id, lace_id, dict(run.input or {}))
+    _spawn(run_id, user_id, _job_then_wake(job, user_id, lace_id, owner_id), settings.background_run_timeout_s,
+           then=lambda: start_next_job(lace_id, kind))
+
+
+async def start_next_job(lace_id: uuid.UUID, run_kind: str) -> bool:
+    """Start the Lace's oldest waiting job of this kind, if none of its kind
+    is running. True when one started (its own end starts the next)."""
+    async with AsyncSessionLocal() as db:
+        await _lock_jobs(db, lace_id, run_kind)
+        open_jobs = await _open_jobs(db, lace_id, run_kind)
+        if not open_jobs or any(job.status != _QUEUED for job in open_jobs):
+            return False
+        run = open_jobs[0]
+        run.status, run.started_at = "running", datetime.now(UTC)
+        await db.commit()
+    _run_job(run)
+    return True
 
 
 async def _job_then_wake(job: Coroutine, user_id: uuid.UUID, lace_id: uuid.UUID, owner_id: uuid.UUID | None) -> None:
@@ -382,14 +488,14 @@ class _LaceJobs:
                  owner_id: uuid.UUID | None):
         self._user_id, self._lace_id, self._actor_id, self._owner_id = user_id, lace_id, actor_id, owner_id
 
-    async def start(self, kind: str, params: dict) -> str:
+    async def start(self, kind: str, params: dict) -> JobStart:
         params = {**params, "actor_id": str(self._actor_id) if self._actor_id else None,
                   **({"private_to": str(self._owner_id)} if self._owner_id else {})}
-        run = await start_lace_job(_TOOL_JOB_RUN_KINDS[kind], self._user_id, self._lace_id, params)
-        return str(run.id)
+        request = await request_lace_job(_TOOL_JOB_RUN_KINDS[kind], self._user_id, self._lace_id, params)
+        return JobStart(id=str(request.run.id), ahead=request.ahead)
 
     async def running(self) -> list[RunningJob]:
-        """This chat's background jobs still working, oldest first: the team
+        """This chat's background jobs working or waiting, oldest first: the team
         chat's, or the member's own in their private chat."""
         chat = models.Run.owner_id.is_(None) if self._owner_id is None else models.Run.owner_id == self._owner_id
         async with AsyncSessionLocal() as db:
@@ -397,7 +503,7 @@ class _LaceJobs:
                 models.Run.lace_id == self._lace_id, chat, models.Run.kind.in_(list(_JOB_NAMES)),
                 models.Run.status.not_in(TERMINAL_STATUSES)).order_by(models.Run.created_at))).all()
         now = datetime.now(UTC)
-        return [RunningJob(what=_JOB_NAMES[run.kind],
+        return [RunningJob(what=_JOB_NAMES[run.kind], queued=run.status == _QUEUED,
                            minutes=int((now - (run.started_at or run.created_at)).total_seconds() // 60))
                 for run in runs]
 
@@ -429,6 +535,8 @@ async def _cancel(db: AsyncSession, run: models.Run, message: str) -> models.Run
     await events.publish(run.id, "cancelled", {"message": message})
     if run.lace_id is not None and run.kind in _CONVERSATION_KINDS:
         await start_next_queued(run.lace_id)
+    if run.lace_id is not None and run.kind in _JOB_SEGMENTS:
+        await start_next_job(run.lace_id, run.kind)
     return run
 
 
@@ -437,7 +545,8 @@ _JOB_NAMES = {"lace_competitors": "competitor search", "lace_monitor": "competit
               "lace_accounts": "search for leads", "lace_contacts": "contact search",
               "lace_icp": "ideal customer profile", "lace_drafts": "drafting", "lace_reply": "reading of replies",
               "lace_opportunities": "opportunity search", "lace_comments": "reading of TikTok comments",
-              "lace_regulations": "search for laws and regulations"}
+              "lace_regulations": "search for laws and regulations", "lace_refresh": "re-read of the site",
+              "lace_listening": "listen on social accounts"}
 
 
 async def _report_interrupted_jobs(run_ids: list[uuid.UUID]) -> None:
@@ -476,6 +585,12 @@ async def recover_after_restart() -> None:
             models.Run.status == _QUEUED).distinct())).scalars().all()
     for lace_id in waiting:
         await start_next_queued(lace_id)
+    # Jobs that waited behind one the restart cut short.
+    async with AsyncSessionLocal() as db:
+        queued_jobs = (await db.execute(select(models.Run.lace_id, models.Run.kind).where(
+            models.Run.status == _QUEUED, models.Run.kind.in_(list(_JOB_SEGMENTS))).distinct())).all()
+    for lace_id, kind in queued_jobs:
+        await start_next_job(lace_id, kind)
 
 
 async def shutdown() -> None:

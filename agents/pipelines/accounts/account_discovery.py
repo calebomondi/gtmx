@@ -12,6 +12,7 @@ It can be wired into a parent LangGraph or used as a CLI harness.
 from __future__ import annotations
 
 import json
+import time
 from datetime import date, timedelta
 from typing import Optional
 
@@ -42,6 +43,7 @@ from agents.pipelines.web_utils import (
 MAX_QUERY_RESULTS = 4
 _SEARCH_TIMEOUT_S = get_settings().account_search_timeout_s
 _SCRAPE_TIMEOUT_S = get_settings().account_scrape_timeout_s
+_SOCIALS_BUDGET_S = get_settings().account_socials_budget_s
 _ENRICH_WORKERS = get_settings().account_enrich_workers
 _SOCIALS_WORKERS = get_settings().account_socials_workers
 
@@ -254,6 +256,12 @@ def search_accounts(state: IcpSessionState) -> dict:
     return {"account_discovery_docs": docs}
 
 
+def _instructions_block(state: IcpSessionState) -> str:
+    rules = (state.get("founder_instructions") or "").strip()
+    return (f"FOUNDER'S STANDING INSTRUCTIONS (they outrank the ICP: leave out any target they rule out)\n{rules}\n\n"
+            if rules else "")
+
+
 def extract_accounts(state: IcpSessionState) -> dict:
     icp: Optional[ICP] = state.get("icp_data")
     docs = state.get("account_discovery_docs") or []
@@ -268,12 +276,16 @@ def extract_accounts(state: IcpSessionState) -> dict:
         "channels/communities/events/creators/platforms) worth reaching out to.\n\n"
         f"ICP:\n{icp.model_dump_json(indent=2) if icp else 'None'}\n\n"
         f"REACH EMPHASIS\n{_reach_emphasis(icp)}\n\n"
-        f"Research context:\n{context or 'No research context available.'}\n\n"
+        + _instructions_block(state)
+        + f"Research context:\n{context or 'No research context available.'}\n\n"
         "Rules:\n"
         f"- Find between 4 and {MAX_ACCOUNT_CANDIDATES} REAL targets that fit the ICP. Each must be grounded "
         "in the research context and MUST have a `trigger_event` — a current, verifiable signal observed "
         "in the sources that makes outreach timely now. If a candidate has no current trigger, exclude it. "
         "Never invent a target, a trigger, or a source. Leave `socials` empty — enrichment fills it.\n"
+        f"- Give each trigger its `date` as the source states it (when the event happened, not when the page "
+        f"was published). Today is {date.today().isoformat()}: a trigger from more than "
+        f"{get_settings().lead_trigger_max_age_days // 30} months ago is not current, so exclude that target.\n"
         f"  {_trigger_line()}\n"
         "- For each target set: name, account_type (company/community/event/creator/platform), "
         "a one-to-two sentence `summary` of what the target does and who it serves (from the sources), "
@@ -513,6 +525,8 @@ def collect_socials_and_emails(state: IcpSessionState) -> dict:
 
     def _process(acc):
         report(f"Finding people to contact at {acc.name}")
+        started = time.monotonic()
+        socials_by = started + _SOCIALS_BUDGET_S
         # Seed socials from URLs we already collected (trigger source /
         # sources list) — those hosts are a free, authoritative hit and
         # let us skip the paid Exa search for that platform entirely.
@@ -548,6 +562,9 @@ def collect_socials_and_emails(state: IcpSessionState) -> dict:
                 # still have neither a social nor any email path for this account.
                 wanted = {"linkedin"}
             for platform_name in _platforms:
+                if time.monotonic() > socials_by:
+                    logger.info(f"⏱️ '{acc.name}': social lookups past {_SOCIALS_BUDGET_S:.0f}s, skipping the rest")
+                    break
                 if platform_name not in wanted:
                     if buyer_type == "b2b" and (acc.socials or any(c.email for c in acc.key_contacts)):
                         break  # enough for a B2B account
@@ -623,8 +640,11 @@ def collect_socials_and_emails(state: IcpSessionState) -> dict:
                             break
                     logger.info(f"🔗 venue '{acc.name}' {platform_key} -> {url}")
 
+        socials_s = time.monotonic() - started
         # Hydrate contact details for people who already have a LinkedIn URL.
         for contact in acc.key_contacts[:1 if _FAST_DISCOVERY else 3]:
+            if time.monotonic() > socials_by:
+                break
             if contact.linkedin and "linkedin.com/in" in contact.linkedin and (not contact.name or not contact.title):
                 raw = call_with_timeout(lambda: linkedin.get_profile(contact.linkedin, cfg), _SCRAPE_TIMEOUT_S, default=None, label='linkedin[contact]')
                 if isinstance(raw, dict):
@@ -672,9 +692,12 @@ def collect_socials_and_emails(state: IcpSessionState) -> dict:
                     acc.key_contacts.append(ContactRecord(email=chosen))
                     logger.info(f"📧 '{acc.name}' org email -> {chosen}")
 
+        emails_s = time.monotonic() - started - socials_s
         # Fill in contacts until there is a named person to reach, best first;
         # undeliverable addresses are dropped here.
         contacts.complete(acc, buyer_titles, cfg, MAX_ACCOUNT_CONTACTS)
+        logger.info(f"⏱️ '{acc.name}' contacts: socials {socials_s:.0f}s, emails {emails_s:.0f}s, "
+                    f"people {time.monotonic() - started - socials_s - emails_s:.0f}s")
 
     run_parallel(
         [lambda a=acc: (_enrich_one_account(a, cfg), _process(a))[1] for acc in accounts.accounts],
@@ -805,6 +828,33 @@ def _trigger_names_account(acc: AccountRecord, source_text: str) -> bool:
     return name_in_text(acc.name, source_text)
 
 
+def trigger_day(value: str | None) -> date | None:
+    """The last day a trigger's stated date can mean (YYYY-MM-DD, YYYY-MM or
+    YYYY), so a month or year is read generously; None when unreadable."""
+    text = (value or "").strip()
+    try:
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}.*", text):
+            return date.fromisoformat(text[:10])
+        if re.fullmatch(r"\d{4}-\d{2}", text):
+            year, month = int(text[:4]), int(text[5:7])
+            if not 1 <= month <= 12:
+                return None
+            return date(year + month // 12, month % 12 + 1, 1) - timedelta(days=1)
+        if re.fullmatch(r"\d{4}", text):
+            return date(int(text), 12, 31)
+    except ValueError:
+        return None
+    return None
+
+
+def stale_trigger(trigger: TriggerEvent, today: date, max_age_days: int) -> bool:
+    """Whether a trigger's own date puts it past the age that still makes it
+    a reason to reach out now. An undated one isn't judged stale here: the
+    page it came from already passed the search's recency gate."""
+    day = trigger_day(trigger.date)
+    return day is not None and (today - day).days > max_age_days
+
+
 def verify_accounts(state: IcpSessionState) -> dict:
     """Hard-constraint pass: drop trigger-less targets, require the trigger's
     source to exist in the retrieved docs, dedupe by domain (or platform::name
@@ -832,6 +882,11 @@ def verify_accounts(state: IcpSessionState) -> dict:
             continue
         if acc.trigger_event is None:
             logger.warning(f"❌ Dropping '{acc.name}' — no current trigger_event.")
+            continue
+        if stale_trigger(acc.trigger_event, date.today(), get_settings().lead_trigger_max_age_days):
+            logger.info("Dropping %s -- its trigger is from %s, too long ago to be a reason to reach out now",
+                        acc.name, acc.trigger_event.date)
+            report(f"Dropped {acc.name}: its news is from {acc.trigger_event.date}")
             continue
         src = acc.trigger_event.source if isinstance(acc.trigger_event, TriggerEvent) else None
         if not src:

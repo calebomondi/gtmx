@@ -124,6 +124,8 @@ class Settings(BaseSettings):
     lace_document_max_mb: int = 15
     lace_document_max_chars: int = 400_000
     max_documents_per_lace: int = 50
+    # Standing instructions a Lace keeps; past this the team drops one first.
+    max_instructions_per_lace: int = 30
     max_documents_per_message: int = 5
     max_lace_onboardings_per_day: int = 10
     max_lace_turns_per_day: int = 200
@@ -206,6 +208,8 @@ class Settings(BaseSettings):
     # Grace period after boot before the first sweep, so a restart (or a local
     # dev reload) doesn't immediately fan out paid monitoring runs.
     monitor_initial_delay_s: float = 120.0
+    # How often each Lace listens on its social accounts on its own (hours).
+    listening_interval_h: int = 24
 
     # -- Regulations --
     # How often each Lace searches again for the laws and regulations that
@@ -217,6 +221,9 @@ class Settings(BaseSettings):
     # How far back (days) research may look for sources. Kept short so the
     # analysis reflects CURRENT conditions, not history.
     market_recency_days: int = 365
+    # A lead's reason to reach out now (its trigger) older than this isn't
+    # current, whatever the date of the page that mentions it.
+    lead_trigger_max_age_days: int = 180
     competitor_search_timeout_s: float = 20.0
     competitor_scrape_timeout_s: float = 30.0
     # Opening a new Lace's website before it is made: one that can't be read is refused.
@@ -224,6 +231,10 @@ class Settings(BaseSettings):
     competitor_profile_workers: int = 6
     account_search_timeout_s: float = 20.0
     account_scrape_timeout_s: float = 30.0
+    # Time one account's social-profile lookups may take in a lead search;
+    # past it the rest are skipped. Its emails are always looked for: outreach
+    # goes by email.
+    account_socials_budget_s: float = 25.0
     account_enrich_workers: int = 6
     account_socials_workers: int = 6
     account_search_cache_ttl: float = 600.0

@@ -27,8 +27,10 @@ from agents.lace.sheet_tools import build_sheet_tools
 from agents.lace.slack_tools import build_slack_tools
 from agents.lace.telegram_tools import build_telegram_tools
 from agents.lace.social_tools import build_social_tools
+from agents.lace.inbox_tools import build_inbox_tools
+from agents.lace.instruction_tools import build_instruction_tools
 from agents.lace.store import JobRefused, LaceJobs, LaceStore
-from agents.lace.tool_guard import guarded
+from agents.lace.tool_guard import guarded, job_result
 from agents.schemas.opportunities import OPPORTUNITY_KINDS, OpportunityKind
 from agents.schemas.lace import Confidence, FactTopic, NewFact, SourcePage, ToolResult
 from agents.schemas.lace_ui import CardKind
@@ -336,11 +338,13 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
 
     tools = [search_web, map_site, read_page, read_pages, read_social, get_facts, record_fact, list_competitors,
              list_accounts, list_opportunities, list_suggestions, show, list_documents, read_document,
-             *build_ask_tools(), *build_edit_tools(store), *build_regulation_tools(store, jobs),
+             *build_ask_tools(), *build_edit_tools(store), *build_instruction_tools(store),
+             *build_regulation_tools(store, jobs),
              # Acting in the founder's apps needs them: proposals, run on approval.
              *([*build_social_tools(store, apps), *build_sheet_tools(store, apps), *build_notion_tools(store, apps),
                 *build_slack_tools(store, apps), *build_asana_tools(store, apps), *build_crm_tools(store, apps),
-                *build_calendly_tools(store, apps), *build_telegram_tools(store)] if apps is not None else [])]
+                *build_calendly_tools(store, apps), *build_telegram_tools(store), *build_inbox_tools(apps)]
+               if apps is not None else [])]
     if jobs is None:
         return tools
 
@@ -353,39 +357,41 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
             focus: Optional angle from the founder, e.g. "local players in Kenya" or "AI-first tools".
         """
         try:
-            await jobs.start("find_competitors", {"focus": focus})
+            start = await jobs.start("find_competitors", {"focus": focus})
         except JobRefused as exc:
             return ToolResult.failure(str(exc))
-        return ToolResult.success("Started the competitor search. It takes a few minutes; "
-                                  "you will get an update here when it finishes.")
+        return job_result(start, "Started the competitor search. It takes a few minutes; "
+                          "you will get an update here when it finishes.", "competitor search")
 
     @tool(parse_docstring=True)
     @guarded
     async def check_competitors() -> ToolResult:
         """Check the tracked competitors now for moves that matter (pricing, product, positioning, funding, events, news) since the last check. Runs in the background; you get an update if anything material changed. They are also checked on their own, as often as the founder set in this Lace's settings."""
         try:
-            await jobs.start("check_competitors", {})
+            start = await jobs.start("check_competitors", {})
         except JobRefused as exc:
             return ToolResult.failure(str(exc))
-        return ToolResult.success("Started checking the competitors. You will get an update here if anything "
-                                  "material changed.")
+        return job_result(start, "Started checking the competitors. You will get an update here if anything "
+                          "material changed.", "competitor check")
 
     @tool(parse_docstring=True)
     @guarded
-    async def find_accounts(country: str | None = None) -> ToolResult:
+    async def find_accounts(countries: list[str] | None = None) -> ToolResult:
         """Start a search for leads (target accounts) that match the ideal customer profile and have a current reason to buy (a hire, a funding round, a launch...), each verified and with the case for it. When there is no ideal customer profile yet, the search works one out first. Takes several minutes in the background; you get an update when it is done.
 
         Args:
-            country: Search one country only, e.g. "Kenya". Otherwise the profile's countries are searched one by one.
+            countries: The countries to search, e.g. ["Kenya", "Nigeria"]; one search covers them all, so ask once. Otherwise the profile's countries are searched.
         """
         if await store.icp() is None and not knows_buyers(await store.facts(None, BUYER_FACTS_READ)):
             return ToolResult.failure(NOT_YET)
+        places = list(dict.fromkeys(c.strip() for c in countries or [] if c.strip()))
         try:
-            await jobs.start("find_accounts", {"country": country})
+            start = await jobs.start("find_accounts", {"countries": places})
         except JobRefused as exc:
             return ToolResult.failure(str(exc))
-        return ToolResult.success("Started looking for target accounts. It takes several minutes; "
-                                  "you will get an update here when it finishes.")
+        where = f" in {', '.join(places)}" if places else ""
+        return job_result(start, f"Started looking for target accounts{where}. It takes several minutes; "
+                          "you will get an update here when it finishes.", "search for leads")
 
     @tool(parse_docstring=True)
     @guarded
@@ -396,11 +402,11 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
             guidance: Optional direction from the founder, e.g. "focus on clinics in Nairobi".
         """
         try:
-            await jobs.start("define_icp", {"guidance": guidance})
+            start = await jobs.start("define_icp", {"guidance": guidance})
         except JobRefused as exc:
             return ToolResult.failure(str(exc))
-        return ToolResult.success("Started working out the ideal customer profile. It takes a few minutes; "
-                                  "you will get an update here when it is done.")
+        return job_result(start, "Started working out the ideal customer profile. It takes a few minutes; "
+                          "you will get an update here when it is done.", "ideal customer profile")
 
     @tool(parse_docstring=True)
     @guarded
@@ -411,24 +417,26 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
             account_ids: Ids from list_accounts to search for. Otherwise every saved lead not yet searched.
         """
         try:
-            await jobs.start("find_contacts", {"account_ids": account_ids or []})
+            start = await jobs.start("find_contacts", {"account_ids": account_ids or []})
         except JobRefused as exc:
             return ToolResult.failure(str(exc))
-        return ToolResult.success("Started looking for contacts. You will get an update here when it finishes.")
+        return job_result(start, "Started looking for contacts. You will get an update here when it finishes.",
+                          "contact search")
 
     @tool(parse_docstring=True)
     @guarded
     async def draft_outreach(account_ids: list[str] | None = None) -> ToolResult:
-        """Draft a first message to leads, each to the best person you found there, grounded in their trigger and your facts. The drafts wait for the founder to review, edit and send: you never send anything. Runs in the background; you get an update when they are ready.
+        """Draft a first email to leads, each to the best person there with an email (else the organisation's), grounded in their trigger and your facts. First messages go by email only: a lead with no email known is skipped and named. The drafts wait for the founder to review, edit and send: you never send anything. Runs in the background; you get an update when they are ready.
 
         Args:
             account_ids: Ids from list_accounts to write to. Otherwise the strongest-fit targets with someone to reach and no message yet.
         """
         try:
-            await jobs.start("draft_outreach", {"account_ids": account_ids or []})
+            start = await jobs.start("draft_outreach", {"account_ids": account_ids or []})
         except JobRefused as exc:
             return ToolResult.failure(str(exc))
-        return ToolResult.success("Started drafting. You will get an update here when the drafts are ready.")
+        return job_result(start, "Started drafting. You will get an update here when the drafts are ready.",
+                          "drafting job")
 
     @tool(parse_docstring=True)
     @guarded
@@ -439,10 +447,11 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
             kinds: Which kinds to look for; all three when omitted.
         """
         try:
-            await jobs.start("find_opportunities", {"kinds": list(kinds or OPPORTUNITY_KINDS)})
+            start = await jobs.start("find_opportunities", {"kinds": list(kinds or OPPORTUNITY_KINDS)})
         except JobRefused as exc:
             return ToolResult.failure(str(exc))
-        return ToolResult.success("Started looking for opportunities. You will get an update here when it finishes.")
+        return job_result(start, "Started looking for opportunities. You will get an update here when it "
+                          "finishes.", "opportunity search")
 
     @tool(parse_docstring=True)
     @guarded
@@ -453,10 +462,33 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
             videos: How many of their newest videos with comments to read (at most 5).
         """
         try:
-            await jobs.start("read_tiktok_comments", {"videos": max(1, min(videos, TIKTOK_VIDEOS_MAX))})
+            start = await jobs.start("read_tiktok_comments", {"videos": max(1, min(videos, TIKTOK_VIDEOS_MAX))})
         except JobRefused as exc:
             return ToolResult.failure(str(exc))
-        return ToolResult.success("Started reading their TikTok comments. You will get an update here when it's done.")
+        return job_result(start, "Started reading their TikTok comments. You will get an update here when "
+                          "it's done.", "reading of TikTok comments")
+
+    @tool(parse_docstring=True)
+    @guarded
+    async def refresh_understanding() -> ToolResult:
+        """Read the startup's website again and look it up on the web, when the founder says the site changed or asks you to re-learn the startup. New facts are noted, and what the site said before and no longer says is dropped; what the founder told you or confirmed stays. Runs in the background; you get an update when it is done."""
+        try:
+            start = await jobs.start("refresh_understanding", {})
+        except JobRefused as exc:
+            return ToolResult.failure(str(exc))
+        return job_result(start, "Started re-reading the site. You will get an update here when it is done.",
+                          "re-read of the site")
+
+    @tool(parse_docstring=True)
+    @guarded
+    async def listen_now() -> ToolResult:
+        """Listen on the founder's connected X, Instagram and Facebook now: mentions and comments since the last listen, sorted into leads worth engaging, questions, feedback and praise. It also runs on its own once a day. Runs in the background; you get an update when it is done."""
+        try:
+            start = await jobs.start("listen", {})
+        except JobRefused as exc:
+            return ToolResult.failure(str(exc))
+        return job_result(start, "Started listening on their social accounts. You will get an update here when it's "
+                          "done.", "listen on social accounts")
 
     return [*tools, find_competitors, check_competitors, find_accounts, define_icp, find_contacts, draft_outreach,
-            find_opportunities, read_tiktok_comments]
+            find_opportunities, read_tiktok_comments, refresh_understanding, listen_now]

@@ -7,6 +7,8 @@ to `build_lace_graph`, as it does the store: `agents/` never imports
 
 from typing import Literal, Protocol
 
+from pydantic import BaseModel
+
 XRecord = Literal["profile", "post"]
 # The founder's public accounts a Lace reads by handle, with no app to connect.
 PublicFeed = Literal["x", "tiktok"]
@@ -21,7 +23,56 @@ class AppError(Exception):
     is safe to show the model."""
 
 
+class AppStatus(BaseModel):
+    """One app as the Lace is told about it: whether it can use it, and whose
+    account it is."""
+    platform: str
+    label: str
+    connected: bool
+    # Connected but needing the founder (an expired login), or a link left pending.
+    needs_attention: bool = False
+    enabled: bool
+    # "own": this Lace's own account; "shared": the founder's, shared by their Laces.
+    account: Literal["own", "shared"] | None = None
+    account_name: str | None = None
+    # The founder's public handle saved for it (X, TikTok): read without connecting.
+    handle: str | None = None
+
+
 class LaceApps(Protocol):
+    async def email_search(self, query: str, days: int) -> list[dict] | None:
+        """Mail in the founder's Gmail matching a Gmail search query, within the
+        last `days`, newest first, bounded: {thread_id, from, subject, date,
+        snippet}. None when no Gmail is on for this Lace. Raises AppError."""
+        ...
+
+    async def email_thread(self, thread_id: str) -> list[dict] | None:
+        """One Gmail thread's messages, oldest first: {from, date, text},
+        each bounded. None when no Gmail is on. Raises AppError."""
+        ...
+
+    async def calendar_events(self, days_ahead: int) -> list[dict] | None:
+        """The founder's Google Calendar events from now: {title, start, end,
+        attendees: [{name, email}]}. None when it isn't on. Raises AppError."""
+        ...
+
+    async def x_mentions(self) -> list[dict] | None:
+        """Recent posts on X mentioning the founder's connected account:
+        {author, handle, text, date, url}. None when X isn't on. Raises AppError."""
+        ...
+
+    async def tiktok_comments(self, videos: int) -> list[dict] | None:
+        """Comments on the founder's newest TikTok videos that have any, read
+        by their public handle: [{url, caption, comments: [{author, text,
+        date, likes}]}]. None when no TikTok handle is saved. Slow (minutes).
+        Raises AppError when the read fails."""
+        ...
+
+    async def overview(self) -> list[AppStatus]:
+        """Every app: connected or not, whose account, and whether this Lace
+        may use it. Raises AppError when it can't be found out."""
+        ...
+
     async def x(self, record: XRecord, key: str) -> dict | None:
         """A profile (key: the handle) or a post (key: its id) from X, through
         the founder's connected X account: the API's record, or None when X

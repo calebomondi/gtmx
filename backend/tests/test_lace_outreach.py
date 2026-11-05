@@ -69,16 +69,16 @@ def test_drafts_go_to_the_best_person_and_wait_for_the_founder(client, lace, lac
     run = client.portal.call(_wait_for_status, run.id, {"completed"})
     turns = client.portal.call(_wait_for_turns, lace, 1)
 
-    assert sorted(written) == [("Alpha", "jane@alpha.test", "Caleb"), ("Beta", "https://linkedin.com/in/tom", "Caleb")]
-    assert run.progress == {"drafted": 2, "unreachable": 0}
+    # Beta's only way in is LinkedIn: first messages go by email, so it waits for one.
+    assert written == [("Alpha", "jane@alpha.test", "Caleb")]
+    assert run.progress == {"drafted": 1, "unreachable": 1}
     update = turns[-1].input["updates"][0]
     assert "Drafting failed for (try again later): Broken" in update
+    assert "Not drafted, no email found yet" in update and "first messages go by email only): Beta" in update
     drafts = {d["recipient_company"]: d for d in client.get(f"{API}/laces/{lace}/outreach").json()}
     # Each draft is named by id, so the Lace can show it as a card.
     assert f"Alpha [draft {drafts['Alpha']['id']}]: to Jane Doe by email" in update
-    assert f"Beta [draft {drafts['Beta']['id']}]: to Tom by linkedin" in update
-    assert set(drafts) == {"Alpha", "Beta"} and all(d["status"] == "draft" for d in drafts.values())
-    assert drafts["Alpha"]["subject"] == "About Alpha" and drafts["Beta"]["channel"] == "linkedin"
+    assert set(drafts) == {"Alpha"} and drafts["Alpha"]["status"] == "draft" and drafts["Alpha"]["subject"] == "About Alpha"
 
 
 def test_nothing_is_drafted_to_people_not_yet_approved(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
@@ -106,7 +106,8 @@ def test_nothing_is_drafted_to_people_not_yet_approved(client, lace, lace_runtim
 def test_only_approved_people_are_written_to(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
     written = _stub_writer(monkeypatch)
     account = _account(lace, "Mixed", [ContactRecord(name="Jane Doe", email="jane@mixed.test"),
-                                       ContactRecord(name="Tom", linkedin="https://linkedin.com/in/tom")],
+                                       ContactRecord(name="Tom", email="tom@mixed.test",
+                                                     linkedin="https://linkedin.com/in/tom")],
                        approved=False)
     contacts = {c["name"]: c for c in client.get(f"{API}/laces/{lace}/contacts").json()}
     approved = client.patch(f"{API}/laces/{lace}/contacts/{contacts['Tom']['id']}", json={"approved": True}).json()
@@ -114,7 +115,7 @@ def test_only_approved_people_are_written_to(client, lace, lace_runtime, user, m
     lace_runtime.append(AIMessage(content="Drafted to Tom."))
     run = client.portal.call(manager.start_lace_job, "lace_drafts", user.id, uuid.UUID(lace), {"account_ids": [str(account)]})
     client.portal.call(_wait_for_status, run.id, {"completed"})
-    assert written == [("Mixed", "https://linkedin.com/in/tom", "Caleb")]  # not Jane, who was not approved
+    assert written == [("Mixed", "tom@mixed.test", "Caleb")]  # not Jane, who was not approved
     client.portal.call(_wait_for_turns, lace, 1)
     client.sign_in(make_user("Intruder"))
     assert client.patch(f"{API}/laces/{lace}/contacts/{contacts['Tom']['id']}", json={"approved": False}).status_code == 404
@@ -311,50 +312,39 @@ def test_x_sends_count_toward_the_daily_cap(client, lace, lace_runtime, user, mo
     assert client.post(f"{API}/laces/{lace}/outreach/{_message(lace, user.id)}/send").status_code == 429
 
 
-def test_a_draft_to_one_person_uses_their_channel_and_the_founders_note(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+def test_a_draft_to_one_person_is_an_email_with_the_founders_note(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
     written = _stub_writer(monkeypatch)
     _account(lace, "Twiga", [ContactRecord(name="Amina", email="amina@twiga.test", linkedin="https://linkedin.com/in/amina"),
                              ContactRecord(name="Peter", email="peter@twiga.test")], approved=False)
     with psycopg.connect(settings.database_url) as conn:
         amina = str(conn.execute("SELECT id FROM lace_contacts WHERE name = 'Amina'").fetchone()[0])
-    lace_runtime.append(AIMessage(content="I drafted a LinkedIn note to Amina."))
+    lace_runtime.append(AIMessage(content="I drafted an email to Amina."))
 
     started = client.post(f"{API}/laces/{lace}/contacts/{amina}/draft",
-                          json={"channel": "linkedin", "note": "Mention our Twiga pilot"})
+                          json={"channel": "email", "note": "Mention our Twiga pilot"})
     assert started.status_code == 202
     client.portal.call(_wait_for_status, uuid.UUID(started.json()["run_id"]), {"completed"})
-    assert written == [("Twiga", "https://linkedin.com/in/amina", "Caleb", "Mention our Twiga pilot")]
+    assert written == [("Twiga", "amina@twiga.test", "Caleb", "Mention our Twiga pilot")]
     with psycopg.connect(settings.database_url) as conn:
-        assert conn.execute("SELECT channel, recipient_name FROM lace_outreach").fetchall() == [("linkedin", "Amina")]
+        assert conn.execute("SELECT channel, recipient_name FROM lace_outreach").fetchall() == [("email", "Amina")]
         # Asking for the draft cleared her; Peter still waits.
         assert conn.execute("SELECT name FROM lace_contacts WHERE approved_at IS NOT NULL").fetchall() == [("Amina",)]
 
 
-def test_a_draft_needs_a_way_to_reach_them_and_a_contact_of_this_lace(client, lace, lace_runtime, user):  # noqa: F811
-    _account(lace, "Twiga", [ContactRecord(name="Peter", email="peter@twiga.test")])
+def test_a_first_message_goes_only_by_email_to_a_contact_of_this_lace(client, lace, lace_runtime, user):  # noqa: F811
+    _account(lace, "Twiga", [ContactRecord(name="Peter", linkedin="https://linkedin.com/in/peter", x="https://x.com/p")],
+             approved=False)
     with psycopg.connect(settings.database_url) as conn:
         peter = str(conn.execute("SELECT id FROM lace_contacts WHERE name = 'Peter'").fetchone()[0])
-    missing = client.post(f"{API}/laces/{lace}/contacts/{peter}/draft", json={"channel": "linkedin"})
-    assert missing.status_code == 422 and "LinkedIn" in missing.json()["detail"]
+    social = client.post(f"{API}/laces/{lace}/contacts/{peter}/draft", json={"channel": "linkedin"})
+    assert social.status_code == 422 and social.json()["detail"] == (
+        "First messages go by email for now. Reach them there, or write to them on LinkedIn yourself.")
+    no_email = client.post(f"{API}/laces/{lace}/contacts/{peter}/draft", json={"channel": "email"})
+    assert no_email.status_code == 422 and no_email.json()["detail"] == "There's no email address for this person."
+    with psycopg.connect(settings.database_url) as conn:
+        assert conn.execute("SELECT approved_at FROM lace_contacts").fetchone()[0] is None  # nothing was asked
     client.sign_in(make_user("Intruder"))
     assert client.post(f"{API}/laces/{lace}/contacts/{peter}/draft", json={"channel": "email"}).status_code == 404
-
-
-def test_a_draft_can_go_to_a_persons_own_social_account(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
-    written = _stub_writer(monkeypatch)
-    _account(lace, "Twiga", [ContactRecord(name="Amina", email="amina@twiga.test", instagram="@amina.k",
-                                           x="https://x.com/amina")])
-    with psycopg.connect(settings.database_url) as conn:
-        amina = str(conn.execute("SELECT id FROM lace_contacts WHERE name = 'Amina'").fetchone()[0])
-    assert client.post(f"{API}/laces/{lace}/contacts/{amina}/draft", json={"channel": "tiktok"}).json()["detail"] \
-        == "There's no TikTok account for this person."
-    lace_runtime.append(AIMessage(content="I drafted an Instagram note to Amina."))
-    started = client.post(f"{API}/laces/{lace}/contacts/{amina}/draft", json={"channel": "instagram"})
-    client.portal.call(_wait_for_status, uuid.UUID(started.json()["run_id"]), {"completed"})
-    assert written[0][1] == "https://www.instagram.com/amina.k"
-    with psycopg.connect(settings.database_url) as conn:
-        assert conn.execute("SELECT channel, recipient_address FROM lace_outreach").fetchall() == [
-            ("instagram", "https://www.instagram.com/amina.k")]
 
 
 def _reply_in(lace_id, user_id, channel="email") -> str:

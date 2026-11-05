@@ -10,7 +10,7 @@ from langchain_core.tools import BaseTool, tool
 
 from agents.lace.edit_tools import MAX_IDS, _ids, _report
 from agents.lace.store import JobRefused, LaceJobs, LaceStore
-from agents.lace.tool_guard import guarded
+from agents.lace.tool_guard import guarded, job_result
 from agents.schemas.lace import ToolResult
 
 REGULATIONS_PER_READ = 50
@@ -84,10 +84,10 @@ def build_regulation_tools(store: LaceStore, jobs: LaceJobs | None = None) -> li
         if not (await store.jurisdiction()).confirmed:
             return ToolResult.failure(NOT_CONFIRMED)
         try:
-            await jobs.start("find_regulations", {})
+            start = await jobs.start("find_regulations", {})
         except JobRefused as exc:
             return ToolResult.failure(str(exc))
-        return ToolResult.success("Started looking for the laws and regulations that apply. You will get an "
-                                  "update here when it finishes.")
+        return job_result(start, "Started looking for the laws and regulations that apply. You will get an "
+                          "update here when it finishes.", "search for laws and regulations")
 
     return [*tools, find_regulations]

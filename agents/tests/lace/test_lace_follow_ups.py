@@ -1,41 +1,54 @@
-"""Suggested replies written for a reply that ends on an offer."""
+"""The replies suggested under an answer: written from the founder's question,
+the answer and their situation, specific and of different kinds, tidied and
+bounded, and none when the answer wants the founder to type."""
 
-from agents.lace.follow_ups import TAIL_CHARS, ends_on_question, follow_ups
+from langchain_core.messages import SystemMessage
+
+from agents.lace.follow_ups import ASKED_CHARS, CHOICE_CHARS, REPLY_CHARS, follow_ups
 from agents.schemas.lace_ui import FollowUps
 
-OFFER = ("Velinex runs scheduling for clinics.\n\nAnything else you'd like to explore? Maybe dig into Velinex's "
-         "recent activity or look for target accounts we could pursue?")
+ANSWER = "I found three rivals: Velinex, Hamtech and Roamly. Velinex is the closest."
 
 
 def _answers(*options):
     seen = []
 
     def ask(messages, schema, **kwargs):
-        seen.append(messages[-1].content)
+        seen.append(messages)
         return FollowUps(options=list(options))
     return ask, seen
 
 
-def test_only_a_closing_question_counts():
-    assert ends_on_question(OFFER)
-    assert not ends_on_question("Is it them?\n\nI saved Velinex for you.")
-    assert not ends_on_question("")
+def test_the_model_reads_the_question_the_answer_and_the_situation():
+    ask, seen = _answers("Dig into Velinex", "Find fintech leads in Lagos")
+    assert follow_ups(ANSWER, "who competes?", "- Drafts waiting: 2", ask=ask) == [
+        "Dig into Velinex", "Find fintech leads in Lagos"]
+    [(system, human)] = seen
+    assert isinstance(system, SystemMessage)
+    assert all(kind in system.content for kind in ("next:", "dig:", "challenge:", "nudge:"))
+    assert "who competes?" in human.content and ANSWER in human.content and "Drafts waiting: 2" in human.content
 
 
-def test_the_offers_become_tappable_replies():
-    ask, seen = _answers("Dig into Velinex's activity", "Find target accounts")
-    assert follow_ups(OFFER, ask) == ["Dig into Velinex's activity", "Find target accounts"]
-    assert seen == [OFFER]
+def test_without_a_question_or_situation_it_reads_the_answer_alone():
+    ask, seen = _answers("a b", "c d")
+    follow_ups(ANSWER, ask=ask)
+    assert seen[0][1].content == f"The assistant answered:\n{ANSWER}"
 
 
-def test_the_model_reads_only_the_end_of_a_long_reply():
-    ask, seen = _answers("Yes", "No")
-    follow_ups("x" * 5000 + OFFER, ask)
-    assert len(seen[0]) == TAIL_CHARS and seen[0].endswith(OFFER[-40:])
+def test_long_inputs_are_cut_to_what_matters():
+    ask, seen = _answers("a b", "c d")
+    follow_ups("#" * 5000 + ANSWER, "~" * 2000, ask=ask)
+    human = seen[0][1].content
+    assert ANSWER in human and human.count("#") == REPLY_CHARS - len(ANSWER)
+    assert human.count("~") == ASKED_CHARS
 
 
-def test_too_few_or_too_long_options_are_dropped():
-    assert follow_ups(OFFER, _answers()[0]) == []
-    assert follow_ups(OFFER, _answers("Dig in")[0]) == []
-    assert follow_ups(OFFER, _answers("Dig in", "x" * 61)[0]) == []
-    assert follow_ups(OFFER, _answers("a", "b", "c", "d")[0]) == ["a", "b", "c"]
+def test_chips_are_tidied_deduplicated_and_bounded():
+    ask, _ = _answers('"Dig into Velinex."', "Dig into Velinex", "x" * (CHOICE_CHARS + 1), "Track Roamly", "Ask",
+                      "One too many")
+    assert follow_ups(ANSWER, ask=ask) == ["Dig into Velinex", "Track Roamly", "Ask"]
+
+
+def test_fewer_than_two_means_none():
+    assert follow_ups(ANSWER, ask=_answers()[0]) == []
+    assert follow_ups(ANSWER, ask=_answers("Only one")[0]) == []

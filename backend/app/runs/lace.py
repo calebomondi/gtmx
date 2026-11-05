@@ -26,12 +26,12 @@ from pydantic import TypeAdapter
 from agents.lace.answers import AnswerError, describe
 from agents.lace.buyers import ASKED_IN_FORM, buyer_form, knows_buyers
 from agents.lace.cards import cards
-from agents.lace.follow_ups import ends_on_question, follow_ups
+from agents.lace.follow_ups import follow_ups
 from agents.lace.graph import BRIEF_FACTS, PRIVATE_WITHHELD, build_lace_graph
 from agents.lace.onboarding import Progress, onboard, opening_message
 from agents.lace.store import LaceJobs
 from agents.lace.tools import MAX_CARDS
-from agents.lace.prompts import PRIVATE_CHAT_NOTE, SPEAKER_NOTE, system_prompt
+from agents.lace.prompts import PRIVATE_CHAT_NOTE, SPEAKER_NOTE, render_on_file, system_prompt
 from agents.lace.reply_tidy import without_repeated_options
 from agents.llm.main import LlmProvidersExhaustedError
 from agents.schemas.lace_ui import BlockAnswer, SuggestionsBlock, UiBlock
@@ -69,7 +69,6 @@ _STEP_TEXT = {
     "read_page": lambda a: f"Reading {a.get('url', 'a page')}",
     "read_pages": lambda a: f"Reading {len(a.get('urls') or [])} pages",
     "read_social": lambda a: f"Reading {a.get('url', 'a social profile')}",
-    "suggest_replies": lambda a: "Suggesting replies",
     "post_on_social": lambda a: f"Drafting a post for {a.get('platform', 'your socials')}",
     "reply_to_comment": lambda a: "Drafting a reply to a comment",
     "engage_on_x": lambda a: f"Preparing a {a.get('action', 'reply')} on X",
@@ -89,7 +88,8 @@ _STEP_TEXT = {
     "find_regulations": lambda a: "Starting a search for the laws and regulations that apply",
     "list_regulations": lambda a: "Checking the laws and regulations on file",
     "update_regulations": lambda a: "Updating the laws and regulations we track",
-    "find_accounts": lambda a: "Starting a search for customers" + (f" in {a['country']}" if a.get("country") else ""),
+    "find_accounts": lambda a: "Starting a search for customers" + (f" in {', '.join(a['countries'])}"
+                                                                     if a.get("countries") else ""),
 }
 
 # Marks a message on the thread as an update for the Lace, not the founder's words.
@@ -141,7 +141,7 @@ def _graph(thread: LaceThread, jobs: LaceJobs | None = None, actor_id: uuid.UUID
     In a member's private chat it works on their finds and cannot change the
     team's."""
     store = DbLaceStore(AsyncSessionLocal, thread.lace_id, actor_id, thread.owner_id)
-    apps = DbLaceApps(AsyncSessionLocal, thread.lace_id)
+    apps = DbLaceApps(AsyncSessionLocal, thread.lace_id, actor_id)
     speaker = speaker_note(who)
     if thread.owner_id is None:
         return build_lace_graph(store, checkpointer=get_checkpointer(), jobs=jobs, apps=apps,
@@ -339,12 +339,15 @@ async def brief_segment(run_id: uuid.UUID, lace_id: uuid.UUID, brief_id: uuid.UU
     await _finish(run_id, reply)
 
 
-async def _converse(run_id: uuid.UUID, thread: LaceThread, message: HumanMessage, jobs: LaceJobs | None,
+async def _converse(run_id: uuid.UUID, thread: LaceThread, message: HumanMessage | str, jobs: LaceJobs | None,
                     actor_id: uuid.UUID | None, who: str | None = None,
                     found_by: list[uuid.UUID] | None = None) -> str:
     """Run one turn, streaming its frames; returns the Lace's reply."""
     graph, _ = _graph(thread, jobs, actor_id, who)
     relay = _TokenRelay(run_id)
+    # What the founder said, for the replies suggested under the answer (an
+    # update the Lace passes on has no founder words).
+    asked = _founder_words(message)
     reply = ""
     blocks: list[dict] = []
     async for mode, chunk in graph.astream({"messages": [message]}, thread.config,
@@ -374,13 +377,38 @@ async def _converse(run_id: uuid.UUID, thread: LaceThread, message: HumanMessage
                 elif isinstance(message, ToolMessage):
                     await events.publish(run_id, "tool_result", _tool_summary(message))
                     blocks += _ui_blocks(message)
-    blocks = await _with_found_cards(thread, found_by or [], blocks)
-    blocks = await _with_follow_ups(reply, blocks)
+    blocks = await _with_found_cards(thread, found_by or [], _unique_cards(blocks))
+    blocks = await _with_follow_ups(reply, blocks, asked, await _situation(thread))
     if blocks:
         tidy = without_repeated_options(reply, {b.get("type") for b in blocks})
         await _attach_ui(graph, thread, blocks, tidy if tidy != reply else None)
         reply = tidy
     return reply
+
+
+def _founder_words(message: HumanMessage | str) -> str:
+    """What the founder said in a turn's message: none for an update the
+    Lace passes on, their own words where a note was added to them."""
+    if isinstance(message, str):
+        return message
+    if message.additional_kwargs.get(EVENT_FLAG):
+        return ""
+    return str(message.additional_kwargs.get(FOUNDER_TEXT_KEY, message.content))
+
+
+def _unique_cards(blocks: list[dict]) -> list[dict]:
+    """The turn's blocks with each card once, where it first appeared: the
+    Lace may show the same find twice in one turn."""
+    seen: set[tuple] = set()
+    out = []
+    for block in blocks:
+        if block.get("type") == "card":
+            key = (block.get("kind"), block.get("id"))
+            if key in seen:
+                continue
+            seen.add(key)
+        out.append(block)
+    return out
 
 
 async def _with_found_cards(thread: LaceThread, found_by: list[uuid.UUID], blocks: list[dict]) -> list[dict]:
@@ -403,17 +431,44 @@ async def _with_found_cards(thread: LaceThread, found_by: list[uuid.UUID], block
     return [*blocks, *added[:max(0, MAX_CARDS - len(shown))]]
 
 
-# How long the turn waits for suggested replies before ending without them.
-FOLLOW_UPS_TIMEOUT_S = 20
+# How long the turn waits for suggested replies before ending without them:
+# the reply has already streamed, so this only delays the chips under it.
+FOLLOW_UPS_TIMEOUT_S = 10
+# Saved items read for the situation the suggestions are written from.
+SITUATION_SCAN = 20
 
 
-async def _with_follow_ups(reply: str, blocks: list[dict]) -> list[dict]:
-    """The turn's blocks, plus suggested replies when the reply ends on a
-    question and nothing under it gives the founder something to click."""
-    if not ends_on_question(reply) or any(b.get("type") in _CLICKABLE for b in blocks):
+async def _situation(thread: LaceThread) -> str:
+    """What's on file and what waits for the founder, in a few lines, for
+    the suggestions under a reply. Empty when it can't be read: the chips
+    are a courtesy, never a reason a turn fails."""
+    store = DbLaceStore(AsyncSessionLocal, thread.lace_id, owner_id=thread.owner_id)
+    try:
+        rivals, accounts, opportunities, waiting, drafts = await asyncio.gather(
+            store.competitors(SITUATION_SCAN), store.accounts(SITUATION_SCAN),
+            store.opportunities(SITUATION_SCAN), store.suggestions(SITUATION_SCAN), store.drafts(SITUATION_SCAN))
+    except Exception:  # noqa: BLE001 -- the chips are optional; logged with context
+        logger.exception("No situation for suggested replies in Lace %s", thread.lace_id)
+        return ""
+    lines = [render_on_file(rivals, accounts, opportunities, waiting)]
+    if drafts:
+        lines.append(f"- Drafts waiting to be sent: {len(drafts)} (" + ", ".join(
+            f"{d.recipient} at {d.company}" for d in drafts[:3]) + ")")
+    dated = [o for o in opportunities if o.deadline or o.date]
+    if dated:
+        lines.append("- Saved opportunities with dates: " + "; ".join(
+            f"{o.title} ({o.deadline or o.date})" for o in dated[:3]))
+    return "\n".join(lines)
+
+
+async def _with_follow_ups(reply: str, blocks: list[dict], asked: str = "", situation: str = "") -> list[dict]:
+    """The turn's blocks, plus replies the founder can tap next, unless
+    something under the reply already gives them something to click."""
+    if not reply.strip() or any(b.get("type") in _CLICKABLE for b in blocks):
         return blocks
     try:
-        options = await asyncio.wait_for(asyncio.to_thread(follow_ups, reply), FOLLOW_UPS_TIMEOUT_S)
+        options = await asyncio.wait_for(asyncio.to_thread(follow_ups, reply, asked, situation),
+                                         FOLLOW_UPS_TIMEOUT_S)
     except (LlmProvidersExhaustedError, TimeoutError):
         logger.warning("Reply goes without suggested replies", exc_info=True)
         return blocks
@@ -423,7 +478,7 @@ async def _with_follow_ups(reply: str, blocks: list[dict]) -> list[dict]:
 # Where a reply keeps the cards and choices shown under it.
 UI_KEY = "ui"
 # The tools whose results put something under the reply.
-_UI_TOOLS = frozenset({"ask_choice", "ask_checklist", "ask_form", "show", "suggest_replies",
+_UI_TOOLS = frozenset({"ask_choice", "ask_checklist", "ask_form", "show",
                        # Suggestions it was asked to save, shown for the founder to save.
                        "update_saved",
                        # Proposals in the founder's apps, shown with Approve and Decline.

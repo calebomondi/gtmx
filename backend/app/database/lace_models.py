@@ -16,7 +16,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from agents.schemas.monitor import MOVE_IMPORTANCES, MOVE_KINDS
 from agents.schemas.opportunities import OPPORTUNITY_KINDS, OPPORTUNITY_STATUSES
 from agents.schemas.regulations import BILL_STAGES, JURISDICTION_MAX_LEN, JURISDICTION_PATTERN, REGULATION_KINDS, REGULATION_STATUSES
-from agents.schemas.lace import ACCOUNT_STATUSES, ACTIVITY_KINDS, ACTIVITY_REFS, APP_ACTION_STATUSES, CONTACT_SOURCES, LACE_ROLES, MEMBER_STATUSES, BRIEF_FREQUENCIES, CONTACT_STATUSES, INBOX_PLATFORMS, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, DEFAULT_WATCH_EVERY_H, FACT_ORIGINS, FACT_TOPICS, WATCH_EVERY_H
+from agents.schemas.lace import ACCOUNT_STATUSES, ACTIVITY_KINDS, ACTIVITY_REFS, APP_ACTION_STATUSES, CONTACT_SOURCES, LACE_ROLES, MEMBER_STATUSES, BRIEF_FREQUENCIES, CONTACT_STATUSES, INBOX_PLATFORMS, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, DEFAULT_WATCH_EVERY_H, FACT_ORIGINS, FACT_TOPICS, INSTRUCTION_CHARS, INSTRUCTION_SCOPES, WATCH_EVERY_H
 from backend.app.database.connect import Base
 
 LACE_STATUSES = ("onboarding", "active", "archived")
@@ -577,6 +577,29 @@ class LaceBrief(Base):
                                                  default=_now, server_default=func.now())
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     emailed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+
+
+class LaceInstruction(Base):
+    """A standing instruction from the team on how the Lace works (which
+    competitors count, where to look for leads, the tone of emails): shown in
+    its prompt in every chat and read by the jobs it applies to."""
+
+    __tablename__ = "lace_instructions"
+    __table_args__ = (
+        Index("ix_lace_instructions_lace_id_created_at", "lace_id", "created_at"),
+        CheckConstraint(_one_of("applies_to", INSTRUCTION_SCOPES), name="applies_to"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Indexed by the created_at index, which leads with it.
+    lace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("laces.id", ondelete="CASCADE"), nullable=False)
+    text: Mapped[str] = mapped_column(String(INSTRUCTION_CHARS), nullable=False)
+    applies_to: Mapped[str] = mapped_column(String(16), nullable=False)
+    # Who gave it (Supabase owns users: no FK); None when unknown.
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
+                                                 default=_now, server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class LaceDocument(Base):

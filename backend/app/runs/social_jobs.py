@@ -3,7 +3,6 @@ saved in the Lace's settings (nothing connected): the comments on their
 recent TikTok videos, whose scraper is too slow for a turn. What was read
 goes to the Lace as an update and to the Feed."""
 
-import asyncio
 import uuid
 from datetime import UTC, datetime
 
@@ -15,11 +14,7 @@ from backend.app.runs.lace_jobs import job_activity, job_update, report_failure
 from backend.app.services.lace_activity import plural
 from backend.app.services.lace_apps import DbLaceApps
 from backend.app.services.runs import set_run_fields
-from config import settings
-from data_sources.socials import tiktok
 
-# Comments kept per video, and how much of each the Lace reads.
-COMMENTS_PER_VIDEO = 25
 _NO_HANDLE = ("No TikTok handle is saved for this Lace. Add it under Apps & accounts → TikTok in its settings, "
               "then ask again.")
 
@@ -46,15 +41,8 @@ async def tiktok_comments_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dic
         handle = await apps.handle("tiktok")
         if handle is None:
             raise JobBlocked(_NO_HANDLE)
-        await events.publish(run_id, "step", {"text": f"Reading @{handle}'s videos"})
-        videos = await asyncio.to_thread(tiktok.recent_videos, handle, settings, settings.social_read_timeout_s)
-        chosen = [v for v in videos if (v["comments"] or 0) > 0][:params.get("videos", 3)]
-        read = []
-        for index, video in enumerate(chosen, 1):
-            await events.publish(run_id, "step", {"text": f"Reading comments on video {index} of {len(chosen)}"})
-            comments = await asyncio.to_thread(tiktok.video_comments, video["url"], settings,
-                                               settings.tiktok_comments_timeout_s)
-            read.append({"url": video["url"], "caption": video["text"], "comments": comments[:COMMENTS_PER_VIDEO]})
+        await events.publish(run_id, "step", {"text": f"Reading comments on @{handle}'s videos"})
+        read = await apps.tiktok_comments(params.get("videos", 3)) or []
     except Exception as exc:
         await report_failure(lace_id, "TikTok comment read", exc, params)
         raise

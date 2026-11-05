@@ -81,6 +81,8 @@ class TriggerEvent(LenientModel):
     ] = Field(description="Which trigger signal type this event matches (founder_added is set by the app for "
                           "accounts the founder named, never by a search)")
     source: str = Field(description="URL/where the trigger was observed")
+    date: str | None = Field(default=None, description="When it happened, as the source states it: YYYY-MM-DD, "
+                                                       "else YYYY-MM, else YYYY; null when the source doesn't say")
 
 
 class AccountRecord(LenientModel):
