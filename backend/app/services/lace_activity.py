@@ -10,7 +10,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.schemas.lace import ActivityKind, ActivityRef
-from backend.app.database.lace_models import Lace, LaceActivity
+from backend.app.database.lace_models import Lace, LaceActivity, LaceOutreach
 from backend.app.services import lace_members
 
 # Names quoted in an activity's summary; the rest are counted.
@@ -92,3 +92,13 @@ async def list_for_user(db: AsyncSession, user_id: uuid.UUID, limit: int,
     if before is not None:
         query = query.where(LaceActivity.created_at < before)
     return [(a, lace) for a, lace in (await db.execute(query.order_by(LaceActivity.created_at.desc()).limit(limit))).all()]
+
+
+async def channels(db: AsyncSession, items: Sequence[LaceActivity]) -> dict[uuid.UUID, str]:
+    """activity id -> the channel of the message it's about (a reply, a send),
+    so the Feed opens it where it lives: Outreach, or Social."""
+    refs = {a.ref_id: a.id for a in items if a.ref_type == "outreach" and a.ref_id}
+    if not refs:
+        return {}
+    rows = await db.execute(select(LaceOutreach.id, LaceOutreach.channel).where(LaceOutreach.id.in_(refs)))
+    return {refs[message_id]: channel for message_id, channel in rows.all()}

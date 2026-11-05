@@ -132,13 +132,15 @@ async def list_all_activity(user: CurrentUser, db: DbSession, before: datetime |
     """What all the founder's Laces did or found, newest first."""
     rows = await lace_activity.list_for_user(db, user.id, limit, before)
     actors = await lace_members.actors(db, [(a.lace_id, a.actor_id) for a, _ in rows if a.actor_id])
-    return [_activity(LaceActivityItem, a, actors, lace_id=lace.id, lace_name=lace.name) for a, lace in rows]
+    channels = await lace_activity.channels(db, [a for a, _ in rows])
+    return [_activity(LaceActivityItem, a, actors, channels, lace_id=lace.id, lace_name=lace.name) for a, lace in rows]
 
 
-def _activity(shape: type[ActivityResponse], item, actors: dict, **extra) -> ActivityResponse:
-    """An activity row as the API shows it, with who did it (lace_members.actors)."""
-    return shape(**ActivityResponse.model_validate(item).model_dump(exclude={"actor"}),
-                 actor=actors.get((item.lace_id, item.actor_id)), **extra)
+def _activity(shape: type[ActivityResponse], item, actors: dict, channels: dict, **extra) -> ActivityResponse:
+    """An activity row as the API shows it, with who did it (lace_members.actors)
+    and the channel of the message it's about (lace_activity.channels)."""
+    return shape(**ActivityResponse.model_validate(item).model_dump(exclude={"actor", "channel"}),
+                 actor=actors.get((item.lace_id, item.actor_id)), channel=channels.get(item.id), **extra)
 
 
 @router.get("/{lace_id}", response_model=LaceResponse)
@@ -226,7 +228,8 @@ async def list_activity(lace: MemberLace, db: DbSession, before: datetime | None
     item names who on the team did it or asked for it, on a Lace with a team."""
     rows = await lace_activity.list_for_lace(db, lace.id, limit, before)
     actors = await lace_members.actors(db, [(a.lace_id, a.actor_id) for a in rows if a.actor_id])
-    return [_activity(ActivityResponse, a, actors) for a in rows]
+    channels = await lace_activity.channels(db, rows)
+    return [_activity(ActivityResponse, a, actors, channels) for a in rows]
 
 
 @router.post("/{lace_id}/activity/read", response_model=ActivityReadResponse)

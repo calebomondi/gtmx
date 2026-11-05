@@ -605,6 +605,8 @@ export interface ActivityDto {
   read_at: string | null
   /** Who on the team did it or asked for it; only on a Lace with a team. */
   actor: { id: string; name: string | null; avatar_url: string | null } | null
+  /** The channel of the message it's about (a reply, a send), if any. */
+  channel: OutreachChannel | null
 }
 
 /** Newest first; `before` (an item's created_at) pages back. */

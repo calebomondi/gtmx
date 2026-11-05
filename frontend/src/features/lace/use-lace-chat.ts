@@ -48,7 +48,7 @@ import {
 
 import { useAuth } from "@/lib/auth"
 
-import { waitsOnFounder } from "./outreach-threads"
+import { isUnread, OUTREACH_CHANNELS, SOCIAL_CHANNELS, waitsOnFounder } from "./outreach-threads"
 import { answerLine } from "./questions"
 
 const TERMINAL = new Set(["complete", "error", "cancelled"])
@@ -75,8 +75,10 @@ export interface LaceChat {
   outreach: LaceOutreachDto[]
   /** The people found at saved accounts. */
   contacts: ContactDto[]
-  /** Messages waiting on the founder: drafts to send, and replies not yet read. */
+  /** Outreach waiting on the founder: drafts to send, and replies not yet read. */
   waiting: number
+  /** Messages to the founder's social accounts not yet read. */
+  socialUnread: number
   /** The Lace is drafting messages in the background. */
   drafting: boolean
   /** The Lace is looking for opportunities in the background. */
@@ -542,10 +544,11 @@ export function useLaceChat(laceId: string, thread: ChatThread = "team"): LaceCh
     }
   }, [refresh])
 
-  const waiting = outreach.filter(waitsOnFounder).length
+  const waiting = outreach.filter((m) => OUTREACH_CHANNELS.has(m.channel) && waitsOnFounder(m)).length
+  const socialUnread = outreach.filter((m) => SOCIAL_CHANNELS.has(m.channel) && isUnread(m)).length
 
   return {
-    lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, waiting, drafting, findingOpportunities,
+    lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, waiting, socialUnread, drafting, findingOpportunities,
     loading: loading || conversation.thread !== thread, error,
     working, turnBy, step, steps, jobs, draft, send, answer, reload, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, sendingSoon,
     undoSend, markSent, markRead, decideAction, findContacts, draftToContact, contacts, approveContact, approveAccountContacts, removeContact, saveCompetitor, saveAccount, decideOpportunity, suggestedCompetitors,
