@@ -78,3 +78,16 @@ def test_the_telegram_brief_chat_is_checked(client, lace, lace_runtime, connecte
     assert saved.json()["settings"] == {"brief_chat": "@shanga_team"}
     refused = client.put(f"{API}/laces/{lace}/apps/telegram", json={"settings": {"brief_chat": "my group"}})
     assert refused.status_code == 422 and "t.me link" in refused.json()["detail"]
+
+
+def test_a_page_account_not_linked_to_the_lace_is_flagged(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    import psycopg
+    from config import settings
+    stub_accounts(monkeypatch, {"facebook", "instagram", "gmail"})
+    apps = _apps(client, lace)
+    assert (apps["facebook"]["needs_link"], apps["instagram"]["needs_link"]) == (True, True)
+    assert not apps["gmail"]["needs_link"] and not apps["telegram"]["needs_link"]  # not connected: nothing to link
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        conn.execute("INSERT INTO lace_channels (id, lace_id, user_id, platform, account_id, account_name)"
+                     " VALUES (%s, %s, %s, 'facebook', 'pg_1', 'Thalace')", (uuid.uuid4(), lace, user.id))
+    assert not _apps(client, lace)["facebook"]["needs_link"]
