@@ -13,7 +13,8 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.database.lace_models import Lace, LaceApp
+from agents.schemas.lace import INBOX_PLATFORMS
+from backend.app.database.lace_models import Lace, LaceApp, LaceChannel
 from backend.app.services import connections as connection_service
 from functools import partial
 
@@ -64,6 +65,7 @@ async def list_for_lace(db: AsyncSession, lace: Lace) -> list[dict]:
     for this Lace."""
     rows = {r.platform: r for r in (await db.scalars(select(LaceApp).where(LaceApp.lace_id == lace.id))).all()}
     connected = await connection_service.for_lace(db, lace)
+    linked = set((await db.scalars(select(LaceChannel.platform).where(LaceChannel.lace_id == lace.id))).all())
     one_lace = await _one_lace(db, lace.user_id)
     out = []
     for app in connection_service.APPS:
@@ -76,6 +78,10 @@ async def list_for_lace(db: AsyncSession, lace: Lace) -> list[dict]:
             "account_name": live.display_name if live else None, "connection_id": live.id if live else None,
             "enabled": row.enabled if row else (app.group == "channels" or one_lace),
             "settings": dict(row.settings) if row else {},
+            # Connected, but this Lace speaks for none of the account's Pages or
+            # business accounts yet: the founder picks one (Messaging, or here).
+            "needs_link": app.platform in INBOX_PLATFORMS and live is not None and live.status == "live"
+                          and app.platform not in linked,
         })
     return out
 

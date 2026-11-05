@@ -13,6 +13,7 @@ from sqlalchemy import or_, Boolean, CheckConstraint, Date, DateTime, Float, Int
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB as JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
+from agents.schemas.listening import HEARD_KINDS, HEARD_STATUSES, SOCIAL_PLATFORMS
 from agents.schemas.monitor import MOVE_IMPORTANCES, MOVE_KINDS
 from agents.schemas.opportunities import OPPORTUNITY_KINDS, OPPORTUNITY_STATUSES
 from agents.schemas.regulations import BILL_STAGES, JURISDICTION_MAX_LEN, JURISDICTION_PATTERN, REGULATION_KINDS, REGULATION_STATUSES
@@ -600,6 +601,65 @@ class LaceInstruction(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
                                                  default=_now, server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class LaceSocialPost(Base):
+    """One of the founder's own posts, as the Lace last read it, with how it
+    did: kept so the Social view can show what is working."""
+
+    __tablename__ = "lace_social_posts"
+    __table_args__ = (
+        UniqueConstraint("lace_id", "platform", "url", name="uq_lace_social_posts_lace_id_platform_url"),
+        Index("ix_lace_social_posts_lace_id_posted_at", "lace_id", "posted_at"),
+        CheckConstraint(_one_of("platform", SOCIAL_PLATFORMS), name="platform"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Indexed by the unique constraint and the posted_at index, which lead with it.
+    lace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("laces.id", ondelete="CASCADE"), nullable=False)
+    platform: Mapped[str] = mapped_column(String(16), nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    views: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    likes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    comments: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    shares: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
+                                              server_default=func.now())
+
+
+class LaceSocialItem(Base):
+    """Something said to or about the founder on social media (a comment on
+    their post, a mention) that the Lace's listen kept, with what it is (a
+    lead, a question, feedback, praise) and where the founder is with it."""
+
+    __tablename__ = "lace_social_items"
+    __table_args__ = (
+        UniqueConstraint("lace_id", "platform", "key", name="uq_lace_social_items_lace_id_platform_key"),
+        Index("ix_lace_social_items_lace_id_status_said_at", "lace_id", "status", "said_at"),
+        CheckConstraint(_one_of("platform", SOCIAL_PLATFORMS), name="platform"),
+        CheckConstraint(_one_of("verdict", HEARD_KINDS), name="verdict"),
+        CheckConstraint(_one_of("status", HEARD_STATUSES), name="status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Indexed by the unique constraint and the status index, which lead with it.
+    lace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("laces.id", ondelete="CASCADE"), nullable=False)
+    platform: Mapped[str] = mapped_column(String(16), nullable=False)
+    # The platform's own id for it, else a digest of where and what was said: one row per thing said.
+    key: Mapped[str] = mapped_column(String(255), nullable=False)
+    author: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    said_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    verdict: Mapped[str] = mapped_column(String(12), nullable=False)
+    note: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    status: Mapped[str] = mapped_column(String(12), nullable=False, default="new", server_default="new")
+    run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("runs.id", ondelete="SET NULL"), nullable=True,
+                                                     index=True)
+    heard_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
+                                               server_default=func.now())
 
 
 class LaceDocument(Base):

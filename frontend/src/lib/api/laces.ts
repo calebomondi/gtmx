@@ -141,7 +141,13 @@ export interface ActionBlockDto {
   url?: string | null
 }
 
-export type UiBlockDto = QuestionBlockDto | CardBlockDto | SuggestionsBlockDto | ActionBlockDto
+/** The Lace asks which Page (or business account, or bot) it speaks for on a platform. */
+export interface LinkAccountBlockDto {
+  type: "link_account"
+  platform: InboxPlatform
+}
+
+export type UiBlockDto = QuestionBlockDto | CardBlockDto | SuggestionsBlockDto | ActionBlockDto | LinkAccountBlockDto
 
 export interface AttachmentDto {
   id: string
@@ -708,6 +714,8 @@ export interface LaceAppDto {
   /** This Lace may use it. */
   enabled: boolean
   settings: Record<string, string>
+  /** Connected, but no Page or business account is linked to this Lace yet. */
+  needs_link: boolean
 }
 
 export function listLaceApps(laceId: string): Promise<LaceAppDto[]> {

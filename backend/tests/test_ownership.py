@@ -9,6 +9,7 @@ from backend.app.api.v1.endpoints.lace_finds import router as finds_router
 from backend.app.api.v1.endpoints.lace_instructions import router as instructions_router
 from backend.app.api.v1.endpoints.lace_members import router as members_router
 from backend.app.api.v1.endpoints.lace_regulations import router as regulations_router
+from backend.app.api.v1.endpoints.lace_social import router as social_router
 from backend.app.api.v1.endpoints.laces import router as laces_router
 from backend.tests.helpers import make_user
 from backend.tests.test_lace_jobs import lace  # noqa: F401 -- fixture
@@ -22,7 +23,7 @@ def _lace_routes(lace_id: str) -> list[tuple[str, str]]:
     path parameters filled with random ids."""
     out = []
     for route in [*laces_router.routes, *members_router.routes, *finds_router.routes, *regulations_router.routes,
-                  *instructions_router.routes]:
+                  *instructions_router.routes, *social_router.routes]:
         if not route.path.startswith("/{lace_id}"):
             continue
         filled = _PARAM.sub(lambda m: lace_id if m[1] == "lace_id" else str(uuid.uuid4()), route.path)

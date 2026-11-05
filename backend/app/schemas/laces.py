@@ -398,6 +398,8 @@ class LaceAppResponse(BaseModel):
     connection_id: str | None = Field(default=None, description="To disconnect the Lace's own account")
     enabled: bool = Field(description="This Lace may use it")
     settings: dict[str, str] = Field(description="Its settings for this Lace, e.g. the Slack channel for the brief")
+    needs_link: bool = Field(default=False, description="Connected, but no Page or business account is linked to "
+                                                        "this Lace yet (Facebook, Instagram, Telegram)")
 
 
 class LaceAppUpdate(BaseModel):

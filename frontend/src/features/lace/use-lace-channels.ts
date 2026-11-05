@@ -39,13 +39,16 @@ export function useLaceChannels(laceId: string) {
     }
   }, [laceId])
 
-  const link = useCallback(async (platform: InboxPlatform, accountId: string) => {
+  /** Link one; true when it is linked. */
+  const link = useCallback(async (platform: InboxPlatform, accountId: string): Promise<boolean> => {
     try {
       const linked = await linkLaceChannel(laceId, platform, accountId)
       setChannels((prev) => [...prev, linked])
       setChoices(null)
+      return true
     } catch (err) {
       setError(message(err))
+      return false
     }
   }, [laceId])
 
