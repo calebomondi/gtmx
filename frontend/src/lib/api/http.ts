@@ -1,4 +1,4 @@
-import { getAccessToken } from "@/lib/supabase"
+import { getAccessToken, refreshAccessToken } from "@/lib/supabase"
 
 // ---------------------------------------------------------------------------
 // REST helpers
@@ -16,20 +16,25 @@ export class ApiError extends Error {
   }
 }
 
+/** Send with the user's token; when the API refuses it (expired, revoked), renew it once and send again. */
+async function fetchAuthed(path: string, init: RequestInit, headers: (token: string | null) => HeadersInit): Promise<Response> {
+  const token = await getAccessToken()
+  const response = await fetch(`${API_BASE}${path}`, { ...init, headers: headers(token) })
+  if (response.status !== 401 || !token) return response
+  const renewed = await refreshAccessToken()
+  return renewed ? fetch(`${API_BASE}${path}`, { ...init, headers: headers(renewed) }) : response
+}
+
 export async function apiFetch<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const token = await getAccessToken()
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      // A FormData body (a file upload) sets its own multipart boundary.
-      ...(init.body && !(init.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...init.headers,
-    },
-  })
+  const response = await fetchAuthed(path, init, (token) => ({
+    // A FormData body (a file upload) sets its own multipart boundary.
+    ...(init.body && !(init.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...init.headers,
+  }))
 
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`
@@ -56,11 +61,7 @@ export async function apiStream<T>(
   onItem: (item: T) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const token = await getAccessToken()
-  const response = await fetch(`${API_BASE}${path}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    signal,
-  })
+  const response = await fetchAuthed(path, { signal }, (token): HeadersInit => (token ? { Authorization: `Bearer ${token}` } : {}))
   if (!response.ok || !response.body) {
     throw new ApiError(response.status, `${response.status} ${response.statusText}`)
   }
