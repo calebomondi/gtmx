@@ -66,3 +66,11 @@ def test_an_app_read_by_handle_says_what_the_lace_can_read():
     assert "- X: read by the founder's public handle @mokuakaleb, nothing connected. How their posts did" in text
     assert "the replies themselves can't be read without connecting X" in text
     assert "- Not connected: HubSpot." in text
+
+
+def test_an_unlinked_page_account_says_to_ask_for_it():
+    fb = AppStatus(platform="facebook", label="Facebook", connected=True, enabled=True, account="shared",
+                   needs_link=True)
+    line = render_apps([fb]).splitlines()[1]
+    assert line == ("- Facebook: connected, but no Page is linked to you yet, so you can't read or post there. "
+                    "Ask the founder to pick one with ask_to_link.")

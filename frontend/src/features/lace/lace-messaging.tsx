@@ -2,7 +2,7 @@ import { useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { PenLine, Reply, Send, type LucideIcon } from "lucide-react"
 
-import type { ContactDto, OutreachChannel } from "@/lib/api"
+import type { ContactDto, InboxPlatform, OutreachChannel } from "@/lib/api"
 import { track } from "@/lib/events"
 
 import { MESSAGING_SECTIONS, type MessagingSection } from "./lace-activity-actions"
@@ -14,7 +14,9 @@ import { LacePanelTabs, PanelIntro, type PanelTab } from "./lace-panel-tabs"
 import { LaceThreads, type ThreadActions } from "./lace-threads"
 import { messagingAccounts, onAccount, type AccountKey } from "./messaging-accounts"
 import { groupThreads, inFolder, isUnread, outreachTally } from "./outreach-threads"
+import type { LaceApps } from "./use-lace-apps"
 import type { LaceChat } from "./use-lace-chat"
+import { LinkAccountCard } from "./link-account-card"
 import { useConnections } from "./use-connections"
 import { useSection } from "./use-lace-section"
 
@@ -33,7 +35,13 @@ function Stat({ icon: Icon, value, label }: { icon: LucideIcon; value: number; l
  * it, sub-tabs for that account's conversations (everything someone
  * answered), drafts to send, what was sent and awaits an answer, and the
  * contacts the Lace found. */
-export function LaceMessaging({ laceId, name, chat }: { laceId: string; name: string; chat: LaceChat }) {
+export function LaceMessaging({ laceId, name, chat, apps }: {
+  laceId: string
+  name: string
+  chat: LaceChat
+  apps: LaceApps
+}) {
+  const unlinked = (apps.apps ?? []).filter((a) => a.needs_link).map((a) => a.platform as InboxPlatform)
   const [section, setSection] = useSection<MessagingSection>(MESSAGING_SECTIONS)
   const [params, setParams] = useSearchParams()
   // The person open in a dialog (by id, so it follows the list as it updates).
@@ -129,6 +137,10 @@ export function LaceMessaging({ laceId, name, chat }: { laceId: string; name: st
         </div>
         <LaceAccountSwitcher laceId={laceId} name={name} accounts={accounts} value={account} onChange={selectAccount}
                              totalWaiting={chat.waiting} connections={connections} />
+        {unlinked.map((platform) => (
+          <LinkAccountCard key={platform} laceId={laceId} name={name} platform={platform}
+                           onLinked={() => void apps.refresh()} />
+        ))}
         <div className="grid grid-cols-3 gap-2">
           <Stat icon={PenLine} value={tally.drafts} label="To send" />
           <Stat icon={Send} value={tally.sent} label="Sent" />
