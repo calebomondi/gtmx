@@ -12,7 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from agents.lace.apps import AppError, AppStatus, CommentsOn, XRecord
 from backend.app.database.lace_models import Lace, LaceApp, LaceChannel
 from backend.app.services import connections as connection_service
-from backend.app.services import crm, lace_app_settings
+from backend.app.services import calendar, crm, lace_app_settings
+from backend.app.services.errors import ConflictError
 from backend.app.services.inbox import mail_text
 from backend.app.services.lace_channels import items
 from config import settings
@@ -30,6 +31,9 @@ EMAIL_RESULTS = 15
 THREAD_MESSAGES = 20
 EMAIL_CHARS = 2_000
 CALENDAR_EVENTS = 50
+# Free times offered when asked: how many, and at most how many a day.
+FREE_SLOTS = 8
+FREE_SLOTS_PER_DAY = 2
 X_MENTIONS = 20
 _GMAIL_SEARCH = "GMAIL_FETCH_EMAILS"
 _GMAIL_THREAD = "GMAIL_FETCH_MESSAGE_BY_THREAD_ID"
@@ -125,10 +129,18 @@ class DbLaceApps:
         data = await self._run(live, "googlecalendar", _CALENDAR_EVENTS, {
             "timeMin": now.isoformat(), "timeMax": (now + timedelta(days=days_ahead)).isoformat(),
             "singleEvents": True, "orderBy": "startTime", "maxResults": CALENDAR_EVENTS})
-        return [{"title": e.get("summary") or "(no title)", "start": _when(e.get("start")), "end": _when(e.get("end")),
-                 "attendees": [{"name": a.get("displayName"), "email": a.get("email")}
-                               for a in e.get("attendees") or [] if isinstance(a, dict) and not a.get("self")]}
-                for e in _listed(data, "items")[:CALENDAR_EVENTS]]
+        return [_meeting(e) for e in _listed(data, "items")[:CALENDAR_EVENTS]]
+
+    async def calendar_free_times(self, days: int, minutes: int) -> dict | None:
+        live = await self._personal("googlecalendar")
+        if live is None:
+            return None
+        try:
+            slots, tz = await asyncio.to_thread(calendar.read_free_slots, live.entity, live.connection_id, days, minutes,
+                                                FREE_SLOTS, FREE_SLOTS_PER_DAY)
+        except ConflictError as exc:
+            raise AppError(str(exc)) from exc
+        return {"timezone": tz, "slots": slots}
 
     async def x_mentions(self) -> list[dict] | None:
         live = await self._live("x")
@@ -457,3 +469,17 @@ def _listed(data, key: str) -> list[dict]:
 def _when(moment) -> str | None:
     """A calendar event's start or end: its time, or its date for all-day events."""
     return (moment.get("dateTime") or moment.get("date")) if isinstance(moment, dict) else None
+
+
+def _meeting(event: dict) -> dict:
+    """A calendar event with what preparing for it needs: when, where, how to
+    join, who organised it, and who else is invited and whether they said yes."""
+    entry = next((p.get("uri") for p in (event.get("conferenceData") or {}).get("entryPoints") or []
+                  if isinstance(p, dict) and p.get("entryPointType") == "video"), None)
+    return {"id": event.get("id"), "title": event.get("summary") or "(no title)", "start": _when(event.get("start")),
+            "end": _when(event.get("end")), "location": event.get("location"),
+            "join": event.get("hangoutLink") or entry,
+            "description": (event.get("description") or "")[:EMAIL_CHARS],
+            "organizer": (event.get("organizer") or {}).get("email"),
+            "attendees": [{"name": a.get("displayName"), "email": a.get("email"), "response": a.get("responseStatus")}
+                          for a in event.get("attendees") or [] if isinstance(a, dict) and not a.get("self")]}

@@ -61,7 +61,7 @@ def build_inbox_tools(apps: LaceApps) -> list[BaseTool]:
     @tool(parse_docstring=True)
     @guarded
     async def my_calendar(days_ahead: int = 7) -> ToolResult:
-        """The founder's Google Calendar from now: meetings and who they're with, to prepare for one, follow up on one, or know when they're busy. Read-only.
+        """The founder's Google Calendar from now: each meeting's time, place, join link, agenda, organizer, and who else is invited and whether they accepted, to prepare for one, follow up on one, or know when they're busy. Each has an id for reschedule_meeting and cancel_meeting.
 
         Args:
             days_ahead: How many days ahead to look (at most 30).
