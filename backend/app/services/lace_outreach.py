@@ -251,7 +251,7 @@ async def record_reading(db: AsyncSession, reply: LaceOutreach, intent: str, dra
         draft = LaceOutreach(lace_id=reply.lace_id, user_id=reply.user_id, account_id=reply.account_id, run_id=run_id,
                              channel=reply.channel, recipient_name=reply.recipient_name,
                              recipient_company=reply.recipient_company, recipient_address=reply.recipient_address,
-                             thread_id=reply.thread_id, body=draft_body)
+                             thread_id=reply.thread_id, mailbox=reply.mailbox, body=draft_body)
         db.add(draft)
     return draft
 

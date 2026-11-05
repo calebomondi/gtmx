@@ -17,7 +17,7 @@ from agents.schemas.listening import HEARD_KINDS, HEARD_STATUSES, SOCIAL_PLATFOR
 from agents.schemas.monitor import MOVE_IMPORTANCES, MOVE_KINDS
 from agents.schemas.opportunities import OPPORTUNITY_KINDS, OPPORTUNITY_STATUSES
 from agents.schemas.regulations import BILL_STAGES, JURISDICTION_MAX_LEN, JURISDICTION_PATTERN, REGULATION_KINDS, REGULATION_STATUSES
-from agents.schemas.lace import ACCOUNT_STATUSES, ACTIVITY_KINDS, ACTIVITY_REFS, APP_ACTION_STATUSES, CONTACT_SOURCES, LACE_ROLES, MEMBER_STATUSES, BRIEF_FREQUENCIES, CONTACT_STATUSES, INBOX_PLATFORMS, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, DEFAULT_WATCH_EVERY_H, FACT_ORIGINS, FACT_TOPICS, INSTRUCTION_CHARS, INSTRUCTION_SCOPES, WATCH_EVERY_H
+from agents.schemas.lace import ACCOUNT_STATUSES, ACTIVITY_KINDS, ACTIVITY_REFS, APP_ACTION_STATUSES, CONTACT_SOURCES, LACE_ROLES, MEMBER_STATUSES, BRIEF_FREQUENCIES, CONTACT_STATUSES, INBOX_PLATFORMS, MAILBOXES, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, DEFAULT_WATCH_EVERY_H, FACT_ORIGINS, FACT_TOPICS, INSTRUCTION_CHARS, INSTRUCTION_SCOPES, WATCH_EVERY_H
 from backend.app.database.connect import Base
 
 LACE_STATUSES = ("onboarding", "active", "archived")
@@ -78,6 +78,7 @@ class Lace(Base):
                         name="quiet_hours_range"),
         Index("uq_laces_domain", "domain", unique=True, postgresql_where=text("domain IS NOT NULL")),
         CheckConstraint(f"registered_in ~ '{JURISDICTION_PATTERN}'", name="registered_in_code"),
+        CheckConstraint(_one_of("send_from", MAILBOXES), name="send_from"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -115,6 +116,9 @@ class Lace(Base):
     operates_in: Mapped[list[str]] = mapped_column(ARRAY(String(JURISDICTION_MAX_LEN)), nullable=False,
                                                    default=list, server_default="{}")
     jurisdiction_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The mailbox new email goes from, when the founder picked one; NULL is
+    # the first connected (Gmail, then Outlook).
+    send_from: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # When the last brief was due, whether or not there was news for it.
     last_brief_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
@@ -409,6 +413,7 @@ class LaceOutreach(Base):
         CheckConstraint(_one_of("channel", OUTREACH_CHANNELS), name="channel"),
         CheckConstraint(_one_of("direction", OUTREACH_DIRECTIONS), name="direction"),
         CheckConstraint(_one_of("status", OUTREACH_STATUSES), name="status"),
+        CheckConstraint(_one_of("mailbox", MAILBOXES), name="mailbox"),
         Index("ix_lace_outreach_lace_id_status", "lace_id", "status"),
         Index("ix_lace_outreach_unread", "lace_id", postgresql_where=text("direction = 'inbound' AND read_at IS NULL")),
     )
@@ -425,6 +430,9 @@ class LaceOutreach(Base):
     direction: Mapped[str] = mapped_column(String(8), nullable=False, default="outbound", server_default="outbound")
     # The provider's thread (Gmail threadId): ties replies to what was sent.
     thread_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    # An email's mailbox (gmail, outlook): set when sent or received, and on a
+    # draft answering a thread, which must go out from the mailbox it is in.
+    mailbox: Mapped[str | None] = mapped_column(String(16), nullable=True)
     provider_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Composio log id of the send, for support/debugging.
     provider_log_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

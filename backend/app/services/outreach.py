@@ -54,19 +54,21 @@ def ensure_under_daily_cap(sent: int) -> None:
         )
 
 
-# The mail apps a Lace sends email through, in the order it picks them.
-EMAIL_APPS = ("gmail", "outlook")
+async def mailbox_for(db: AsyncSession, lace: Lace, message: models.LaceOutreach
+                      ) -> connection_service.ConnectionInfo | None:
+    """The mailbox an email goes from: the one its conversation is in (an
+    answer goes out from where it was received), else the one `lace` sends
+    new email from."""
+    if message.mailbox:
+        return await lace_app_settings.mailbox(db, lace, message.mailbox)
+    return await lace_app_settings.sending_mailbox(db, lace)
 
 
-async def email_account(db: AsyncSession, lace: Lace) -> connection_service.ConnectionInfo | None:
-    """The mailbox `lace` sends email from: its Gmail, else its Outlook (each
-    its own or the founder's shared one), if switched on for it."""
-    uses = await connection_service.for_lace(db, lace)
-    for platform in EMAIL_APPS:
-        account = uses.get(platform)
-        if account is not None and account.status == "live" and await lace_app_settings.enabled(db, lace, platform):
-            return account
-    return None
+def _no_mailbox(platform: str | None) -> str:
+    if platform is None:
+        return "Connect Gmail or Outlook (this Lace's settings) to send email."
+    return (f"This email goes from your {connection_service.label(platform)}: connect it, or switch it on for this "
+            "Lace, in its settings (Apps & accounts).")
 
 
 async def send_email(db: AsyncSession, message: models.LaceOutreach, lace: Lace):
@@ -83,9 +85,9 @@ async def send_email(db: AsyncSession, message: models.LaceOutreach, lace: Lace)
     if not (message.body or "").strip() or not (message.thread_id or (message.subject or "").strip()):
         raise InvalidInputError("Add a subject and a message before sending.")
     ensure_under_daily_cap(await sends_today(db, message.user_id))
-    mailbox = await email_account(db, lace)
+    mailbox = await mailbox_for(db, lace, message)
     if mailbox is None:
-        raise ConflictError("Connect Gmail or Outlook (this Lace's settings) to send email.")
+        raise ConflictError(_no_mailbox(message.mailbox or lace.send_from))
     if mailbox.platform == "outlook":
         answering, subject = await _outlook_thread(db, message)
         send = functools.partial(_send_outlook, mailbox, message, answering, subject)
@@ -94,7 +96,7 @@ async def send_email(db: AsyncSession, message: models.LaceOutreach, lace: Lace)
     label = connection_service.label(mailbox.platform)
 
     # Claim the message before the network call, so a double click can't send twice.
-    message.status, message.error = "sending", None
+    message.status, message.error, message.mailbox = "sending", None, mailbox.platform
     await db.commit()
     try:
         sent = await asyncio.to_thread(send)

@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agents.schemas.lace import INBOX_PLATFORMS
+from agents.schemas.lace import INBOX_PLATFORMS, MAILBOXES, Mailbox
 from backend.app.database.lace_models import Lace, LaceApp, LaceChannel
 from backend.app.services import connections as connection_service
 from functools import partial
@@ -51,6 +51,35 @@ async def enabled(db: AsyncSession, lace: Lace, platform: str) -> bool:
     return row.enabled if row is not None else True
 
 
+async def mailbox(db: AsyncSession, lace: Lace, platform: str,
+                  uses: dict[str, connection_service.ConnectionInfo] | None = None
+                  ) -> connection_service.ConnectionInfo | None:
+    """`lace`'s live account for mail app `platform`, if switched on for it."""
+    account = (uses if uses is not None else await connection_service.for_lace(db, lace)).get(platform)
+    if account is None or account.status != "live" or not await enabled(db, lace, platform):
+        return None
+    return account
+
+
+async def sending_mailbox(db: AsyncSession, lace: Lace,
+                          uses: dict[str, connection_service.ConnectionInfo] | None = None
+                          ) -> connection_service.ConnectionInfo | None:
+    """The mailbox `lace` sends new email from: the one the founder picked
+    (and no other, so mail never goes from an account they didn't choose),
+    else its Gmail, else its Outlook; its own or the founder's shared one."""
+    uses = uses if uses is not None else await connection_service.for_lace(db, lace)
+    for platform in ((lace.send_from,) if lace.send_from else MAILBOXES):
+        if (account := await mailbox(db, lace, platform, uses)) is not None:
+            return account
+    return None
+
+
+async def set_send_from(db: AsyncSession, lace: Lace, platform: Mailbox | None) -> None:
+    """Pick the mailbox new email goes from; None goes back to the first connected."""
+    lace.send_from = platform
+    await db.commit()
+
+
 async def list_for_lace(db: AsyncSession, lace: Lace) -> list[dict]:
     """Every app, with the account this Lace uses for it (its own, or the
     founder's shared one), whether this Lace may use it, and its settings
@@ -58,6 +87,7 @@ async def list_for_lace(db: AsyncSession, lace: Lace) -> list[dict]:
     rows = {r.platform: r for r in (await db.scalars(select(LaceApp).where(LaceApp.lace_id == lace.id))).all()}
     connected = await connection_service.for_lace(db, lace)
     linked = set((await db.scalars(select(LaceChannel.platform).where(LaceChannel.lace_id == lace.id))).all())
+    sender = await sending_mailbox(db, lace, connected)
     out = []
     for app in connection_service.APPS:
         row, live = rows.get(app.platform), connected.get(app.platform)
@@ -73,6 +103,7 @@ async def list_for_lace(db: AsyncSession, lace: Lace) -> list[dict]:
             # business accounts yet: the founder picks one (Social, or here).
             "needs_link": app.platform in INBOX_PLATFORMS and live is not None and live.status == "live"
                           and app.platform not in linked,
+            "sends_email": sender is not None and sender.platform == app.platform,
         })
     return out
 

@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from agents.schemas.lace_ui import BlockAnswer, UiBlock
 from agents.schemas.monitor import MoveImportance, MoveKind
 from agents.schemas.opportunities import OpportunityKind, OpportunityStatus
-from agents.schemas.lace import AppActionStatus, DismissReason, LaceRole, WatchEvery, AccountStatus, ActivityKind, ActivityRef, ContactSource, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
+from agents.schemas.lace import AppActionStatus, DismissReason, LaceRole, WatchEvery, AccountStatus, ActivityKind, ActivityRef, ContactSource, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, Mailbox, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
 
 
 def known_zone(value: str | None) -> str | None:
@@ -258,6 +258,8 @@ class OutreachResponse(BaseModel):
     subject: str | None
     body: str
     thread_id: str | None = Field(description="Set on sent emails, replies and answers in their thread")
+    mailbox: Mailbox | None = Field(default=None, description="An email's mailbox: where it went out from or came "
+                                                              "in to; on a draft answer, the one it will go from")
     intent: str | None = Field(description="inbound only: how the reply was read, e.g. interested, question")
     error: str | None
     sent_at: datetime | None
@@ -401,6 +403,11 @@ class LaceAppResponse(BaseModel):
     settings: dict[str, str] = Field(description="Its settings for this Lace, e.g. the Slack channel for the brief")
     needs_link: bool = Field(default=False, description="Connected, but no Page or business account is linked to "
                                                         "this Lace yet (Facebook, Instagram, Telegram)")
+    sends_email: bool = Field(default=False, description="The mailbox this Lace sends new email from")
+
+
+class SendFromUpdate(BaseModel):
+    mailbox: Mailbox | None = Field(description="The mailbox new email goes from; null: the first connected")
 
 
 class LaceAppUpdate(BaseModel):

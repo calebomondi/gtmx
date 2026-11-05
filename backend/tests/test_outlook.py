@@ -112,4 +112,54 @@ def test_replies_sync_from_outlook(client, lace, lace_runtime, user, monkeypatch
         async with AsyncSessionLocal() as db:
             return await inbox.sync_user(db, user.id)
     result = client.portal.call(sync)
-    assert [(r.body, r.recipient_address) for r in result.replies] == [("What does it cost?", "jane@alpha.test")]
+    assert [(r.body, r.recipient_address, r.mailbox) for r in result.replies] == [
+        ("What does it cost?", "jane@alpha.test", "outlook")]
+
+
+def _sending(client, lace) -> list[str]:
+    return [a["platform"] for a in client.get(f"{API}/laces/{lace}/apps").json() if a["sends_email"]]
+
+
+def test_the_founder_picks_the_mailbox_new_email_goes_from(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    calls = _outlook(monkeypatch)
+    stub_accounts(monkeypatch, {"gmail", "outlook"})
+    assert _sending(client, lace) == ["gmail"]  # nothing picked: Gmail first
+    picked = client.put(f"{API}/laces/{lace}/send-from", json={"mailbox": "outlook"})
+    assert [a["platform"] for a in picked.json() if a["sends_email"]] == ["outlook"]
+    message = _message(lace, user.id)
+    sent = client.post(f"{API}/laces/{lace}/outreach/{message}/send").json()
+    assert (sent["status"], sent["mailbox"], calls[0][0]) == ("sent", "outlook", "OUTLOOK_SEND_EMAIL")
+    assert client.put(f"{API}/laces/{lace}/send-from", json={"mailbox": None}).status_code == 200
+    assert _sending(client, lace) == ["gmail"]
+    assert client.put(f"{API}/laces/{lace}/send-from", json={"mailbox": "yahoo"}).status_code == 422
+
+
+def test_a_picked_mailbox_that_is_gone_is_never_swapped(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    calls = _outlook(monkeypatch)
+    stub_accounts(monkeypatch, {"gmail", "outlook"})
+    client.put(f"{API}/laces/{lace}/send-from", json={"mailbox": "outlook"})
+    stub_accounts(monkeypatch, {"gmail"})
+    refused = client.post(f"{API}/laces/{lace}/outreach/{_message(lace, user.id)}/send")
+    assert refused.status_code == 409 and "your Outlook" in refused.json()["detail"]
+    assert calls == [] and _sending(client, lace) == []
+
+
+def test_an_answer_goes_from_the_mailbox_its_conversation_is_in(client, lace, lace_runtime, user,  # noqa: F811
+                                                                monkeypatch):
+    calls = _outlook(monkeypatch)
+    stub_accounts(monkeypatch, {"gmail", "outlook"})
+    client.put(f"{API}/laces/{lace}/send-from", json={"mailbox": "outlook"})
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        answer = conn.execute("INSERT INTO lace_outreach (id, lace_id, user_id, channel, thread_id, mailbox,"
+                              " recipient_address, body, status) VALUES (%s, %s, %s, 'email', 't_gmail', 'gmail',"
+                              " 'jane@alpha.test', 'From $20.', 'draft') RETURNING id",
+                              (uuid.uuid4(), lace, user.id)).fetchone()[0]
+    assert client.post(f"{API}/laces/{lace}/outreach/{answer}/send").json()["mailbox"] == "gmail"
+    assert calls[0][0] == "GMAIL_REPLY_TO_THREAD"
+
+
+def test_only_the_laces_admins_pick_its_mailbox(client, lace, lace_runtime, monkeypatch):  # noqa: F811
+    from backend.tests.helpers import make_user
+    stub_accounts(monkeypatch, {"gmail", "outlook"})
+    client.sign_in(make_user("Intruder"))
+    assert client.put(f"{API}/laces/{lace}/send-from", json={"mailbox": "outlook"}).status_code == 404
