@@ -9,6 +9,7 @@ from agents.lace.apps import AppError
 from agents.lace.sheets import number, sheet_id, summarise
 from agents.lace.tools import build_tools
 from agents.schemas.lace import AccountSummary
+from lace_fakes import MemoryStore
 
 URL = "https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit#gid=0"
 PIPELINE = [["Company", "Stage", "Value"],
@@ -18,6 +19,12 @@ PIPELINE = [["Company", "Stage", "Value"],
 class Apps:
     def __init__(self, sheet=None, error=None):
         self.result, self.error, self.asked = sheet, error, []
+
+    async def sheet_search(self, name):
+        self.asked.append(name)
+        if self.error:
+            raise AppError(self.error)
+        return self.result
 
     async def sheet(self, spreadsheet_id, tab):
         self.asked.append((spreadsheet_id, tab))
@@ -91,3 +98,30 @@ async def test_an_export_is_a_proposal_with_a_preview(store, settings):
 async def test_nothing_to_export_proposes_nothing(store, settings):
     out = await _run(_tools(store, settings, Apps())["export_to_sheet"], what="contacts")
     assert not out["ok"] and "no saved contacts" in out["error"] and store.proposed == []
+
+
+async def test_a_sheet_is_found_by_name(settings):
+    found = [{"id": "s1", "name": "Antler application", "url": "https://docs.google.com/spreadsheets/d/s1",
+              "modified": "2026-11-01"}]
+    apps = Apps(sheet=found)
+    out = await _run(_tools(MemoryStore(), settings, apps)["search_sheets"], name="  Antler   application ")
+    assert out["summary"] == "1 spreadsheets match, newest first." and apps.asked == ["Antler application"]
+    none = await _run(_tools(MemoryStore(), settings, Apps(sheet=[]))["search_sheets"], name="Antler")
+    assert "Ask the founder for its link" in none["summary"]
+    no_drive = await _run(_tools(MemoryStore(), settings, Apps(error="Google Sheets is connected without every permission it needs."))
+                          ["search_sheets"], name="Antler")
+    assert not no_drive["ok"] and "without every permission" in no_drive["summary"]
+
+
+async def test_writing_to_a_sheet_is_proposed(settings):
+    store = MemoryStore()
+    tools = _tools(store, settings, Apps())
+    out = await _run(tools["update_sheet"], sheet_url=URL, rows=[["Acme", "lead"], ["", ""]], tab="Pipeline")
+    assert out["ok"]
+    [action] = store.proposed
+    assert (action.app, action.action) == ("googlesheets", "write")
+    assert action.arguments == {"spreadsheet_id": sheet_id(URL), "rows": [["Acme", "lead"]], "tab": "Pipeline",
+                                "range": None}
+    assert action.preview.startswith("1 rows after the last row of Pipeline:")
+    bad = await _run(tools["update_sheet"], sheet_url="https://example.com", rows=[["x"]])
+    assert not bad["ok"] and "isn't a Google Sheets link" in bad["summary"]

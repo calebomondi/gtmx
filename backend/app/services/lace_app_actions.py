@@ -57,8 +57,6 @@ class RunContext:
 
 Runner = Callable[[RunContext, dict], Awaitable[Outcome]]
 RUNNERS: dict[tuple[str, str], Runner] = {}
-# Characters of an app's own error said back to the founder.
-ERROR_CHARS = 200
 
 
 async def call(ctx: RunContext, tool: str, arguments: dict) -> dict:
@@ -66,8 +64,7 @@ async def call(ctx: RunContext, tool: str, arguments: dict) -> dict:
     ActionFailed with the app's reason."""
     result = await asyncio.to_thread(connection_service.execute_tool, ctx.entity, tool, arguments, ctx.connection_id)
     if result.get("error"):
-        reason = str(result["error"])[:ERROR_CHARS]
-        raise ActionFailed(f"{connection_service.label(ctx.app)} refused it: {reason}")
+        raise ActionFailed(connection_service.refusal(ctx.app, result["error"]))
     return {"data": result.get("data"), "log_id": result.get("log_id")}
 
 
