@@ -35,6 +35,8 @@ class AppStatus(BaseModel):
     # "own": this Lace's own account; "shared": the founder's, shared by their Laces.
     account: Literal["own", "shared"] | None = None
     account_name: str | None = None
+    # The founder's public handle saved for it (X, TikTok): read without connecting.
+    handle: str | None = None
 
 
 class LaceApps(Protocol):
@@ -57,6 +59,13 @@ class LaceApps(Protocol):
     async def x_mentions(self) -> list[dict] | None:
         """Recent posts on X mentioning the founder's connected account:
         {author, handle, text, date, url}. None when X isn't on. Raises AppError."""
+        ...
+
+    async def tiktok_comments(self, videos: int) -> list[dict] | None:
+        """Comments on the founder's newest TikTok videos that have any, read
+        by their public handle: [{url, caption, comments: [{author, text,
+        date, likes}]}]. None when no TikTok handle is saved. Slow (minutes).
+        Raises AppError when the read fails."""
         ...
 
     async def overview(self) -> list[AppStatus]:

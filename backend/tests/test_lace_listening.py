@@ -93,3 +93,29 @@ def test_a_lace_listened_to_recently_is_not_due(client, lace, user):  # noqa: F8
         conn.execute("INSERT INTO runs (id, user_id, lace_id, kind, status) VALUES (%s, %s, %s, 'lace_listening',"
                      " 'completed')", (uuid.uuid4(), user.id, lace))
     assert client.portal.call(due) == []
+
+
+def test_tiktok_comments_and_x_posts_are_read_by_handle(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    _apps(monkeypatch)
+
+    async def tiktok(self, videos):
+        return [{"url": "https://tiktok.com/@acme/video/1", "caption": "Launch",
+                 "comments": [{"author": "farmer_joe", "text": "Can my clinic use this?", "date": NOW.isoformat()}]}]
+
+    async def posts(self, platform):
+        return [{"url": "https://x.com/acme/status/2", "date": NOW.isoformat(), "views": 900, "likes": 12,
+                 "replies": 3, "reposts": 1},
+                {"url": "https://x.com/acme/status/1", "date": (NOW - timedelta(days=30)).isoformat(), "views": 5,
+                 "likes": 0, "replies": 0, "reposts": 0}]
+    monkeypatch.setattr(DbLaceApps, "tiktok_comments", tiktok)
+    monkeypatch.setattr(DbLaceApps, "my_posts", posts)
+    _sorted(monkeypatch)
+    lace_runtime.append(AIMessage(content="A clinic asked on TikTok."))
+    run = client.portal.call(manager.start_lace_job, "lace_listening", user.id, uuid.UUID(lace), {"scheduled": True})
+    client.portal.call(_wait_for_status, run.id, {"completed"})
+    update = client.portal.call(_wait_for_turns, lace, 1)[-1].input["updates"][0]
+    assert update.startswith("Listened on TikTok, X: 1 new mention or comment.")
+    assert "- [TikTok] @farmer_joe: about farmer_joe (https://tiktok.com/@acme/video/1)" in update
+    # Only the post since the last listen, with its engagement; replies are counted, not read.
+    assert "- https://x.com/acme/status/2: 900 views, 12 likes, 3 replies, 1 reposts" in update
+    assert "status/1" not in update and "replies are counted, not readable" in update

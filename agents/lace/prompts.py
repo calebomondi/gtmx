@@ -345,11 +345,22 @@ APP_USES = {
 }
 
 
+# What the Lace reads from a public handle saved in its settings, with nothing connected.
+HANDLE_USES = {
+    "x": ("how their posts did and how many replies each got (how_my_posts_did, and the daily listen); the replies "
+          "themselves can't be read without connecting X"),
+    "tiktok": "how their videos did (how_my_posts_did) and their comments (read_tiktok_comments, and the daily listen)",
+}
+
+
 def render_apps(apps: list[AppStatus]) -> str:
     """What the Lace is told about the founder's apps, so it never claims one
     is connected, or not, without checking."""
     lines = []
     for app in apps:
+        if not app.connected and app.handle and app.platform in HANDLE_USES:
+            lines.append(f"- {app.label}: read by the founder's public handle @{app.handle}, nothing connected. "
+                         f"{HANDLE_USES[app.platform][:1].upper()}{HANDLE_USES[app.platform][1:]}.")
         if not app.connected:
             continue
         whose = "this Lace's own account" if app.account == "own" else "the founder's shared account"
@@ -363,7 +374,7 @@ def render_apps(apps: list[AppStatus]) -> str:
         else:
             uses = APP_USES.get(app.platform, "")
             lines.append(f"- {app.label}: on, {whose}{name}." + (f" {uses[:1].upper()}{uses[1:]}." if uses else ""))
-    missing = [app.label for app in apps if not app.connected]
+    missing = [app.label for app in apps if not app.connected and not (app.handle and app.platform in HANDLE_USES)]
     if missing:
         lines.append(f"- Not connected: {', '.join(missing)}. The founder connects apps in this Lace's settings, "
                      "under Apps & accounts.")

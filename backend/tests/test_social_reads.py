@@ -71,8 +71,8 @@ async def test_the_comments_job_reads_videos_with_comments(monkeypatch):
     lace_id = _lace()
     _handle(lace_id, "tiktok", "shanga.labs")
     quiet = {**VIDEO, "url": "https://tiktok.com/@shanga.labs/video/8", "comments": None}
-    monkeypatch.setattr(social_jobs.tiktok, "recent_videos", lambda *a: [quiet, VIDEO])
-    monkeypatch.setattr(social_jobs.tiktok, "video_comments",
+    monkeypatch.setattr(lace_apps, "tiktok_videos", lambda *a: [quiet, VIDEO])
+    monkeypatch.setattr(lace_apps, "tiktok_comments",
                         lambda url, cfg, t: [{"author": "farmer_joe", "text": "What does it cost?", "date": None,
                                               "likes": 2}])
     await social_jobs.tiktok_comments_job(_run(lace_id), lace_id, {"videos": 3})

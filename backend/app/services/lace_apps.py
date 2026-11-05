@@ -19,6 +19,7 @@ from config import settings
 from data_sources.socials import x_api
 from data_sources.socials.brightdata import SocialsError
 from data_sources.socials.tiktok import recent_videos as tiktok_videos
+from data_sources.socials.tiktok import video_comments as tiktok_comments
 from data_sources.socials.x import recent_posts as x_posts
 from utils.log import logger
 
@@ -158,8 +159,9 @@ class DbLaceApps:
             raise AppError(f"apps unavailable ({type(exc).__name__})") from exc
         return [AppStatus(platform=a["platform"], label=a["label"], connected=a["status"] is not None,
                           needs_attention=a["status"] is not None and not a["connected"], enabled=a["enabled"],
-                          account=a["account"], account_name=a["account_name"])
-                for a in listed if a["available"]]
+                          account=a["account"], account_name=a["account_name"],
+                          handle=(a["settings"] or {}).get("handle"))
+                for a in listed if a["available"] or (a["settings"] or {}).get("handle")]
 
     async def _live(self, platform: str) -> _Live | None:
         """The live account this Lace uses for `platform`, if any."""
@@ -338,6 +340,21 @@ class DbLaceApps:
             logger.warning("Reading %s's %s posts failed: %s", handle, platform, exc)
             raise AppError(f"Couldn't read @{handle} on {connection_service.label(platform)} just now; try again later.") \
                 from exc
+
+    async def tiktok_comments(self, videos: int) -> list[dict] | None:
+        handle = await self.handle("tiktok")
+        if handle is None:
+            return None
+        try:
+            listed = await asyncio.to_thread(tiktok_videos, handle, settings, settings.social_read_timeout_s)
+            chosen = [v for v in listed if (v["comments"] or 0) > 0][:videos]
+            read = await asyncio.gather(*(asyncio.to_thread(tiktok_comments, v["url"], settings,
+                                                            settings.tiktok_comments_timeout_s) for v in chosen))
+        except SocialsError as exc:
+            logger.warning("Reading @%s's TikTok comments failed: %s", handle, exc)
+            raise AppError(f"Couldn't read @{handle}'s TikTok comments just now; try again later.") from exc
+        return [{"url": v["url"], "caption": v["text"], "comments": comments[:COMMENTS_PER_POST]}
+                for v, comments in zip(chosen, read)]
 
     async def handle(self, platform: str) -> str | None:
         """The founder's own handle on `platform`, as saved in the Lace's settings."""

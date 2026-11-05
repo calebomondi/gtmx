@@ -58,3 +58,11 @@ async def test_without_the_list_the_turn_goes_on(settings):
     await build_lace_graph(MemoryStore(), settings=settings, apps=Apps(fails=True), model_step=model).ainvoke(
         {"messages": [HumanMessage(content="hi")]}, {"configurable": {"thread_id": "t"}})
     assert not any(n.startswith("Your apps") for n in _notes(model))
+
+
+def test_an_app_read_by_handle_says_what_the_lace_can_read():
+    x = AppStatus(platform="x", label="X", connected=False, enabled=True, handle="mokuakaleb")
+    text = render_apps([x, HUBSPOT])
+    assert "- X: read by the founder's public handle @mokuakaleb, nothing connected. How their posts did" in text
+    assert "the replies themselves can't be read without connecting X" in text
+    assert "- Not connected: HubSpot." in text
