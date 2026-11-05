@@ -332,7 +332,7 @@ APP_USES = {
     "instagram": ("comments on their posts (read_my_comments), messages to the linked account, and a daily "
                   "listen for leads and feedback (listen_now)"),
     "facebook": ("posts on the linked Page you propose, comments on its posts, its messages, and a daily listen "
-                 "(listen_now); all need the Page this Lace speaks for linked under Messaging → Inboxes"),
+                 "(listen_now); all need the Page this Lace speaks for linked (ask_to_link)"),
     "x": ("posts and replies you propose (post_on_social, engage_on_x); profiles and posts read, and who "
           "mentions them (my_x_mentions), and a daily listen (listen_now)"),
     "tiktok": "how their videos did (how_my_posts_did) and their comments (read_tiktok_comments)",
@@ -371,6 +371,10 @@ def render_apps(apps: list[AppStatus]) -> str:
         if app.needs_attention:
             lines.append(f"- {app.label}: connected{name} but needs the founder to sign in again in this Lace's "
                          "settings (Apps & accounts); until then you can't use it.")
+        elif app.needs_link:
+            what = {"facebook": "Page", "instagram": "business account", "telegram": "bot"}.get(app.platform, "account")
+            lines.append(f"- {app.label}: connected{name}, but no {what} is linked to you yet, so you can't read or "
+                         f"post there. Ask the founder to pick one with ask_to_link.")
         elif not app.enabled:
             lines.append(f"- {app.label}: connected{name} but switched off for you in this Lace's settings; you "
                          "can't use it until the founder switches it on.")

@@ -12,6 +12,7 @@ from agents.lace.apps import AppError, CommentsOn, LaceApps, PublicFeed
 from agents.lace.social_stats import summarise_posts
 from agents.lace.store import LaceStore
 from agents.lace.tool_guard import guarded
+from agents.schemas.lace_ui import LinkAccountBlock
 from agents.schemas.lace import ProposedAction, ToolResult
 from data_sources.socials import x_api
 from data_sources.socials.read import classify
@@ -129,4 +130,17 @@ def build_social_tools(store: LaceStore, apps: LaceApps) -> list[BaseTool]:
             return ToolResult.success(f"No comments on their last {posts} {LABELS[platform]} posts.", [])
         return ToolResult.success(f"{len(comments)} comments on their recent {LABELS[platform]} posts.", comments)
 
-    return [post_on_social, reply_to_comment, engage_on_x, read_my_comments, how_my_posts_did]
+    @tool(parse_docstring=True)
+    @guarded
+    async def ask_to_link(platform: Literal["instagram", "facebook", "telegram"]) -> ToolResult:
+        """Ask the founder to pick the Facebook Page, Instagram business account or Telegram bot you speak for, when it's connected but not linked to you (your apps list says so, or reading or posting there failed for that reason). Shows them their accounts to pick from under your reply.
+
+        Args:
+            platform: Which platform's account to link.
+        """
+        what = {"facebook": "Page", "instagram": "business account", "telegram": "bot"}[platform]
+        block = LinkAccountBlock(platform=platform)
+        return ToolResult.success(f"Asked them to pick the {LABELS.get(platform, platform.title())} {what} you speak "
+                                  "for, under your reply. Say so in a line and stop.", {"ui": [block.model_dump()]})
+
+    return [post_on_social, reply_to_comment, engage_on_x, read_my_comments, how_my_posts_did, ask_to_link]

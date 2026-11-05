@@ -88,7 +88,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
     setSettingsOpen(true)
   }
   // The apps load with the settings and the chat, whose quick asks come from them.
-  const apps = useLaceApps(laceId, settingsOpen || tab === "chat")
+  const apps = useLaceApps(laceId, settingsOpen || tab === "chat" || tab === "messaging")
   const asks = quickAsks(apps.apps)
   const askApp = (text: string) => {
     track("quick_ask_used", { detail: asks.find((a) => a.text === text)?.label, laceId })
@@ -184,7 +184,7 @@ function LaceWorkspace({ laceId, tab }: { laceId: string; tab: LaceTab }) {
             <LaceFeed laceId={laceId} name={name} chat={chat} activity={activity} opps={opps} regulations={regulations} apps={apps} onOpen={open}
                       onDiscuss={discuss} />
           )}
-          {tab === "messaging" && <LaceMessaging laceId={laceId} name={name} chat={chat} />}
+          {tab === "messaging" && <LaceMessaging laceId={laceId} name={name} chat={chat} apps={apps} />}
         </main>
       </div>
       <LaceTabBar {...nav} className="md:hidden" />

@@ -79,3 +79,10 @@ async def test_comments_on_own_posts_are_read_through_the_apps(store, settings):
     failed = await _run(_tools(store, settings, Apps(error="Instagram refused it (rate limit)"))["read_my_comments"],
                         platform="instagram")
     assert failed["error"] == "Instagram refused it (rate limit)"
+
+
+async def test_asking_to_link_a_page_shows_the_picker(store, settings):
+    tool = {t.name: t for t in build_tools(store, settings, apps=Apps())}["ask_to_link"]
+    out = json.loads(await tool.ainvoke({"platform": "facebook"}))
+    assert out["ok"] and out["data"]["ui"] == [{"type": "link_account", "platform": "facebook"}]
+    assert "Facebook Page" in out["summary"]
