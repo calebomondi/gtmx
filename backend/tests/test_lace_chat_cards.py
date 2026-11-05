@@ -182,3 +182,20 @@ def test_suggested_replies_stay_under_the_reply(client, lace, lace_runtime, monk
     # Written from the founder's question and what's on file, after the answer.
     [(answer, asked, situation)] = written
     assert answer.startswith("Hamtech sells") and asked == "who are Hamtech?" and "Leads saved" in situation
+
+def test_any_tools_cards_reach_the_reply():
+    """A proposal from any app (Slack, a calendar meeting, a sheet write)
+    shows under the reply, not only the social ones; a list result or a
+    failure adds nothing."""
+    import json as _json
+    from langchain_core.messages import ToolMessage
+    card = {"type": "action", "id": "a1", "app": "googlecalendar", "title": "Add \"Demo\"", "preview": "", "status": "proposed"}
+    proposal = ToolMessage(content=_json.dumps({"ok": True, "summary": "Proposed", "data": {"ui": [card]}}),
+                           tool_call_id="c1", name="schedule_meeting")
+    listing = ToolMessage(content=_json.dumps({"ok": True, "summary": "2 events", "data": [{"title": "x"}]}),
+                          tool_call_id="c2", name="my_calendar")
+    failed = ToolMessage(content=_json.dumps({"ok": False, "summary": "no", "data": {"ui": [card]}}),
+                         tool_call_id="c3", name="post_to_slack")
+    from backend.app.runs import lace as lace_runs
+    assert lace_runs._ui_blocks(proposal) == [card]
+    assert lace_runs._ui_blocks(listing) == [] and lace_runs._ui_blocks(failed) == []
