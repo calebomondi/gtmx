@@ -39,6 +39,8 @@ export interface PilotSpots {
   left: number
   /** When the current cohort starts, as YYYY-MM-DD. */
   starts_on: string
+  /** How soon the team emails a pilot signup, in words: "24 hours". */
+  contact_within: string
 }
 
 export const EXPECTATIONS_MAX_CHARS = 500

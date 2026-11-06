@@ -17,6 +17,14 @@ def _day(day: date) -> str:
     return f"{day:%B} {day.day}"
 
 
+def contact_within() -> str:
+    """How soon the team emails a pilot signup, in words: "24 hours", "3 days"."""
+    hours = settings.waitlist_pilot_contact_hours
+    if hours >= 48 and hours % 24 == 0:
+        return f"{hours // 24} days"
+    return "1 hour" if hours == 1 else f"{hours} hours"
+
+
 def _pilot_when(today: date) -> str:
     """When the current cohort starts, said as of `today`."""
     starts = settings.waitlist_pilot_starts_on
@@ -46,7 +54,7 @@ def pilot(today: date | None = None) -> tuple[str, str, str]:
     today = today or datetime.now(UTC).date()
     paragraphs = [
         "You're in line for the Thalace pilot.",
-        f"{_pilot_when(today)} Within {settings.waitlist_pilot_contact_days} days we'll email you to set up your "
+        f"{_pilot_when(today)} Within {contact_within()} we'll email you to set up your "
         "Lace.",
         "Pilots get their own Lace free, talk to the team directly, and shape what Lace learns next. All we ask "
         "is your feedback and suggestions as you use it: what works, what doesn't, and what you wish it did.",

@@ -28,7 +28,7 @@ async def join_waitlist(payload: WaitlistJoin, request: Request, background: Bac
     if payload.nickname:
         # A bot filled the hidden field: answer like a success, save nothing.
         return WaitlistJoined(token=secrets.token_urlsafe(32), pilot_spots_left=spots.left)
-    signup, token, _created = await waitlist_service.join(db, str(payload.email), payload.source, _client_ip(request))
+    signup, token = await waitlist_service.join(db, str(payload.email), payload.source, _client_ip(request))
     background.add_task(waitlist_service.send_joined_email, signup.id)
     return WaitlistJoined(token=token, pilot_spots_left=spots.left)
 

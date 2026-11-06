@@ -76,3 +76,25 @@ async def approve_signup(db: AsyncSession, actor, signup_id: uuid.UUID) -> model
     await db.commit()
     await db.refresh(signup)
     return signup
+
+
+async def remove_signup(db: AsyncSession, actor, signup_id: uuid.UUID) -> models.WaitlistSignup:
+    """Take a waitlist signup off the pilot: their pilot request is dropped
+    (freeing a spot) and their email leaves the guest list. They stay on the
+    waitlist, and someone already on a Lace keeps using it."""
+    signup = await db.get(models.WaitlistSignup, signup_id)
+    if signup is None:
+        raise NotFoundError("Signup not found")
+    access = await db.scalar(select(_P).where(_P.email == normalized(signup.email)))
+    if not signup.wants_pilot and access is None:
+        return signup
+    before = {"email": signup.email, "wants_pilot": signup.wants_pilot, "pilot_access": access is not None}
+    signup.wants_pilot = False
+    if access is not None:
+        await db.delete(access)
+    await record_audit(db, actor_id=actor.id, actor_email=actor.email, action="pilot.remove_signup",
+                       target_type="waitlist_signup", target_id=str(signup_id), before=before,
+                       after={"email": signup.email, "wants_pilot": False, "pilot_access": False})
+    await db.commit()
+    await db.refresh(signup)
+    return signup

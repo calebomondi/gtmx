@@ -23,3 +23,10 @@ def test_the_pilot_email_says_the_pilot_is_running_once_it_started(monkeypatch):
     _, after, _ = waitlist_emails.pilot(today=date(2026, 10, 30))
     assert "starts October 24" in before and "set up your Lace" in before
     assert "has been running since October 24" in after
+
+
+def test_the_pilot_email_says_how_soon_the_team_writes(monkeypatch):
+    monkeypatch.setattr(settings, "waitlist_pilot_contact_hours", 24)
+    assert "Within 24 hours we'll email you" in waitlist_emails.pilot()[1]
+    monkeypatch.setattr(settings, "waitlist_pilot_contact_hours", 72)
+    assert "Within 3 days we'll email you" in waitlist_emails.pilot()[1]

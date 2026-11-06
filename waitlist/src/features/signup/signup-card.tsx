@@ -43,8 +43,8 @@ export function SignupCard({
         </>
       )}
       {signup.step === 'done' && (
-        <div className="rounded-xl border border-line bg-panel p-5 sm:p-6">
-          <DoneStep email={signup.email} wantsPilot={signup.wantsPilot} />
+        <div className="rounded-xl border border-kept/30 bg-kept-soft p-5 sm:p-6">
+          <DoneStep email={signup.email} wantsPilot={signup.wantsPilot} contactWithin={pilot?.contact_within ?? null} />
         </div>
       )}
     </div>
