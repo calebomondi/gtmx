@@ -60,6 +60,7 @@ class PilotSpots(BaseModel):
     taken: int
     left: int
     starts_on: date = Field(description="When the current pilot cohort starts")
+    contact_within: str = Field(description='How soon the team emails a pilot signup, e.g. "24 hours"')
 
 
 class WaitlistSignupRow(BaseModel):
