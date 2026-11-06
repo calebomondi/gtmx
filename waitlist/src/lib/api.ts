@@ -39,6 +39,8 @@ export interface PilotSpots {
   left: number
   /** When the current cohort starts, as YYYY-MM-DD. */
   starts_on: string
+  /** How soon the team emails a pilot signup, in words: "24 hours". */
+  contact_within: string
 }
 
 export const EXPECTATIONS_MAX_CHARS = 500
@@ -59,7 +61,7 @@ export class ApiError extends Error {
 function messageFor(status: number, detail: unknown): string {
   if (status === 429) return 'Too many signups from this network right now. Please try again in an hour.'
   if (typeof detail === 'string' && status < 500) return detail
-  if (status === 422) return 'Please check your email address and tick the consent box.'
+  if (status === 422) return 'Please check your email address.'
   return "We couldn't reach Thalace just now. Please try again in a moment."
 }
 

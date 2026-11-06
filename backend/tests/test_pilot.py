@@ -97,7 +97,36 @@ def test_a_waitlist_signup_is_approved_into_the_pilot(client, closed, monkeypatc
     assert _audit() == ["pilot.let_in", "waitlist.status"]
 
 
+def test_a_signup_taken_off_the_pilot_stays_on_the_waitlist(client, closed, monkeypatch):
+    async def no_email(*_):
+        return True
+    monkeypatch.setattr(email, "send", no_email)
+    token = client.post(f"{API}/waitlist", json={"email": "Newcomer@example.com", "consent": True},
+                        headers={"X-Real-IP": "10.2.0.2"}).json()["token"]
+    client.patch(f"{API}/waitlist/{token}", json={"wants_pilot": True})
+    taken = client.get(f"{API}/waitlist/pilot").json()["taken"]
+    client.sign_in(BOSS)
+    [signup] = client.get(f"{API}/admin/waitlist").json()["items"]
+    client.post(f"{API}/admin/waitlist/{signup['id']}/approve")
+    assert _in(client, NEWCOMER)
+
+    client.sign_in(BOSS)
+    removed = client.post(f"{API}/admin/waitlist/{signup['id']}/remove-from-pilot")
+    assert removed.status_code == 200
+    assert removed.json()["wants_pilot"] is False
+    assert [r["email"] for r in client.get(f"{API}/admin/waitlist").json()["items"]] == ["newcomer@example.com"]
+    assert client.get(f"{API}/admin/pilot-access").json()["items"] == []
+    assert client.get(f"{API}/waitlist/pilot").json()["taken"] == taken - 1
+    assert not _in(client, NEWCOMER)
+
+    client.sign_in(BOSS)
+    assert client.post(f"{API}/admin/waitlist/{signup['id']}/remove-from-pilot").status_code == 200
+    assert client.post(f"{API}/admin/waitlist/{uuid.uuid4()}/remove-from-pilot").status_code == 404
+    assert _audit() == ["pilot.let_in", "waitlist.status", "pilot.remove_signup"]
+
+
 @pytest.mark.parametrize(("method", "path"), [("get", "/admin/pilot-access"), ("post", "/admin/pilot-access"),
-                                              ("delete", f"/admin/pilot-access/{uuid.uuid4()}")])
+                                              ("delete", f"/admin/pilot-access/{uuid.uuid4()}"),
+                                              ("post", f"/admin/waitlist/{uuid.uuid4()}/remove-from-pilot")])
 def test_the_guest_list_is_admin_only(client, method, path):
     assert getattr(client, method)(f"{API}{path}").status_code == 403

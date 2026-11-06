@@ -46,13 +46,17 @@ def _join(client, address="Founder@Startup.example", ip="10.0.0.1", **extra):
     return client.post(API, json=body, headers={"X-Real-IP": ip})
 
 
-def test_anyone_can_join_and_joining_twice_is_harmless(anonymous, outbox):
+def test_anyone_can_join_but_an_email_only_once(anonymous, outbox):
     first = _join(anonymous)
     assert first.status_code == 201 and first.json()["token"] and first.json()["pilot_spots_left"] == 50
-    again = _join(anonymous)
-    assert again.status_code == 201 and again.json()["token"] != first.json()["token"]
-    assert _rows() == [("founder@startup.example", False, None, None, {"utm_source": "linkedin"}, True)]
-    assert outbox == [("founder@startup.example", "You're on the Thalace waitlist")]  # once, not per signup
+    anonymous.patch(f"{API}/{first.json()['token']}", json={"stage": "idea"})
+    again = _join(anonymous, address="  FOUNDER@startup.example ", source={"utm_source": "x"})
+    assert again.status_code == 409
+    assert again.json()["detail"] == "This email is already on the waitlist. Check your inbox for our email."
+    assert _rows() == [("founder@startup.example", False, "idea", None, {"utm_source": "linkedin"}, True)]
+    assert outbox == [("founder@startup.example", "You're on the Thalace waitlist")]
+    # The first browser's token still works: nothing was handed out again.
+    assert anonymous.patch(f"{API}/{first.json()['token']}", json={"stage": "revenue"}).status_code == 200
 
 
 def test_details_and_pilot_opt_in_with_the_token(anonymous, outbox):
@@ -63,7 +67,8 @@ def test_details_and_pilot_opt_in_with_the_token(anonymous, outbox):
     })
     assert saved.status_code == 200 and saved.json() == {"wants_pilot": True, "pilot_spots_left": 49}
     assert anonymous.get(f"{API}/pilot").json() == {"total": 50, "taken": 1, "left": 49,
-                                                     "starts_on": settings.waitlist_pilot_starts_on.isoformat()}
+                                                     "starts_on": settings.waitlist_pilot_starts_on.isoformat(),
+                                                     "contact_within": "24 hours"}
     assert _rows()[0][1:4] == (True, "revenue", "Find SACCOs that need a CRM")
     assert outbox[-1] == ("founder@startup.example", "You're in line for the Thalace pilot")
     anonymous.patch(f"{API}/{token}", json={"wants_pilot": True})

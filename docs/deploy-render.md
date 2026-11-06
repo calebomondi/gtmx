@@ -84,7 +84,7 @@ and log format are already set in `render.yaml`.
 - [ ] **Composio**: the managed auth configs need no change. Connections return to
       `FRONTEND_BASE_URL`. TikTok may need a redirect on a domain you own
       (see `docs/launch-plan.md`).
-- [ ] **Resend**: verify the sending domain, then set `WAITLIST_FROM_EMAIL`
+- [ ] **Resend**: verify the sending domain, then set `WAITLIST_FROM_EMAIL` (steps in [email-domain.md](email-domain.md))
       (e.g. `GTMX <hello@gtmx.co>`). Until then, waitlist emails aren't sent.
 
 ## 5. The admin console

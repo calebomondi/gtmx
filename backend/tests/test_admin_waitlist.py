@@ -57,7 +57,7 @@ def test_stats(admin, signups):
     stats = admin.get(f"{API}/admin/waitlist/stats").json()
     assert (stats["total"], stats["last_7_days"]) == (3, 3)
     assert stats["pilot"] == {"total": 50, "taken": 1, "left": 49,
-                              "starts_on": settings.waitlist_pilot_starts_on.isoformat()}
+                              "starts_on": settings.waitlist_pilot_starts_on.isoformat(), "contact_within": "24 hours"}
     assert len(stats["by_day"]) == 30 and stats["by_day"][-1]["signups"] == 3
     assert stats["by_stage"] == {"revenue": 1, "unknown": 2} and stats["by_sells_to"] == {"b2b": 1, "unknown": 2}
 

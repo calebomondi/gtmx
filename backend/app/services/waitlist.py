@@ -8,6 +8,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import models
@@ -15,7 +16,7 @@ from backend.app.database.connect import AsyncSessionLocal
 from backend.app.schemas.waitlist import PilotSpots, WaitlistDetails, WaitlistSource
 from backend.app.services import email, waitlist_emails
 from backend.app.services.competitors import checked_website
-from backend.app.services.errors import NotFoundError, RateLimitedError
+from backend.app.services.errors import ConflictError, NotFoundError, RateLimitedError
 from config import settings
 from utils.log import logger
 
@@ -43,33 +44,33 @@ async def _check_rate(db: AsyncSession, ip_hash: str | None) -> None:
                                retry_after_s=int(_RATE_WINDOW.total_seconds()))
 
 
+ALREADY_JOINED = "This email is already on the waitlist. Check your inbox for our email."
+
+
 async def join(db: AsyncSession, address: str, source: WaitlistSource,
-               ip: str | None) -> tuple[models.WaitlistSignup, str, bool]:
-    """Add the email to the waitlist, or refresh it if it's already there.
-    Returns (signup, token for the details step, whether it is new)."""
+               ip: str | None) -> tuple[models.WaitlistSignup, str]:
+    """Add the email to the waitlist. Returns (signup, token for the details
+    step). An email already on it is refused: joining again would hand out a
+    token that can rewrite that person's details."""
     ip_hash = _ip_hash(ip)
     await _check_rate(db, ip_hash)
-    token = secrets.token_urlsafe(32)
-    now = datetime.now(UTC)
     address = address.strip().lower()
-    signup = await db.scalar(select(models.WaitlistSignup).where(models.WaitlistSignup.email == address))
-    created = signup is None
-    if created:
-        signup = models.WaitlistSignup(
-            email=address, source=source.model_dump(exclude_none=True), consent_at=now,
-            update_token_hash=_sha256(token), ip_hash=ip_hash,
-        )
-        db.add(signup)
-    else:
-        # Signing up again is fine: a fresh token for this browser, the first
-        # source kept (it is what brought them).
-        signup.update_token_hash = _sha256(token)
-        signup.consent_at = now
-        signup.ip_hash = ip_hash
-        signup.updated_at = now
-    await db.commit()
+    if await db.scalar(select(models.WaitlistSignup.id).where(models.WaitlistSignup.email == address)):
+        raise ConflictError(ALREADY_JOINED)
+    token = secrets.token_urlsafe(32)
+    signup = models.WaitlistSignup(
+        email=address, source=source.model_dump(exclude_none=True), consent_at=datetime.now(UTC),
+        update_token_hash=_sha256(token), ip_hash=ip_hash,
+    )
+    db.add(signup)
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        # The same email joined at the same moment from another request.
+        await db.rollback()
+        raise ConflictError(ALREADY_JOINED) from exc
     await db.refresh(signup)
-    return signup, token, created
+    return signup, token
 
 
 async def save_details(db: AsyncSession, token: str, details: WaitlistDetails) -> tuple[models.WaitlistSignup, bool]:
@@ -101,7 +102,9 @@ async def pilot_spots(db: AsyncSession) -> PilotSpots:
         select(func.count()).select_from(models.WaitlistSignup).where(models.WaitlistSignup.wants_pilot.is_(True))
     ) or 0
     total = settings.waitlist_pilot_spots
-    return PilotSpots(total=total, taken=taken, left=max(total - taken, 0), starts_on=settings.waitlist_pilot_starts_on)
+    return PilotSpots(total=total, taken=taken, left=max(total - taken, 0), starts_on=settings.waitlist_pilot_starts_on,
+                      contact_within=waitlist_emails.contact_within())
+
 
 
 async def send_joined_email(signup_id: uuid.UUID) -> None:
