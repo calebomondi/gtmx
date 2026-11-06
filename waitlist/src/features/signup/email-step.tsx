@@ -1,23 +1,30 @@
 import { useId, useRef, useState, type FormEvent } from 'react'
 
-/** Step one: just an email and consent. Everything else is optional, later. */
+import type { PilotSpots } from '../../lib/api'
+
+/** Step one: an email, and whether they want a pilot spot. Everything else is
+ * optional, later. Joining is the agreement to be emailed, said under the button. */
 export function EmailStep({
+  pilot,
   busy,
   error,
   onJoin,
 }: {
+  pilot: PilotSpots | null
   busy: boolean
   error: string | null
-  onJoin: (email: string, nickname: string) => void
+  onJoin: (email: string, nickname: string, wantsPilot: boolean) => void
 }) {
   // Unique per form: the signup appears twice on the page.
   const id = useId()
   const [email, setEmail] = useState('')
-  const [consent, setConsent] = useState(false)
   const [nickname, setNickname] = useState('')
-  const [missing, setMissing] = useState<'email' | 'consent' | null>(null)
+  const [missingEmail, setMissingEmail] = useState(false)
+  const [pilotTicked, setPilotTicked] = useState(true)
   const emailField = useRef<HTMLInputElement>(null)
-  const consentBox = useRef<HTMLInputElement>(null)
+  // Spots unknown yet (still loading) counts as open.
+  const pilotOpen = pilot === null || pilot.left > 0
+  const wantsPilot = pilotOpen && pilotTicked
 
   // The button always looks ready: what is missing is said under its field
   // on submit, rather than left for a greyed-out button to hint at.
@@ -25,13 +32,10 @@ export function EmailStep({
     event.preventDefault()
     if (busy) return
     if (!email.trim() || !emailField.current?.checkValidity()) {
-      setMissing('email')
+      setMissingEmail(true)
       emailField.current?.focus()
-    } else if (!consent) {
-      setMissing('consent')
-      consentBox.current?.focus()
     } else {
-      onJoin(email, nickname)
+      onJoin(email, nickname, wantsPilot)
     }
   }
 
@@ -53,10 +57,10 @@ export function EmailStep({
           value={email}
           onChange={(e) => {
             setEmail(e.target.value)
-            if (missing === 'email') setMissing(null)
+            setMissingEmail(false)
           }}
-          aria-invalid={missing === 'email'}
-          aria-describedby={missing === 'email' ? `${id}-email-error` : undefined}
+          aria-invalid={missingEmail}
+          aria-describedby={missingEmail ? `${id}-email-error` : undefined}
           className="h-12 w-full min-w-0 rounded-md border border-ink/20 bg-panel px-3.5 text-base outline-none transition focus:border-ink focus:ring-4 focus:ring-brand/40 sm:flex-1"
         />
         <button
@@ -64,10 +68,10 @@ export function EmailStep({
           disabled={busy}
           className="btn-primary h-12 shrink-0 px-5 text-sm"
         >
-          {busy ? 'Joining…' : 'Join the waitlist'}
+          {busy ? 'Joining…' : wantsPilot ? 'Join the pilot' : 'Join the waitlist'}
         </button>
       </div>
-      {missing === 'email' && (
+      {missingEmail && (
         <p id={`${id}-email-error`} role="alert" className="-mt-1 text-sm text-dropped">
           Enter your email.
         </p>
@@ -83,30 +87,28 @@ export function EmailStep({
         onChange={(e) => setNickname(e.target.value)}
         className="absolute -left-[9999px] h-px w-px opacity-0"
       />
-      <label className="flex cursor-pointer items-start gap-2.5 text-[13px] leading-snug text-muted">
+      <label className={`flex items-start gap-2.5 text-sm leading-snug ${pilotOpen ? 'cursor-pointer' : 'opacity-60'}`}>
         <input
-          ref={consentBox}
-          id={`${id}-consent`}
           type="checkbox"
-          checked={consent}
-          onChange={(e) => {
-            setConsent(e.target.checked)
-            if (missing === 'consent') setMissing(null)
-          }}
-          aria-invalid={missing === 'consent'}
-          aria-describedby={missing === 'consent' ? `${id}-consent-error` : undefined}
-          className="mt-0.5 size-4 shrink-0 cursor-pointer accent-ink"
+          checked={wantsPilot}
+          disabled={!pilotOpen}
+          onChange={(e) => setPilotTicked(e.target.checked)}
+          className="mt-0.5 size-4 shrink-0 cursor-pointer accent-ink disabled:cursor-default"
         />
         <span>
-          Thalace may email me about the waitlist and the pilot. I can ask to be removed, and my details
-          deleted, at any time.
+          {pilotOpen ? (
+            <>
+              <span className="font-semibold">Get a pilot spot:</span> your own Lace, free.
+              {pilot && ` ${pilot.left} of ${pilot.total} left.`}
+            </>
+          ) : (
+            "All pilot spots are taken. You'll hear first when we open more."
+          )}
         </span>
       </label>
-      {missing === 'consent' && (
-        <p id={`${id}-consent-error`} role="alert" className="-mt-1 text-sm text-dropped">
-          Tick the box so we can email you about your spot.
-        </p>
-      )}
+      <p className="text-[13px] leading-snug text-muted">
+        By joining, you agree we can email you about your spot. Unsubscribe anytime.
+      </p>
       {error && (
         <p role="alert" className="text-sm text-dropped">
           {error}
