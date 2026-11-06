@@ -12,6 +12,7 @@ const inputClass =
 export function DetailsStep({
   email,
   pilot,
+  chosePilot,
   busy,
   error,
   onSave,
@@ -19,13 +20,15 @@ export function DetailsStep({
 }: {
   email: string
   pilot: PilotSpots | null
+  /** What they chose on the first step; the box starts there. */
+  chosePilot: boolean
   busy: boolean
   error: string | null
   onSave: (details: WaitlistDetails) => void
   onSkip: () => void
 }) {
   const pilotOpen = pilot === null || pilot.left > 0
-  const [wantsPilot, setWantsPilot] = useState(pilotOpen)
+  const [wantsPilot, setWantsPilot] = useState(pilotOpen && chosePilot)
   const [name, setName] = useState('')
   const [company, setCompany] = useState('')
   const [website, setWebsite] = useState('')
@@ -53,7 +56,7 @@ export function DetailsStep({
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-6">
-      <div>
+      <div className="pr-8">
         <p className="text-sm font-semibold text-kept">On the list</p>
         <h2 className="mt-1 text-xl font-semibold text-balance">You're in, {email}.</h2>
         <p className="mt-1 text-sm text-muted">Two minutes more and we can set up your Lace. Everything here is optional.</p>

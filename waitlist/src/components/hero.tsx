@@ -100,12 +100,6 @@ export function Hero({ pilot, onPilotSpotsLeft }: { pilot: PilotSpots | null; on
             <strong className="font-semibold text-ink">Nothing goes out without your click.</strong>
           </p>
           <SignupCard id="join" pilot={pilot} onPilotSpotsLeft={onPilotSpotsLeft} />
-          {pilot && pilot.left > 0 && (
-            <p className="flex items-center gap-2 text-[13px] font-medium">
-              <span aria-hidden className="size-2 rounded-[2px] bg-ink" />
-              {pilot.left} of {pilot.total} pilot spots open
-            </p>
-          )}
         </div>
         <div ref={demo} className="min-w-0">
           <div ref={stage} className="relative z-10 origin-center will-change-transform">
