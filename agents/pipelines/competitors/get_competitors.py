@@ -107,6 +107,10 @@ MAX_CANDIDATES_PER_RUN = 24
 # Concurrency for the deep phase: each profile is several network round-trips, so
 # this is the difference between a run finishing in a minute and in five.
 PROFILE_WORKERS = get_settings().competitor_profile_workers
+# A capped hunt (max_competitors): this many searches, and this many candidates
+# profiled beyond the number wanted, since some turn out not to compete.
+FEW_HUNT_TASKS = 3
+SPARE_CANDIDATES = 5
 
 # A website has to look like one. The screening stage applies this before a
 # candidate is allowed to become a tracked company -- the brief's filter is "a
@@ -339,6 +343,12 @@ def _clean_website(raw: Optional[str]) -> Optional[str]:
     return f"https://{host}{path}" if path else f"https://{host}"
 
 
+def _name_key(name: Optional[str]) -> str:
+    """A firm's name reduced to letters and digits, to spot one firm under
+    two domains. Empty when there is nothing to compare."""
+    return re.sub(r"[^a-z0-9]", "", (name or "").lower())
+
+
 def _domain_key(website: str) -> str:
     """The host, minus scheme and www -- the firm's identity for dedup.
 
@@ -504,10 +514,11 @@ def plan_hunt(state: CompetitorSessionState) -> dict:
         )
 
     noun = _offer_noun(state)
+    max_tasks = FEW_HUNT_TASKS if state.get("max_competitors") else MAX_HUNT_TASKS
     system_message = plan_instructions.format(
         offer_noun=noun,
         offer_name=state.get("offer_name") or "the offer",
-        max_tasks=MAX_HUNT_TASKS,
+        max_tasks=max_tasks,
     )
     target_geo = state.get("target_market") or []
     user_message = (
@@ -529,7 +540,7 @@ def plan_hunt(state: CompetitorSessionState) -> dict:
     # Direct substitutes first: the per-run candidate cap keeps the earliest
     # tasks' finds, and the obvious rivals must never be the ones cut.
     tasks = sorted(plan.tasks or [], key=lambda t: "direct substitute" not in (t.archetype_label or "").lower())
-    tasks = tasks[:MAX_HUNT_TASKS]
+    tasks = tasks[:max_tasks]
 
     # Enforce the brand-free invariant in code. The planner is told not to name
     # the offer and usually complies, but "alternatives to <us>" is exactly the
@@ -687,6 +698,9 @@ def screen_candidates(state: CompetitorSessionState) -> dict:
 
     survivors: list[dict] = []
     seen_domains: set[str] = set()
+    # The same firm on two domains (aisdr.com, aisdr.io) is one company.
+    seen_names: dict[str, dict] = {}
+    by_domain: dict[str, dict] = {}
     reasons: dict[str, int] = {}
     candidates_seen = 0
 
@@ -707,8 +721,12 @@ def screen_candidates(state: CompetitorSessionState) -> dict:
                 # Our own site came back for a category query. Not a competitor.
                 drop("is_the_offer_itself")
                 continue
-            if domain in seen_domains:
-                # Two archetypes can surface the same firm; it is one company.
+            name = _name_key(candidate.name)
+            again = by_domain.get(domain) or (seen_names.get(name) if name else None)
+            if again is not None:
+                # Two archetypes can surface the same firm; it is one company,
+                # and being found twice makes it likelier a real rival.
+                again["mentions"] += 1
                 drop("duplicate_in_this_run")
                 continue
 
@@ -726,12 +744,22 @@ def screen_candidates(state: CompetitorSessionState) -> dict:
                     "search_failed": bundle.search_failed,
                     "queries": list(bundle.queries or []),
                     "sources": list(bundle.sources or []),
+                    "mentions": 1,
                 }
             )
+            by_domain[domain] = survivors[-1]
+            if name:
+                seen_names[name] = survivors[-1]
 
-    if len(survivors) > MAX_CANDIDATES_PER_RUN:
-        reasons["over_per_run_cap"] = len(survivors) - MAX_CANDIDATES_PER_RUN
-        survivors = survivors[:MAX_CANDIDATES_PER_RUN]
+    cap = MAX_CANDIDATES_PER_RUN
+    if wanted := state.get("max_competitors"):
+        # Only the strongest few are profiled: the firms most searches found
+        # first, then in the order found (direct substitutes lead).
+        survivors.sort(key=lambda s: -s["mentions"])
+        cap = wanted + SPARE_CANDIDATES
+    if len(survivors) > cap:
+        reasons["over_per_run_cap"] = len(survivors) - cap
+        survivors = survivors[:cap]
 
     outcome = CompetitorRunOutcome(
         candidates_seen=candidates_seen,
@@ -961,10 +989,15 @@ def profile_competitors(state: CompetitorSessionState) -> dict:
         "own_website": state.get("own_website"),
     }
 
-    with ContextThreadPoolExecutor(max_workers=PROFILE_WORKERS) as pool:
+    wanted = state.get("max_competitors")
+    # A capped hunt profiles its few candidates all at once.
+    workers = max(PROFILE_WORKERS, len(survivors)) if wanted else PROFILE_WORKERS
+    with ContextThreadPoolExecutor(max_workers=workers) as pool:
         results = list(pool.map(lambda s: _profile_one(s, offer), survivors))
 
     profiles = [profile for profile, _ in results if profile is not None]
+    if wanted:
+        profiles = profiles[:wanted]
     rejected = [reason for _, reason in results if reason]
     logger.info("profile_competitors: %d profile(s) built from %d survivor(s)", len(profiles), len(survivors))
     report(f"Saving {len(profiles)} competitors")
@@ -1031,6 +1064,7 @@ def state_from_workspace(
     own_website: Optional[str] = None,
     ideal_competitor_profile: Optional[dict] = None,
     target_market: Optional[list[str]] = None,
+    max_competitors: Optional[int] = None,
 ) -> CompetitorSessionState:
     """Build the initial state from a workspace's persisted offer.
 
@@ -1062,6 +1096,7 @@ def state_from_workspace(
         "own_website": own_website,
         "ideal_competitor_profile": ideal_competitor_profile,
         "target_market": list(target_market or []),
+        "max_competitors": max_competitors,
     }
 
 

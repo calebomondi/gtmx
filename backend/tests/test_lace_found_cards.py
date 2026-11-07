@@ -14,7 +14,7 @@ from config import settings
 
 
 def _hunt(client, lace_id, lace_runtime, monkeypatch, *report):  # noqa: F811
-    monkeypatch.setattr(lace_jobs, "find_competitors", lambda profile, facts, focus: [RIVAL])
+    monkeypatch.setattr(lace_jobs, "find_competitors", lambda profile, facts, focus, limit=None: [RIVAL])
     lace_runtime.extend([_call("find_competitors"), AIMessage(content="On it."), *report])
     client.post(f"{API}/laces/{lace_id}/messages", json={"text": "who competes with us?"})
     client.portal.call(_wait_for_turns, lace_id, 2)
@@ -57,7 +57,7 @@ def test_a_search_that_finds_one_again_does_not_show_it_again(client, lace, lace
     from backend.tests.test_runs import _wait_for_status
     _hunt(client, lace, lace_runtime, monkeypatch, AIMessage(content="I found Rival."))
     other = CompetitorProfile(name="Other", website="https://other.test/", description="Payroll for dentists.")
-    monkeypatch.setattr(lace_jobs, "find_competitors", lambda profile, facts, focus: [RIVAL, other])
+    monkeypatch.setattr(lace_jobs, "find_competitors", lambda profile, facts, focus, limit=None: [RIVAL, other])
     lace_runtime.append(AIMessage(content="I found Other too."))
     run = client.portal.call(manager.start_lace_job, "lace_competitors", user.id, uuid.UUID(lace), {"focus": "dentists"})
     client.portal.call(_wait_for_status, run.id, {"completed"})

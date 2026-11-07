@@ -426,6 +426,9 @@ class CompetitorSessionState(TypedDict):
 	# The offer's own site, so a run can recognise the user and refuse to file
 	# them as their own competitor.
 	own_website: str | None = Field(default=None, description="The offer's own website, for self-exclusion")
+	# A first look wants only the strongest few, fast: fewer searches, and only
+	# the best-ranked candidates profiled. None: the usual, wider hunt.
+	max_competitors: Optional[int] = Field(default=None, description="Keep at most this many, the strongest first")
 
 	# -- The shape being hunted for --
 	# A dict as persisted, not a validated IdealCompetitorProfile: it arrives

@@ -68,7 +68,7 @@ def test_a_competitor_search_follows_them(client, lace, lace_runtime, user, monk
     client.post(url, json={"text": "Keep emails short", "applies_to": "outreach"})
     seen = {}
 
-    def hunt(profile, facts, focus):
+    def hunt(profile, facts, focus, limit=None):
         seen["focus"] = focus
         return [RIVAL]
     monkeypatch.setattr(lace_jobs, "find_competitors", hunt)

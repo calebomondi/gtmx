@@ -34,7 +34,7 @@ def _feed(client, lace_id, **params):
 
 
 def test_a_hunt_shows_in_the_feed(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
-    monkeypatch.setattr(lace_jobs, "find_competitors", lambda profile, facts, focus: [RIVAL])
+    monkeypatch.setattr(lace_jobs, "find_competitors", lambda profile, facts, focus, limit=None: [RIVAL])
     lace_runtime.append(AIMessage(content="I found Rival."))
     assert _job(client, user, lace).status == "completed"
     client.portal.call(_wait_for_turns, lace, 1)
@@ -44,7 +44,7 @@ def test_a_hunt_shows_in_the_feed(client, lace, lace_runtime, user, monkeypatch)
 
 
 def test_a_failed_search_shows_why(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
-    def blocked(profile, facts, focus):
+    def blocked(profile, facts, focus, limit=None):
         raise JobBlocked("Not enough is known about what the startup sells.")
     monkeypatch.setattr(lace_jobs, "find_competitors", blocked)
     lace_runtime.append(AIMessage(content="I couldn't search yet."))

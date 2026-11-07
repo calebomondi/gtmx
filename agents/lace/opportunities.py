@@ -31,6 +31,11 @@ from data_sources.scraping.firecrawl import FirecrawlError
 from utils.log import logger
 
 QUERIES_PER_KIND = 3
+# A search capped to the strongest few (the first look): fewer searches, all at
+# once, and only the best fits' pages read to check their dates.
+FEW_QUERIES_PER_KIND = 2
+SPARE_TO_CHECK = 3
+_FIT_RANK = {"strong": 0, "moderate": 1, "weak": 2}
 RESULTS_PER_QUERY = 6
 # How far back a source may be: an opportunity announced earlier is likely closed.
 RECENCY_DAYS = 120
@@ -186,28 +191,32 @@ def find_opportunities(profile: LaceProfile, facts: list[Fact], icp: ICP | None,
                        kinds: Sequence[OpportunityKind] = OPPORTUNITY_KINDS, today: date | None = None,
                        plan: Plan = _default_plan, extract: Extract = _default_extract,
                        search: Search = _default_search, read: Read = _default_read,
-                       check: Check = _default_check, instructions: str = "") -> list[Opportunity]:
+                       check: Check = _default_check, instructions: str = "",
+                       limit: int | None = None) -> list[Opportunity]:
     """Current, sourced opportunities of these kinds. `instructions` are the
     team's standing instructions for opportunities, as lines: the searches and
-    what is kept both follow them."""
+    what is kept both follow them. With `limit`, only the best few fits,
+    found faster."""
+    per_kind_cap = FEW_QUERIES_PER_KIND if limit else QUERIES_PER_KIND
     today = today or date.today()
     startup = profile.startup_name or profile.website
     brief = render_brief([f for f in facts if f.topic in ("company", "offer", "customers", "market", "icp")])
     rules = (f"\n\nThe team's standing instructions (follow them; leave out anything they rule out):\n"
              f"{instructions.strip()}\n" if instructions.strip() else "")
     queries = plan([SystemMessage(content=_PLAN_PROMPT.format(
-        startup=startup, today=today.isoformat(), per_kind=QUERIES_PER_KIND, facts=brief, icp=render_icp(icp),
+        startup=startup, today=today.isoformat(), per_kind=per_kind_cap, facts=brief, icp=render_icp(icp),
         kinds="\n".join(f"- {k}: {_KIND_GUIDE[k]}" for k in kinds), instructions=rules,
     )), HumanMessage(content="Write the searches.")]).queries
     wanted = [q for q in queries if q.kind in kinds]
     per_kind: dict[str, int] = {}
     chosen = []
     for q in wanted:
-        if per_kind.get(q.kind, 0) < QUERIES_PER_KIND and q.query.strip():
+        if per_kind.get(q.kind, 0) < per_kind_cap and q.query.strip():
             per_kind[q.kind] = per_kind.get(q.kind, 0) + 1
             chosen.append(q)
     since = (today - timedelta(days=RECENCY_DAYS)).isoformat()
-    found = run_parallel([lambda q=q: search(q.query, cfg, since) for q in chosen], workers=SEARCH_WORKERS)
+    workers = max(SEARCH_WORKERS, len(chosen)) if limit else SEARCH_WORKERS
+    found = run_parallel([lambda q=q: search(q.query, cfg, since) for q in chosen], workers=workers)
 
     results: dict[str, dict] = {}
     for hits in found:
@@ -230,10 +239,17 @@ def find_opportunities(profile: LaceProfile, facts: list[Fact], icp: ICP | None,
     for o in extracted:
         if o.kind in kinds and o.url in results:
             sourced.setdefault(o.url, o)
-    kept = [o for o in _check_dates(list(sourced.values()), cfg, today, read, check)
+    candidates = list(sourced.values())
+    if limit:
+        # Best fits first; a loose match never fills a short list.
+        candidates = sorted((o for o in candidates if o.fit != "weak"), key=lambda o: _FIT_RANK[o.fit])
+        candidates = candidates[:limit + SPARE_TO_CHECK]
+    kept = [o for o in _check_dates(candidates, cfg, today, read, check)
             if _still_open(o.deadline, today) and _still_open(o.date, today)
             and (o.kind not in NEEDS_DATE or o.deadline or o.date)
             and (o.kind not in NEEDS_DEADLINE or o.deadline)]
+    if limit:
+        kept = kept[:limit]
     dropped = len(extracted) - len(kept)
     if dropped:
         logger.info("Opportunities: dropped %d unsourced, closed, undated or duplicate of %d", dropped, len(extracted))

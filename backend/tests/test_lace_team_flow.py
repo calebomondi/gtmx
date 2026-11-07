@@ -48,7 +48,7 @@ async def _settle(lace_id, owner_id, count, timeout=10.0):
 
 
 def test_two_founders_on_one_lace(client, user, team, monkeypatch, lace_runtime):  # noqa: F811
-    monkeypatch.setattr(lace_jobs, "find_competitors", lambda profile, facts, focus: [RIVAL])
+    monkeypatch.setattr(lace_jobs, "find_competitors", lambda profile, facts, focus, limit=None: [RIVAL])
     busy = uuid.uuid4()
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
         conn.execute("INSERT INTO runs (id, user_id, lace_id, kind, status) VALUES (%s, %s, %s, 'lace_turn', 'running')",

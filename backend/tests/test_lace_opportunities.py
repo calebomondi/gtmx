@@ -27,7 +27,7 @@ def _found(*items):
 def _stub(monkeypatch, found):
     seen = {}
 
-    def find(profile, facts, icp, cfg, kinds, instructions=""):
+    def find(profile, facts, icp, cfg, kinds, instructions="", limit=None):
         seen["kinds"], seen["instructions"] = kinds, instructions
         return found
     monkeypatch.setattr(lace_jobs, "find_opportunities", find)

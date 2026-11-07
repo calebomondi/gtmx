@@ -156,3 +156,35 @@ def test_an_unreadable_page_or_failed_check_keeps_what_the_search_said():
                        pages={tender: "Bids due 30 November."}, dates={tender: RuntimeError("model down")})
     assert [o.url for o in found] == [expo, tender]
     assert seen["checked"] == [tender]
+
+
+def test_a_limited_search_keeps_only_the_best_fits():
+    """A first look: fewer searches, only the best fits' pages read, and at
+    most `limit` kept; a loose match never fills the list."""
+    fits = {"https://a.test": "moderate", "https://b.test": "strong", "https://c.test": "weak",
+            "https://d.test": "strong", "https://e.test": "moderate", "https://f.test": "moderate"}
+    seen = {"queries": [], "read": []}
+
+    def plan(messages):
+        seen["plan_prompt"] = messages[0].content
+        return OpportunityPlan(queries=[OpportunityQuery(kind="partner", query=f"q{i}") for i in range(5)])
+
+    def search(query, cfg, since):
+        seen["queries"].append(query)
+        return [{"url": url, "title": url, "highlights": ["..."]} for url in fits]
+
+    def extract(messages):
+        return OpportunityList(opportunities=[
+            Opportunity(kind="partner", title=url, url=url, why_it_fits="Fits.", how_to_act="Ask.", fit=fit)
+            for url, fit in fits.items()])
+
+    def read(urls, cfg):
+        seen["read"] = list(urls)
+        return {}
+
+    found = find_opportunities(PROFILE, [make_fact("1", "Shanga Labs builds rugged IoT hardware.")], None,
+                               get_settings(), ("partner",), TODAY, plan=plan, extract=extract, search=search,
+                               read=read, check=lambda m: None, limit=2)
+    assert [o.url for o in found] == ["https://b.test", "https://d.test"]
+    assert seen["queries"] == ["q0", "q1"]
+    assert "https://c.test" not in seen["read"] and len(seen["read"]) == 2 + 3
