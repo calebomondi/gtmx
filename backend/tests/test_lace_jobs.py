@@ -44,8 +44,12 @@ async def _wait_for_turns(lace_id, count, timeout=10.0):
 
 @pytest.fixture
 def lace(client, lace_runtime):  # noqa: F811
+    """A Lace past its first day, so scheduled work (briefs, listening,
+    opportunity searches) is due for it; first-day tests make their own."""
     body = client.post(f"{API}/laces", json={"name": "Ada", "website": "acme.test"}).json()
     client.portal.call(_wait_for_status, uuid.UUID(body["run_id"]), {"completed"})
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        conn.execute("UPDATE laces SET created_at = now() - interval '2 days' WHERE id = %s", (body["lace"]["id"],))
     return body["lace"]["id"]
 
 
