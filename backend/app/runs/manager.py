@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from collections.abc import Awaitable, Callable, Coroutine
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -178,38 +178,92 @@ async def _queued_message(lace_id: uuid.UUID, params: dict):
 async def start_lace_onboarding(user_id: uuid.UUID, lace_id: uuid.UUID) -> models.Run:
     run = await _start_lace_run("lace_onboarding", user_id, LaceThread(lace_id), None)
 
-    async def then() -> None:
-        await settle_in(user_id, lace_id)
-        await start_next_queued(lace_id)
+    # Only the welcome: the first searches wait for the founder's first reply (first_look).
     _spawn(run.id, user_id, _then_wake(lace_runs.onboarding_segment(run.id, lace_id), user_id, LaceThread(lace_id)),
-           settings.lace_onboarding_timeout_s, then=then)
+           settings.lace_onboarding_timeout_s, then=lambda: start_next_queued(lace_id))
     return run
 
 
-async def settle_in(user_id: uuid.UUID, lace_id: uuid.UUID) -> list[str]:
-    """Once a Lace has read its site, start what makes it useful before the
-    founder asks: a competitor search when none is on file, and the ideal
-    customer profile when it knows who buys (otherwise its first message asks,
-    in a form). A job refused (a daily cap) is left for the founder to ask
-    for. Returns the run kinds started."""
+# How many competitors and opportunities the first look finds: the strongest
+# few, quickly. A search the founder asks for later finds the usual number.
+FIRST_LOOK_LIMIT = 5
+_FIRST_LOOK_KINDS = ("lace_competitors", "lace_icp", "lace_opportunities")
+
+
+async def _founder_turns(db: AsyncSession, lace_id: uuid.UUID) -> int:
+    """Finished turns in the team's chat that answered someone (a message or
+    an answer to a question), not updates or briefs."""
+    return await db.scalar(select(func.count()).select_from(models.Run).where(
+        models.Run.lace_id == lace_id, models.Run.kind == "lace_turn", models.Run.owner_id.is_(None),
+        models.Run.status == "completed",
+        or_(models.Run.input["text"].is_not(None), models.Run.input["answer"].is_not(None)))) or 0
+
+
+async def _kinds_ever_run(db: AsyncSession, lace_id: uuid.UUID) -> set[str]:
+    return set((await db.scalars(select(models.Run.kind).distinct().where(
+        models.Run.lace_id == lace_id, models.Run.kind.in_(_FIRST_LOOK_KINDS)))).all())
+
+
+async def first_look(user_id: uuid.UUID, lace_id: uuid.UUID) -> list[str]:
+    """After the founder's first reply to the Lace's welcome (so what they
+    corrected is on file), start what makes the Lace useful: the top
+    competitors, and the ideal customer profile when it knows who buys, whose
+    end starts the top opportunities (_after_first_look_icp). Each reports as
+    it finishes. Nothing the founder already had started runs again, and a
+    job refused (a daily cap) is left for them to ask for. Returns the run
+    kinds started."""
     async with AsyncSessionLocal() as db:
         lace = await db.get(Lace, lace_id)
-        if lace is None or lace.status != "active":
+        if lace is None or lace.status != "active" or await _founder_turns(db, lace_id) != 1:
             return []
+        ran = await _kinds_ever_run(db, lace_id)
         rivals = await db.scalar(select(func.count()).select_from(LaceCompetitor)
                                  .where(LaceCompetitor.lace_id == lace_id))
         has_icp = lace.icp is not None
-    facts = await DbLaceStore(AsyncSessionLocal, lace_id).facts(None, BUYER_FACTS_READ)
-    wanted = ([("lace_competitors", {"focus": None})] if not rivals else []) + (
-        [("lace_icp", {"guidance": None})] if not has_icp and knows_buyers(facts) else [])
+    wanted: list[tuple[str, dict]] = []
+    if not rivals and "lace_competitors" not in ran:
+        wanted.append(("lace_competitors", {"focus": None, "first_look": True, "limit": FIRST_LOOK_LIMIT}))
+    if has_icp:
+        if "lace_opportunities" not in ran:
+            wanted.append(("lace_opportunities", {"first_look": True, "limit": FIRST_LOOK_LIMIT}))
+    elif "lace_icp" not in ran:
+        facts = await DbLaceStore(AsyncSessionLocal, lace_id).facts(None, BUYER_FACTS_READ)
+        if knows_buyers(facts):
+            wanted.append(("lace_icp", {"guidance": None, "first_look": True}))
+    return await _start_all(user_id, lace_id, wanted)
+
+
+async def _after_first_look_icp(user_id: uuid.UUID, lace_id: uuid.UUID) -> list[str]:
+    """The first look's ideal customer profile is saved: look for the top
+    opportunities for it, unless an opportunity search already ran."""
+    async with AsyncSessionLocal() as db:
+        lace = await db.get(Lace, lace_id)
+        if lace is None or lace.icp is None or "lace_opportunities" in await _kinds_ever_run(db, lace_id):
+            return []
+    return await _start_all(user_id, lace_id,
+                            [("lace_opportunities", {"first_look": True, "limit": FIRST_LOOK_LIMIT})])
+
+
+async def _start_all(user_id: uuid.UUID, lace_id: uuid.UUID, wanted: list[tuple[str, dict]]) -> list[str]:
     started = []
     for kind, params in wanted:
         try:
             await start_lace_job(kind, user_id, lace_id, params)
             started.append(kind)
         except JobRefused as exc:
-            logger.info("Settling in Lace %s: %s not started: %s", lace_id, kind, exc)
+            logger.info("First look for Lace %s: %s not started: %s", lace_id, kind, exc)
     return started
+
+
+async def _then_first_look(turn: Coroutine, user_id: uuid.UUID, lace_id: uuid.UUID) -> None:
+    """Run a turn that answered the founder in the team's chat, then start
+    the first look if it was their first reply. A first look that can't
+    start never fails the turn."""
+    await turn
+    try:
+        await first_look(user_id, lace_id)
+    except Exception:  # noqa: BLE001 -- the reply is given; the founder can ask for the searches
+        logger.exception("First look for Lace %s could not start", lace_id)
 
 
 async def start_lace_turn(user_id: uuid.UUID, thread: LaceThread, text: str, author: dict,
@@ -263,6 +317,8 @@ def _spawn_turn(run_id: uuid.UUID, user_id: uuid.UUID, thread: LaceThread, messa
     jobs = _LaceJobs(user_id, thread.lace_id, actor_id, thread.owner_id)
     turn = lace_runs.turn_segment(run_id, thread, message, jobs=jobs, actor_id=actor_id, who=who,
                                   found_by=found_by or [])
+    if actor_id is not None and thread.owner_id is None:
+        turn = _then_first_look(turn, user_id, thread.lace_id)
     if event_ids:
         turn = _putting_back(turn, event_ids)
     _spawn(run_id, user_id, _then_wake(turn, user_id, thread), settings.lace_turn_timeout_s,
@@ -450,9 +506,15 @@ async def request_lace_job(run_kind: str, user_id: uuid.UUID, lace_id: uuid.UUID
 
 def _run_job(run: models.Run) -> None:
     run_id, user_id, lace_id, owner_id, kind = run.id, run.user_id, run.lace_id, run.owner_id, run.kind
-    job = _JOB_SEGMENTS[kind](run_id, lace_id, dict(run.input or {}))
+    params = dict(run.input or {})
+    job = _JOB_SEGMENTS[kind](run_id, lace_id, params)
+
+    async def then() -> None:
+        await start_next_job(lace_id, kind)
+        if kind == "lace_icp" and params.get("first_look"):
+            await _after_first_look_icp(user_id, lace_id)
     _spawn(run_id, user_id, _job_then_wake(job, user_id, lace_id, owner_id), settings.background_run_timeout_s,
-           then=lambda: start_next_job(lace_id, kind))
+           then=then)
 
 
 async def start_next_job(lace_id: uuid.UUID, run_kind: str) -> bool:

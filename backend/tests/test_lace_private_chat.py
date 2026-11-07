@@ -69,7 +69,7 @@ def test_a_private_chat_is_its_own_and_runs_beside_the_team_s(client, user, team
 
 
 def test_what_a_private_search_finds_stays_private(client, user, team, monkeypatch, lace_runtime):  # noqa: F811
-    monkeypatch.setattr(lace_jobs, "find_competitors", lambda profile, facts, focus: [RIVAL])
+    monkeypatch.setattr(lace_jobs, "find_competitors", lambda profile, facts, focus, limit=None: [RIVAL])
     lace_runtime.extend([_call("find_competitors"), AIMessage(content="Searching."),
                          AIMessage(content="Found Rival, just for you.")])
     client.sign_in(WANJIRU)

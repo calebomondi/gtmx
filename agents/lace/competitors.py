@@ -63,10 +63,11 @@ def hunt_brief(facts: list[Fact], focus: str | None, brief: Brief = _default_bri
     return brief([SystemMessage(content=prompt), HumanMessage(content="Write the brief.")])
 
 
-def find_competitors(profile: LaceProfile, facts: list[Fact], focus: str | None = None,
+def find_competitors(profile: LaceProfile, facts: list[Fact], focus: str | None = None, limit: int | None = None,
                      brief: Brief = _default_brief, hunt: Hunt = _default_hunt) -> list[CompetitorProfile]:
-    """Real, sourced competitor profiles for the Lace's startup. Raises
-    JobBlocked when the facts are too thin to say what competes."""
+    """Real, sourced competitor profiles for the Lace's startup; with
+    `limit`, only the strongest few, found faster. Raises JobBlocked when the
+    facts are too thin to say what competes."""
     plan = hunt_brief(facts, focus, brief)
     if not plan.profile.archetypes:
         raise JobBlocked("Not enough is known about what the startup sells to say what competes with it.")
@@ -76,6 +77,7 @@ def find_competitors(profile: LaceProfile, facts: list[Fact], focus: str | None 
         own_website=profile.website,
         ideal_competitor_profile=plan.profile.model_dump(),
         target_market=plan.target_geographies,
+        max_competitors=limit,
     )
     return list(hunt(state).get("competitor_profiles") or [])
 

@@ -21,8 +21,10 @@ from backend.tests.test_runs import _wait_for_status
 from config import settings
 
 
-def _lace(frequency="daily", hour=8, tz="Africa/Nairobi", last=None, status="active"):
-    return SimpleNamespace(brief_frequency=frequency, brief_hour=hour, timezone=tz, last_brief_at=last, status=status)
+def _lace(frequency="daily", hour=8, tz="Africa/Nairobi", last=None, status="active",
+          created=datetime(2026, 10, 1, tzinfo=UTC)):
+    return SimpleNamespace(brief_frequency=frequency, brief_hour=hour, timezone=tz, last_brief_at=last, status=status,
+                           created_at=created)
 
 
 @pytest.mark.parametrize("lace_kw, now, due", [
@@ -37,6 +39,12 @@ def _lace(frequency="daily", hour=8, tz="Africa/Nairobi", last=None, status="act
     ({"frequency": "off"}, datetime(2026, 10, 19, 12, 0, tzinfo=UTC), False),
     ({"status": "onboarding"}, datetime(2026, 10, 19, 12, 0, tzinfo=UTC), False),
     ({"tz": "Not/AZone", "hour": 9}, datetime(2026, 10, 19, 9, 0, tzinfo=UTC), True),  # unknown zone: UTC
+    # Made at 05:00 today in Nairobi: no brief until tomorrow.
+    ({"created": datetime(2026, 10, 19, 2, 0, tzinfo=UTC)}, datetime(2026, 10, 19, 12, 0, tzinfo=UTC), False),
+    # Made at 01:30 on the 19th in Nairobi, still the 18th in UTC: its first day is Nairobi's.
+    ({"created": datetime(2026, 10, 18, 22, 30, tzinfo=UTC)}, datetime(2026, 10, 19, 12, 0, tzinfo=UTC), False),
+    # Made at 23:30 on the 18th in Nairobi: today is its second day.
+    ({"created": datetime(2026, 10, 18, 20, 30, tzinfo=UTC)}, datetime(2026, 10, 19, 12, 0, tzinfo=UTC), True),
 ])
 def test_is_due_in_the_founders_timezone(lace_kw, now, due):
     assert lace_briefs.is_due(_lace(**lace_kw), now) is due

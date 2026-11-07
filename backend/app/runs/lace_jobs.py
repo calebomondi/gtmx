@@ -129,13 +129,15 @@ async def competitors_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -
     try:
         with events.reporting_steps(run_id):
             focus = with_instructions(params.get("focus"), await _instructions(lace_id, "competitors"))
-            found = await asyncio.to_thread(find_competitors, profile, facts, focus)
+            found = await asyncio.to_thread(find_competitors, profile, facts, focus, params.get("limit"))
     except Exception as exc:
         await report_failure(lace_id, "competitor search", exc, params)
         raise
     async with AsyncSessionLocal() as db, db.begin():
         new, refreshed = await lace_competitors.upsert_found(db, lace_id, run_id, found, private_to(params))
-        await job_update(db, lace_id, params, competitors_update(found, new, refreshed), run_id)
+        await job_update(db, lace_id, params,
+                         competitors_update(found, new, refreshed)
+                         + (_offer_more(params, "competitors") if found else ""), run_id)
         if new:
             await job_activity(db, lace_id, params, "competitors_found", f"Found {plural(new, 'new competitor')}",
                         names([p.name for p in found]))
@@ -465,6 +467,15 @@ def monitor_update(moves: list) -> str:
     return "Competitor monitoring found changes that matter:\n" + "\n".join(lines)
 
 
+def _offer_more(params: dict, what: str) -> str:
+    """For a search capped to the strongest few (the first look), the line
+    that tells the Lace to say so and offer a wider search."""
+    if not params.get("limit"):
+        return ""
+    return (f"\nThis was a quick first look: only the top {params['limit']} {what}. Say so in a few words, "
+            f"and offer to look for more.")
+
+
 def competitors_update(found: list, new: int, refreshed: int) -> str:
     if not found:
         return ("The competitor search finished without finding a company that passed the checks "
@@ -565,7 +576,7 @@ async def opportunities_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict)
             report("Looking for " + ", ".join(kinds) + " opportunities")
             rules = await _instructions(lace_id, "opportunities")
             found = await asyncio.to_thread(find_opportunities, profile, facts, icp, settings, kinds,
-                                            instructions=rules)
+                                            instructions=rules, limit=params.get("limit"))
     except Exception as exc:
         await report_failure(lace_id, "opportunity search", exc, params)
         raise
@@ -573,7 +584,8 @@ async def opportunities_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict)
     async with AsyncSessionLocal() as db, db.begin():
         new, refreshed = await lace_opportunities.upsert_found(db, lace_id, run_id, found, private_to(params))
         if new or not params.get("scheduled"):
-            await job_update(db, lace_id, params, opportunities_update(found, new, [o.title for o in weak]), run_id)
+            await job_update(db, lace_id, params, opportunities_update(found, new, [o.title for o in weak])
+                             + (_offer_more(params, "opportunities") if found else ""), run_id)
         if new:
             await job_activity(db, lace_id, params, "opportunities_found",
                         f"Found {plural(new, 'new opportunity', 'new opportunities')}", names([o.title for o in found]))

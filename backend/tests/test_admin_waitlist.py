@@ -64,13 +64,29 @@ def test_stats(admin, signups):
 
 def test_status_changes_are_audited(admin, signups):
     ada = admin.get(f"{API}/admin/waitlist", params={"q": "ada"}).json()["items"][0]
-    updated = admin.patch(f"{API}/admin/waitlist/{ada['id']}", json={"status": "invited"})
-    assert updated.status_code == 200 and updated.json()["status"] == "invited"
+    assert ada["pilot_access"] is False
+    updated = admin.patch(f"{API}/admin/waitlist/{ada['id']}", json={"status": "contacted"})
+    assert updated.status_code == 200 and updated.json()["status"] == "contacted"
+    assert updated.json()["pilot_access"] is False
     assert admin.patch(f"{API}/admin/waitlist/{ada['id']}", json={"status": "vip"}).status_code == 422
     with psycopg.connect(settings.database_url) as conn:
-        action, before, after = conn.execute(
-            "SELECT action, before, after FROM admin_audit_log ORDER BY created_at DESC LIMIT 1").fetchone()
-    assert (action, before["status"], after["status"]) == ("waitlist.status", "new", "invited")
+        actions = conn.execute("SELECT action, before, after FROM admin_audit_log").fetchall()
+    assert [(a, b["status"], c["status"]) for a, b, c in actions] == [("waitlist.status", "new", "contacted")]
+
+
+def test_marking_a_signup_invited_lets_them_into_the_pilot(admin, signups):
+    ada = admin.get(f"{API}/admin/waitlist", params={"q": "ada"}).json()["items"][0]
+    updated = admin.patch(f"{API}/admin/waitlist/{ada['id']}", json={"status": "invited"})
+    assert updated.status_code == 200
+    assert (updated.json()["status"], updated.json()["pilot_access"]) == ("invited", True)
+    listed = admin.get(f"{API}/admin/waitlist", params={"q": "ada"}).json()["items"][0]
+    assert listed["pilot_access"] is True
+    # Marking them invited again changes nothing more.
+    admin.patch(f"{API}/admin/waitlist/{ada['id']}", json={"status": "invited"})
+    with psycopg.connect(settings.database_url) as conn:
+        assert conn.execute("SELECT email, source FROM pilot_access").fetchall() == [(ada["email"], "waitlist")]
+        actions = sorted(r[0] for r in conn.execute("SELECT action FROM admin_audit_log"))
+    assert actions == ["pilot.let_in", "waitlist.status", "waitlist.status"]
 
 
 def test_csv_export(admin, signups):
