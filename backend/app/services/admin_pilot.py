@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.database import models
 from backend.app.schemas.admin import Page
 from backend.app.schemas.pilot import PilotAccessRow, PilotSource
+from backend.app.schemas.waitlist import WaitlistSignupRow
 from backend.app.services.admin import record_audit
 from backend.app.services.admin_directory import emails_by_id
 from backend.app.services.errors import NotFoundError
@@ -98,3 +99,17 @@ async def remove_signup(db: AsyncSession, actor, signup_id: uuid.UUID) -> models
     await db.commit()
     await db.refresh(signup)
     return signup
+
+
+async def signup_rows(db: AsyncSession, signups) -> list[WaitlistSignupRow]:
+    """Waitlist signups as the admin sees them, each with whether their email
+    is on the guest list."""
+    emails = [normalized(s.email) for s in signups]
+    let_in = set((await db.scalars(select(_P.email).where(_P.email.in_(emails)))).all()) if emails else set()
+    return [WaitlistSignupRow.model_validate(s).model_copy(update={"pilot_access": e in let_in})
+            for s, e in zip(signups, emails, strict=True)]
+
+
+async def signup_row(db: AsyncSession, signup: models.WaitlistSignup) -> WaitlistSignupRow:
+    [row] = await signup_rows(db, [signup])
+    return row

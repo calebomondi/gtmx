@@ -41,10 +41,10 @@ async def remove_pilot_access(access_id: uuid.UUID, actor: AdminUser, db: DbSess
 @router.post("/waitlist/{signup_id}/approve", response_model=WaitlistSignupRow)
 async def approve_waitlist_signup(signup_id: uuid.UUID, actor: AdminUser, db: DbSession):
     """Let a waitlist signup into the pilot, and mark them invited."""
-    return WaitlistSignupRow.model_validate(await admin_pilot.approve_signup(db, actor, signup_id))
+    return await admin_pilot.signup_row(db, await admin_pilot.approve_signup(db, actor, signup_id))
 
 
 @router.post("/waitlist/{signup_id}/remove-from-pilot", response_model=WaitlistSignupRow)
 async def remove_waitlist_signup_from_pilot(signup_id: uuid.UUID, actor: AdminUser, db: DbSession):
     """Take a waitlist signup off the pilot; they stay on the waitlist."""
-    return WaitlistSignupRow.model_validate(await admin_pilot.remove_signup(db, actor, signup_id))
+    return await admin_pilot.signup_row(db, await admin_pilot.remove_signup(db, actor, signup_id))

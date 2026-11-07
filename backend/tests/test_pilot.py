@@ -97,6 +97,24 @@ def test_a_waitlist_signup_is_approved_into_the_pilot(client, closed, monkeypatc
     assert _audit() == ["pilot.let_in", "waitlist.status"]
 
 
+def test_a_signup_marked_invited_without_access_can_still_be_let_in(client, closed, monkeypatch):
+    """Before "invited" let people in, the status could say invited while the
+    app kept them out; Let in still works on such a row."""
+    async def no_email(*_):
+        return True
+    monkeypatch.setattr(email, "send", no_email)
+    client.post(f"{API}/waitlist", json={"email": "Newcomer@example.com", "consent": True},
+                headers={"X-Real-IP": "10.2.0.3"})
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        conn.execute("UPDATE waitlist_signups SET status = 'invited'")
+    client.sign_in(BOSS)
+    [signup] = client.get(f"{API}/admin/waitlist").json()["items"]
+    assert (signup["status"], signup["pilot_access"]) == ("invited", False)
+    approved = client.post(f"{API}/admin/waitlist/{signup['id']}/approve").json()
+    assert (approved["status"], approved["pilot_access"]) == ("invited", True)
+    assert _in(client, NEWCOMER)
+
+
 def test_a_signup_taken_off_the_pilot_stays_on_the_waitlist(client, closed, monkeypatch):
     async def no_email(*_):
         return True
