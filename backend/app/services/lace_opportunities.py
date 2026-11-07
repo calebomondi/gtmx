@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agents.schemas.opportunities import Opportunity, OpportunitySummary
 from backend.app.database import models
 from backend.app.database.lace_models import Lace, LaceOpportunity
-from backend.app.services import lace_activity
+from backend.app.services import lace_activity, lace_briefs
 from backend.app.services.errors import NotFoundError
 from backend.app.services.laces import watch_interval
 from backend.app.services.runs import TERMINAL_STATUSES
@@ -95,13 +95,15 @@ async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
     return len(set(keys)) - refreshed, refreshed
 
 
-async def laces_due_for_scan(db: AsyncSession) -> list[tuple[uuid.UUID, uuid.UUID]]:
-    """(lace_id, user_id) of active Laces with an ICP whose last opportunity
-    search is older than the Lace's watch interval (or never ran) and none is
-    running."""
+async def laces_due_for_scan(db: AsyncSession, now: datetime | None = None) -> list[tuple[uuid.UUID, uuid.UUID]]:
+    """(lace_id, user_id) of active Laces past their first day, with an ICP,
+    whose last opportunity search is older than the Lace's watch interval (or
+    never ran) and none is running. On its first day, a Lace's first look
+    finds its opportunities (manager.first_look)."""
+    now = now or datetime.now(UTC)
     recent = select(models.Run.id).where(
         models.Run.kind == "lace_opportunities", models.Run.lace_id == Lace.id,
         or_(models.Run.status.not_in(TERMINAL_STATUSES), models.Run.created_at >= func.now() - watch_interval()))
-    rows = await db.execute(select(Lace.id, Lace.user_id).where(
-        Lace.status == "active", Lace.icp.is_not(None), ~recent.exists()))
-    return [(lace_id, user_id) for lace_id, user_id in rows.all()]
+    laces = (await db.scalars(select(Lace).where(
+        Lace.status == "active", Lace.icp.is_not(None), ~recent.exists()))).all()
+    return [(lace.id, lace.user_id) for lace in laces if not lace_briefs.on_first_day(lace, now)]
