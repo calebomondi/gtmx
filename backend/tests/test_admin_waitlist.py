@@ -79,14 +79,12 @@ def test_marking_a_signup_invited_lets_them_into_the_pilot(admin, signups):
     updated = admin.patch(f"{API}/admin/waitlist/{ada['id']}", json={"status": "invited"})
     assert updated.status_code == 200
     assert (updated.json()["status"], updated.json()["pilot_access"]) == ("invited", True)
-    [access] = admin.get(f"{API}/admin/pilot-access").json()["items"]
-    assert (access["email"], access["source"]) == (ada["email"], "waitlist")
     listed = admin.get(f"{API}/admin/waitlist", params={"q": "ada"}).json()["items"][0]
     assert listed["pilot_access"] is True
     # Marking them invited again changes nothing more.
     admin.patch(f"{API}/admin/waitlist/{ada['id']}", json={"status": "invited"})
-    assert admin.get(f"{API}/admin/pilot-access").json()["total"] == 1
     with psycopg.connect(settings.database_url) as conn:
+        assert conn.execute("SELECT email, source FROM pilot_access").fetchall() == [(ada["email"], "waitlist")]
         actions = sorted(r[0] for r in conn.execute("SELECT action FROM admin_audit_log"))
     assert actions == ["pilot.let_in", "waitlist.status", "waitlist.status"]
 
