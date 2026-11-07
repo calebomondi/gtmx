@@ -54,7 +54,7 @@ def lace(client, lace_runtime):  # noqa: F811
 
 
 def test_hunt_saves_competitors_and_the_lace_reports_back(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
-    monkeypatch.setattr(lace_jobs, "find_competitors", lambda profile, facts, focus: [RIVAL])
+    monkeypatch.setattr(lace_jobs, "find_competitors", lambda profile, facts, focus, limit=None: [RIVAL])
     lace_runtime.extend([_call("find_competitors", {"focus": "local"}), AIMessage(content="On it."),
                          AIMessage(content="I found Rival, who sells payroll to vets.")])
 
@@ -74,7 +74,7 @@ def test_hunt_saves_competitors_and_the_lace_reports_back(client, lace, lace_run
 
 
 def test_a_failed_hunt_is_reported_too(client, lace, lace_runtime, monkeypatch):  # noqa: F811
-    def boom(profile, facts, focus):
+    def boom(profile, facts, focus, limit=None):
         raise JobBlocked("Not enough is known about what the startup sells to say what competes with it.")
     monkeypatch.setattr(lace_jobs, "find_competitors", boom)
     lace_runtime.extend([_call("find_competitors"), AIMessage(content="On it."),

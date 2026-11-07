@@ -46,7 +46,7 @@ def _hunt(client, user, lace_id, params):
 
 @pytest.fixture
 def rival(monkeypatch, lace_runtime):  # noqa: F811
-    monkeypatch.setattr(lace_jobs, "find_competitors", lambda profile, facts, focus: [RIVAL])
+    monkeypatch.setattr(lace_jobs, "find_competitors", lambda profile, facts, focus, limit=None: [RIVAL])
     lace_runtime.append(AIMessage(content="I found Rival."))
 
 
@@ -67,7 +67,7 @@ def test_a_lace_of_one_names_nobody(client, user, lace, rival):  # noqa: F811
 
 
 def test_what_the_lace_does_for_someone_in_chat_is_theirs(client, team, monkeypatch, lace_runtime):  # noqa: F811
-    monkeypatch.setattr(lace_jobs, "find_competitors", lambda profile, facts, focus: [RIVAL])
+    monkeypatch.setattr(lace_jobs, "find_competitors", lambda profile, facts, focus, limit=None: [RIVAL])
     lace_runtime.extend([_call("find_competitors"), AIMessage(content="On it."), AIMessage(content="Found Rival.")])
     client.sign_in(WANJIRU)
     client.post(f"{API}/laces/{team}/messages", json={"text": "who competes with us?"})
