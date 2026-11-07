@@ -40,10 +40,17 @@ def zone(name: str) -> ZoneInfo:
         return ZoneInfo("UTC")
 
 
+def on_first_day(lace: Lace, now: datetime) -> bool:
+    """The day the Lace was made, in its founder's timezone. It does no
+    scheduled work then: the founder has only just met it."""
+    tz = zone(lace.timezone)
+    return lace.created_at.astimezone(tz).date() == now.astimezone(tz).date()
+
+
 def is_due(lace: Lace, now: datetime) -> bool:
     """Due at or after the founder's chosen local hour, once per day (daily)
-    or at least seven days apart (weekly)."""
-    if lace.brief_frequency == "off" or lace.status != "active":
+    or at least seven days apart (weekly), from the day after the Lace was made."""
+    if lace.brief_frequency == "off" or lace.status != "active" or on_first_day(lace, now):
         return False
     tz = zone(lace.timezone)
     local = now.astimezone(tz)

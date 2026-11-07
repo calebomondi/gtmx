@@ -368,8 +368,9 @@ _OPENING_PROMPT = """You have just read your founder's website for the first tim
 and looked the startup up on the web. Write your first message to them:
 introduce yourself by name in one line, then say in a few short bullets what
 you understood the startup sells, to whom, and how it is priced, then ask them
-to correct anything wrong. {web}End with the open questions below, numbered.
-Plain and brief: under 180 words. No sign-off."""
+to correct anything wrong. {web}Then the open questions below, numbered. End
+with one line saying that once they reply, you'll look for their top
+competitors and opportunities. Plain and brief: under 180 words. No sign-off."""
 
 _FROM_WEB = """Facts marked "(from the web)" are what others say: if one adds
 something the site doesn't (a launch, funding, a founder), mention it in a

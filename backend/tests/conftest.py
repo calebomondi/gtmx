@@ -28,8 +28,8 @@ from backend.app.services import website_check
 from backend.tests.helpers import make_user
 from config import settings
 
-# The real one, kept before no_settle_in replaces it for each test.
-_SETTLE_IN = run_manager.settle_in
+# The real one, kept before no_first_look replaces it for each test.
+_FIRST_LOOK = run_manager.first_look
 
 # How long cleanup waits on a lock before failing the test instead of hanging.
 CLEANUP_LOCK_TIMEOUT_S = 30
@@ -82,17 +82,17 @@ def no_follow_ups(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def no_settle_in(monkeypatch):
-    """A new Lace would start its first searches as soon as it has read its
-    site; tests that want that use real_settle_in."""
+def no_first_look(monkeypatch):
+    """A Lace would start its first searches after the founder's first
+    reply; tests that want that use real_first_look."""
     async def nothing(user_id, lace_id):
         return []
-    monkeypatch.setattr(run_manager, "settle_in", nothing)
+    monkeypatch.setattr(run_manager, "first_look", nothing)
 
 
 @pytest.fixture
-def real_settle_in(monkeypatch):
-    monkeypatch.setattr(run_manager, "settle_in", _SETTLE_IN)
+def real_first_look(monkeypatch):
+    monkeypatch.setattr(run_manager, "first_look", _FIRST_LOOK)
 
 
 @pytest.fixture(autouse=True)
