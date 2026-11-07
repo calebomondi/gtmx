@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.database import models
 from backend.app.schemas.admin import Page
 from backend.app.schemas.waitlist import SignupsOnDay, WaitlistSignupRow, WaitlistStats
-from backend.app.services import waitlist
+from backend.app.services import admin_pilot, waitlist
 from backend.app.services.admin import record_audit
 from backend.app.services.errors import NotFoundError
 
@@ -45,7 +45,7 @@ async def list_signups(db: AsyncSession, page: int, per_page: int, q: str | None
     rows = (await db.scalars(
         select(_W).where(*filters).order_by(_W.created_at.desc()).offset((page - 1) * per_page).limit(per_page)
     )).all()
-    return Page(items=[WaitlistSignupRow.model_validate(r) for r in rows], total=total, page=page, per_page=per_page)
+    return Page(items=await admin_pilot.signup_rows(db, rows), total=total, page=page, per_page=per_page)
 
 
 async def stats(db: AsyncSession) -> WaitlistStats:
@@ -73,17 +73,21 @@ async def stats(db: AsyncSession) -> WaitlistStats:
 
 
 async def set_status(db: AsyncSession, actor, signup_id: uuid.UUID, status: str) -> WaitlistSignupRow:
+    """Move a signup along the funnel. "invited" also lets them into the
+    pilot, so the label never says invited while the app keeps them out."""
     signup = await db.get(_W, signup_id)
     if signup is None:
         raise NotFoundError("Signup not found")
     before = signup.status
     signup.status = status
+    if status == "invited":
+        await admin_pilot.let_in(db, actor, [signup.email], "waitlist")
     await record_audit(db, actor_id=actor.id, actor_email=actor.email, action="waitlist.status",
                        target_type="waitlist_signup", target_id=str(signup_id),
                        before={"status": before, "email": signup.email}, after={"status": status, "email": signup.email})
     await db.commit()
     await db.refresh(signup)
-    return WaitlistSignupRow.model_validate(signup)
+    return await admin_pilot.signup_row(db, signup)
 
 
 async def export_csv(db: AsyncSession, pilot: bool | None = None, status: str | None = None) -> str:

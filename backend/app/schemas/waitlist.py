@@ -81,6 +81,7 @@ class WaitlistSignupRow(BaseModel):
     website: str | None = None
     source: dict
     status: WaitlistStatus
+    pilot_access: bool = Field(default=False, description="Their email is on the pilot's guest list (Pilot access)")
     confirmation_sent_at: datetime | None
     created_at: datetime
     updated_at: datetime
