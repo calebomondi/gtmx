@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from agents.prompts.playbook_library import playbook_section
 from agents.llm.main import cheap_providers, invoke_structured_with_fallback
 from agents.pipelines import team
 from agents.pipelines.outreach import grounding
@@ -79,7 +80,7 @@ How to answer:
 Greet the contact: "Hi {contact}," -- you are {sender}, never greet yourself.
 No buzzwords, no exclamation marks, no repeating the original pitch, and no
 number, customer or result that isn't in the notes, offer or conversation.
-{feedback}
+{feedback}{method}
 SPECIALIST NOTES
 {notes}
 
@@ -137,6 +138,7 @@ def _write(brief: ReplyBrief, analysis: ReplyAnalysis, notes: str, feedback: str
             intent=analysis.intent, summary=analysis.summary, slots=_slots_line(brief, analysis),
             notes=notes, offer=brief.offer, thread=_thread_text(brief),
             feedback=f"\nA reviewer rejected your last version. Fix: {feedback}\n" if feedback else "",
+            method=playbook_section("reply-handling"),
         )), HumanMessage(content="Write the reply now.")],
         ReplyDraft, log_label=f"reply_write:{analysis.intent}",
     )

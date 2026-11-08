@@ -30,6 +30,7 @@ from agents.lace.social_tools import build_social_tools
 from agents.lace.calendar_tools import build_calendar_tools
 from agents.lace.inbox_tools import build_inbox_tools
 from agents.lace.instruction_tools import build_instruction_tools
+from agents.lace.playbook_tools import build_playbook_tools
 from agents.lace.store import JobRefused, LaceJobs, LaceStore
 from agents.lace.tool_guard import guarded, job_result
 from agents.schemas.opportunities import OPPORTUNITY_KINDS, OpportunityKind
@@ -342,7 +343,7 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
 
     tools = [search_web, map_site, read_page, read_pages, read_social, get_facts, record_fact, list_competitors,
              list_accounts, list_opportunities, list_suggestions, show, list_documents, read_document,
-             *build_ask_tools(), *build_edit_tools(store), *build_instruction_tools(store),
+             *build_ask_tools(), *build_edit_tools(store), *build_instruction_tools(store), *build_playbook_tools(),
              *build_regulation_tools(store, jobs),
              # Acting in the founder's apps needs them: proposals, run on approval.
              *([*build_social_tools(store, apps), *build_sheet_tools(store, apps), *build_notion_tools(store, apps),

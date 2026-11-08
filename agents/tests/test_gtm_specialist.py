@@ -61,6 +61,8 @@ def test_writes_from_research_without_consulting_when_not_needed(llm):
     assert [label for label, _ in calls] == ["outreach_research", "outreach_plan", "outreach_write:email", "outreach_review"]
     assert "Amani Njoroge" in calls[1][1] and "hiring two ML engineers" in calls[0][1]
     assert 'signed "Wanjiku"' in calls[2][1] and draft.subject == "Your ML hires"
+    # The cold-email playbook is the method behind the writer's rules.
+    assert "THE COLD-EMAIL PLAYBOOK" in calls[2][1] and "the rules above win" in calls[2][1]
 
 
 def test_consults_the_named_specialist_from_their_own_research(llm):
@@ -82,7 +84,10 @@ def test_a_failed_review_gets_one_rewrite_with_the_feedback(llm):
 
 
 def test_linkedin_drafts_have_no_subject(llm):
+    calls, _ = llm
     assert gs.write_first_touch(_brief("linkedin"), "Cloud of Association").subject == ""
+    # The cold-email playbook is for email; a LinkedIn note keeps its own rules.
+    assert "PLAYBOOK" not in dict(calls)["outreach_write:linkedin"]
 
 
 def test_lint_catches_what_a_lenient_reviewer_misses():
