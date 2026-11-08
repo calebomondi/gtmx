@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from agents.context_budget import count_tokens
 from agents.schemas.icp import ICP
+from agents.prompts.playbook_library import render_index as render_playbook_index
 from agents.lace.apps import AppStatus
 from agents.schemas.lace import FACT_TOPICS, AccountSummary, CompetitorSummary, DocumentSummary, Fact, Instruction, InstructionScope, LaceProfile, RunningJob, Suggestions
 from agents.schemas.opportunities import OpportunitySummary
@@ -187,6 +188,11 @@ Standing instructions from the team (follow them in everything they apply
 to; change one only when the founder asks):
 {instructions}
 
+Your GTM playbooks (how a good go-to-market operator does each kind of task;
+read the one that fits with read_playbook before you start that task; the
+standing instructions above outrank them):
+{playbooks}
+
 On file (what the founder saved; the list tools give details):
 {on_file}
 
@@ -318,6 +324,7 @@ def system_prompt(profile: LaceProfile, facts: list[Fact], icp: ICP | None = Non
         documents=render_documents(documents or []),
         on_file=on_file,
         instructions=render_instructions(instructions or []),
+        playbooks=render_playbook_index(),
     )
 
 

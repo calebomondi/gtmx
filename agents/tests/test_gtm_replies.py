@@ -48,6 +48,7 @@ def test_questions_are_answered_with_the_specialist_and_real_slots(llm):
     consult_prompt, write_prompt = calls[1][1], calls[2][1]
     assert "Baraka Mwangi" in consult_prompt and "Runs fully offline on CPUs." in consult_prompt
     assert "Thu 16 Oct, 10:00-10:30 (Africa/Nairobi)" in write_prompt and "It runs fully offline." in write_prompt
+    assert "THE REPLY-HANDLING PLAYBOOK" in write_prompt
     assert result.draft.body.endswith("Wanjiku")
 
 
