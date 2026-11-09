@@ -165,6 +165,13 @@ class Settings(BaseSettings):
     # earlier mail with the lead's company (found: it starts warm, and the
     # draft is written as a follow-on).
     email_history_days: int = 365
+    # Follow-ups to first emails nobody answered: the first this many days after
+    # the email, the second this many days after the first; and how many one
+    # scheduled job drafts (the rest wait for the next sweep).
+    follow_up_first_after_days: int = 3
+    follow_up_second_after_days: int = 7
+    follow_ups_batch: int = 5
+    follow_up_laces_per_sweep: int = 20
 
     # -- Waitlist (public landing page at thalace.com) --
     # Resend sends the signup confirmation. It only delivers to any address

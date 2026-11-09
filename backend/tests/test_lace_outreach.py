@@ -3,7 +3,7 @@ saved for the founder to edit or discard, never sent by the Lace."""
 
 import json
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import psycopg
 from langchain_core.messages import AIMessage
@@ -188,6 +188,10 @@ def test_the_founders_click_sends_through_their_gmail(client, lace, lace_runtime
     with psycopg.connect(settings.database_url) as conn:
         assert conn.execute("SELECT thread_id, provider_log_id FROM lace_outreach WHERE id = %s",
                             (message,)).fetchone() == ("t_1", "log_1")
+        # A first email nobody answered gets a follow-up a few days on.
+        sent_at, due = conn.execute("SELECT sent_at, follow_up_due_at FROM lace_outreach WHERE id = %s",
+                                    (message,)).fetchone()
+        assert due == sent_at + timedelta(days=settings.follow_up_first_after_days)
     # Sent once: a second click can't send it again.
     assert client.post(f"{API}/laces/{lace}/outreach/{message}/send").status_code == 409
     assert len(calls) == 1
