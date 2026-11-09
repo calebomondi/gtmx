@@ -1,10 +1,17 @@
-import { ExternalLink, Loader2, MessageCircle, X } from "lucide-react"
+import { useState } from "react"
+import { ChevronRight, ExternalLink, Loader2, MessageCircle, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import type { LaceAccountDto } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 import { ITEM_CARD } from "./feed-styles"
+import { byTemperature, leadLine, TEMPERATURE_LABEL, TEMPERATURES, temperatureCounts,
+         type TemperatureFilter } from "./lead-temperature"
+import { CrmBadge } from "./crm-badge"
+import { TemperatureBadge } from "./temperature-badge"
 
 type Strength = NonNullable<LaceAccountDto["case"]>["strength"]
 
@@ -37,6 +44,7 @@ function WhyTheyFit({ account }: { account: LaceAccountDto }) {
       text: account.trigger.event,
       source: account.trigger.source,
     },
+    account.resembles && { label: "Like", text: account.resembles },
     account.case?.need && { label: "Their need", text: account.case.need },
     account.case?.capability && { label: "How we help", text: account.case.capability },
     account.case?.payoff && { label: "Payoff", text: account.case.payoff },
@@ -94,16 +102,41 @@ function Reach({ account }: { account: LaceAccountDto }) {
   )
 }
 
-/** Leads: who they are, why they fit (the trigger that makes now
- * the moment, their need, how we meet it, the payoff), who to reach, and a
- * way to talk it through with the Lace. Dismissing one drops it for good. */
-export function LaceAccounts({ accounts, finding, onDismiss, name, onDiscuss }: {
+/** One chip per temperature, with how many leads it holds; empty ones hide. */
+function TemperatureChips({ accounts, value, onChange }: {
+  accounts: LaceAccountDto[]
+  value: TemperatureFilter
+  onChange: (next: TemperatureFilter) => void
+}) {
+  const counts = temperatureCounts(accounts)
+  const shown: TemperatureFilter[] = ["all", ...TEMPERATURES.filter((t) => counts[t] > 0)]
+  return (
+    <ToggleGroup value={[value]} onValueChange={(next) => next[0] && onChange(next[0] as TemperatureFilter)}
+                 variant="outline" size="sm" className="flex-wrap" aria-label="Show leads by temperature">
+      {shown.map((t) => (
+        <ToggleGroupItem key={t} value={t}>
+          {t === "all" ? "All" : TEMPERATURE_LABEL[t]}
+          <span className="text-muted-foreground tabular-nums">{counts[t]}</span>
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
+  )
+}
+
+/** Leads, hottest first: who they are, how warm and why, why they fit (the
+ * trigger that makes now the moment, their need, how we meet it, the payoff),
+ * who to reach, and a way to talk it through with the Lace. Dismissing one
+ * drops it for good; marking a customer is the one temperature set by hand. */
+export function LaceAccounts({ accounts, finding, onDismiss, onCustomer, name, onDiscuss }: {
   accounts: LaceAccountDto[]
   finding: boolean
   onDismiss: (id: string) => void
+  onCustomer: (id: string, customer: boolean) => void
   name: string
   onDiscuss: (account: LaceAccountDto) => void
 }) {
+  const [filter, setFilter] = useState<TemperatureFilter>("all")
+  const shown = byTemperature(accounts, filter)
   return (
     <div className="flex flex-col gap-4">
       {finding && (
@@ -114,34 +147,73 @@ export function LaceAccounts({ accounts, finding, onDismiss, name, onDiscuss }: 
       {accounts.length === 0 && !finding && (
         <p className="text-sm text-muted-foreground">None yet. Ask {name} to find leads.</p>
       )}
+      {accounts.length > 0 && <TemperatureChips accounts={accounts} value={filter} onChange={setFilter} />}
       <ul className="flex flex-col gap-3">
-        {accounts.map((a) => (
-          <li key={a.id} className={`${ITEM_CARD} flex items-start justify-between gap-3`}>
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="font-medium">{a.name}</span>
-                {a.case && <FitMeter strength={a.case.strength} />}
-                {a.geo && <span className="text-xs text-muted-foreground">{a.geo}</span>}
-              </div>
-              {a.website && (
-                <a href={a.website} target="_blank" rel="noreferrer"
-                   className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground hover:underline">
-                  {a.website.replace(/^https?:\/\/(www\.)?/, "")} <ExternalLink className="size-3" />
-                </a>
-              )}
-              <WhyTheyFit account={a} />
-              <Reach account={a} />
-              <Button size="sm" variant="outline" className="mt-1 w-fit rounded-full border-theme/40 hover:bg-theme/10"
-                      onClick={() => onDiscuss(a)}>
-                <MessageCircle /> Discuss with {name}
-              </Button>
-            </div>
-            <Button variant="ghost" size="icon" aria-label={`Drop ${a.name}`} title="Not a fit" onClick={() => onDismiss(a.id)}>
-              <X />
-            </Button>
-          </li>
+        {shown.map((a) => (
+          <LeadRow key={a.id} account={a} name={name} onDismiss={onDismiss} onCustomer={onCustomer}
+                   onDiscuss={onDiscuss} />
         ))}
       </ul>
     </div>
+  )
+}
+
+/** One lead, collapsed to its name, badges and one line; tapping it opens
+ * the whole case, who to reach and what to do. Dropping it stays at hand. */
+function LeadRow({ account: a, name, onDismiss, onCustomer, onDiscuss }: {
+  account: LaceAccountDto
+  name: string
+  onDismiss: (id: string) => void
+  onCustomer: (id: string, customer: boolean) => void
+  onDiscuss: (account: LaceAccountDto) => void
+}) {
+  const line = leadLine(a)
+  return (
+    <li className={ITEM_CARD}>
+      <Collapsible>
+        <div className="flex items-start justify-between gap-2">
+          <CollapsibleTrigger aria-label={`Show more about ${a.name}`}
+                              className="group/lead flex min-w-0 flex-1 cursor-pointer items-start gap-2 text-left">
+            <ChevronRight aria-hidden
+                          className="mt-1 size-4 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]/lead:rotate-90" />
+            <span className="flex min-w-0 flex-1 flex-col gap-1">
+              <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="font-medium">{a.name}</span>
+                <TemperatureBadge temperature={a.temperature} />
+                <CrmBadge account={a} />
+                {a.case && <FitMeter strength={a.case.strength} />}
+                {a.geo && <span className="text-xs text-muted-foreground">{a.geo}</span>}
+              </span>
+              {line && <span className="truncate text-xs text-muted-foreground group-data-[panel-open]/lead:whitespace-normal">{line}</span>}
+            </span>
+          </CollapsibleTrigger>
+          <Button variant="ghost" size="icon" aria-label={`Drop ${a.name}`} title="Not a fit" onClick={() => onDismiss(a.id)}>
+            <X />
+          </Button>
+        </div>
+        <CollapsibleContent>
+          <div className="flex flex-col gap-1 pt-2 pl-6">
+            {a.website && (
+              <a href={a.website} target="_blank" rel="noreferrer"
+                 className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground hover:underline">
+                {a.website.replace(/^https?:\/\/(www\.)?/, "")} <ExternalLink className="size-3" />
+              </a>
+            )}
+            <WhyTheyFit account={a} />
+            <Reach account={a} />
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" className="w-fit rounded-full border-theme/40 hover:bg-theme/10"
+                      onClick={() => onDiscuss(a)}>
+                <MessageCircle /> Discuss with {name}
+              </Button>
+              <Button size="sm" variant="ghost" className="w-fit text-muted-foreground"
+                      onClick={() => onCustomer(a.id, a.temperature !== "customer")}>
+                {a.temperature === "customer" ? "Not a customer" : "Mark as customer"}
+              </Button>
+            </div>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </li>
   )
 }

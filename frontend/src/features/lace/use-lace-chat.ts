@@ -28,6 +28,7 @@ import {
   uploadLaceDocument,
   draftToLaceContact,
   sendLaceOutreach,
+  setLaceAccountCustomer,
   setLaceAccountStatus,
   setLaceCompetitorStatus,
   updateLaceOutreach,
@@ -111,6 +112,8 @@ export interface LaceChat {
   dismissCompetitor: (competitorId: string) => Promise<void>
   /** With `why`, later searches steer clear of the like. */
   dismissAccount: (accountId: string, why?: Dismissal) => Promise<void>
+  /** Mark a saved lead as a customer, or take that back. */
+  setCustomer: (accountId: string, customer: boolean) => Promise<void>
   saveDraft: (messageId: string, changes: LaceOutreachChanges) => Promise<void>
   discardDraft: (messageId: string) => Promise<void>
   /** Send a draft (the founder's approval) after UNDO_SEND_MS, unless undone. */
@@ -350,6 +353,14 @@ export function useLaceChat(laceId: string, thread: ChatThread = "team"): LaceCh
   const dismissAccount = useCallback((id: string, why?: Dismissal) => decideAccount(id, "dismissed", why),
                                      [decideAccount])
   const saveAccount = useCallback((id: string) => decideAccount(id, "target"), [decideAccount])
+  const setCustomer = useCallback(async (accountId: string, customer: boolean) => {
+    try {
+      const updated = await setLaceAccountCustomer(laceId, accountId, customer)
+      setAccounts((prev) => prev.map((a) => (a.id === accountId ? updated : a)))
+    } catch (err) {
+      setError(message(err))
+    }
+  }, [laceId])
 
   const saveDraft = useCallback(async (messageId: string, changes: LaceOutreachChanges) => {
     try {
@@ -549,7 +560,7 @@ export function useLaceChat(laceId: string, thread: ChatThread = "team"): LaceCh
   return {
     lace, messages, facts, competitors, searching, accounts, findingAccounts, outreach, waiting, socialUnread, drafting, findingOpportunities,
     loading: loading || conversation.thread !== thread, error,
-    working, turnBy, step, steps, jobs, draft, send, answer, reload, dismissCompetitor, dismissAccount, saveDraft, discardDraft, sendDraft, sendingSoon,
+    working, turnBy, step, steps, jobs, draft, send, answer, reload, dismissCompetitor, dismissAccount, setCustomer, saveDraft, discardDraft, sendDraft, sendingSoon,
     undoSend, markSent, markRead, decideAction, findContacts, draftToContact, contacts, approveContact, approveAccountContacts, removeContact, saveCompetitor, saveAccount, decideOpportunity, suggestedCompetitors,
     suggestedAccounts, decidedOpportunities, saveAll,
   }

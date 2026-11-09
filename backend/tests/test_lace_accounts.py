@@ -2,6 +2,7 @@
 with their cases, reported back, and listed strongest first."""
 
 import uuid
+from datetime import UTC, datetime
 
 import psycopg
 from langchain_core.messages import AIMessage
@@ -38,7 +39,7 @@ def test_search_saves_accounts_and_the_lace_reports_back(client, lace, lace_runt
     _with_icp(lace)
     seen = {}
 
-    def fake(profile, facts, icp, exclude, countries, instructions=""):
+    def fake(profile, facts, icp, exclude, countries, instructions="", lookalikes=None):
         seen.update(exclude=exclude, countries=countries, industries=icp.industries)
         return [_found("Weak", "weak"), _found("Strong", "strong"), _found("Unmade", None)]
 
@@ -76,7 +77,7 @@ def test_no_icp_means_the_search_works_one_out_first(client, lace, lace_runtime,
     monkeypatch.setattr(lace_jobs.lace_icp, "define_icp",
                         lambda profile, facts, rivals, guidance: ICP(buyer_type="b2b", industries=["Clinics"]))
 
-    def fake(profile, facts, icp, exclude, countries, instructions=""):
+    def fake(profile, facts, icp, exclude, countries, instructions="", lookalikes=None):
         seen["industries"] = icp.industries
         return [_found("Alpha", "strong")]
     monkeypatch.setattr(lace_jobs, "find_accounts", fake)
@@ -138,3 +139,15 @@ def test_when_nothing_fits_the_lace_is_told_to_say_so(client, lace, lace_runtime
     assert "checked 2 companies, but none fits what we sell" in update and "Tell the founder plainly" in update
     assert "Tea Estate" not in update
     assert client.get(f"{API}/laces/{lace}/accounts?status=suggested").json() == []
+
+
+def test_learned_customers_become_lookalike_examples():
+    from agents.schemas.lace import Fact
+    from backend.app.runs.lace_jobs import lookalikes_from
+
+    def fact(topic, claim):
+        return Fact(id="1", topic=topic, claim=claim, confidence="medium", origin="research",
+                    recorded_at=datetime.now(UTC))
+    facts = [fact("customers", "Customer Aga Khan Clinics: runs hospitals (Nairobi)."),
+             fact("customers", "Clinics in Kenya buy from us."), fact("offer", "Customer service is 24/7.")]
+    assert lookalikes_from(facts) == ["Aga Khan Clinics: runs hospitals (Nairobi)"]

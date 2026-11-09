@@ -12,12 +12,14 @@ from agents.schemas.accounts import AccountFit, AccountRecord, TriggerEvent
 from agents.lace.contacts import contact_status
 from agents.schemas.lace import AccountSummary
 from backend.app.database.lace_models import LaceAccount
-from backend.app.services import lace_activity, lace_contacts
+from backend.app.services import crm_match, lace_activity, lace_contacts
 from backend.app.services.competitors import domain_key
 from backend.app.services.errors import NotFoundError
 
 # Strongest case first, then discovery's own score.
 BY_FIT = case({"strong": 0, "moderate": 1, "weak": 2}, value=LaceAccount.fit_strength, else_=3)
+# Closest to buying first; customers, already won, after the leads still to work.
+BY_TEMPERATURE = case({"hot": 0, "warm": 1, "cold": 2, "customer": 3}, value=LaceAccount.temperature, else_=4)
 
 
 def account_key(record: AccountRecord) -> str:
@@ -38,7 +40,9 @@ def summary(row: LaceAccount) -> AccountSummary:
                           geo=row.geo, trigger=trigger.get("event"), need=fit.get("need"),
                           capability=fit.get("capability"), payoff=fit.get("payoff"), angle=fit.get("angle"),
                           fit_strength=row.fit_strength, contact_status=row.contact_status,
-                          contacts=_people(record), channels=record.get("socials") or {})
+                          contacts=_people(record), channels=record.get("socials") or {},
+                          temperature=row.temperature, temperature_reason=row.temperature_reason,
+                          crm_status=row.crm_status, crm_stage=row.crm_stage, resembles=record.get("resembles"))
 
 
 def response(row: LaceAccount) -> dict:
@@ -48,16 +52,21 @@ def response(row: LaceAccount) -> dict:
             "geo": row.geo, "summary": record.get("summary"), "trigger": record.get("trigger_event"),
             "case": fit, "status": row.status, "contact_status": row.contact_status, "contacts": _people(record),
             "channels": record.get("socials") or {}, "contacts_checked_at": row.contacts_checked_at,
+            "temperature": row.temperature, "temperature_reason": row.temperature_reason,
+            "temperature_changed_at": row.temperature_changed_at, "snoozed_until": row.snoozed_until,
+            "crm_status": row.crm_status, "crm_stage": row.crm_stage, "resembles": record.get("resembles"),
             "first_seen_at": row.first_seen_at, "last_seen_at": row.last_seen_at}
 
 
 async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, status: str, limit: int,
-                        owner_id: uuid.UUID | None = None) -> list[LaceAccount]:
-    rows = await db.scalars(
-        select(LaceAccount).where(LaceAccount.lace_id == lace_id, LaceAccount.owned_by(owner_id),
-                                  LaceAccount.status == status)
-        .order_by(BY_FIT, LaceAccount.score.desc().nulls_last(), LaceAccount.last_seen_at.desc()).limit(limit)
-    )
+                        owner_id: uuid.UUID | None = None, temperature: str | None = None) -> list[LaceAccount]:
+    """Hottest first, then strongest fit; only one temperature when asked."""
+    query = select(LaceAccount).where(LaceAccount.lace_id == lace_id, LaceAccount.owned_by(owner_id),
+                                      LaceAccount.status == status)
+    if temperature is not None:
+        query = query.where(LaceAccount.temperature == temperature)
+    rows = await db.scalars(query.order_by(BY_TEMPERATURE, BY_FIT, LaceAccount.score.desc().nulls_last(),
+                                           LaceAccount.last_seen_at.desc()).limit(limit))
     return list(rows.all())
 
 
@@ -104,6 +113,7 @@ async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
     stored = dict((await db.execute(select(LaceAccount.key, LaceAccount.record).where(
         LaceAccount.lace_id == lace_id, LaceAccount.owned_by(owner_id), LaceAccount.key.in_(keys)))).all())
     now = datetime.now(UTC)
+    saved: list[uuid.UUID] = []
     for (found_record, fit), key in zip(found, keys):
         record = _merged(found_record, stored.get(key))
         stmt = insert(LaceAccount).values(
@@ -119,6 +129,10 @@ async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
         account_id = await db.scalar(stmt.on_conflict_do_update(
             constraint="uq_lace_accounts_lace_id_owner_id_key", set_=refresh).returning(LaceAccount.id))
         await lace_contacts.sync(db, lace_id, account_id, found_record.key_contacts, "discovery")
+        saved.append(account_id)
+    # One already in the founder's CRM says so (and a customer there is one here).
+    await db.flush()
+    await crm_match.match_accounts(db, lace_id, saved, now)
     refreshed = len(set(keys) & set(stored))
     return len(set(keys)) - refreshed, refreshed
 

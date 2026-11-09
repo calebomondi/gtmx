@@ -7,8 +7,6 @@ from collections.abc import Awaitable, Callable
 
 Run = Callable[[str, dict], Awaitable[object]]
 
-# The CRMs a Lace reads, in the order it picks one when the founder connected several.
-CRM_APPS = ("zoho", "hubspot")
 # Zoho returns at most 200 records a page; these bound what one read fetches.
 ZOHO_PAGE = 200
 DEAL_PAGES = 5
@@ -149,5 +147,77 @@ async def hubspot_find(run: Run, query: str) -> list[dict]:
     return found[:FOUND_MAX]
 
 
+# The whole CRM, for a Lace's copy of it (crm_sync): pages per module, so
+# one sync is bounded (Zoho: 1,000 per module; HubSpot: 1,000 per object).
+SNAPSHOT_PAGES = 5
+HUBSPOT_SNAPSHOT_PAGES = 10
+# Where each status ranks when one company turns up more than once.
+STATUS_RANK = {"customer": 3, "open_deal": 2, "lead": 1, "known": 0}
+# HubSpot lifecycle stages, as a CRM status.
+_HUBSPOT_LIFECYCLE = {"customer": "customer", "evangelist": "customer", "opportunity": "open_deal",
+                      "lead": "lead", "marketingqualifiedlead": "lead", "salesqualifiedlead": "lead"}
+
+
+def _record(kind: str, status: str, *, name=None, company=None, email=None, website=None, stage=None) -> dict:
+    """One CRM record in the shape every CRM is read into: {kind (company or
+    person), status (CrmStatus), name, company, email, website, stage}."""
+    return {"kind": kind, "status": status, "name": name or None, "company": company or None,
+            "email": (email or "").strip().lower() or None, "website": website or None, "stage": stage or None}
+
+
+def _deal_status(stage: str) -> str:
+    lowered = stage.lower()
+    if not lowered.startswith("closed"):
+        return "open_deal"
+    return "customer" if "won" in lowered else "known"
+
+
+async def zoho_snapshot(run: Run) -> list[dict]:
+    """Every company and person in Zoho CRM, with where each stands: a won deal
+    makes its company a customer, an open one an open deal; leads are leads."""
+    records = [_record("company", "known", company=r.get("Account_Name"), website=r.get("Website"))
+               for r in await _zoho_pages(run, "Accounts", "Account_Name,Website", SNAPSHOT_PAGES)]
+    for r in await _zoho_pages(run, "Deals", "Deal_Name,Stage,Account_Name", SNAPSHOT_PAGES):
+        if company := _name(r.get("Account_Name")):
+            stage = r.get("Stage") or ""
+            records.append(_record("company", _deal_status(stage), company=company, stage=stage))
+    for r in await _zoho_pages(run, "Contacts", "Full_Name,First_Name,Last_Name,Account_Name,Email", SNAPSHOT_PAGES):
+        records.append(_record("person", "known", name=r.get("Full_Name") or _join(r.get("First_Name"), r.get("Last_Name")),
+                               company=_name(r.get("Account_Name")), email=r.get("Email")))
+    for r in await _zoho_pages(run, "Leads", "Full_Name,First_Name,Last_Name,Company,Email,Website", SNAPSHOT_PAGES):
+        records.append(_record("person", "lead", name=r.get("Full_Name") or _join(r.get("First_Name"), r.get("Last_Name")),
+                               company=r.get("Company"), email=r.get("Email"), website=r.get("Website"), stage="Lead"))
+    return records
+
+
+async def _hubspot_all(run: Run, tool: str, properties: list[str]) -> list[dict]:
+    rows, after = [], None
+    for _ in range(HUBSPOT_SNAPSHOT_PAGES):
+        page, after = _results(await run(tool, {"limit": HUBSPOT_PAGE, "properties": properties,
+                                                **({"after": after} if after else {})}))
+        rows += [r.get("properties") or {} for r in page]
+        if not after:
+            break
+    return rows
+
+
+async def hubspot_snapshot(run: Run) -> list[dict]:
+    """Every company and contact in HubSpot, with where each stands, from its
+    lifecycle stage (customer, opportunity, lead)."""
+    records = []
+    for p in await _hubspot_all(run, "HUBSPOT_LIST_COMPANIES", ["name", "domain", "lifecyclestage"]):
+        stage = p.get("lifecyclestage") or ""
+        records.append(_record("company", _HUBSPOT_LIFECYCLE.get(stage, "known"), company=p.get("name"),
+                               website=p.get("domain"), stage=stage))
+    for p in await _hubspot_all(run, "HUBSPOT_LIST_CONTACTS", ["firstname", "lastname", "email", "company",
+                                                               "lifecyclestage"]):
+        stage = p.get("lifecyclestage") or ""
+        records.append(_record("person", _HUBSPOT_LIFECYCLE.get(stage, "known"),
+                               name=_join(p.get("firstname"), p.get("lastname")), company=p.get("company"),
+                               email=p.get("email"), stage=stage))
+    return records
+
+
 DEALS: dict[str, Callable[[Run], Awaitable[list[dict]]]] = {"zoho": zoho_deals, "hubspot": hubspot_deals}
+SNAPSHOT: dict[str, Callable[[Run], Awaitable[list[dict]]]] = {"zoho": zoho_snapshot, "hubspot": hubspot_snapshot}
 FIND: dict[str, Callable[[Run, str], Awaitable[list[dict]]]] = {"zoho": zoho_find, "hubspot": hubspot_find}

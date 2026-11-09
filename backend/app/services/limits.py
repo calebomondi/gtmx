@@ -62,6 +62,10 @@ def default_daily_cap(kind: str) -> int:
         "lace_refresh": settings.max_lace_onboardings_per_day,
         # Daily on its own, more when the founder asks: bounded like competitor checks.
         "lace_listening": settings.max_monitor_runs_per_day,
+        # Scheduled, a batch of due follow-ups each: bounded like drafting.
+        "lace_follow_ups": settings.max_account_runs_per_day,
+        # Reads a few customer sites, then reworks the ICP: bounded like drafting.
+        "lace_customers": settings.max_account_runs_per_day,
     }[kind]
 
 

@@ -7,13 +7,13 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database.lace_models import Lace, LaceAccount, LaceChannel, LaceOutreach
 from backend.app.services import connections as connection_service
-from backend.app.services import lace_activity, lace_channels
+from backend.app.services import lace_activity, lace_channels, lead_temperature
 from backend.app.services import outreach as outreach_service
 from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError
 from utils.log import logger
@@ -252,8 +252,10 @@ async def record_reading(db: AsyncSession, reply: LaceOutreach, intent: str, dra
     the answer as a draft in its thread, on its channel, to whoever wrote.
     Returns the draft."""
     reply.intent = intent
-    if intent == "unsubscribe" and reply.account_id and (account := await db.get(LaceAccount, reply.account_id)):
-        account.do_not_contact = True
+    if reply.account_id and (account := await db.get(LaceAccount, reply.account_id)):
+        if intent == "unsubscribe":
+            account.do_not_contact = True
+        await lead_temperature.on_reply(db, account, intent, reply.id)
     draft = None
     if draft_body:
         draft = LaceOutreach(lace_id=reply.lace_id, user_id=reply.user_id, account_id=reply.account_id, run_id=run_id,
@@ -287,17 +289,24 @@ async def mark_sent(db: AsyncSession, message: LaceOutreach, actor_id: uuid.UUID
     return message
 
 
+# Where a lead stands in the founder's CRM that rules out a cold first email.
+CRM_NO_COLD_EMAIL = ("customer", "open_deal")
+
+
 async def accounts_to_draft(db: AsyncSession, lace_id: uuid.UUID, ids: list[uuid.UUID] | None,
                             limit: int, member_id: uuid.UUID | None = None) -> list[LaceAccount]:
     """The accounts named, else the strongest-fit targets that nothing was
-    written to yet. Whether someone there can be reached is the caller's check."""
+    written to yet and that aren't customers or open deals in the founder's
+    CRM. Whether someone there can be reached, and whether a named one is in
+    the CRM, is the caller's check."""
     query = select(LaceAccount).where(LaceAccount.lace_id == lace_id, LaceAccount.seen_by(member_id),
                                       LaceAccount.status == "target")
     if ids:
         query = query.where(LaceAccount.id.in_(ids))
     else:
         written = exists().where(LaceOutreach.account_id == LaceAccount.id, LaceOutreach.direction == "outbound")
-        query = query.where(~written, LaceAccount.contact_status.in_(("person", "organisation")))
+        query = query.where(~written, LaceAccount.contact_status.in_(("person", "organisation")),
+                            or_(LaceAccount.crm_status.is_(None), LaceAccount.crm_status.not_in(CRM_NO_COLD_EMAIL)))
     query = query.where(LaceAccount.do_not_contact.is_(False))
     return list((await db.scalars(query.order_by(BY_FIT, LaceAccount.score.desc().nulls_last()).limit(limit))).all())
 

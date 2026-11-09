@@ -152,6 +152,29 @@ class Settings(BaseSettings):
     # Only threads sent within this window are watched for replies.
     inbox_sync_window_days: int = 30
 
+    # -- Lead temperature (backend/app/services/lead_temperature.py) --
+    # A warm or hot lead quiet this long drops one step (hot to warm, warm to cold).
+    lead_cooling_days: int = 30
+    # "Not now" keeps a lead warm and undisturbed this long.
+    lead_snooze_days: int = 30
+    # How often each Lace's copy of the founder's CRM is refreshed, and how
+    # many Laces one scheduler sweep refreshes (the rest wait for the next).
+    crm_sync_every_h: int = 24
+    crm_sync_batch: int = 10
+    # Before a first email, how far back the founder's mailbox is searched for
+    # earlier mail with the lead's company (found: it starts warm, and the
+    # draft is written as a follow-on).
+    email_history_days: int = 365
+    # Follow-ups to first emails nobody answered: the first this many days after
+    # the email, the second this many days after the first; and how many one
+    # scheduled job drafts (the rest wait for the next sweep).
+    follow_up_first_after_days: int = 3
+    follow_up_second_after_days: int = 7
+    follow_ups_batch: int = 5
+    follow_up_laces_per_sweep: int = 20
+    # How many customers' websites one learning run reads (the rest wait for the next).
+    customers_per_run: int = 8
+
     # -- Waitlist (public landing page at thalace.com) --
     # Resend sends the signup confirmation. It only delivers to any address
     # once the sending domain is verified in Resend; until `waitlist_from_email`

@@ -151,6 +151,23 @@ class CompetitorSummary(BaseModel):
 # suggested: found by a search, waiting for the founder to save (target) or dismiss it.
 AccountStatus = Literal["suggested", "target", "dismissed"]
 ACCOUNT_STATUSES: tuple[str, ...] = AccountStatus.__args__
+# How close a lead is to buying, set in code from what they did (agents/prompts/
+# playbooks/lead-temperature.md): cold until they engage, warm when they do,
+# hot when they want to talk, customer once they bought.
+LeadTemperature = Literal["cold", "warm", "hot", "customer"]
+LEAD_TEMPERATURES: tuple[str, ...] = LeadTemperature.__args__
+# What moved a lead's temperature: a reply (with its intent), a meeting, the
+# founder marking a customer, an opt-out, cooling after a quiet spell, the
+# founder's CRM, or earlier mail with them in the founder's inbox.
+TemperatureSignal = Literal["reply", "meeting", "customer", "opt_out", "cooled", "crm", "history"]
+TEMPERATURE_SIGNALS: tuple[str, ...] = TemperatureSignal.__args__
+# Where a company or person stands in the founder's CRM: bought; in an open
+# deal; a lead there; or just on file.
+CrmStatus = Literal["customer", "open_deal", "lead", "known"]
+# The CRMs a Lace reads, in the order it picks one when several are connected.
+CrmApp = Literal["zoho", "hubspot"]
+CRM_APPS: tuple[str, ...] = CrmApp.__args__
+CRM_STATUSES: tuple[str, ...] = CrmStatus.__args__
 
 
 class AccountSummary(BaseModel):
@@ -168,6 +185,23 @@ class AccountSummary(BaseModel):
     contact_status: str | None = Field(default=None, description="person | organisation | none; unset until contacts were looked for")
     contacts: list[dict] = Field(default_factory=list, description="People to reach: name, title, email, linkedin")
     channels: dict[str, str] = Field(default_factory=dict, description="The organisation's own pages by platform")
+    temperature: LeadTemperature = Field(default="cold", description="cold | warm | hot | customer, from what they did")
+    temperature_reason: str | None = Field(default=None, description="Why it has that temperature, e.g. 'Replied with interest'")
+    crm_status: CrmStatus | None = Field(default=None, description="Where it stands in the founder's CRM: customer, open_deal, lead or known; none when not in it")
+    crm_stage: str | None = Field(default=None, description="Its stage in the founder's CRM, e.g. Negotiation")
+    resembles: str | None = Field(default=None, description="The founder's real customer it is most like, and why")
+
+# What to do with a lead today, most urgent first (backend/app/services/contact_today.py).
+TodayAction = Literal["send_reply", "hot", "warm", "send_follow_up", "first_email"]
+
+
+class TodayContact(BaseModel):
+    """One lead worth the founder's time today, and why."""
+    account_id: str | None = None
+    name: str
+    action: TodayAction
+    why: str = Field(description="What to do and why, in a line")
+
 
 class Suggestions(BaseModel):
     """What searches found that the founder has not saved or dismissed yet."""

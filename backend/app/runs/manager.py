@@ -28,9 +28,9 @@ from agents.schemas.lace import JobStart, RunningJob
 from agents.schemas.lace_ui import BlockAnswer
 from backend.app.runs import lace as lace_runs
 from backend.app.runs.lace import LaceThread
-from backend.app.runs import lace_jobs, listening_jobs, regulation_jobs, social_jobs, understanding_jobs
+from backend.app.runs import customer_jobs, follow_up_jobs, lace_jobs, listening_jobs, regulation_jobs, social_jobs, understanding_jobs
 from backend.app.runs.errors import user_facing_error
-from backend.app.services import limits
+from backend.app.services import customer_learning, limits
 from backend.app.services import runs as run_service
 from backend.app.services import lace_events
 from backend.app.services.lace_store import DbLaceStore
@@ -244,6 +244,15 @@ async def _after_first_look_icp(user_id: uuid.UUID, lace_id: uuid.UUID) -> list[
                             [("lace_opportunities", {"first_look": True, "limit": FIRST_LOOK_LIMIT})])
 
 
+async def _after_customers(run_id: uuid.UUID, user_id: uuid.UUID, lace_id: uuid.UUID) -> list[str]:
+    """Customers were learned: rework the ideal customer profile from them."""
+    async with AsyncSessionLocal() as db:
+        run = await db.get(models.Run, run_id)
+    if run is None or run.status != "completed" or not (run.progress or {}).get("learned"):
+        return []
+    return await _start_all(user_id, lace_id, [("lace_icp", {"guidance": customer_learning.ICP_GUIDANCE})])
+
+
 async def _start_all(user_id: uuid.UUID, lace_id: uuid.UUID, wanted: list[tuple[str, dict]]) -> list[str]:
     started = []
     for kind, params in wanted:
@@ -403,7 +412,8 @@ _TOOL_JOB_RUN_KINDS = {"find_competitors": "lace_competitors", "check_competitor
                        "find_accounts": "lace_accounts", "find_contacts": "lace_contacts", "define_icp": "lace_icp",
                        "draft_outreach": "lace_drafts", "find_opportunities": "lace_opportunities",
                        "read_tiktok_comments": "lace_comments", "find_regulations": "lace_regulations",
-                       "refresh_understanding": "lace_refresh", "listen": "lace_listening"}
+                       "refresh_understanding": "lace_refresh", "listen": "lace_listening",
+                       "learn_from_customers": "lace_customers"}
 _JOB_SEGMENTS = {"lace_competitors": lace_jobs.competitors_job, "lace_monitor": lace_jobs.monitor_job,
                  "lace_accounts": lace_jobs.accounts_job, "lace_contacts": lace_jobs.contacts_job,
                  "lace_icp": lace_jobs.icp_job,
@@ -412,7 +422,9 @@ _JOB_SEGMENTS = {"lace_competitors": lace_jobs.competitors_job, "lace_monitor": 
                  "lace_comments": social_jobs.tiktok_comments_job,
                  "lace_regulations": regulation_jobs.regulations_job,
                  "lace_refresh": understanding_jobs.refresh_job,
-                 "lace_listening": listening_jobs.listening_job}
+                 "lace_listening": listening_jobs.listening_job,
+                 "lace_follow_ups": follow_up_jobs.follow_ups_job,
+                 "lace_customers": customer_jobs.customers_job}
 # Jobs of one kind run one at a time per Lace; this many more may wait their turn.
 MAX_QUEUED_JOBS = 3
 
@@ -513,6 +525,8 @@ def _run_job(run: models.Run) -> None:
         await start_next_job(lace_id, kind)
         if kind == "lace_icp" and params.get("first_look"):
             await _after_first_look_icp(user_id, lace_id)
+        if kind == "lace_customers":
+            await _after_customers(run_id, user_id, lace_id)
     _spawn(run_id, user_id, _job_then_wake(job, user_id, lace_id, owner_id), settings.background_run_timeout_s,
            then=then)
 
@@ -608,7 +622,8 @@ _JOB_NAMES = {"lace_competitors": "competitor search", "lace_monitor": "competit
               "lace_icp": "ideal customer profile", "lace_drafts": "drafting", "lace_reply": "reading of replies",
               "lace_opportunities": "opportunity search", "lace_comments": "reading of TikTok comments",
               "lace_regulations": "search for laws and regulations", "lace_refresh": "re-read of the site",
-              "lace_listening": "listen on social accounts"}
+              "lace_listening": "listen on social accounts", "lace_follow_ups": "drafting of follow-ups",
+              "lace_customers": "learning from your customers"}
 
 
 async def _report_interrupted_jobs(run_ids: list[uuid.UUID]) -> None:

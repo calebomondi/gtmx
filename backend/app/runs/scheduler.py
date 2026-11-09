@@ -15,7 +15,7 @@ from backend.app.database.connect import AsyncSessionLocal
 from backend.app.database.lace_models import Lace, LaceBrief
 from backend.app.runs import manager
 from backend.app.services import inbox as inbox_service
-from backend.app.services import lace_activity, lace_brief_email, lace_briefs, lace_competitors, lace_listening, lace_opportunities, lace_regulations, social_inbox
+from backend.app.services import crm_sync, customer_learning, follow_ups, lace_activity, lace_brief_email, lace_briefs, lace_competitors, lace_listening, lace_opportunities, lace_regulations, lead_temperature, social_inbox
 from backend.app.services.lace_activity import BRIEF_TITLE, BRIEF_WRITING
 from config import settings
 from data_sources.legislation import mzalendo
@@ -138,13 +138,65 @@ def _since_label(since: datetime, lace: Lace) -> str:
     return "since " + since.astimezone(lace_briefs.zone(lace.timezone)).strftime("%a %d %b, %H:%M")
 
 
+async def cool_leads(now: datetime | None = None) -> int:
+    """Let leads that went quiet cool down a step. Returns how many cooled."""
+    async with AsyncSessionLocal() as db, db.begin():
+        return await lead_temperature.cool_quiet_leads(db, now)
+
+
+async def sync_crms(now: datetime | None = None) -> int:
+    """Refresh the copies of the founders' CRMs that are due, a batch per
+    sweep. Returns how many were refreshed."""
+    now = now or datetime.now(UTC)
+    async with AsyncSessionLocal() as db:
+        due = await crm_sync.laces_due(db, now, settings.crm_sync_batch)
+    synced = 0
+    for lace_id in due:
+        if await crm_sync.sync_lace(lace_id, now) is not None:
+            synced += 1
+            await _learn_new_customers(lace_id)
+    return synced
+
+
+async def _learn_new_customers(lace_id) -> None:
+    """The CRM has customers the Lace hasn't learned about: learn them (and
+    rework the ideal customer profile from them)."""
+    async with AsyncSessionLocal() as db:
+        lace = await db.get(Lace, lace_id)
+        waiting = await customer_learning.to_learn(db, lace_id, 1) if lace and lace.status == "active" else []
+    if waiting:
+        try:
+            await manager.start_lace_job("lace_customers", lace.user_id, lace_id, {"scheduled": True})
+        except JobRefused:
+            pass  # already learning, or the daily cap; the next sync tries again
+
+
+async def sweep_follow_ups(now: datetime | None = None) -> int:
+    """Start the drafting of due follow-ups for each Lace that has some.
+    Returns how many started."""
+    now = now or datetime.now(UTC)
+    async with AsyncSessionLocal() as db:
+        due = await follow_ups.laces_due(db, now, settings.follow_up_laces_per_sweep)
+    started = 0
+    for lace_id, user_id in due:
+        try:
+            await manager.start_lace_job("lace_follow_ups", user_id, lace_id, {"scheduled": True})
+            started += 1
+        except JobRefused:
+            continue  # already drafting, or this user hit the daily cap; try next sweep
+    return started
+
+
 async def sweep() -> int:
     """Start each Lace's due monitoring, opportunity and regulation searches,
-    listen on its social accounts and brief, read tracked bills' stages, and email briefs held back.
+    listen on its social accounts and brief, draft due follow-ups, read tracked bills' stages, cool
+    quiet leads, refresh copies of founders' CRMs, and email briefs held back.
     Returns how many runs started."""
     started = (await sweep_laces() + await sweep_lace_opportunities() + await sweep_lace_regulations()
-               + await sweep_lace_listening() + await sweep_briefs())
+               + await sweep_lace_listening() + await sweep_briefs() + await sweep_follow_ups())
     await check_bills()
+    await cool_leads()
+    await sync_crms()
     await lace_brief_email.email_waiting(datetime.now(UTC))
     return started
 

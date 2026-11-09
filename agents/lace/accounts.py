@@ -53,12 +53,14 @@ def _default_assess(offer: str, account: str, seller: str) -> AccountFit:
 
 def find_accounts(profile: LaceProfile, facts: list[Fact], icp: ICP, exclude_domains: list[str],
                   countries: list[str] | None = None, discover: Discover = run_account_discovery_by_country,
-                  assess: Assess = _default_assess,
-                  instructions: str = "") -> list[tuple[AccountRecord, AccountFit | None]]:
+                  assess: Assess = _default_assess, instructions: str = "",
+                  lookalikes: list[str] | None = None) -> list[tuple[AccountRecord, AccountFit | None]]:
     """Target accounts with a current trigger, each with the case for it (None
     where the case could not be made). `countries` are the places searched,
     one by one; otherwise the ICP's geographies are. `instructions` are the
-    team's standing instructions for leads, as lines."""
+    team's standing instructions for leads, as lines. `lookalikes` are the
+    startup's real customers ("Name: what it is"): more like them are sought,
+    and each target says which it resembles."""
     if countries:
         icp = icp.model_copy(update={"geo": list(countries)})
     state = {
@@ -67,6 +69,7 @@ def find_accounts(profile: LaceProfile, facts: list[Fact], icp: ICP, exclude_dom
         "target_market": list(icp.geo),
         "exclude_domains": exclude_domains,
         "founder_instructions": instructions,
+        "lookalikes": list(lookalikes or []),
         "messages": [],
     }
     accounts = list(getattr(discover(state).get("accounts"), "accounts", None) or [])

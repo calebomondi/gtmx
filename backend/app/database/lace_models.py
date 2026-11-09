@@ -17,7 +17,7 @@ from agents.schemas.listening import HEARD_KINDS, HEARD_STATUSES, SOCIAL_PLATFOR
 from agents.schemas.monitor import MOVE_IMPORTANCES, MOVE_KINDS
 from agents.schemas.opportunities import OPPORTUNITY_KINDS, OPPORTUNITY_STATUSES
 from agents.schemas.regulations import BILL_STAGES, JURISDICTION_MAX_LEN, JURISDICTION_PATTERN, REGULATION_KINDS, REGULATION_STATUSES
-from agents.schemas.lace import ACCOUNT_STATUSES, ACTIVITY_KINDS, ACTIVITY_REFS, APP_ACTION_STATUSES, CONTACT_SOURCES, LACE_ROLES, MEMBER_STATUSES, BRIEF_FREQUENCIES, CONTACT_STATUSES, INBOX_PLATFORMS, MAILBOXES, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, DEFAULT_WATCH_EVERY_H, FACT_ORIGINS, FACT_TOPICS, INSTRUCTION_CHARS, INSTRUCTION_SCOPES, WATCH_EVERY_H
+from agents.schemas.lace import ACCOUNT_STATUSES, CRM_APPS, CRM_STATUSES, LEAD_TEMPERATURES, TEMPERATURE_SIGNALS, ACTIVITY_KINDS, ACTIVITY_REFS, APP_ACTION_STATUSES, CONTACT_SOURCES, LACE_ROLES, MEMBER_STATUSES, BRIEF_FREQUENCIES, CONTACT_STATUSES, INBOX_PLATFORMS, MAILBOXES, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, DEFAULT_WATCH_EVERY_H, FACT_ORIGINS, FACT_TOPICS, INSTRUCTION_CHARS, INSTRUCTION_SCOPES, WATCH_EVERY_H
 from backend.app.database.connect import Base
 
 LACE_STATUSES = ("onboarding", "active", "archived")
@@ -121,6 +121,8 @@ class Lace(Base):
     send_from: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # When the last brief was due, whether or not there was news for it.
     last_brief_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # When its copy of the founder's CRM (lace_crm_records) was last refreshed.
+    crm_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
                                                  default=_now, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
@@ -329,6 +331,9 @@ class LaceAccount(_Find, Base):
         CheckConstraint(f"contact_status IS NULL OR {_one_of('contact_status', CONTACT_STATUSES)}",
                         name="contact_status"),
         Index("ix_lace_accounts_lace_id_status", "lace_id", "status"),
+        CheckConstraint(_one_of("temperature", LEAD_TEMPERATURES), name="temperature"),
+        CheckConstraint(f"crm_status IS NULL OR {_one_of('crm_status', CRM_STATUSES)}", name="crm_status"),
+        Index("ix_lace_accounts_lace_id_temperature", "lace_id", "temperature"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -349,6 +354,17 @@ class LaceAccount(_Find, Base):
     # contacts_checked_at (NULL: the search never ran for it).
     contact_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
     contacts_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # How close it is to buying (LeadTemperature), why, and since when. Set in
+    # code from its signals (lace_account_signals), never by the model.
+    temperature: Mapped[str] = mapped_column(String(12), nullable=False, default="cold", server_default="cold")
+    temperature_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    temperature_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # "Not now": stays warm, and nothing is drafted to it until then.
+    snoozed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Where it stands in the founder's CRM (CrmStatus) and its stage there,
+    # from the latest sync; null when the CRM doesn't have it.
+    crm_status: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    crm_stage: Mapped[str | None] = mapped_column(String(120), nullable=True)
     # agents.schemas.accounts.AccountRecord and AccountFit.
     record: Mapped[dict] = mapped_column(JSON, nullable=False)
     fit: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -359,6 +375,69 @@ class LaceAccount(_Find, Base):
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
                                                    server_default=func.now(), index=True)
 
+
+
+
+
+class LaceCrmRecord(Base):
+    """A company or person in the founder's CRM, as the Lace's daily sync last
+    read it (backend/app/services/crm_sync.py): what account searches and
+    drafting check, so a Lace never treats a customer or an open deal as a
+    cold lead. The whole set for a Lace is replaced at each sync."""
+
+    __tablename__ = "lace_crm_records"
+    __table_args__ = (
+        CheckConstraint(_one_of("crm", CRM_APPS), name="crm"),
+        CheckConstraint(_one_of("kind", ("company", "person")), name="kind"),
+        CheckConstraint(_one_of("status", CRM_STATUSES), name="status"),
+        Index("ix_lace_crm_records_lace_id_domain", "lace_id", "domain"),
+        Index("ix_lace_crm_records_lace_id_email", "lace_id", "email"),
+        Index("ix_lace_crm_records_lace_id_company_key", "lace_id", "company_key"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Indexed by the lookups above, which lead with it.
+    lace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("laces.id", ondelete="CASCADE"), nullable=False)
+    crm: Mapped[str] = mapped_column(String(16), nullable=False)
+    kind: Mapped[str] = mapped_column(String(8), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    company: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Lowercased, for matching: the person's email, the company's domain, and
+    # the company's name reduced to letters and digits.
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    company_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(12), nullable=False)
+    stage: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
+                                                server_default=func.now())
+
+class LaceAccountSignal(Base):
+    """One thing a lead did, or that happened to it, that moved (or could have
+    moved) its temperature: the history behind its badge."""
+
+    __tablename__ = "lace_account_signals"
+    __table_args__ = (
+        CheckConstraint(_one_of("kind", TEMPERATURE_SIGNALS), name="kind"),
+        CheckConstraint(f"before IS NULL OR {_one_of('before', LEAD_TEMPERATURES)}", name="before"),
+        CheckConstraint(_one_of("after", LEAD_TEMPERATURES), name="after"),
+        Index("ix_lace_account_signals_account_id_at", "account_id", "at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("laces.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Indexed by ix_lace_account_signals_account_id_at, which leads with it.
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("lace_accounts.id", ondelete="CASCADE"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    # The reason in plain words, as the badge shows it ("Replied asking about pricing").
+    detail: Mapped[str] = mapped_column(Text, nullable=False)
+    # The reply that was the signal, when it was one.
+    outreach_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("lace_outreach.id", ondelete="SET NULL"), nullable=True, index=True)
+    before: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    after: Mapped[str] = mapped_column(String(12), nullable=False)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
+                                         server_default=func.now())
 
 OUTREACH_DIRECTIONS = ("outbound", "inbound")
 # outbound: draft | sending | sent | failed | bounced. inbound: received | bounced.
@@ -416,6 +495,9 @@ class LaceOutreach(Base):
         CheckConstraint(_one_of("mailbox", MAILBOXES), name="mailbox"),
         Index("ix_lace_outreach_lace_id_status", "lace_id", "status"),
         Index("ix_lace_outreach_unread", "lace_id", postgresql_where=text("direction = 'inbound' AND read_at IS NULL")),
+        CheckConstraint("sequence_step BETWEEN 0 AND 2", name="sequence_step"),
+        Index("ix_lace_outreach_follow_up_due_at", "follow_up_due_at",
+              postgresql_where=text("follow_up_due_at IS NOT NULL")),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -449,6 +531,11 @@ class LaceOutreach(Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     # inbound: when the founder opened it; null is unread.
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # outbound email: its place in a sequence (0 the first email, 1 and 2 the
+    # follow-ups), and once sent, when its follow-up is due if nobody answers
+    # (cleared when one is drafted, so a discarded follow-up isn't redrafted).
+    sequence_step: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0, server_default="0")
+    follow_up_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
                                                  default=_now, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,

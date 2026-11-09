@@ -51,6 +51,7 @@ are refreshed rather than duplicated, and `last_seen_at` moves.
 """
 
 import re
+from agents.helpers import name_key
 from agents.concurrency import ContextThreadPoolExecutor
 from typing import Optional
 from urllib.parse import urlparse
@@ -341,12 +342,6 @@ def _clean_website(raw: Optional[str]) -> Optional[str]:
     # since companies brand their apex domain and not /en/pricing.
     path = (urlparse(candidate).path or "").rstrip("/")
     return f"https://{host}{path}" if path else f"https://{host}"
-
-
-def _name_key(name: Optional[str]) -> str:
-    """A firm's name reduced to letters and digits, to spot one firm under
-    two domains. Empty when there is nothing to compare."""
-    return re.sub(r"[^a-z0-9]", "", (name or "").lower())
 
 
 def _domain_key(website: str) -> str:
@@ -721,7 +716,7 @@ def screen_candidates(state: CompetitorSessionState) -> dict:
                 # Our own site came back for a category query. Not a competitor.
                 drop("is_the_offer_itself")
                 continue
-            name = _name_key(candidate.name)
+            name = name_key(candidate.name)
             again = by_domain.get(domain) or (seen_names.get(name) if name else None)
             if again is not None:
                 # Two archetypes can surface the same firm; it is one company,

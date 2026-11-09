@@ -15,7 +15,7 @@ from backend.app import supabase_admin
 from backend.app.database import models
 from backend.app.database.lace_models import Lace
 from backend.app.services import connections as connection_service
-from backend.app.services import lace_app_settings, outlook
+from backend.app.services import follow_ups, lace_app_settings, outlook
 from backend.app.services.errors import ConflictError, InvalidInputError, RateLimitedError
 from config import settings
 from utils.log import logger
@@ -107,6 +107,8 @@ async def send_email(db: AsyncSession, message: models.LaceOutreach, lace: Lace)
         message.status = "failed" if failed else "sent"
         message.error = f"{label} rejected the message. Check the recipient address and try again." if failed else None
         message.sent_at = None if failed else datetime.now(UTC)
+        if not failed:
+            await follow_ups.schedule(db, message)
     except Exception:  # noqa: BLE001 -- an expected outcome: recorded on the message
         logger.exception("Outreach send failed for message %s", message.id)
         message.status = "failed"

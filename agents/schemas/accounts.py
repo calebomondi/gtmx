@@ -136,6 +136,11 @@ class AccountRecord(LenientModel):
         description="Exactly 5 angles for the outreach message opening",
     )
     trigger_event: TriggerEvent = Field(description="The current trigger making this account worth contacting now")
+    resembles: str | None = Field(
+        default=None,
+        description="When the startup's real customers were given: the one this target is most like and why, in "
+                    "one line (e.g. 'Aga Khan Clinics: also a multi-site clinic group in Nairobi'); null otherwise",
+    )
 
     @field_validator(
         "tech_stack", "recent_news", "key_contacts", "pain_signals",

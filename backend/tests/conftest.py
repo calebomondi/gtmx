@@ -24,12 +24,15 @@ from backend.app.main import add_service_error_handlers
 from backend.app.runs import lace as lace_runs
 from backend.app.runs import manager as run_manager
 from backend.app.services import connections as connection_service
+from backend.app.services import mail_history
 from backend.app.services import website_check
 from backend.tests.helpers import make_user
 from config import settings
 
 # The real one, kept before no_first_look replaces it for each test.
 _FIRST_LOOK = run_manager.first_look
+# The real one, kept before no_mail_history replaces it for each test.
+_EARLIER_MAIL = mail_history.earlier_mail
 
 # How long cleanup waits on a lock before failing the test instead of hanging.
 CLEANUP_LOCK_TIMEOUT_S = 30
@@ -93,6 +96,21 @@ def no_first_look(monkeypatch):
 @pytest.fixture
 def real_first_look(monkeypatch):
     monkeypatch.setattr(run_manager, "first_look", _FIRST_LOOK)
+
+
+@pytest.fixture(autouse=True)
+def no_mail_history(monkeypatch):
+    """Drafting first checks the founder's Gmail for earlier mail with each
+    lead, which looks up their connected accounts; tests that want that use
+    real_mail_history (and stub the mailbox)."""
+    async def none(lace_id, reader_id, accounts):
+        return {}
+    monkeypatch.setattr(mail_history, "earlier_mail", none)
+
+
+@pytest.fixture
+def real_mail_history(monkeypatch):
+    monkeypatch.setattr(mail_history, "earlier_mail", _EARLIER_MAIL)
 
 
 @pytest.fixture(autouse=True)

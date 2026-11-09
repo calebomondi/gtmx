@@ -30,10 +30,11 @@ from agents.lace.social_tools import build_social_tools
 from agents.lace.calendar_tools import build_calendar_tools
 from agents.lace.inbox_tools import build_inbox_tools
 from agents.lace.instruction_tools import build_instruction_tools
+from agents.lace.playbook_tools import build_playbook_tools
 from agents.lace.store import JobRefused, LaceJobs, LaceStore
 from agents.lace.tool_guard import guarded, job_result
 from agents.schemas.opportunities import OPPORTUNITY_KINDS, OpportunityKind
-from agents.schemas.lace import Confidence, FactTopic, NewFact, SourcePage, ToolResult
+from agents.schemas.lace import Confidence, FactTopic, LeadTemperature, NewFact, SourcePage, ToolResult
 from agents.schemas.lace_ui import CardKind
 from config import Settings
 from data_sources.scraping import exa, firecrawl
@@ -56,6 +57,8 @@ HIGHLIGHTS_PER_RESULT = 3
 FACTS_PER_READ = 50
 COMPETITORS_PER_READ = 50
 ACCOUNTS_PER_READ = 50
+# Leads in the "who to contact today" list.
+TODAY_SHOWN = 10
 OPPORTUNITIES_PER_READ = 50
 SUGGESTIONS_PER_READ = 30
 DOCUMENTS_PER_READ = 50
@@ -266,10 +269,28 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
 
     @tool(parse_docstring=True)
     @guarded
-    async def list_accounts() -> ToolResult:
-        """The leads the founder saved (target accounts): who they are, the trigger that makes them worth contacting now, and the case for them. New finds wait in list_suggestions."""
+    async def who_to_contact_today() -> ToolResult:
+        """Who the founder should contact today, most urgent first: answers to replies waiting to send, hot leads, warm leads that just engaged, follow-ups ready to send, then new strong leads worth a first email. Each with what to do and why. Use it when the founder asks who to contact, what to do today, or where to focus."""
+        rows = await store.contact_today(TODAY_SHOWN)
+        if not rows:
+            return ToolResult.success("Nobody needs contacting today: no replies, hot or warm leads, follow-ups or "
+                                      "new strong leads waiting.", [])
+        return ToolResult.success(f"{len(rows)} to contact today, most urgent first.",
+                                  [r.model_dump(exclude_none=True) for r in rows])
+
+    @tool(parse_docstring=True)
+    @guarded
+    async def list_accounts(temperature: LeadTemperature | None = None) -> ToolResult:
+        """The leads the founder saved (target accounts), hottest first: who they are, how warm they are and why, the trigger that makes them worth contacting now, and the case for them. New finds wait in list_suggestions.
+
+        Args:
+            temperature: Only leads this warm: cold, warm, hot or customer (for "who's warm?"). Temperature is set from what they did; never guess or change it yourself.
+        """
         rows = await store.accounts(ACCOUNTS_PER_READ)
-        return ToolResult.success(f"{len(rows)} saved leads.", [r.model_dump(exclude_none=True) for r in rows])
+        if temperature is not None:
+            rows = [r for r in rows if r.temperature == temperature]
+        what = (f"{temperature} " if temperature else "saved ") + ("lead" if len(rows) == 1 else "leads")
+        return ToolResult.success(f"{len(rows)} {what}.", [r.model_dump(exclude_none=True) for r in rows])
 
     @tool(parse_docstring=True)
     @guarded
@@ -341,8 +362,8 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
                                   {"filename": summary.filename, "part": part, "parts": parts, "text": chunk})
 
     tools = [search_web, map_site, read_page, read_pages, read_social, get_facts, record_fact, list_competitors,
-             list_accounts, list_opportunities, list_suggestions, show, list_documents, read_document,
-             *build_ask_tools(), *build_edit_tools(store), *build_instruction_tools(store),
+             list_accounts, who_to_contact_today, list_opportunities, list_suggestions, show, list_documents, read_document,
+             *build_ask_tools(), *build_edit_tools(store), *build_instruction_tools(store), *build_playbook_tools(),
              *build_regulation_tools(store, jobs),
              # Acting in the founder's apps needs them: proposals, run on approval.
              *([*build_social_tools(store, apps), *build_sheet_tools(store, apps), *build_notion_tools(store, apps),
@@ -415,6 +436,17 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
 
     @tool(parse_docstring=True)
     @guarded
+    async def learn_from_customers() -> ToolResult:
+        """Learn who the startup's real customers are (its CRM customers, and leads the founder marked as customers): read each one's website, keep what it is as a fact under customers, then rework the ideal customer profile from them. Use it when the founder asks you to learn from their customers, or after they name or mark customers. Runs in the background; you get an update when it is done."""
+        try:
+            start = await jobs.start("learn_from_customers", {})
+        except JobRefused as exc:
+            return ToolResult.failure(str(exc))
+        return job_result(start, "Started reading your customers' websites. The ideal customer profile is reworked "
+                          "from them after; you will get an update here.", "learning from customers")
+
+    @tool(parse_docstring=True)
+    @guarded
     async def find_contacts(account_ids: list[str] | None = None) -> ToolResult:
         """Find the people to contact at leads (named decision makers with an email or LinkedIn) and the organisation's own pages on LinkedIn, Instagram, TikTok, Facebook and X. Runs in the background; you get an update when it is done.
 
@@ -430,14 +462,18 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
 
     @tool(parse_docstring=True)
     @guarded
-    async def draft_outreach(account_ids: list[str] | None = None) -> ToolResult:
-        """Draft a first email to leads, each to the best person there with an email (else the organisation's), grounded in their trigger and your facts. First messages go by email only: a lead with no email known is skipped and named. The drafts wait for the founder to review, edit and send: you never send anything. Runs in the background; you get an update when they are ready.
+    async def draft_outreach(account_ids: list[str] | None = None, crm_confirmed: bool = False) -> ToolResult:
+        """Draft a first email to leads, each to the best person there with an email (else the organisation's), grounded in their trigger and your facts. First messages go by email only: a lead with no email known is skipped and named. A lead that is a customer or an open deal in the founder's CRM is skipped too: a cold first email would be wrong for them. The drafts wait for the founder to review, edit and send: you never send anything. Runs in the background; you get an update when they are ready.
 
         Args:
             account_ids: Ids from list_accounts to write to. Otherwise the strongest-fit targets with someone to reach and no message yet.
+            crm_confirmed: True only when the founder, told that these leads are customers or open deals in their CRM, still asked for a first email to them.
         """
+        params: dict = {"account_ids": account_ids or []}
+        if crm_confirmed:
+            params["crm_confirmed"] = True
         try:
-            start = await jobs.start("draft_outreach", {"account_ids": account_ids or []})
+            start = await jobs.start("draft_outreach", params)
         except JobRefused as exc:
             return ToolResult.failure(str(exc))
         return job_result(start, "Started drafting. You will get an update here when the drafts are ready.",
@@ -518,5 +554,6 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
         return job_result(start, "Started listening on their social accounts. You will get an update here when it's "
                           "done.", "listen on social accounts")
 
-    return [*tools, find_competitors, check_competitors, find_accounts, define_icp, find_contacts, draft_outreach,
+    return [*tools, find_competitors, check_competitors, find_accounts, define_icp, learn_from_customers, find_contacts,
+            draft_outreach,
             find_opportunities, read_tiktok_comments, refresh_understanding, listen_now, draft_linkedin_note]

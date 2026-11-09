@@ -11,7 +11,7 @@ from typing import Literal, Protocol
 from agents.schemas.icp import ICP
 from agents.schemas.opportunities import OpportunitySummary
 from agents.schemas.regulations import Jurisdiction, RegulationStatus, RegulationSummary
-from agents.schemas.lace import ProposedAction, AccountSummary, CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Suggestions, Fact, FactTopic, Instruction, InstructionScope, ItemsChanged, JobStart, LaceProfile, NamedItem, NewContact, NewFact, RunningJob, SavedKind, SavedVerdict, SourcePage
+from agents.schemas.lace import ProposedAction, AccountSummary, CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Suggestions, Fact, FactTopic, TodayContact, Instruction, InstructionScope, ItemsChanged, JobStart, LaceProfile, NamedItem, NewContact, NewFact, RunningJob, SavedKind, SavedVerdict, SourcePage
 
 
 class LaceStore(Protocol):
@@ -135,6 +135,11 @@ class LaceStore(Protocol):
         """Delete unsent drafts; sent messages are never touched."""
         ...
 
+    async def contact_today(self, limit: int = 10) -> list[TodayContact]:
+        """Who the founder should contact today, most urgent first, each lead
+        once, with what to do and why. Computed from what is on file."""
+        ...
+
     async def propose_action(self, action: ProposedAction) -> str:
         """Keep an action in one of the founder's apps for them to approve;
         its id. Nothing runs until they do."""
@@ -143,7 +148,7 @@ class LaceStore(Protocol):
 
 JobKind = Literal["find_competitors", "check_competitors", "find_accounts", "find_contacts", "draft_outreach",
                   "find_opportunities", "define_icp", "read_tiktok_comments", "find_regulations",
-                  "refresh_understanding", "listen"]
+                  "refresh_understanding", "listen", "learn_from_customers"]
 
 
 class InstructionsFull(Exception):

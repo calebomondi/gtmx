@@ -17,9 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from agents.schemas.icp import ICP
 from agents.schemas.opportunities import OpportunitySummary
 from agents.schemas.regulations import Jurisdiction, RegulationStatus, RegulationSummary
-from agents.schemas.lace import ProposedAction, AccountSummary, CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Fact, Instruction, InstructionScope, ItemsChanged, NamedItem, NewContact, SavedKind, SavedVerdict, Suggestions, FactTopic, LaceProfile, NewFact, SourcePage
+from agents.schemas.lace import ProposedAction, TodayContact, AccountSummary, CompetitorSummary, ContactSummary, DocumentSummary, DraftSummary, Fact, Instruction, InstructionScope, ItemsChanged, NamedItem, NewContact, SavedKind, SavedVerdict, Suggestions, FactTopic, LaceProfile, NewFact, SourcePage
 from backend.app.database.lace_models import Lace, LaceAccount, LaceCompetitor, LaceContact, LaceFact, LaceOutreach, LaceSource
-from backend.app.services import lace_app_actions, lace_accounts, lace_competitors, lace_contacts, lace_documents, lace_finds, lace_instructions, lace_opportunities, lace_outreach, lace_regulations
+from backend.app.services import contact_today, lace_app_actions, lace_accounts, lace_competitors, lace_contacts, lace_documents, lace_finds, lace_instructions, lace_opportunities, lace_outreach, lace_regulations
 from backend.app.services import laces as lace_service
 from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError
 from config import settings
@@ -298,6 +298,10 @@ class DbLaceStore:
         async with self._sessions() as session:
             rows = await lace_contacts.list_for_lace(session, self._lace_id, limit)
         return [_contact(contact, account) for contact, account in rows]
+
+    async def contact_today(self, limit: int = 10) -> list[TodayContact]:
+        async with self._sessions() as session:
+            return await contact_today.today(session, self._lace_id, datetime.now(UTC), limit)
 
     async def propose_action(self, action: ProposedAction) -> str:
         async with self._sessions() as session:

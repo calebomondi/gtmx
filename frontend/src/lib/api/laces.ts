@@ -368,8 +368,35 @@ export interface LaceAccountDto {
   /** The organisation's own pages, by platform. */
   channels: Record<string, string>
   contacts_checked_at: string | null
+  /** How close it is to buying, set from what they did (never by hand, except customer). */
+  temperature: LeadTemperature
+  /** Why, in a few words: "Asked for a meeting". */
+  temperature_reason: string | null
+  /** When it last moved or showed activity. */
+  temperature_changed_at: string | null
+  /** They said not now: nothing is drafted to them until then. */
+  snoozed_until: string | null
+  /** Where it stands in the founder's CRM; null when the CRM doesn't have it. */
+  crm_status: CrmStatus | null
+  /** Its stage there, e.g. "Negotiation". */
+  crm_stage: string | null
+  /** The founder's real customer it is most like, and why. */
+  resembles: string | null
   first_seen_at: string
   last_seen_at: string
+}
+
+/** Mirrors agents' LeadTemperature. */
+export type LeadTemperature = "cold" | "warm" | "hot" | "customer"
+
+/** Mirrors agents' CrmStatus: bought, in an open deal, a lead there, or just on file. */
+export type CrmStatus = "customer" | "open_deal" | "lead" | "known"
+
+/** The founder says a lead bought (or takes that back). */
+export function setLaceAccountCustomer(laceId: string, accountId: string, customer: boolean): Promise<LaceAccountDto> {
+  return apiFetch(`/api/v1/laces/${laceId}/accounts/${accountId}/customer`, {
+    method: "PUT", body: JSON.stringify({ customer }),
+  })
 }
 
 export function listLaceAccounts(laceId: string, status: AccountStatus = "target"): Promise<LaceAccountDto[]> {

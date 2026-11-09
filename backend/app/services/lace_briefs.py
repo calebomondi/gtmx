@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.services import contact_today
 from backend.app.database.lace_models import (
     Lace,
     LaceAccount,
@@ -25,6 +26,8 @@ from backend.app.database.lace_models import (
 SECTION_LINES = 5
 # Opportunities closing within this many days are flagged as coming up.
 CLOSING_SOON_DAYS = 7
+# Leads named under "Who to contact today".
+TODAY_LINES = 5
 # How far back a first brief looks.
 FIRST_BRIEF_LOOKBACK = timedelta(days=1)
 # A brief that could not be posted within this long is dropped for the next one.
@@ -139,6 +142,8 @@ async def digest(db: AsyncSession, lace_id: uuid.UUID, since: datetime, today: d
         _section("Compliance dates within a week", [f"{r.title}: {r.next_date.isoformat()} ({r.what_to_do})"
                                                     for r in due], n_due),
     ]
+    contacts = await contact_today.today(db, lace_id, datetime.combine(today, datetime.min.time(), UTC), TODAY_LINES)
+    sections.insert(0, _section("Who to contact today", [f"{c.name}: {c.why}" for c in contacts]))
     waiting = await suggestion_counts(db, lace_id)
     if any(waiting.values()):
         sections.append("Suggestions waiting for the founder to save or dismiss: "

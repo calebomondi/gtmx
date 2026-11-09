@@ -34,7 +34,7 @@ from backend.app.database.lace_models import LaceAccount, LaceOutreach
 from backend.app.runs import events
 from backend.app.runs.errors import user_facing_error
 
-from backend.app.services import lace_accounts, lace_activity, lace_competitors, lace_contacts, lace_events, lace_instructions, lace_opportunities, lace_outreach
+from backend.app.services import lace_accounts, lace_activity, lace_competitors, mail_history, lace_contacts, lace_events, lace_instructions, lace_opportunities, lace_outreach
 from backend.app.services.lace_activity import names, plural
 from backend.app.services.lace_contacts import contact_key
 from backend.app.services import calendar as calendar_service
@@ -222,6 +222,17 @@ async def icp_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
     await events.publish(run_id, "complete", {})
 
 
+# The real customers a lead search looks for more of.
+LOOKALIKES = 6
+
+
+def lookalikes_from(facts) -> list[str]:
+    """The startup's learned customers ("Customer X: what it is" facts, from
+    customer_jobs) as lookalike examples: "X: what it is"."""
+    return [f.claim.removeprefix("Customer ").rstrip(".") for f in facts
+            if f.topic == "customers" and f.claim.startswith("Customer ")][:LOOKALIKES]
+
+
 async def accounts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
     """Search for target accounts on the Lace's ICP (working one out first
     when there is none), save them with their fit cases, and queue an update,
@@ -238,7 +249,7 @@ async def accounts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> N
                 icp = await _define_icp(store, None)
             rules = await _instructions(lace_id, "leads")
             found = await asyncio.to_thread(find_accounts, profile, facts, icp, exclude, params.get("countries"),
-                                            instructions=rules)
+                                            instructions=rules, lookalikes=lookalikes_from(facts))
     except Exception as exc:
         await report_failure(lace_id, "search for leads", exc, params)
         raise
@@ -297,6 +308,7 @@ def _is_uuid(value: str) -> bool:
     return True
 
 
+
 async def drafts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
     """Draft a first message to each account through v1's GTM pipeline, save
     the drafts for the founder to review, and queue an update. Nothing is
@@ -308,9 +320,15 @@ async def drafts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> Non
     async with AsyncSessionLocal() as db:
         run = await db.get(models.Run, run_id)
         user_id = run.user_id
-        accounts = [(a.id, a.name, AccountRecord.model_validate(a.record))
-                    for a in await lace_outreach.accounts_to_draft(db, lace_id, ids or None, DRAFTS_BATCH,
-                                                                          private_to(params))]
+        rows = await lace_outreach.accounts_to_draft(db, lace_id, ids or None, DRAFTS_BATCH, private_to(params))
+        # A customer or an open deal in the founder's CRM gets no cold first
+        # email, unless the founder, told so, still asked for one.
+        in_crm = [] if params.get("person") or params.get("crm_confirmed") else [
+            f"{a.name} ({'a customer' if a.crm_status == 'customer' else 'an open deal'}"
+            + (f", {a.crm_stage}" if a.crm_stage else "") + ")"
+            for a in rows if a.crm_status in lace_outreach.CRM_NO_COLD_EMAIL]
+        accounts = [(a.id, a.name, AccountRecord.model_validate(a.record)) for a in rows
+                    if params.get("person") or params.get("crm_confirmed") or a.crm_status not in lace_outreach.CRM_NO_COLD_EMAIL]
         cleared = await lace_contacts.approved_keys(db, [account_id for account_id, _, _ in accounts])
     sender = await outreach_service.sender_for_user(user_id)
     person = params.get("person")
@@ -333,12 +351,16 @@ async def drafts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> Non
     unreachable = [name for _, name, _, recipient in targets if recipient is None]
     failed: list[str] = []
     slots = asyncio.Semaphore(DRAFTS_CONCURRENCY)
+    # Mail with them already in the founder's inbox: not a cold lead.
+    history = await mail_history.earlier_mail(lace_id, user_id, [(t[0], t[2]) for t in targets if t[3] is not None])
 
     async def draft(account_id, name, record, recipient) -> LaceOutreach | None:
+        known = history.get(account_id)
+        said = "\n\n".join(p for p in (note, mail_history.follow_on_note(name, known)) if p) if known else note
         async with slots:
             try:
                 written = await asyncio.to_thread(draft_first_touch, profile, facts, rivals, record, recipient, sender,
-                                                  note=note)
+                                                  note=said)
             except Exception:  # noqa: BLE001 -- one account failing must not lose the other drafts
                 logger.exception("Drafting to %s failed", name)
                 failed.append(name)
@@ -353,7 +375,8 @@ async def drafts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> Non
         drafts = [d for d in await asyncio.gather(*(draft(*t) for t in targets if t[3] is not None)) if d]
     async with AsyncSessionLocal() as db, db.begin():
         db.add_all(drafts)
-        await job_update(db, lace_id, params, drafts_update(drafts, unreachable, failed, awaiting))
+        await mail_history.warm(db, history)
+        await job_update(db, lace_id, params, drafts_update(drafts, unreachable, failed, awaiting, in_crm))
         if drafts:
             await lace_activity.add(db, lace_id, "drafts_ready", f"{plural(len(drafts), 'message')} drafted for you to send",
                                     names([d.recipient_company for d in drafts]), actor_id=actor_of(params))
@@ -368,8 +391,8 @@ def approved_only(record: AccountRecord, keys: set[str]) -> AccountRecord:
 
 
 def drafts_update(drafts: list[LaceOutreach], unreachable: list[str], failed: list[str],
-                  awaiting: list[str]) -> str:
-    if not drafts and not unreachable and not failed and not awaiting:
+                  awaiting: list[str], in_crm: list[str] | None = None) -> str:
+    if not drafts and not unreachable and not failed and not awaiting and not in_crm:
         return "There was no account to draft for: every target with someone to reach already has a message."
     lines = [f"{d.recipient_company} [draft {d.id}]: to {d.recipient_name or d.recipient_address} by {d.channel}"
              + (f', subject "{d.subject}"' if d.subject else "") for d in drafts]
@@ -381,6 +404,9 @@ def drafts_update(drafts: list[LaceOutreach], unreachable: list[str], failed: li
     if awaiting:
         lines.append("Not drafted, their people wait for the founder to approve them (in Contacts, or on the "
                      "account's card): " + ", ".join(awaiting))
+    if in_crm:
+        lines.append("Not drafted, already in the founder's CRM, so a cold first email would be wrong (tell the "
+                     "founder; draft only if they still want one, with crm_confirmed): " + ", ".join(in_crm))
     head = ("Drafted first messages; they wait in Outreach for the founder to review, edit and send:" if drafts
             else "No message was drafted:")
     return head + "\n" + "\n".join(lines)
@@ -533,7 +559,9 @@ async def reply_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None
                 for earlier_id in earlier:  # read with it, answered by the one draft
                     await lace_outreach.record_reading(db, await db.get(LaceOutreach, earlier_id),
                                                        result.analysis.intent, None, run_id)
-                handled.append(reply_update_line(reply, result.analysis, draft is not None))
+                account = await db.get(LaceAccount, reply.account_id) if reply.account_id else None
+                handled.append(reply_update_line(reply, result.analysis, draft is not None)
+                               + crm_writeback_line(account, reply))
                 await lace_activity.add(db, lace_id, "reply_received", f"{company} replied ({result.analysis.intent})",
                                         result.analysis.summary, ref=("outreach", reply.id))
     if handled:
@@ -552,6 +580,20 @@ def latest_per_conversation(pending: list[LaceOutreach]) -> list[tuple[LaceOutre
     for reply in pending:
         by_thread.setdefault(reply.thread_id or str(reply.id), []).append(reply)
     return [(replies[-1], [r.id for r in replies[:-1]]) for replies in by_thread.values()]
+
+
+def crm_writeback_line(account: LaceAccount | None, reply: LaceOutreach) -> str:
+    """When a reply warmed a lead that the founder's CRM doesn't have, the
+    line that has the Lace propose adding the person there (the founder
+    approves it, and add_lead_to_crm says so when no CRM is connected)."""
+    if account is None or account.temperature not in ("warm", "hot") or account.crm_status is not None \
+            or account.do_not_contact:
+        return ""
+    who = reply.recipient_name or reply.recipient_address or "them"
+    return (f" {account.name} is now {account.temperature} and isn't in the founder's CRM: propose adding {who}"
+            f" there with add_lead_to_crm (company {account.name}"
+            + (f", email {reply.recipient_address}" if reply.recipient_address and "@" in reply.recipient_address
+               else "") + "), unless the founder has no CRM connected.")
 
 
 def reply_update_line(reply: LaceOutreach, analysis, drafted: bool) -> str:

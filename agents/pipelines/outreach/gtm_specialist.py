@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from agents.prompts.playbook_library import playbook_section
 from agents.llm.main import cheap_providers, invoke_structured_with_fallback
 from agents.pipelines import team
 from agents.helpers import name_in_text, offer_label
@@ -163,7 +164,7 @@ their internal problems ("we're aware that your..."); list features; use
 buzzwords ("synergy", "leverage", "revolutionize", "cutting-edge",
 "enhance", "drive impact"); open with "I hope", "I came across", "I saw
 that", "Quick intro"; use exclamation marks.
-{feedback}
+{feedback}{method}
 CONTACT: {contact}
 
 PLAN
@@ -249,6 +250,7 @@ def _write(brief: OutreachBrief, plan: OutreachPlan, notes: str, offer_name: str
             channel_rule=CHANNEL_RULES[brief.channel], contact=_contact(brief), mode=outreach_mode(brief),
             plan=plan.model_dump_json(indent=1, exclude={"consult"}), notes=notes, offer=brief.offer,
             feedback=f"\nA reviewer rejected your last version. Fix: {feedback}\n" if feedback else "",
+            method=playbook_section("cold-email") if brief.channel == "email" else "",
         )), HumanMessage(content="Write the message now.")],
         OutreachDraft, log_label=f"outreach_write:{brief.channel}",
     )

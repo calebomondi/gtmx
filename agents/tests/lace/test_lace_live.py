@@ -125,3 +125,16 @@ async def test_greets_the_founder_by_first_name():
     print(f"\n-> {reply}")
     assert "Kalev" in reply and len(reply) < 300
     assert not _tools_used(out)
+
+
+async def test_reads_the_follow_up_playbook_before_writing_one():
+    out = await build_lace_graph(MemoryStore()).ainvoke({"messages": [HumanMessage(content=(
+        "We're Payline: payroll software for clinic groups in Kenya, KES 200 per staff member a month. Ada "
+        "Lovelace, CTO at Acme Clinics (12 sites in Nairobi), didn't answer my first email last week about cutting "
+        "their payroll time. Write me a follow-up email to her now, from what I've told you, without asking me "
+        "anything. Don't save or send it. I'm Wanjiku."
+    ))]})
+    tools = [c["name"] for m in out["messages"] for c in (getattr(m, "tool_calls", None) or [])]
+    print("\nTOOLS", tools, "\nREPLY", out["messages"][-1].content)
+    assert "read_playbook" in tools
+    assert out["messages"][-1].content.strip()
