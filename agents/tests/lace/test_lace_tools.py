@@ -212,3 +212,15 @@ async def test_list_accounts_filters_by_temperature(settings):
     assert warm["summary"] == "1 warm lead." and [a["name"] for a in warm["data"]] == ["Acme"]
     assert warm["data"][0]["temperature_reason"] == "Replied with a question"
     assert len(json.loads(await tool.ainvoke({}))["data"]) == 2
+
+
+async def test_who_to_contact_today_lists_the_ranking(settings):
+    from agents.schemas.lace import TodayContact
+
+    store = MemoryStore()
+    tool = {t.name: t for t in build_tools(store, settings)}["who_to_contact_today"]
+    empty = json.loads(await tool.ainvoke({}))
+    assert empty["ok"] and empty["data"] == [] and "Nobody needs contacting today" in empty["summary"]
+    store.today = [TodayContact(account_id="1", name="Hot Co", action="hot", why="Hot: Asked for a meeting.")]
+    found = json.loads(await tool.ainvoke({}))
+    assert found["summary"] == "1 to contact today, most urgent first." and found["data"][0]["action"] == "hot"

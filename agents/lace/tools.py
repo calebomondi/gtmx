@@ -57,6 +57,8 @@ HIGHLIGHTS_PER_RESULT = 3
 FACTS_PER_READ = 50
 COMPETITORS_PER_READ = 50
 ACCOUNTS_PER_READ = 50
+# Leads in the "who to contact today" list.
+TODAY_SHOWN = 10
 OPPORTUNITIES_PER_READ = 50
 SUGGESTIONS_PER_READ = 30
 DOCUMENTS_PER_READ = 50
@@ -267,6 +269,17 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
 
     @tool(parse_docstring=True)
     @guarded
+    async def who_to_contact_today() -> ToolResult:
+        """Who the founder should contact today, most urgent first: answers to replies waiting to send, hot leads, warm leads that just engaged, follow-ups ready to send, then new strong leads worth a first email. Each with what to do and why. Use it when the founder asks who to contact, what to do today, or where to focus."""
+        rows = await store.contact_today(TODAY_SHOWN)
+        if not rows:
+            return ToolResult.success("Nobody needs contacting today: no replies, hot or warm leads, follow-ups or "
+                                      "new strong leads waiting.", [])
+        return ToolResult.success(f"{len(rows)} to contact today, most urgent first.",
+                                  [r.model_dump(exclude_none=True) for r in rows])
+
+    @tool(parse_docstring=True)
+    @guarded
     async def list_accounts(temperature: LeadTemperature | None = None) -> ToolResult:
         """The leads the founder saved (target accounts), hottest first: who they are, how warm they are and why, the trigger that makes them worth contacting now, and the case for them. New finds wait in list_suggestions.
 
@@ -349,7 +362,7 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
                                   {"filename": summary.filename, "part": part, "parts": parts, "text": chunk})
 
     tools = [search_web, map_site, read_page, read_pages, read_social, get_facts, record_fact, list_competitors,
-             list_accounts, list_opportunities, list_suggestions, show, list_documents, read_document,
+             list_accounts, who_to_contact_today, list_opportunities, list_suggestions, show, list_documents, read_document,
              *build_ask_tools(), *build_edit_tools(store), *build_instruction_tools(store), *build_playbook_tools(),
              *build_regulation_tools(store, jobs),
              # Acting in the founder's apps needs them: proposals, run on approval.

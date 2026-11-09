@@ -191,6 +191,18 @@ class AccountSummary(BaseModel):
     crm_stage: str | None = Field(default=None, description="Its stage in the founder's CRM, e.g. Negotiation")
     resembles: str | None = Field(default=None, description="The founder's real customer it is most like, and why")
 
+# What to do with a lead today, most urgent first (backend/app/services/contact_today.py).
+TodayAction = Literal["send_reply", "hot", "warm", "send_follow_up", "first_email"]
+
+
+class TodayContact(BaseModel):
+    """One lead worth the founder's time today, and why."""
+    account_id: str | None = None
+    name: str
+    action: TodayAction
+    why: str = Field(description="What to do and why, in a line")
+
+
 class Suggestions(BaseModel):
     """What searches found that the founder has not saved or dismissed yet."""
     competitors: list[CompetitorSummary] = Field(default_factory=list)

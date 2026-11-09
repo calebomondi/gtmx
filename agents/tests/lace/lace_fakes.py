@@ -160,6 +160,9 @@ class MemoryStore:
         self.proposed.append(action)
         return f"a{len(self.proposed)}"
 
+    async def contact_today(self, limit=10):
+        return list(getattr(self, "today", []))[:limit]
+
 
 class RecordingJobs:
     def __init__(self, refuse: str | None = None, ahead: int = 0):
