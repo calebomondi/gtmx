@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agents.lace.apps import AppError, AppStatus, CommentsOn, XRecord
+from agents.schemas.lace import CRM_APPS
 from backend.app.database.lace_models import Lace, LaceApp, LaceChannel
 from backend.app.services import connections as connection_service
 from backend.app.services import calendar, crm, lace_app_settings
@@ -303,7 +304,7 @@ class DbLaceApps:
                 for t in tasks if t.get("name") and not t.get("completed")]
 
     async def _crm_live(self) -> tuple[str, _Live] | None:
-        for platform in crm.CRM_APPS:
+        for platform in CRM_APPS:
             if (live := await self._live(platform)) is not None:
                 return platform, live
         return None

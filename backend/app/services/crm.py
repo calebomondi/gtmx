@@ -7,8 +7,6 @@ from collections.abc import Awaitable, Callable
 
 Run = Callable[[str, dict], Awaitable[object]]
 
-# The CRMs a Lace reads, in the order it picks one when the founder connected several.
-CRM_APPS = ("zoho", "hubspot")
 # Zoho returns at most 200 records a page; these bound what one read fetches.
 ZOHO_PAGE = 200
 DEAL_PAGES = 5

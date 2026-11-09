@@ -17,7 +17,7 @@ from agents.schemas.listening import HEARD_KINDS, HEARD_STATUSES, SOCIAL_PLATFOR
 from agents.schemas.monitor import MOVE_IMPORTANCES, MOVE_KINDS
 from agents.schemas.opportunities import OPPORTUNITY_KINDS, OPPORTUNITY_STATUSES
 from agents.schemas.regulations import BILL_STAGES, JURISDICTION_MAX_LEN, JURISDICTION_PATTERN, REGULATION_KINDS, REGULATION_STATUSES
-from agents.schemas.lace import ACCOUNT_STATUSES, LEAD_TEMPERATURES, TEMPERATURE_SIGNALS, ACTIVITY_KINDS, ACTIVITY_REFS, APP_ACTION_STATUSES, CONTACT_SOURCES, LACE_ROLES, MEMBER_STATUSES, BRIEF_FREQUENCIES, CONTACT_STATUSES, INBOX_PLATFORMS, MAILBOXES, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, DEFAULT_WATCH_EVERY_H, FACT_ORIGINS, FACT_TOPICS, INSTRUCTION_CHARS, INSTRUCTION_SCOPES, WATCH_EVERY_H
+from agents.schemas.lace import ACCOUNT_STATUSES, CRM_APPS, CRM_STATUSES, LEAD_TEMPERATURES, TEMPERATURE_SIGNALS, ACTIVITY_KINDS, ACTIVITY_REFS, APP_ACTION_STATUSES, CONTACT_SOURCES, LACE_ROLES, MEMBER_STATUSES, BRIEF_FREQUENCIES, CONTACT_STATUSES, INBOX_PLATFORMS, MAILBOXES, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, DEFAULT_WATCH_EVERY_H, FACT_ORIGINS, FACT_TOPICS, INSTRUCTION_CHARS, INSTRUCTION_SCOPES, WATCH_EVERY_H
 from backend.app.database.connect import Base
 
 LACE_STATUSES = ("onboarding", "active", "archived")
@@ -121,6 +121,8 @@ class Lace(Base):
     send_from: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # When the last brief was due, whether or not there was news for it.
     last_brief_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # When its copy of the founder's CRM (lace_crm_records) was last refreshed.
+    crm_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
                                                  default=_now, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
@@ -330,6 +332,7 @@ class LaceAccount(_Find, Base):
                         name="contact_status"),
         Index("ix_lace_accounts_lace_id_status", "lace_id", "status"),
         CheckConstraint(_one_of("temperature", LEAD_TEMPERATURES), name="temperature"),
+        CheckConstraint(f"crm_status IS NULL OR {_one_of('crm_status', CRM_STATUSES)}", name="crm_status"),
         Index("ix_lace_accounts_lace_id_temperature", "lace_id", "temperature"),
     )
 
@@ -358,6 +361,10 @@ class LaceAccount(_Find, Base):
     temperature_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # "Not now": stays warm, and nothing is drafted to it until then.
     snoozed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Where it stands in the founder's CRM (CrmStatus) and its stage there,
+    # from the latest sync; null when the CRM doesn't have it.
+    crm_status: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    crm_stage: Mapped[str | None] = mapped_column(String(120), nullable=True)
     # agents.schemas.accounts.AccountRecord and AccountFit.
     record: Mapped[dict] = mapped_column(JSON, nullable=False)
     fit: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -369,6 +376,41 @@ class LaceAccount(_Find, Base):
                                                    server_default=func.now(), index=True)
 
 
+
+
+
+class LaceCrmRecord(Base):
+    """A company or person in the founder's CRM, as the Lace's daily sync last
+    read it (backend/app/services/crm_sync.py): what account searches and
+    drafting check, so a Lace never treats a customer or an open deal as a
+    cold lead. The whole set for a Lace is replaced at each sync."""
+
+    __tablename__ = "lace_crm_records"
+    __table_args__ = (
+        CheckConstraint(_one_of("crm", CRM_APPS), name="crm"),
+        CheckConstraint(_one_of("kind", ("company", "person")), name="kind"),
+        CheckConstraint(_one_of("status", CRM_STATUSES), name="status"),
+        Index("ix_lace_crm_records_lace_id_domain", "lace_id", "domain"),
+        Index("ix_lace_crm_records_lace_id_email", "lace_id", "email"),
+        Index("ix_lace_crm_records_lace_id_company_key", "lace_id", "company_key"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Indexed by the lookups above, which lead with it.
+    lace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("laces.id", ondelete="CASCADE"), nullable=False)
+    crm: Mapped[str] = mapped_column(String(16), nullable=False)
+    kind: Mapped[str] = mapped_column(String(8), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    company: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Lowercased, for matching: the person's email, the company's domain, and
+    # the company's name reduced to letters and digits.
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    company_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(12), nullable=False)
+    stage: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
+                                                server_default=func.now())
 
 class LaceAccountSignal(Base):
     """One thing a lead did, or that happened to it, that moved (or could have
