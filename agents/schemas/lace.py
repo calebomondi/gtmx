@@ -151,6 +151,15 @@ class CompetitorSummary(BaseModel):
 # suggested: found by a search, waiting for the founder to save (target) or dismiss it.
 AccountStatus = Literal["suggested", "target", "dismissed"]
 ACCOUNT_STATUSES: tuple[str, ...] = AccountStatus.__args__
+# How close a lead is to buying, set in code from what they did (agents/prompts/
+# playbooks/lead-temperature.md): cold until they engage, warm when they do,
+# hot when they want to talk, customer once they bought.
+LeadTemperature = Literal["cold", "warm", "hot", "customer"]
+LEAD_TEMPERATURES: tuple[str, ...] = LeadTemperature.__args__
+# What moved a lead's temperature: a reply (with its intent), a meeting, the
+# founder marking a customer, an opt-out, or cooling after a quiet spell.
+TemperatureSignal = Literal["reply", "meeting", "customer", "opt_out", "cooled"]
+TEMPERATURE_SIGNALS: tuple[str, ...] = TemperatureSignal.__args__
 
 
 class AccountSummary(BaseModel):
