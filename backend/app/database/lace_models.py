@@ -17,7 +17,7 @@ from agents.schemas.listening import HEARD_KINDS, HEARD_STATUSES, SOCIAL_PLATFOR
 from agents.schemas.monitor import MOVE_IMPORTANCES, MOVE_KINDS
 from agents.schemas.opportunities import OPPORTUNITY_KINDS, OPPORTUNITY_STATUSES
 from agents.schemas.regulations import BILL_STAGES, JURISDICTION_MAX_LEN, JURISDICTION_PATTERN, REGULATION_KINDS, REGULATION_STATUSES
-from agents.schemas.lace import ACCOUNT_STATUSES, ACTIVITY_KINDS, ACTIVITY_REFS, APP_ACTION_STATUSES, CONTACT_SOURCES, LACE_ROLES, MEMBER_STATUSES, BRIEF_FREQUENCIES, CONTACT_STATUSES, INBOX_PLATFORMS, MAILBOXES, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, DEFAULT_WATCH_EVERY_H, FACT_ORIGINS, FACT_TOPICS, INSTRUCTION_CHARS, INSTRUCTION_SCOPES, WATCH_EVERY_H
+from agents.schemas.lace import ACCOUNT_STATUSES, LEAD_TEMPERATURES, TEMPERATURE_SIGNALS, ACTIVITY_KINDS, ACTIVITY_REFS, APP_ACTION_STATUSES, CONTACT_SOURCES, LACE_ROLES, MEMBER_STATUSES, BRIEF_FREQUENCIES, CONTACT_STATUSES, INBOX_PLATFORMS, MAILBOXES, OUTREACH_CHANNELS, COMPETITOR_ORIGINS, COMPETITOR_STATUSES, CONFIDENCES, DEFAULT_WATCH_EVERY_H, FACT_ORIGINS, FACT_TOPICS, INSTRUCTION_CHARS, INSTRUCTION_SCOPES, WATCH_EVERY_H
 from backend.app.database.connect import Base
 
 LACE_STATUSES = ("onboarding", "active", "archived")
@@ -329,6 +329,8 @@ class LaceAccount(_Find, Base):
         CheckConstraint(f"contact_status IS NULL OR {_one_of('contact_status', CONTACT_STATUSES)}",
                         name="contact_status"),
         Index("ix_lace_accounts_lace_id_status", "lace_id", "status"),
+        CheckConstraint(_one_of("temperature", LEAD_TEMPERATURES), name="temperature"),
+        Index("ix_lace_accounts_lace_id_temperature", "lace_id", "temperature"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -349,6 +351,13 @@ class LaceAccount(_Find, Base):
     # contacts_checked_at (NULL: the search never ran for it).
     contact_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
     contacts_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # How close it is to buying (LeadTemperature), why, and since when. Set in
+    # code from its signals (lace_account_signals), never by the model.
+    temperature: Mapped[str] = mapped_column(String(12), nullable=False, default="cold", server_default="cold")
+    temperature_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    temperature_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # "Not now": stays warm, and nothing is drafted to it until then.
+    snoozed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # agents.schemas.accounts.AccountRecord and AccountFit.
     record: Mapped[dict] = mapped_column(JSON, nullable=False)
     fit: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -359,6 +368,34 @@ class LaceAccount(_Find, Base):
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
                                                    server_default=func.now(), index=True)
 
+
+
+class LaceAccountSignal(Base):
+    """One thing a lead did, or that happened to it, that moved (or could have
+    moved) its temperature: the history behind its badge."""
+
+    __tablename__ = "lace_account_signals"
+    __table_args__ = (
+        CheckConstraint(_one_of("kind", TEMPERATURE_SIGNALS), name="kind"),
+        CheckConstraint(f"before IS NULL OR {_one_of('before', LEAD_TEMPERATURES)}", name="before"),
+        CheckConstraint(_one_of("after", LEAD_TEMPERATURES), name="after"),
+        Index("ix_lace_account_signals_account_id_at", "account_id", "at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("laces.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Indexed by ix_lace_account_signals_account_id_at, which leads with it.
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("lace_accounts.id", ondelete="CASCADE"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    # The reason in plain words, as the badge shows it ("Replied asking about pricing").
+    detail: Mapped[str] = mapped_column(Text, nullable=False)
+    # The reply that was the signal, when it was one.
+    outreach_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("lace_outreach.id", ondelete="SET NULL"), nullable=True, index=True)
+    before: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    after: Mapped[str] = mapped_column(String(12), nullable=False)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
+                                         server_default=func.now())
 
 OUTREACH_DIRECTIONS = ("outbound", "inbound")
 # outbound: draft | sending | sent | failed | bounced. inbound: received | bounced.
