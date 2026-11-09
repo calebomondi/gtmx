@@ -9,11 +9,12 @@ from typing import Literal, Protocol
 
 from pydantic import BaseModel
 
+from agents.schemas.lace import CrmApp
+
 XRecord = Literal["profile", "post"]
 # The founder's public accounts a Lace reads by handle, with no app to connect.
 PublicFeed = Literal["x", "tiktok"]
 # The CRMs a Lace can read and add leads to.
-CrmApp = Literal["zoho", "hubspot"]
 # The founder's own accounts whose post comments a Lace can read.
 CommentsOn = Literal["instagram", "facebook"]
 

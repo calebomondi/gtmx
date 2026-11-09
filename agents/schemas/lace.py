@@ -157,9 +157,17 @@ ACCOUNT_STATUSES: tuple[str, ...] = AccountStatus.__args__
 LeadTemperature = Literal["cold", "warm", "hot", "customer"]
 LEAD_TEMPERATURES: tuple[str, ...] = LeadTemperature.__args__
 # What moved a lead's temperature: a reply (with its intent), a meeting, the
-# founder marking a customer, an opt-out, or cooling after a quiet spell.
-TemperatureSignal = Literal["reply", "meeting", "customer", "opt_out", "cooled"]
+# founder marking a customer, an opt-out, cooling after a quiet spell, the
+# founder's CRM, or earlier mail with them in the founder's inbox.
+TemperatureSignal = Literal["reply", "meeting", "customer", "opt_out", "cooled", "crm", "history"]
 TEMPERATURE_SIGNALS: tuple[str, ...] = TemperatureSignal.__args__
+# Where a company or person stands in the founder's CRM: bought; in an open
+# deal; a lead there; or just on file.
+CrmStatus = Literal["customer", "open_deal", "lead", "known"]
+# The CRMs a Lace reads, in the order it picks one when several are connected.
+CrmApp = Literal["zoho", "hubspot"]
+CRM_APPS: tuple[str, ...] = CrmApp.__args__
+CRM_STATUSES: tuple[str, ...] = CrmStatus.__args__
 
 
 class AccountSummary(BaseModel):
