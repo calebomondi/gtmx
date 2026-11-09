@@ -15,7 +15,7 @@ from backend.app.database.connect import AsyncSessionLocal
 from backend.app.database.lace_models import Lace, LaceBrief
 from backend.app.runs import manager
 from backend.app.services import inbox as inbox_service
-from backend.app.services import crm_sync, follow_ups, lace_activity, lace_brief_email, lace_briefs, lace_competitors, lace_listening, lace_opportunities, lace_regulations, lead_temperature, social_inbox
+from backend.app.services import crm_sync, customer_learning, follow_ups, lace_activity, lace_brief_email, lace_briefs, lace_competitors, lace_listening, lace_opportunities, lace_regulations, lead_temperature, social_inbox
 from backend.app.services.lace_activity import BRIEF_TITLE, BRIEF_WRITING
 from config import settings
 from data_sources.legislation import mzalendo
@@ -154,7 +154,21 @@ async def sync_crms(now: datetime | None = None) -> int:
     for lace_id in due:
         if await crm_sync.sync_lace(lace_id, now) is not None:
             synced += 1
+            await _learn_new_customers(lace_id)
     return synced
+
+
+async def _learn_new_customers(lace_id) -> None:
+    """The CRM has customers the Lace hasn't learned about: learn them (and
+    rework the ideal customer profile from them)."""
+    async with AsyncSessionLocal() as db:
+        lace = await db.get(Lace, lace_id)
+        waiting = await customer_learning.to_learn(db, lace_id, 1) if lace and lace.status == "active" else []
+    if waiting:
+        try:
+            await manager.start_lace_job("lace_customers", lace.user_id, lace_id, {"scheduled": True})
+        except JobRefused:
+            pass  # already learning, or the daily cap; the next sync tries again
 
 
 async def sweep_follow_ups(now: datetime | None = None) -> int:
