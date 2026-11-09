@@ -7,7 +7,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -289,17 +289,24 @@ async def mark_sent(db: AsyncSession, message: LaceOutreach, actor_id: uuid.UUID
     return message
 
 
+# Where a lead stands in the founder's CRM that rules out a cold first email.
+CRM_NO_COLD_EMAIL = ("customer", "open_deal")
+
+
 async def accounts_to_draft(db: AsyncSession, lace_id: uuid.UUID, ids: list[uuid.UUID] | None,
                             limit: int, member_id: uuid.UUID | None = None) -> list[LaceAccount]:
     """The accounts named, else the strongest-fit targets that nothing was
-    written to yet. Whether someone there can be reached is the caller's check."""
+    written to yet and that aren't customers or open deals in the founder's
+    CRM. Whether someone there can be reached, and whether a named one is in
+    the CRM, is the caller's check."""
     query = select(LaceAccount).where(LaceAccount.lace_id == lace_id, LaceAccount.seen_by(member_id),
                                       LaceAccount.status == "target")
     if ids:
         query = query.where(LaceAccount.id.in_(ids))
     else:
         written = exists().where(LaceOutreach.account_id == LaceAccount.id, LaceOutreach.direction == "outbound")
-        query = query.where(~written, LaceAccount.contact_status.in_(("person", "organisation")))
+        query = query.where(~written, LaceAccount.contact_status.in_(("person", "organisation")),
+                            or_(LaceAccount.crm_status.is_(None), LaceAccount.crm_status.not_in(CRM_NO_COLD_EMAIL)))
     query = query.where(LaceAccount.do_not_contact.is_(False))
     return list((await db.scalars(query.order_by(BY_FIT, LaceAccount.score.desc().nulls_last()).limit(limit))).all())
 

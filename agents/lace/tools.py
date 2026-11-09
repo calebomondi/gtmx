@@ -438,14 +438,18 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
 
     @tool(parse_docstring=True)
     @guarded
-    async def draft_outreach(account_ids: list[str] | None = None) -> ToolResult:
-        """Draft a first email to leads, each to the best person there with an email (else the organisation's), grounded in their trigger and your facts. First messages go by email only: a lead with no email known is skipped and named. The drafts wait for the founder to review, edit and send: you never send anything. Runs in the background; you get an update when they are ready.
+    async def draft_outreach(account_ids: list[str] | None = None, crm_confirmed: bool = False) -> ToolResult:
+        """Draft a first email to leads, each to the best person there with an email (else the organisation's), grounded in their trigger and your facts. First messages go by email only: a lead with no email known is skipped and named. A lead that is a customer or an open deal in the founder's CRM is skipped too: a cold first email would be wrong for them. The drafts wait for the founder to review, edit and send: you never send anything. Runs in the background; you get an update when they are ready.
 
         Args:
             account_ids: Ids from list_accounts to write to. Otherwise the strongest-fit targets with someone to reach and no message yet.
+            crm_confirmed: True only when the founder, told that these leads are customers or open deals in their CRM, still asked for a first email to them.
         """
+        params: dict = {"account_ids": account_ids or []}
+        if crm_confirmed:
+            params["crm_confirmed"] = True
         try:
-            start = await jobs.start("draft_outreach", {"account_ids": account_ids or []})
+            start = await jobs.start("draft_outreach", params)
         except JobRefused as exc:
             return ToolResult.failure(str(exc))
         return job_result(start, "Started drafting. You will get an update here when the drafts are ready.",

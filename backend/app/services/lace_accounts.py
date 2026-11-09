@@ -12,7 +12,7 @@ from agents.schemas.accounts import AccountFit, AccountRecord, TriggerEvent
 from agents.lace.contacts import contact_status
 from agents.schemas.lace import AccountSummary
 from backend.app.database.lace_models import LaceAccount
-from backend.app.services import lace_activity, lace_contacts
+from backend.app.services import crm_match, lace_activity, lace_contacts
 from backend.app.services.competitors import domain_key
 from backend.app.services.errors import NotFoundError
 
@@ -41,7 +41,8 @@ def summary(row: LaceAccount) -> AccountSummary:
                           capability=fit.get("capability"), payoff=fit.get("payoff"), angle=fit.get("angle"),
                           fit_strength=row.fit_strength, contact_status=row.contact_status,
                           contacts=_people(record), channels=record.get("socials") or {},
-                          temperature=row.temperature, temperature_reason=row.temperature_reason)
+                          temperature=row.temperature, temperature_reason=row.temperature_reason,
+                          crm_status=row.crm_status, crm_stage=row.crm_stage)
 
 
 def response(row: LaceAccount) -> dict:
@@ -53,6 +54,7 @@ def response(row: LaceAccount) -> dict:
             "channels": record.get("socials") or {}, "contacts_checked_at": row.contacts_checked_at,
             "temperature": row.temperature, "temperature_reason": row.temperature_reason,
             "temperature_changed_at": row.temperature_changed_at, "snoozed_until": row.snoozed_until,
+            "crm_status": row.crm_status, "crm_stage": row.crm_stage,
             "first_seen_at": row.first_seen_at, "last_seen_at": row.last_seen_at}
 
 
@@ -111,6 +113,7 @@ async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
     stored = dict((await db.execute(select(LaceAccount.key, LaceAccount.record).where(
         LaceAccount.lace_id == lace_id, LaceAccount.owned_by(owner_id), LaceAccount.key.in_(keys)))).all())
     now = datetime.now(UTC)
+    saved: list[uuid.UUID] = []
     for (found_record, fit), key in zip(found, keys):
         record = _merged(found_record, stored.get(key))
         stmt = insert(LaceAccount).values(
@@ -126,6 +129,10 @@ async def upsert_found(db: AsyncSession, lace_id: uuid.UUID, run_id: uuid.UUID,
         account_id = await db.scalar(stmt.on_conflict_do_update(
             constraint="uq_lace_accounts_lace_id_owner_id_key", set_=refresh).returning(LaceAccount.id))
         await lace_contacts.sync(db, lace_id, account_id, found_record.key_contacts, "discovery")
+        saved.append(account_id)
+    # One already in the founder's CRM says so (and a customer there is one here).
+    await db.flush()
+    await crm_match.match_accounts(db, lace_id, saved, now)
     refreshed = len(set(keys) & set(stored))
     return len(set(keys)) - refreshed, refreshed
 

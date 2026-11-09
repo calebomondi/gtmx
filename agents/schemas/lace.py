@@ -187,6 +187,8 @@ class AccountSummary(BaseModel):
     channels: dict[str, str] = Field(default_factory=dict, description="The organisation's own pages by platform")
     temperature: LeadTemperature = Field(default="cold", description="cold | warm | hot | customer, from what they did")
     temperature_reason: str | None = Field(default=None, description="Why it has that temperature, e.g. 'Replied with interest'")
+    crm_status: CrmStatus | None = Field(default=None, description="Where it stands in the founder's CRM: customer, open_deal, lead or known; none when not in it")
+    crm_stage: str | None = Field(default=None, description="Its stage in the founder's CRM, e.g. Negotiation")
 
 class Suggestions(BaseModel):
     """What searches found that the founder has not saved or dismissed yet."""
