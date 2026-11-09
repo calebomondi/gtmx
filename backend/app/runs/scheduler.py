@@ -15,7 +15,7 @@ from backend.app.database.connect import AsyncSessionLocal
 from backend.app.database.lace_models import Lace, LaceBrief
 from backend.app.runs import manager
 from backend.app.services import inbox as inbox_service
-from backend.app.services import crm_sync, customer_learning, follow_ups, lace_activity, lace_brief_email, lace_briefs, lace_competitors, lace_listening, lace_opportunities, lace_regulations, lead_temperature, social_inbox
+from backend.app.services import crm_sync, customer_learning, follow_ups, lace_activity, lead_search, lace_brief_email, lace_briefs, lace_competitors, lace_listening, lace_opportunities, lace_regulations, lead_temperature, social_inbox
 from backend.app.services.lace_activity import BRIEF_TITLE, BRIEF_WRITING
 from config import settings
 from data_sources.legislation import mzalendo
@@ -47,6 +47,20 @@ async def sweep_lace_opportunities() -> int:
     for lace_id, user_id in due:
         try:
             await manager.start_lace_job("lace_opportunities", user_id, lace_id, {"scheduled": True})
+            started += 1
+        except JobRefused:
+            continue  # this user hit the daily cap; try next sweep
+    return started
+
+
+async def sweep_lace_leads() -> int:
+    """Start the daily lead search for each Lace due one."""
+    async with AsyncSessionLocal() as db:
+        due = await lead_search.laces_due(db)
+    started = 0
+    for lace_id, user_id in due:
+        try:
+            await manager.start_lace_job("lace_accounts", user_id, lace_id, {"scheduled": True})
             started += 1
         except JobRefused:
             continue  # this user hit the daily cap; try next sweep
@@ -188,11 +202,12 @@ async def sweep_follow_ups(now: datetime | None = None) -> int:
 
 
 async def sweep() -> int:
-    """Start each Lace's due monitoring, opportunity and regulation searches,
+    """Start each Lace's due monitoring, opportunity, lead and regulation searches,
     listen on its social accounts and brief, draft due follow-ups, read tracked bills' stages, cool
     quiet leads, refresh copies of founders' CRMs, and email briefs held back.
     Returns how many runs started."""
-    started = (await sweep_laces() + await sweep_lace_opportunities() + await sweep_lace_regulations()
+    started = (await sweep_laces() + await sweep_lace_opportunities() + await sweep_lace_leads()
+               + await sweep_lace_regulations()
                + await sweep_lace_listening() + await sweep_briefs() + await sweep_follow_ups())
     await check_bills()
     await cool_leads()
