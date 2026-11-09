@@ -34,7 +34,7 @@ from backend.app.database.lace_models import LaceAccount, LaceOutreach
 from backend.app.runs import events
 from backend.app.runs.errors import user_facing_error
 
-from backend.app.services import lace_accounts, lace_activity, lace_competitors, lace_contacts, lace_events, lace_instructions, lace_opportunities, lace_outreach
+from backend.app.services import lace_accounts, lace_activity, lace_competitors, mail_history, lace_contacts, lace_events, lace_instructions, lace_opportunities, lace_outreach
 from backend.app.services.lace_activity import names, plural
 from backend.app.services.lace_contacts import contact_key
 from backend.app.services import calendar as calendar_service
@@ -340,12 +340,16 @@ async def drafts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> Non
     unreachable = [name for _, name, _, recipient in targets if recipient is None]
     failed: list[str] = []
     slots = asyncio.Semaphore(DRAFTS_CONCURRENCY)
+    # Mail with them already in the founder's inbox: not a cold lead.
+    history = await mail_history.earlier_mail(lace_id, user_id, [(t[0], t[2]) for t in targets if t[3] is not None])
 
     async def draft(account_id, name, record, recipient) -> LaceOutreach | None:
+        known = history.get(account_id)
+        said = "\n\n".join(p for p in (note, mail_history.follow_on_note(name, known)) if p) if known else note
         async with slots:
             try:
                 written = await asyncio.to_thread(draft_first_touch, profile, facts, rivals, record, recipient, sender,
-                                                  note=note)
+                                                  note=said)
             except Exception:  # noqa: BLE001 -- one account failing must not lose the other drafts
                 logger.exception("Drafting to %s failed", name)
                 failed.append(name)
@@ -360,6 +364,7 @@ async def drafts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> Non
         drafts = [d for d in await asyncio.gather(*(draft(*t) for t in targets if t[3] is not None)) if d]
     async with AsyncSessionLocal() as db, db.begin():
         db.add_all(drafts)
+        await mail_history.warm(db, history)
         await job_update(db, lace_id, params, drafts_update(drafts, unreachable, failed, awaiting, in_crm))
         if drafts:
             await lace_activity.add(db, lace_id, "drafts_ready", f"{plural(len(drafts), 'message')} drafted for you to send",

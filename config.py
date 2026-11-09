@@ -161,6 +161,10 @@ class Settings(BaseSettings):
     # many Laces one scheduler sweep refreshes (the rest wait for the next).
     crm_sync_every_h: int = 24
     crm_sync_batch: int = 10
+    # Before a first email, how far back the founder's mailbox is searched for
+    # earlier mail with the lead's company (found: it starts warm, and the
+    # draft is written as a follow-on).
+    email_history_days: int = 365
 
     # -- Waitlist (public landing page at thalace.com) --
     # Resend sends the signup confirmation. It only delivers to any address
