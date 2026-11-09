@@ -35,3 +35,10 @@ export function temperatureLine(account: LaceAccountDto): string | null {
 export function temperaturesById(accounts: LaceAccountDto[]): Map<string, LeadTemperature> {
   return new Map(accounts.map((a) => [a.id, a.temperature]))
 }
+
+/** A collapsed lead's one line: why it is warm or hot, else why now, else what it does. */
+export function leadLine(account: LaceAccountDto): string | null {
+  return temperatureLine(account)
+    ?? (account.trigger ? `Why now: ${account.trigger.event}` : null)
+    ?? account.summary
+}

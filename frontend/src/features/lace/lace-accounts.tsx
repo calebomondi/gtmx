@@ -1,13 +1,14 @@
 import { useState } from "react"
-import { ExternalLink, Loader2, MessageCircle, X } from "lucide-react"
+import { ChevronRight, ExternalLink, Loader2, MessageCircle, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import type { LaceAccountDto } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 import { ITEM_CARD } from "./feed-styles"
-import { byTemperature, TEMPERATURE_LABEL, TEMPERATURES, temperatureCounts, temperatureLine,
+import { byTemperature, leadLine, TEMPERATURE_LABEL, TEMPERATURES, temperatureCounts,
          type TemperatureFilter } from "./lead-temperature"
 import { CrmBadge } from "./crm-badge"
 import { TemperatureBadge } from "./temperature-badge"
@@ -149,41 +150,70 @@ export function LaceAccounts({ accounts, finding, onDismiss, onCustomer, name, o
       {accounts.length > 0 && <TemperatureChips accounts={accounts} value={filter} onChange={setFilter} />}
       <ul className="flex flex-col gap-3">
         {shown.map((a) => (
-          <li key={a.id} className={`${ITEM_CARD} flex items-start justify-between gap-3`}>
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <LeadRow key={a.id} account={a} name={name} onDismiss={onDismiss} onCustomer={onCustomer}
+                   onDiscuss={onDiscuss} />
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/** One lead, collapsed to its name, badges and one line; tapping it opens
+ * the whole case, who to reach and what to do. Dropping it stays at hand. */
+function LeadRow({ account: a, name, onDismiss, onCustomer, onDiscuss }: {
+  account: LaceAccountDto
+  name: string
+  onDismiss: (id: string) => void
+  onCustomer: (id: string, customer: boolean) => void
+  onDiscuss: (account: LaceAccountDto) => void
+}) {
+  const line = leadLine(a)
+  return (
+    <li className={ITEM_CARD}>
+      <Collapsible>
+        <div className="flex items-start justify-between gap-2">
+          <CollapsibleTrigger aria-label={`Show more about ${a.name}`}
+                              className="group/lead flex min-w-0 flex-1 cursor-pointer items-start gap-2 text-left">
+            <ChevronRight aria-hidden
+                          className="mt-1 size-4 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]/lead:rotate-90" />
+            <span className="flex min-w-0 flex-1 flex-col gap-1">
+              <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span className="font-medium">{a.name}</span>
                 <TemperatureBadge temperature={a.temperature} />
                 <CrmBadge account={a} />
                 {a.case && <FitMeter strength={a.case.strength} />}
                 {a.geo && <span className="text-xs text-muted-foreground">{a.geo}</span>}
-              </div>
-              {temperatureLine(a) && <p className="text-xs text-muted-foreground">{temperatureLine(a)}</p>}
-              {a.website && (
-                <a href={a.website} target="_blank" rel="noreferrer"
-                   className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground hover:underline">
-                  {a.website.replace(/^https?:\/\/(www\.)?/, "")} <ExternalLink className="size-3" />
-                </a>
-              )}
-              <WhyTheyFit account={a} />
-              <Reach account={a} />
-              <div className="mt-1 flex flex-wrap items-center gap-2">
-                <Button size="sm" variant="outline" className="w-fit rounded-full border-theme/40 hover:bg-theme/10"
-                        onClick={() => onDiscuss(a)}>
-                  <MessageCircle /> Discuss with {name}
-                </Button>
-                <Button size="sm" variant="ghost" className="w-fit text-muted-foreground"
-                        onClick={() => onCustomer(a.id, a.temperature !== "customer")}>
-                  {a.temperature === "customer" ? "Not a customer" : "Mark as customer"}
-                </Button>
-              </div>
+              </span>
+              {line && <span className="truncate text-xs text-muted-foreground group-data-[panel-open]/lead:whitespace-normal">{line}</span>}
+            </span>
+          </CollapsibleTrigger>
+          <Button variant="ghost" size="icon" aria-label={`Drop ${a.name}`} title="Not a fit" onClick={() => onDismiss(a.id)}>
+            <X />
+          </Button>
+        </div>
+        <CollapsibleContent>
+          <div className="flex flex-col gap-1 pt-2 pl-6">
+            {a.website && (
+              <a href={a.website} target="_blank" rel="noreferrer"
+                 className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground hover:underline">
+                {a.website.replace(/^https?:\/\/(www\.)?/, "")} <ExternalLink className="size-3" />
+              </a>
+            )}
+            <WhyTheyFit account={a} />
+            <Reach account={a} />
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" className="w-fit rounded-full border-theme/40 hover:bg-theme/10"
+                      onClick={() => onDiscuss(a)}>
+                <MessageCircle /> Discuss with {name}
+              </Button>
+              <Button size="sm" variant="ghost" className="w-fit text-muted-foreground"
+                      onClick={() => onCustomer(a.id, a.temperature !== "customer")}>
+                {a.temperature === "customer" ? "Not a customer" : "Mark as customer"}
+              </Button>
             </div>
-            <Button variant="ghost" size="icon" aria-label={`Drop ${a.name}`} title="Not a fit" onClick={() => onDismiss(a.id)}>
-              <X />
-            </Button>
-          </li>
-        ))}
-      </ul>
-    </div>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </li>
   )
 }
