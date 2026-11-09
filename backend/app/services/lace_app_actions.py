@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agents.schemas.lace import AppActionStatus, ProposedAction
 from backend.app.database.lace_models import Lace, LaceAppAction, LaceChannel
 from backend.app.services import connections as connection_service
-from backend.app.services import lace_activity, lace_app_settings, lace_events
+from backend.app.services import lace_activity, lace_app_settings, lace_events, lead_temperature
 from backend.app.services.errors import ConflictError, NotFoundError
 from utils.log import logger
 
@@ -125,6 +125,10 @@ async def approve(db: AsyncSession, row: LaceAppAction, actor_id: uuid.UUID) -> 
     row.status, row.decided_at = "running", datetime.now(UTC)
     await db.commit()
     await _execute(db, row, runner, connection, actor_id)
+    if row.status == "done" and (row.app, row.action) == ("googlecalendar", "create_event"):
+        # A meeting with someone at a lead: that lead is hot.
+        await lead_temperature.on_meeting(db, row.lace_id, list((row.arguments or {}).get("attendees") or []),
+                                          (row.arguments or {}).get("title") or row.title)
     await lace_events.add(db, row.lace_id, f"The founder approved \"{row.title}\" and it "
                           + (f"ran: {row.result}" if row.status == "done" else f"failed: {row.result}"))
     await db.commit()

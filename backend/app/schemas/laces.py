@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from agents.schemas.lace_ui import BlockAnswer, UiBlock
 from agents.schemas.monitor import MoveImportance, MoveKind
 from agents.schemas.opportunities import OpportunityKind, OpportunityStatus
-from agents.schemas.lace import AppActionStatus, DismissReason, LaceRole, WatchEvery, AccountStatus, ActivityKind, ActivityRef, ContactSource, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, Mailbox, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
+from agents.schemas.lace import AppActionStatus, DismissReason, LaceRole, LeadTemperature, WatchEvery, AccountStatus, ActivityKind, ActivityRef, ContactSource, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, Mailbox, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
 
 
 def known_zone(value: str | None) -> str | None:
@@ -223,8 +223,17 @@ class AccountResponse(BaseModel):
     contacts: list[AccountContact]
     channels: dict[str, str] = Field(description="The organisation's own pages by platform")
     contacts_checked_at: datetime | None
+    temperature: LeadTemperature = Field(description="How close it is to buying, from what they did: cold, warm, "
+                                                     "hot, or customer")
+    temperature_reason: str | None = Field(description="Why, in a few words, e.g. 'Asked for a meeting'")
+    temperature_changed_at: datetime | None = Field(description="When it last moved or showed activity")
+    snoozed_until: datetime | None = Field(description="They said not now: nothing is drafted to them until then")
     first_seen_at: datetime
     last_seen_at: datetime
+
+
+class AccountCustomerRequest(BaseModel):
+    customer: bool = Field(description="true: they bought (temperature customer); false: take that back (cold)")
 
 
 class _Dismissal(BaseModel):

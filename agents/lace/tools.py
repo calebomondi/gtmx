@@ -34,7 +34,7 @@ from agents.lace.playbook_tools import build_playbook_tools
 from agents.lace.store import JobRefused, LaceJobs, LaceStore
 from agents.lace.tool_guard import guarded, job_result
 from agents.schemas.opportunities import OPPORTUNITY_KINDS, OpportunityKind
-from agents.schemas.lace import Confidence, FactTopic, NewFact, SourcePage, ToolResult
+from agents.schemas.lace import Confidence, FactTopic, LeadTemperature, NewFact, SourcePage, ToolResult
 from agents.schemas.lace_ui import CardKind
 from config import Settings
 from data_sources.scraping import exa, firecrawl
@@ -267,10 +267,17 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
 
     @tool(parse_docstring=True)
     @guarded
-    async def list_accounts() -> ToolResult:
-        """The leads the founder saved (target accounts): who they are, the trigger that makes them worth contacting now, and the case for them. New finds wait in list_suggestions."""
+    async def list_accounts(temperature: LeadTemperature | None = None) -> ToolResult:
+        """The leads the founder saved (target accounts), hottest first: who they are, how warm they are and why, the trigger that makes them worth contacting now, and the case for them. New finds wait in list_suggestions.
+
+        Args:
+            temperature: Only leads this warm: cold, warm, hot or customer (for "who's warm?"). Temperature is set from what they did; never guess or change it yourself.
+        """
         rows = await store.accounts(ACCOUNTS_PER_READ)
-        return ToolResult.success(f"{len(rows)} saved leads.", [r.model_dump(exclude_none=True) for r in rows])
+        if temperature is not None:
+            rows = [r for r in rows if r.temperature == temperature]
+        what = (f"{temperature} " if temperature else "saved ") + ("lead" if len(rows) == 1 else "leads")
+        return ToolResult.success(f"{len(rows)} {what}.", [r.model_dump(exclude_none=True) for r in rows])
 
     @tool(parse_docstring=True)
     @guarded
