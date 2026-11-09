@@ -380,6 +380,8 @@ export interface LaceAccountDto {
   crm_status: CrmStatus | null
   /** Its stage there, e.g. "Negotiation". */
   crm_stage: string | null
+  /** The founder's real customer it is most like, and why. */
+  resembles: string | null
   first_seen_at: string
   last_seen_at: string
 }

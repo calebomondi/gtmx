@@ -231,6 +231,7 @@ class AccountResponse(BaseModel):
     crm_status: CrmStatus | None = Field(description="Where it stands in the founder's CRM (customer, open_deal, "
                                                      "lead, known); null when the CRM doesn't have it")
     crm_stage: str | None = Field(description="Its stage in the founder's CRM, e.g. Negotiation")
+    resembles: str | None = Field(default=None, description="The founder's real customer it is most like, and why")
     first_seen_at: datetime
     last_seen_at: datetime
 

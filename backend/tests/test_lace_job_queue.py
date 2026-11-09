@@ -45,7 +45,7 @@ def searches(client, lace, lace_runtime, monkeypatch):  # noqa: F811
     _with_icp(lace)
     gate, asked = threading.Event(), []
 
-    def fake(profile, facts, icp, exclude, countries, instructions=""):
+    def fake(profile, facts, icp, exclude, countries, instructions="", lookalikes=None):
         asked.append(countries)
         if countries == ["Kenya"]:
             gate.wait(10)

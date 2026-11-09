@@ -189,6 +189,7 @@ class AccountSummary(BaseModel):
     temperature_reason: str | None = Field(default=None, description="Why it has that temperature, e.g. 'Replied with interest'")
     crm_status: CrmStatus | None = Field(default=None, description="Where it stands in the founder's CRM: customer, open_deal, lead or known; none when not in it")
     crm_stage: str | None = Field(default=None, description="Its stage in the founder's CRM, e.g. Negotiation")
+    resembles: str | None = Field(default=None, description="The founder's real customer it is most like, and why")
 
 class Suggestions(BaseModel):
     """What searches found that the founder has not saved or dismissed yet."""

@@ -222,6 +222,17 @@ async def icp_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
     await events.publish(run_id, "complete", {})
 
 
+# The real customers a lead search looks for more of.
+LOOKALIKES = 6
+
+
+def lookalikes_from(facts) -> list[str]:
+    """The startup's learned customers ("Customer X: what it is" facts, from
+    customer_jobs) as lookalike examples: "X: what it is"."""
+    return [f.claim.removeprefix("Customer ").rstrip(".") for f in facts
+            if f.topic == "customers" and f.claim.startswith("Customer ")][:LOOKALIKES]
+
+
 async def accounts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
     """Search for target accounts on the Lace's ICP (working one out first
     when there is none), save them with their fit cases, and queue an update,
@@ -238,7 +249,7 @@ async def accounts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> N
                 icp = await _define_icp(store, None)
             rules = await _instructions(lace_id, "leads")
             found = await asyncio.to_thread(find_accounts, profile, facts, icp, exclude, params.get("countries"),
-                                            instructions=rules)
+                                            instructions=rules, lookalikes=lookalikes_from(facts))
     except Exception as exc:
         await report_failure(lace_id, "search for leads", exc, params)
         raise
