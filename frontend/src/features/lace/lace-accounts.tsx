@@ -1,10 +1,15 @@
+import { useState } from "react"
 import { ExternalLink, Loader2, MessageCircle, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import type { LaceAccountDto } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 import { ITEM_CARD } from "./feed-styles"
+import { byTemperature, TEMPERATURE_LABEL, TEMPERATURES, temperatureCounts, temperatureLine,
+         type TemperatureFilter } from "./lead-temperature"
+import { TemperatureBadge } from "./temperature-badge"
 
 type Strength = NonNullable<LaceAccountDto["case"]>["strength"]
 
@@ -94,16 +99,41 @@ function Reach({ account }: { account: LaceAccountDto }) {
   )
 }
 
-/** Leads: who they are, why they fit (the trigger that makes now
- * the moment, their need, how we meet it, the payoff), who to reach, and a
- * way to talk it through with the Lace. Dismissing one drops it for good. */
-export function LaceAccounts({ accounts, finding, onDismiss, name, onDiscuss }: {
+/** One chip per temperature, with how many leads it holds; empty ones hide. */
+function TemperatureChips({ accounts, value, onChange }: {
+  accounts: LaceAccountDto[]
+  value: TemperatureFilter
+  onChange: (next: TemperatureFilter) => void
+}) {
+  const counts = temperatureCounts(accounts)
+  const shown: TemperatureFilter[] = ["all", ...TEMPERATURES.filter((t) => counts[t] > 0)]
+  return (
+    <ToggleGroup value={[value]} onValueChange={(next) => next[0] && onChange(next[0] as TemperatureFilter)}
+                 variant="outline" size="sm" className="flex-wrap" aria-label="Show leads by temperature">
+      {shown.map((t) => (
+        <ToggleGroupItem key={t} value={t}>
+          {t === "all" ? "All" : TEMPERATURE_LABEL[t]}
+          <span className="text-muted-foreground tabular-nums">{counts[t]}</span>
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
+  )
+}
+
+/** Leads, hottest first: who they are, how warm and why, why they fit (the
+ * trigger that makes now the moment, their need, how we meet it, the payoff),
+ * who to reach, and a way to talk it through with the Lace. Dismissing one
+ * drops it for good; marking a customer is the one temperature set by hand. */
+export function LaceAccounts({ accounts, finding, onDismiss, onCustomer, name, onDiscuss }: {
   accounts: LaceAccountDto[]
   finding: boolean
   onDismiss: (id: string) => void
+  onCustomer: (id: string, customer: boolean) => void
   name: string
   onDiscuss: (account: LaceAccountDto) => void
 }) {
+  const [filter, setFilter] = useState<TemperatureFilter>("all")
+  const shown = byTemperature(accounts, filter)
   return (
     <div className="flex flex-col gap-4">
       {finding && (
@@ -114,15 +144,18 @@ export function LaceAccounts({ accounts, finding, onDismiss, name, onDiscuss }: 
       {accounts.length === 0 && !finding && (
         <p className="text-sm text-muted-foreground">None yet. Ask {name} to find leads.</p>
       )}
+      {accounts.length > 0 && <TemperatureChips accounts={accounts} value={filter} onChange={setFilter} />}
       <ul className="flex flex-col gap-3">
-        {accounts.map((a) => (
+        {shown.map((a) => (
           <li key={a.id} className={`${ITEM_CARD} flex items-start justify-between gap-3`}>
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span className="font-medium">{a.name}</span>
+                <TemperatureBadge temperature={a.temperature} />
                 {a.case && <FitMeter strength={a.case.strength} />}
                 {a.geo && <span className="text-xs text-muted-foreground">{a.geo}</span>}
               </div>
+              {temperatureLine(a) && <p className="text-xs text-muted-foreground">{temperatureLine(a)}</p>}
               {a.website && (
                 <a href={a.website} target="_blank" rel="noreferrer"
                    className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground hover:underline">
@@ -131,10 +164,16 @@ export function LaceAccounts({ accounts, finding, onDismiss, name, onDiscuss }: 
               )}
               <WhyTheyFit account={a} />
               <Reach account={a} />
-              <Button size="sm" variant="outline" className="mt-1 w-fit rounded-full border-theme/40 hover:bg-theme/10"
-                      onClick={() => onDiscuss(a)}>
-                <MessageCircle /> Discuss with {name}
-              </Button>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <Button size="sm" variant="outline" className="w-fit rounded-full border-theme/40 hover:bg-theme/10"
+                        onClick={() => onDiscuss(a)}>
+                  <MessageCircle /> Discuss with {name}
+                </Button>
+                <Button size="sm" variant="ghost" className="w-fit text-muted-foreground"
+                        onClick={() => onCustomer(a.id, a.temperature !== "customer")}>
+                  {a.temperature === "customer" ? "Not a customer" : "Mark as customer"}
+                </Button>
+              </div>
             </div>
             <Button variant="ghost" size="icon" aria-label={`Drop ${a.name}`} title="Not a fit" onClick={() => onDismiss(a.id)}>
               <X />

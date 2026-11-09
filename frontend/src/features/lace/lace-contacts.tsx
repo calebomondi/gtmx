@@ -4,11 +4,12 @@ import { Check, Search, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import type { ContactDto, LaceOutreachDto, OutreachChannel } from "@/lib/api"
+import type { ContactDto, LaceOutreachDto, LeadTemperature, OutreachChannel } from "@/lib/api"
 
 import { ChannelIcon } from "./channel-icon"
 import { byNewReplies, filterContacts, reachOf, roleAt, unreadByChannel } from "./contacts-model"
 import { CHANNEL_LABELS } from "./outreach-threads"
+import { TemperatureBadge } from "./temperature-badge"
 import { UnreadBadge } from "./unread-badge"
 
 const LINK = "grid size-8 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -17,10 +18,12 @@ const LINK = "grid size-8 cursor-pointer place-items-center rounded-md text-mute
  * do and where, and how to reach them. A person (or one of the ways to reach
  * them) opens them: their messages and a way to have the Lace write to them.
  * Nothing is drafted to anyone until the founder approves them. */
-export function LaceContacts({ contacts, outreach, onApprove, onRemove, onOpen }: {
+export function LaceContacts({ contacts, outreach, temperatures, onApprove, onRemove, onOpen }: {
   contacts: ContactDto[]
   /** For the new replies each person has, by channel. */
   outreach: LaceOutreachDto[]
+  /** Each saved account's temperature, by account id: shown on its people. */
+  temperatures: Map<string, LeadTemperature>
   onApprove: (contactId: string, approved: boolean) => void
   onRemove: (contactId: string) => void
   onOpen: (contact: ContactDto, channel: OutreachChannel | null) => void
@@ -57,6 +60,7 @@ export function LaceContacts({ contacts, outreach, onApprove, onRemove, onOpen }
                   {c.name ?? c.email ?? "Unnamed"}
                 </button>
                 <p className="text-xs text-muted-foreground">{roleAt(c)}</p>
+                <TemperatureBadge temperature={temperatures.get(c.account_id)} className="mt-1" />
               </TableCell>
               <TableCell>
                 <div className="flex justify-end gap-1">

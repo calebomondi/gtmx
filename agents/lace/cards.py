@@ -31,7 +31,10 @@ def account_card(a: AccountSummary) -> CardBlock:
     how we meet it and what it gets them."""
     body = _joined(a.trigger and f"Why now: {a.trigger}", a.need and f"Their need: {a.need}",
                    a.capability and f"How we help: {a.capability}", a.payoff and f"Payoff: {a.payoff}", sep=". ")
-    return CardBlock(kind="account", id=a.id, title=a.name, subtitle=_joined(a.geo, a.fit_strength and f"{a.fit_strength} fit"),
+    # Cold is every lead's start: only a warmer temperature is worth a word.
+    warmth = a.temperature != "cold" and a.temperature.capitalize()
+    return CardBlock(kind="account", id=a.id, title=a.name,
+                     subtitle=_joined(warmth or None, a.geo, a.fit_strength and f"{a.fit_strength} fit"),
                      body=_clip(body), url=a.website)
 
 

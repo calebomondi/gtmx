@@ -8,6 +8,7 @@ import { track } from "@/lib/events"
 import { MESSAGING_SECTIONS, type MessagingSection } from "./lace-activity-actions"
 import { LaceAccountSwitcher } from "./lace-account-switcher"
 import { LaceContactDialog } from "./lace-contact-dialog"
+import { temperaturesById } from "./lead-temperature"
 import { LaceContacts } from "./lace-contacts"
 import { LacePanelTabs, PanelIntro, type PanelTab } from "./lace-panel-tabs"
 import { LaceThreads } from "./lace-threads"
@@ -67,6 +68,7 @@ export function LaceMessaging({ laceId, name, chat, apps }: { laceId: string; na
   const count = (folder: Parameters<typeof inFolder>[1]) => threads.filter((t) => inFolder(t, folder)).length
   const unreadReplies = outreach.filter(isUnread).length
   const toApprove = chat.contacts.filter((c) => !c.approved_at).length
+  const temperatures = temperaturesById(chat.accounts)
   const actions = threadActions(chat, name, mailboxes)
   const inbox = (folder: "replies" | "drafts" | "awaiting", empty: { title: string; body: string }) => (
     <LaceThreads outreach={outreach} folder={folder} drafting={chat.drafting} actions={actions} empty={empty} />
@@ -106,7 +108,7 @@ export function LaceMessaging({ laceId, name, chat, apps }: { laceId: string; na
       content: (
         <>
           <PanelIntro>The people {name} found at your saved accounts, in the chat or its searches. It drafts only to people you approve.</PanelIntro>
-          <LaceContacts contacts={chat.contacts} outreach={chat.outreach}
+          <LaceContacts contacts={chat.contacts} outreach={chat.outreach} temperatures={temperatures}
                         onApprove={(id, approved) => void chat.approveContact(id, approved)}
                         onRemove={(id) => void chat.removeContact(id)}
                         onOpen={openContact} />

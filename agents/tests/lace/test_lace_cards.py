@@ -47,6 +47,8 @@ def test_cards_say_what_the_item_says():
     card = account_card(account)
     assert (card.subtitle, card.body) == ("Kenya · strong fit", "Why now: Raised a Series B. Their need: Fleet tracking. "
                                           "How we help: Live fuel telemetry. Payoff: 8% lower fuel spend")
+    # A warmer lead says so first; cold is every lead's start, so it isn't said.
+    assert account_card(account.model_copy(update={"temperature": "hot"})).subtitle == "Hot · Kenya · strong fit"
     draft = draft_card(DraftSummary(id="d1", channel="email", recipient="Amina", company="SunCulture",
                                     subject="Fleet costs", body="Hi " + "x" * 400))
     assert draft.title == "To Amina at SunCulture" and draft.subtitle == "email · Fleet costs"

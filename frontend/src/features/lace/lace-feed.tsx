@@ -140,7 +140,8 @@ export function LaceFeed({ laceId, name, chat, activity, opps, regulations, apps
           <LaceReview items={chat.suggestedAccounts.map(accountItem)} onSave={(id) => void chat.saveAccount(id)}
                       onDismiss={(id, why) => void chat.dismissAccount(id, why)} askWhy />
           <LaceAccounts accounts={chat.accounts} finding={chat.findingAccounts}
-                        onDismiss={(id) => void chat.dismissAccount(id)} name={name}
+                        onDismiss={(id) => void chat.dismissAccount(id)}
+                        onCustomer={(id, customer) => void chat.setCustomer(id, customer)} name={name}
                         onDiscuss={(a) => onDiscuss(discussAccount(a))} />
         </>
       ),
