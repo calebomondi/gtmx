@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils"
 import { ITEM_CARD } from "./feed-styles"
 import { byTemperature, TEMPERATURE_LABEL, TEMPERATURES, temperatureCounts, temperatureLine,
          type TemperatureFilter } from "./lead-temperature"
+import { CrmBadge } from "./crm-badge"
 import { TemperatureBadge } from "./temperature-badge"
 
 type Strength = NonNullable<LaceAccountDto["case"]>["strength"]
@@ -152,6 +153,7 @@ export function LaceAccounts({ accounts, finding, onDismiss, onCustomer, name, o
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span className="font-medium">{a.name}</span>
                 <TemperatureBadge temperature={a.temperature} />
+                <CrmBadge account={a} />
                 {a.case && <FitMeter strength={a.case.strength} />}
                 {a.geo && <span className="text-xs text-muted-foreground">{a.geo}</span>}
               </div>

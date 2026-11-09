@@ -376,12 +376,19 @@ export interface LaceAccountDto {
   temperature_changed_at: string | null
   /** They said not now: nothing is drafted to them until then. */
   snoozed_until: string | null
+  /** Where it stands in the founder's CRM; null when the CRM doesn't have it. */
+  crm_status: CrmStatus | null
+  /** Its stage there, e.g. "Negotiation". */
+  crm_stage: string | null
   first_seen_at: string
   last_seen_at: string
 }
 
 /** Mirrors agents' LeadTemperature. */
 export type LeadTemperature = "cold" | "warm" | "hot" | "customer"
+
+/** Mirrors agents' CrmStatus: bought, in an open deal, a lead there, or just on file. */
+export type CrmStatus = "customer" | "open_deal" | "lead" | "known"
 
 /** The founder says a lead bought (or takes that back). */
 export function setLaceAccountCustomer(laceId: string, accountId: string, customer: boolean): Promise<LaceAccountDto> {

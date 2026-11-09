@@ -1,3 +1,4 @@
+import { crmLabel } from "./crm-label"
 import type { LaceAccountDto, LaceCompetitorDto, LaceOpportunityDto, LaceRegulationDto } from "@/lib/api"
 import { countryName } from "@/lib/countries"
 
@@ -15,7 +16,8 @@ export function competitorItem(c: LaceCompetitorDto): ReviewItem {
 }
 
 export function accountItem(a: LaceAccountDto): ReviewItem {
-  const detail = [a.geo, a.case?.strength && `${a.case.strength} fit`].filter(Boolean).join(" · ") || null
+  // A suggestion already in the founder's CRM says so first: it isn't a new lead.
+  const detail = [crmLabel(a), a.geo, a.case?.strength && `${a.case.strength} fit`].filter(Boolean).join(" · ") || null
   const why = [a.trigger?.event, a.case?.need && `Need: ${a.case.need}`].filter(Boolean).join(". ") || null
   return { id: a.id, title: a.name, detail, why, url: a.website }
 }
