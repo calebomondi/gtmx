@@ -108,3 +108,29 @@ async def test_list_accounts(settings):
                                     need="Payroll", fit_strength="strong")]
     out = json.loads(await {t.name: t for t in build_tools(store, settings)}["list_accounts"].ainvoke({}))
     assert out["summary"] == "1 saved lead." and out["data"][0]["trigger"] == "Opened 3 new sites"
+
+
+def test_real_customers_lead_the_search_and_reach_the_extractor(monkeypatch):
+    from agents.pipelines.accounts import account_discovery as ad
+
+    seen = {}
+    find_accounts(PROFILE, [], ICP_IN, [], discover=lambda s: seen.update(s) or {}, assess=lambda *a: FIT,
+                  lookalikes=["Aga Khan Clinics: runs hospitals (Nairobi)", "Avenue Health: clinic chain"])
+    assert seen["lookalikes"] == ["Aga Khan Clinics: runs hospitals (Nairobi)", "Avenue Health: clinic chain"]
+
+    queries = ad.create_account_queries({**seen, "icp_data": ICP_IN})["account_discovery_queries"]
+    assert queries[:2] == ["companies like Aga Khan Clinics in Kenya", "companies like Aga Khan Clinics in Uganda"]
+    assert "companies like Avenue Health in Kenya" in queries
+
+    prompts = []
+
+    def extract(messages, schema=None, **kw):
+        prompts.append(messages[0].content)
+        return AccountList(accounts=[_account("Alpha")])
+    monkeypatch.setattr(ad, "invoke_structured_with_fallback", extract)
+    ad.extract_accounts({**seen, "icp_data": ICP_IN, "account_discovery_docs": []})
+    assert "THE STARTUP'S REAL CUSTOMERS" in prompts[0] and "- Aga Khan Clinics: runs hospitals (Nairobi)" in prompts[0]
+    assert "set `resembles`" in prompts[0]
+    # Without customers, neither appears.
+    assert "companies like" not in " ".join(ad.create_account_queries({"icp_data": ICP_IN, "target_market": ["Kenya"]})
+                                            ["account_discovery_queries"])

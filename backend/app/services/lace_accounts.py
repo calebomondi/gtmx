@@ -42,7 +42,7 @@ def summary(row: LaceAccount) -> AccountSummary:
                           fit_strength=row.fit_strength, contact_status=row.contact_status,
                           contacts=_people(record), channels=record.get("socials") or {},
                           temperature=row.temperature, temperature_reason=row.temperature_reason,
-                          crm_status=row.crm_status, crm_stage=row.crm_stage)
+                          crm_status=row.crm_status, crm_stage=row.crm_stage, resembles=record.get("resembles"))
 
 
 def response(row: LaceAccount) -> dict:
@@ -54,7 +54,7 @@ def response(row: LaceAccount) -> dict:
             "channels": record.get("socials") or {}, "contacts_checked_at": row.contacts_checked_at,
             "temperature": row.temperature, "temperature_reason": row.temperature_reason,
             "temperature_changed_at": row.temperature_changed_at, "snoozed_until": row.snoozed_until,
-            "crm_status": row.crm_status, "crm_stage": row.crm_stage,
+            "crm_status": row.crm_status, "crm_stage": row.crm_stage, "resembles": record.get("resembles"),
             "first_seen_at": row.first_seen_at, "last_seen_at": row.last_seen_at}
 
 

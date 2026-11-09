@@ -43,6 +43,7 @@ function WhyTheyFit({ account }: { account: LaceAccountDto }) {
       text: account.trigger.event,
       source: account.trigger.source,
     },
+    account.resembles && { label: "Like", text: account.resembles },
     account.case?.need && { label: "Their need", text: account.case.need },
     account.case?.capability && { label: "How we help", text: account.case.capability },
     account.case?.payoff && { label: "Payoff", text: account.case.payoff },

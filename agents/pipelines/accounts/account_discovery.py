@@ -48,6 +48,10 @@ _ENRICH_WORKERS = get_settings().account_enrich_workers
 _SOCIALS_WORKERS = get_settings().account_socials_workers
 
 
+# Queries per target geography that ask for companies like a real customer.
+LOOKALIKE_QUERIES = 2
+
+
 def _search_and_scrape(query, config, num_results=5, start_published_date=None):
     """search_and_scrape with a small TTL cache and a hard timeout.
 
@@ -137,8 +141,12 @@ def create_account_queries(state: IcpSessionState) -> dict:
     want_b2c = buyer_type in ("b2c", "both")
 
     queries_by_geo: dict[str, list[str]] = {g: [] for g in geos}
+    # Real customers lead: companies like them are the likeliest buyers.
+    customers = [c.split(":", 1)[0].strip() for c in state.get("lookalikes") or [] if c.strip()]
     for geo in geos:
         geo_q = queries_by_geo[geo]
+        for name in customers[:LOOKALIKE_QUERIES]:
+            geo_q.append(f"companies like {name} in {geo}")
         if want_b2b:
             # 1) Direct firmographic: industries + titles in this geo.
             for industry in (icp.industries if icp and icp.industries else [])[:2]:
@@ -256,6 +264,15 @@ def search_accounts(state: IcpSessionState) -> dict:
     return {"account_discovery_docs": docs}
 
 
+def _lookalikes_block(state: IcpSessionState) -> str:
+    customers = [c for c in state.get("lookalikes") or [] if c.strip()]
+    if not customers:
+        return ""
+    return ("THE STARTUP'S REAL CUSTOMERS (find more targets like them; for each target set `resembles` to the "
+            "customer it is most like and why, in one line, or null when it is like none)\n"
+            + "\n".join(f"- {c}" for c in customers) + "\n\n")
+
+
 def _instructions_block(state: IcpSessionState) -> str:
     rules = (state.get("founder_instructions") or "").strip()
     return (f"FOUNDER'S STANDING INSTRUCTIONS (they outrank the ICP: leave out any target they rule out)\n{rules}\n\n"
@@ -277,6 +294,7 @@ def extract_accounts(state: IcpSessionState) -> dict:
         f"ICP:\n{icp.model_dump_json(indent=2) if icp else 'None'}\n\n"
         f"REACH EMPHASIS\n{_reach_emphasis(icp)}\n\n"
         + _instructions_block(state)
+        + _lookalikes_block(state)
         + f"Research context:\n{context or 'No research context available.'}\n\n"
         "Rules:\n"
         f"- Find between 4 and {MAX_ACCOUNT_CANDIDATES} REAL targets that fit the ICP. Each must be grounded "
