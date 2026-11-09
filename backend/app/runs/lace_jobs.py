@@ -548,7 +548,9 @@ async def reply_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None
                 for earlier_id in earlier:  # read with it, answered by the one draft
                     await lace_outreach.record_reading(db, await db.get(LaceOutreach, earlier_id),
                                                        result.analysis.intent, None, run_id)
-                handled.append(reply_update_line(reply, result.analysis, draft is not None))
+                account = await db.get(LaceAccount, reply.account_id) if reply.account_id else None
+                handled.append(reply_update_line(reply, result.analysis, draft is not None)
+                               + crm_writeback_line(account, reply))
                 await lace_activity.add(db, lace_id, "reply_received", f"{company} replied ({result.analysis.intent})",
                                         result.analysis.summary, ref=("outreach", reply.id))
     if handled:
@@ -567,6 +569,20 @@ def latest_per_conversation(pending: list[LaceOutreach]) -> list[tuple[LaceOutre
     for reply in pending:
         by_thread.setdefault(reply.thread_id or str(reply.id), []).append(reply)
     return [(replies[-1], [r.id for r in replies[:-1]]) for replies in by_thread.values()]
+
+
+def crm_writeback_line(account: LaceAccount | None, reply: LaceOutreach) -> str:
+    """When a reply warmed a lead that the founder's CRM doesn't have, the
+    line that has the Lace propose adding the person there (the founder
+    approves it, and add_lead_to_crm says so when no CRM is connected)."""
+    if account is None or account.temperature not in ("warm", "hot") or account.crm_status is not None \
+            or account.do_not_contact:
+        return ""
+    who = reply.recipient_name or reply.recipient_address or "them"
+    return (f" {account.name} is now {account.temperature} and isn't in the founder's CRM: propose adding {who}"
+            f" there with add_lead_to_crm (company {account.name}"
+            + (f", email {reply.recipient_address}" if reply.recipient_address and "@" in reply.recipient_address
+               else "") + "), unless the founder has no CRM connected.")
 
 
 def reply_update_line(reply: LaceOutreach, analysis, drafted: bool) -> str:
