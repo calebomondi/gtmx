@@ -18,6 +18,8 @@ from backend.app.services.errors import NotFoundError
 
 # Strongest case first, then discovery's own score.
 BY_FIT = case({"strong": 0, "moderate": 1, "weak": 2}, value=LaceAccount.fit_strength, else_=3)
+# Closest to buying first; customers, already won, after the leads still to work.
+BY_TEMPERATURE = case({"hot": 0, "warm": 1, "cold": 2, "customer": 3}, value=LaceAccount.temperature, else_=4)
 
 
 def account_key(record: AccountRecord) -> str:
@@ -38,7 +40,8 @@ def summary(row: LaceAccount) -> AccountSummary:
                           geo=row.geo, trigger=trigger.get("event"), need=fit.get("need"),
                           capability=fit.get("capability"), payoff=fit.get("payoff"), angle=fit.get("angle"),
                           fit_strength=row.fit_strength, contact_status=row.contact_status,
-                          contacts=_people(record), channels=record.get("socials") or {})
+                          contacts=_people(record), channels=record.get("socials") or {},
+                          temperature=row.temperature, temperature_reason=row.temperature_reason)
 
 
 def response(row: LaceAccount) -> dict:
@@ -48,16 +51,20 @@ def response(row: LaceAccount) -> dict:
             "geo": row.geo, "summary": record.get("summary"), "trigger": record.get("trigger_event"),
             "case": fit, "status": row.status, "contact_status": row.contact_status, "contacts": _people(record),
             "channels": record.get("socials") or {}, "contacts_checked_at": row.contacts_checked_at,
+            "temperature": row.temperature, "temperature_reason": row.temperature_reason,
+            "temperature_changed_at": row.temperature_changed_at, "snoozed_until": row.snoozed_until,
             "first_seen_at": row.first_seen_at, "last_seen_at": row.last_seen_at}
 
 
 async def list_for_lace(db: AsyncSession, lace_id: uuid.UUID, status: str, limit: int,
-                        owner_id: uuid.UUID | None = None) -> list[LaceAccount]:
-    rows = await db.scalars(
-        select(LaceAccount).where(LaceAccount.lace_id == lace_id, LaceAccount.owned_by(owner_id),
-                                  LaceAccount.status == status)
-        .order_by(BY_FIT, LaceAccount.score.desc().nulls_last(), LaceAccount.last_seen_at.desc()).limit(limit)
-    )
+                        owner_id: uuid.UUID | None = None, temperature: str | None = None) -> list[LaceAccount]:
+    """Hottest first, then strongest fit; only one temperature when asked."""
+    query = select(LaceAccount).where(LaceAccount.lace_id == lace_id, LaceAccount.owned_by(owner_id),
+                                      LaceAccount.status == status)
+    if temperature is not None:
+        query = query.where(LaceAccount.temperature == temperature)
+    rows = await db.scalars(query.order_by(BY_TEMPERATURE, BY_FIT, LaceAccount.score.desc().nulls_last(),
+                                           LaceAccount.last_seen_at.desc()).limit(limit))
     return list(rows.all())
 
 

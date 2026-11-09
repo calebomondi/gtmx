@@ -152,6 +152,12 @@ class Settings(BaseSettings):
     # Only threads sent within this window are watched for replies.
     inbox_sync_window_days: int = 30
 
+    # -- Lead temperature (backend/app/services/lead_temperature.py) --
+    # A warm or hot lead quiet this long drops one step (hot to warm, warm to cold).
+    lead_cooling_days: int = 30
+    # "Not now" keeps a lead warm and undisturbed this long.
+    lead_snooze_days: int = 30
+
     # -- Waitlist (public landing page at thalace.com) --
     # Resend sends the signup confirmation. It only delivers to any address
     # once the sending domain is verified in Resend; until `waitlist_from_email`

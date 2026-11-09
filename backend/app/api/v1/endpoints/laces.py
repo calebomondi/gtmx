@@ -12,7 +12,7 @@ from backend.app.runs import lace as lace_runs
 from backend.app.runs import manager
 from backend.app.runs.lace import LaceThread
 from backend.app.schemas.laces import (
-    ContactDraftRequest,
+    AccountCustomerRequest, ContactDraftRequest,
     MoveResponse,
     DocumentResponse,
     ActivityReadResponse,
@@ -62,14 +62,14 @@ from backend.app.services import (  # noqa: F401 -- registers their runners
     asana_actions, calendar_actions, crm_actions, notion_actions, sheet_actions, slack_actions, social_actions,
     telegram_actions,
 )
-from backend.app.services import email, inbox, lace_app_actions, lace_app_settings, lace_accounts, lace_briefs, lace_cards, lace_documents, lace_activity, lace_contacts, lace_members, lace_search, lace_channels, lace_competitors, lace_exclusions, lace_opportunities, lace_outreach
+from backend.app.services import email, inbox, lead_temperature, lace_app_actions, lace_app_settings, lace_accounts, lace_briefs, lace_cards, lace_documents, lace_activity, lace_contacts, lace_members, lace_search, lace_channels, lace_competitors, lace_exclusions, lace_opportunities, lace_outreach
 from backend.app.services import connections as connection_service
 from backend.app.services import laces as lace_service
 from backend.app.services import runs as run_service
 from backend.app.schemas.connections import ConnectStartResponse
 from agents.lace.store import JobRefused
 from backend.app.services.errors import ConflictError, NotFoundError
-from agents.schemas.lace import AppActionStatus, AccountStatus, CompetitorStatus, FactTopic, InboxPlatform
+from agents.schemas.lace import AppActionStatus, AccountStatus, LeadTemperature, CompetitorStatus, FactTopic, InboxPlatform
 from backend.app.database.lace_models import Lace, LaceMember
 from agents.schemas.opportunities import OpportunityStatus
 
@@ -388,8 +388,21 @@ async def update_competitor(lace: MemberLace, competitor_id: uuid.UUID, payload:
 
 @router.get("/{lace_id}/accounts", response_model=list[AccountResponse])
 async def list_accounts(lace: MemberLace, db: DbSession, shown: AccountStatus = Query(default="target", alias="status"),
+                        temperature: LeadTemperature | None = Query(default=None),
                         limit: int = Query(default=50, ge=1, le=MAX_ACCOUNTS_PER_PAGE)):
-    return [lace_accounts.response(r) for r in await lace_accounts.list_for_lace(db, lace.id, shown, limit)]
+    """Hottest first; only one temperature when `temperature` is given."""
+    rows = await lace_accounts.list_for_lace(db, lace.id, shown, limit, temperature=temperature)
+    return [lace_accounts.response(r) for r in rows]
+
+
+@router.put("/{lace_id}/accounts/{account_id}/customer", response_model=AccountResponse)
+async def set_account_customer(lace: MemberLace, account_id: uuid.UUID, payload: AccountCustomerRequest,
+                               user: CurrentUser, db: DbSession):
+    """The founder says this lead bought (or takes that back)."""
+    row = await lace_accounts.get_in_lace(db, lace.id, account_id, user.id)
+    await lead_temperature.set_customer(db, row, payload.customer)
+    await db.commit()
+    return lace_accounts.response(row)
 
 
 @router.patch("/{lace_id}/accounts/{account_id}", response_model=AccountResponse)

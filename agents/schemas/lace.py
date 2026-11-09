@@ -177,6 +177,8 @@ class AccountSummary(BaseModel):
     contact_status: str | None = Field(default=None, description="person | organisation | none; unset until contacts were looked for")
     contacts: list[dict] = Field(default_factory=list, description="People to reach: name, title, email, linkedin")
     channels: dict[str, str] = Field(default_factory=dict, description="The organisation's own pages by platform")
+    temperature: LeadTemperature = Field(default="cold", description="cold | warm | hot | customer, from what they did")
+    temperature_reason: str | None = Field(default=None, description="Why it has that temperature, e.g. 'Replied with interest'")
 
 class Suggestions(BaseModel):
     """What searches found that the founder has not saved or dismissed yet."""

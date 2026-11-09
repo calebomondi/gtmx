@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database.lace_models import Lace, LaceAccount, LaceChannel, LaceOutreach
 from backend.app.services import connections as connection_service
-from backend.app.services import lace_activity, lace_channels
+from backend.app.services import lace_activity, lace_channels, lead_temperature
 from backend.app.services import outreach as outreach_service
 from backend.app.services.errors import ConflictError, InvalidInputError, NotFoundError
 from utils.log import logger
@@ -252,8 +252,10 @@ async def record_reading(db: AsyncSession, reply: LaceOutreach, intent: str, dra
     the answer as a draft in its thread, on its channel, to whoever wrote.
     Returns the draft."""
     reply.intent = intent
-    if intent == "unsubscribe" and reply.account_id and (account := await db.get(LaceAccount, reply.account_id)):
-        account.do_not_contact = True
+    if reply.account_id and (account := await db.get(LaceAccount, reply.account_id)):
+        if intent == "unsubscribe":
+            account.do_not_contact = True
+        await lead_temperature.on_reply(db, account, intent, reply.id)
     draft = None
     if draft_body:
         draft = LaceOutreach(lace_id=reply.lace_id, user_id=reply.user_id, account_id=reply.account_id, run_id=run_id,
