@@ -495,6 +495,9 @@ class LaceOutreach(Base):
         CheckConstraint(_one_of("mailbox", MAILBOXES), name="mailbox"),
         Index("ix_lace_outreach_lace_id_status", "lace_id", "status"),
         Index("ix_lace_outreach_unread", "lace_id", postgresql_where=text("direction = 'inbound' AND read_at IS NULL")),
+        CheckConstraint("sequence_step BETWEEN 0 AND 2", name="sequence_step"),
+        Index("ix_lace_outreach_follow_up_due_at", "follow_up_due_at",
+              postgresql_where=text("follow_up_due_at IS NOT NULL")),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -528,6 +531,11 @@ class LaceOutreach(Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     # inbound: when the founder opened it; null is unread.
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # outbound email: its place in a sequence (0 the first email, 1 and 2 the
+    # follow-ups), and once sent, when its follow-up is due if nobody answers
+    # (cleared when one is drafted, so a discarded follow-up isn't redrafted).
+    sequence_step: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0, server_default="0")
+    follow_up_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False,
                                                  default=_now, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now,
