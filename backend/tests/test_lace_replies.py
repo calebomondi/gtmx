@@ -85,6 +85,9 @@ def test_a_reply_is_read_answered_as_a_draft_and_reported(client, lace, lace_run
     assert seen[0].sender_name == "Caleb" and "SunCulture" in seen[0].account
     update = turns[-1].input["updates"][0]
     assert "Samir Ibrahim at SunCulture replied (question)" in update and "An answer is drafted in Outreach" in update
+    # The question warmed SunCulture, which the founder's CRM doesn't have: the Lace proposes adding Samir.
+    assert ("SunCulture is now warm and isn't in the founder's CRM: propose adding Samir Ibrahim there with "
+            "add_lead_to_crm (company SunCulture, email samir@sunculture.test)") in update
     messages = client.get(f"{API}/laces/{lace}/outreach").json()
     inbound = next(m for m in messages if m["direction"] == "inbound")
     answer = next(m for m in messages if m["status"] == "draft")
@@ -114,6 +117,7 @@ def test_asking_to_stop_is_honoured(client, lace, lace_runtime, user, monkeypatc
     client.portal.call(_wait_for_status, job.id, {"completed"})
     turns = client.portal.call(_wait_for_turns, lace, 1)
     assert "asked not to be contacted" in turns[-1].input["updates"][0]
+    assert "add_lead_to_crm" not in turns[-1].input["updates"][0]
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
         assert conn.execute("SELECT do_not_contact FROM lace_accounts WHERE id = %s", (account,)).fetchone()[0]
         draft = conn.execute("INSERT INTO lace_outreach (id, lace_id, user_id, account_id, channel, recipient_address,"
@@ -166,3 +170,15 @@ def test_a_bounce_marks_the_lace_send(client, lace, lace_runtime, user, monkeypa
     with psycopg.connect(settings.database_url) as conn:
         assert conn.execute("SELECT status FROM lace_outreach WHERE direction = 'outbound'").fetchone()[0] == "bounced"
     assert client.portal.call(_runs, lace, "lace_reply") == []  # a bounce is not a reply to answer
+
+
+def test_a_lead_already_in_the_crm_or_still_cold_isnt_proposed_for_it():
+    from backend.app.database.lace_models import LaceAccount, LaceOutreach
+
+    reply = LaceOutreach(recipient_name="Samir", recipient_address="samir@sunculture.test")
+    warm = LaceAccount(name="SunCulture", temperature="warm", crm_status=None, do_not_contact=False)
+    assert "propose adding Samir" in lace_jobs.crm_writeback_line(warm, reply)
+    in_crm = LaceAccount(name="SunCulture", temperature="hot", crm_status="lead", do_not_contact=False)
+    cold = LaceAccount(name="SunCulture", temperature="cold", crm_status=None, do_not_contact=False)
+    assert lace_jobs.crm_writeback_line(in_crm, reply) == lace_jobs.crm_writeback_line(cold, reply) == ""
+    assert lace_jobs.crm_writeback_line(None, reply) == ""
