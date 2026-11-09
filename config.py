@@ -172,6 +172,8 @@ class Settings(BaseSettings):
     follow_up_second_after_days: int = 7
     follow_ups_batch: int = 5
     follow_up_laces_per_sweep: int = 20
+    # How many customers' websites one learning run reads (the rest wait for the next).
+    customers_per_run: int = 8
 
     # -- Waitlist (public landing page at thalace.com) --
     # Resend sends the signup confirmation. It only delivers to any address

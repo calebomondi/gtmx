@@ -172,3 +172,14 @@ ICPRevision = create_model(
         for name, field in ICP.model_fields.items()
     },
 )
+
+
+class CustomerTraits(LenientModel):
+    """What one of the startup's real customers is, read off its own site:
+    the evidence the ideal customer profile and lookalike searches are built
+    from. Empty where the site doesn't say."""
+
+    what_they_do: str = Field(default="", description="What the customer does, in one plain sentence")
+    industry: str = Field(default="", description="Its industry, in a few words")
+    size: str = Field(default="", description="Its size as the site shows it (staff, sites, branches); empty if not stated")
+    location: str = Field(default="", description="Where it operates (city, country); empty if not stated")

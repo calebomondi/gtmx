@@ -423,6 +423,17 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
 
     @tool(parse_docstring=True)
     @guarded
+    async def learn_from_customers() -> ToolResult:
+        """Learn who the startup's real customers are (its CRM customers, and leads the founder marked as customers): read each one's website, keep what it is as a fact under customers, then rework the ideal customer profile from them. Use it when the founder asks you to learn from their customers, or after they name or mark customers. Runs in the background; you get an update when it is done."""
+        try:
+            start = await jobs.start("learn_from_customers", {})
+        except JobRefused as exc:
+            return ToolResult.failure(str(exc))
+        return job_result(start, "Started reading your customers' websites. The ideal customer profile is reworked "
+                          "from them after; you will get an update here.", "learning from customers")
+
+    @tool(parse_docstring=True)
+    @guarded
     async def find_contacts(account_ids: list[str] | None = None) -> ToolResult:
         """Find the people to contact at leads (named decision makers with an email or LinkedIn) and the organisation's own pages on LinkedIn, Instagram, TikTok, Facebook and X. Runs in the background; you get an update when it is done.
 
@@ -530,5 +541,6 @@ def build_tools(store: LaceStore, settings: Settings, jobs: LaceJobs | None = No
         return job_result(start, "Started listening on their social accounts. You will get an update here when it's "
                           "done.", "listen on social accounts")
 
-    return [*tools, find_competitors, check_competitors, find_accounts, define_icp, find_contacts, draft_outreach,
+    return [*tools, find_competitors, check_competitors, find_accounts, define_icp, learn_from_customers, find_contacts,
+            draft_outreach,
             find_opportunities, read_tiktok_comments, refresh_understanding, listen_now, draft_linkedin_note]
