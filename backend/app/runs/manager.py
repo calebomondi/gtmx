@@ -28,7 +28,7 @@ from agents.schemas.lace import JobStart, RunningJob
 from agents.schemas.lace_ui import BlockAnswer
 from backend.app.runs import lace as lace_runs
 from backend.app.runs.lace import LaceThread
-from backend.app.runs import lace_jobs, listening_jobs, regulation_jobs, social_jobs, understanding_jobs
+from backend.app.runs import follow_up_jobs, lace_jobs, listening_jobs, regulation_jobs, social_jobs, understanding_jobs
 from backend.app.runs.errors import user_facing_error
 from backend.app.services import limits
 from backend.app.services import runs as run_service
@@ -412,7 +412,8 @@ _JOB_SEGMENTS = {"lace_competitors": lace_jobs.competitors_job, "lace_monitor": 
                  "lace_comments": social_jobs.tiktok_comments_job,
                  "lace_regulations": regulation_jobs.regulations_job,
                  "lace_refresh": understanding_jobs.refresh_job,
-                 "lace_listening": listening_jobs.listening_job}
+                 "lace_listening": listening_jobs.listening_job,
+                 "lace_follow_ups": follow_up_jobs.follow_ups_job}
 # Jobs of one kind run one at a time per Lace; this many more may wait their turn.
 MAX_QUEUED_JOBS = 3
 
@@ -608,7 +609,7 @@ _JOB_NAMES = {"lace_competitors": "competitor search", "lace_monitor": "competit
               "lace_icp": "ideal customer profile", "lace_drafts": "drafting", "lace_reply": "reading of replies",
               "lace_opportunities": "opportunity search", "lace_comments": "reading of TikTok comments",
               "lace_regulations": "search for laws and regulations", "lace_refresh": "re-read of the site",
-              "lace_listening": "listen on social accounts"}
+              "lace_listening": "listen on social accounts", "lace_follow_ups": "drafting of follow-ups"}
 
 
 async def _report_interrupted_jobs(run_ids: list[uuid.UUID]) -> None:
