@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from agents.schemas.lace_ui import BlockAnswer, UiBlock
 from agents.schemas.monitor import MoveImportance, MoveKind
 from agents.schemas.opportunities import OpportunityKind, OpportunityStatus
-from agents.schemas.lace import AppActionStatus, DismissReason, LaceRole, LeadTemperature, WatchEvery, AccountStatus, ActivityKind, ActivityRef, ContactSource, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, Mailbox, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
+from agents.schemas.lace import AppActionStatus, CrmStatus, DismissReason, LaceRole, LeadTemperature, WatchEvery, AccountStatus, ActivityKind, ActivityRef, ContactSource, BriefFrequency, CompetitorOrigin, ContactStatus, InboxPlatform, Mailbox, OutreachChannel, CompetitorStatus, Confidence, FactOrigin, FactTopic
 
 
 def known_zone(value: str | None) -> str | None:
@@ -228,6 +228,9 @@ class AccountResponse(BaseModel):
     temperature_reason: str | None = Field(description="Why, in a few words, e.g. 'Asked for a meeting'")
     temperature_changed_at: datetime | None = Field(description="When it last moved or showed activity")
     snoozed_until: datetime | None = Field(description="They said not now: nothing is drafted to them until then")
+    crm_status: CrmStatus | None = Field(description="Where it stands in the founder's CRM (customer, open_deal, "
+                                                     "lead, known); null when the CRM doesn't have it")
+    crm_stage: str | None = Field(description="Its stage in the founder's CRM, e.g. Negotiation")
     first_seen_at: datetime
     last_seen_at: datetime
 
