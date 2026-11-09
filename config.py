@@ -174,6 +174,8 @@ class Settings(BaseSettings):
     follow_up_laces_per_sweep: int = 20
     # How many customers' websites one learning run reads (the rest wait for the next).
     customers_per_run: int = 8
+    # How often each Lace looks for new leads on its own (hours).
+    lead_search_every_h: int = 24
 
     # -- Waitlist (public landing page at thalace.com) --
     # Resend sends the signup confirmation. It only delivers to any address
