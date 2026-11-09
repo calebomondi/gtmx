@@ -94,6 +94,19 @@ async def on_meeting(db: AsyncSession, lace_id: uuid.UUID, attendees: list[str],
     return list(accounts)
 
 
+
+async def on_crm(db: AsyncSession, account: LaceAccount, crm_status: str, stage: str | None,
+                 now: datetime | None = None) -> None:
+    """Where the founder's CRM says the lead stands: a customer there is a
+    customer here, and an open deal is at least warm. A lead or a record only
+    on file says nothing about warmth. The caller commits."""
+    now = now or datetime.now(UTC)
+    if crm_status == "customer" and account.temperature != "customer":
+        await _signal(db, account, "crm", "A customer in your CRM", "customer", now)
+    elif crm_status == "open_deal" and account.temperature == "cold":
+        detail = f"Open deal in your CRM ({stage})" if stage else "Open deal in your CRM"
+        await _signal(db, account, "crm", detail[:200], "warm", now)
+
 async def set_customer(db: AsyncSession, account: LaceAccount, is_customer: bool,
                        now: datetime | None = None) -> None:
     """The founder says the lead bought, or takes that back (it goes back to

@@ -297,6 +297,7 @@ def _is_uuid(value: str) -> bool:
     return True
 
 
+
 async def drafts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> None:
     """Draft a first message to each account through v1's GTM pipeline, save
     the drafts for the founder to review, and queue an update. Nothing is
@@ -308,9 +309,15 @@ async def drafts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> Non
     async with AsyncSessionLocal() as db:
         run = await db.get(models.Run, run_id)
         user_id = run.user_id
-        accounts = [(a.id, a.name, AccountRecord.model_validate(a.record))
-                    for a in await lace_outreach.accounts_to_draft(db, lace_id, ids or None, DRAFTS_BATCH,
-                                                                          private_to(params))]
+        rows = await lace_outreach.accounts_to_draft(db, lace_id, ids or None, DRAFTS_BATCH, private_to(params))
+        # A customer or an open deal in the founder's CRM gets no cold first
+        # email, unless the founder, told so, still asked for one.
+        in_crm = [] if params.get("person") or params.get("crm_confirmed") else [
+            f"{a.name} ({'a customer' if a.crm_status == 'customer' else 'an open deal'}"
+            + (f", {a.crm_stage}" if a.crm_stage else "") + ")"
+            for a in rows if a.crm_status in lace_outreach.CRM_NO_COLD_EMAIL]
+        accounts = [(a.id, a.name, AccountRecord.model_validate(a.record)) for a in rows
+                    if params.get("person") or params.get("crm_confirmed") or a.crm_status not in lace_outreach.CRM_NO_COLD_EMAIL]
         cleared = await lace_contacts.approved_keys(db, [account_id for account_id, _, _ in accounts])
     sender = await outreach_service.sender_for_user(user_id)
     person = params.get("person")
@@ -353,7 +360,7 @@ async def drafts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> Non
         drafts = [d for d in await asyncio.gather(*(draft(*t) for t in targets if t[3] is not None)) if d]
     async with AsyncSessionLocal() as db, db.begin():
         db.add_all(drafts)
-        await job_update(db, lace_id, params, drafts_update(drafts, unreachable, failed, awaiting))
+        await job_update(db, lace_id, params, drafts_update(drafts, unreachable, failed, awaiting, in_crm))
         if drafts:
             await lace_activity.add(db, lace_id, "drafts_ready", f"{plural(len(drafts), 'message')} drafted for you to send",
                                     names([d.recipient_company for d in drafts]), actor_id=actor_of(params))
@@ -368,8 +375,8 @@ def approved_only(record: AccountRecord, keys: set[str]) -> AccountRecord:
 
 
 def drafts_update(drafts: list[LaceOutreach], unreachable: list[str], failed: list[str],
-                  awaiting: list[str]) -> str:
-    if not drafts and not unreachable and not failed and not awaiting:
+                  awaiting: list[str], in_crm: list[str] | None = None) -> str:
+    if not drafts and not unreachable and not failed and not awaiting and not in_crm:
         return "There was no account to draft for: every target with someone to reach already has a message."
     lines = [f"{d.recipient_company} [draft {d.id}]: to {d.recipient_name or d.recipient_address} by {d.channel}"
              + (f', subject "{d.subject}"' if d.subject else "") for d in drafts]
@@ -381,6 +388,9 @@ def drafts_update(drafts: list[LaceOutreach], unreachable: list[str], failed: li
     if awaiting:
         lines.append("Not drafted, their people wait for the founder to approve them (in Contacts, or on the "
                      "account's card): " + ", ".join(awaiting))
+    if in_crm:
+        lines.append("Not drafted, already in the founder's CRM, so a cold first email would be wrong (tell the "
+                     "founder; draft only if they still want one, with crm_confirmed): " + ", ".join(in_crm))
     head = ("Drafted first messages; they wait in Outreach for the founder to review, edit and send:" if drafts
             else "No message was drafted:")
     return head + "\n" + "\n".join(lines)
