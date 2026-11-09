@@ -15,7 +15,7 @@ from backend.app.database.connect import AsyncSessionLocal
 from backend.app.database.lace_models import Lace, LaceBrief
 from backend.app.runs import manager
 from backend.app.services import inbox as inbox_service
-from backend.app.services import lace_activity, lace_brief_email, lace_briefs, lace_competitors, lace_listening, lace_opportunities, lace_regulations, lead_temperature, social_inbox
+from backend.app.services import crm_sync, lace_activity, lace_brief_email, lace_briefs, lace_competitors, lace_listening, lace_opportunities, lace_regulations, lead_temperature, social_inbox
 from backend.app.services.lace_activity import BRIEF_TITLE, BRIEF_WRITING
 from config import settings
 from data_sources.legislation import mzalendo
@@ -144,14 +144,29 @@ async def cool_leads(now: datetime | None = None) -> int:
         return await lead_temperature.cool_quiet_leads(db, now)
 
 
+async def sync_crms(now: datetime | None = None) -> int:
+    """Refresh the copies of the founders' CRMs that are due, a batch per
+    sweep. Returns how many were refreshed."""
+    now = now or datetime.now(UTC)
+    async with AsyncSessionLocal() as db:
+        due = await crm_sync.laces_due(db, now, settings.crm_sync_batch)
+    synced = 0
+    for lace_id in due:
+        if await crm_sync.sync_lace(lace_id, now) is not None:
+            synced += 1
+    return synced
+
+
 async def sweep() -> int:
     """Start each Lace's due monitoring, opportunity and regulation searches,
     listen on its social accounts and brief, read tracked bills' stages, cool
-    quiet leads, and email briefs held back. Returns how many runs started."""
+    quiet leads, refresh copies of founders' CRMs, and email briefs held back.
+    Returns how many runs started."""
     started = (await sweep_laces() + await sweep_lace_opportunities() + await sweep_lace_regulations()
                + await sweep_lace_listening() + await sweep_briefs())
     await check_bills()
     await cool_leads()
+    await sync_crms()
     await lace_brief_email.email_waiting(datetime.now(UTC))
     return started
 

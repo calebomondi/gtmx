@@ -235,3 +235,10 @@ def offer_label(seller: str, offer_name: str) -> str:
     if seller and offer_name and not name_in_text(seller, offer_name):
         return f"{seller} ({offer_name})"
     return offer_name or seller
+
+
+def name_key(name: str | None) -> str:
+    """A firm's name reduced to letters and digits, to spot one firm under two
+    domains or two spellings ("Acme Ltd." and "acme ltd"). Empty when there is
+    nothing to compare."""
+    return re.sub(r"[^a-z0-9]", "", (name or "").lower())

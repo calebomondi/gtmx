@@ -157,6 +157,10 @@ class Settings(BaseSettings):
     lead_cooling_days: int = 30
     # "Not now" keeps a lead warm and undisturbed this long.
     lead_snooze_days: int = 30
+    # How often each Lace's copy of the founder's CRM is refreshed, and how
+    # many Laces one scheduler sweep refreshes (the rest wait for the next).
+    crm_sync_every_h: int = 24
+    crm_sync_batch: int = 10
 
     # -- Waitlist (public landing page at thalace.com) --
     # Resend sends the signup confirmation. It only delivers to any address

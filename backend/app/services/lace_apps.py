@@ -319,6 +319,14 @@ class DbLaceApps:
         platform, live = found
         return await crm.DEALS[platform](lambda tool, args: self._run(live, platform, tool, args))
 
+    async def crm_snapshot(self) -> tuple[str, list[dict]] | None:
+        """The whole CRM this Lace uses, with which CRM it is (crm.SNAPSHOT);
+        None without one. Raises AppError when a call fails."""
+        if (found := await self._crm_live()) is None:
+            return None
+        platform, live = found
+        return platform, await crm.SNAPSHOT[platform](lambda tool, args: self._run(live, platform, tool, args))
+
     async def crm_find(self, query: str) -> list[dict] | None:
         if (found := await self._crm_live()) is None:
             return None
