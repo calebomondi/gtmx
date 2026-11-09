@@ -107,6 +107,16 @@ async def on_crm(db: AsyncSession, account: LaceAccount, crm_status: str, stage:
         detail = f"Open deal in your CRM ({stage})" if stage else "Open deal in your CRM"
         await _signal(db, account, "crm", detail[:200], "warm", now)
 
+
+async def on_history(db: AsyncSession, account: LaceAccount, emails: int, now: datetime | None = None) -> None:
+    """The founder's mailbox has earlier mail with people at the lead: it was
+    never a cold lead, so a cold one starts warm. The caller commits."""
+    if account.temperature != "cold":
+        return
+    now = now or datetime.now(UTC)
+    detail = "You've emailed them before" + (f" ({emails} emails)" if emails > 1 else "")
+    await _signal(db, account, "history", detail, "warm", now)
+
 async def set_customer(db: AsyncSession, account: LaceAccount, is_customer: bool,
                        now: datetime | None = None) -> None:
     """The founder says the lead bought, or takes that back (it goes back to
