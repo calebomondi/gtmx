@@ -114,7 +114,7 @@ class DbLaceApps:
             return None
         data = await self._run(live, "gmail", _GMAIL_SEARCH, {
             "query": f"{query} newer_than:{days}d".strip(), "max_results": EMAIL_RESULTS, "include_payload": False})
-        return [{"thread_id": m.get("threadId"), "from": m.get("sender"), "subject": m.get("subject"),
+        return [{"thread_id": m.get("threadId"), "from": m.get("sender"), "to": m.get("to"), "subject": m.get("subject"),
                  "date": m.get("messageTimestamp"), "snippet": mail_text(m).strip()[:TEXT_CHARS]}
                 for m in _listed(data, "messages")[:EMAIL_RESULTS]]
 
@@ -123,7 +123,8 @@ class DbLaceApps:
         if live is None:
             return None
         data = await self._run(live, "gmail", _GMAIL_THREAD, {"thread_id": thread_id})
-        return [{"from": m.get("sender"), "date": m.get("messageTimestamp"), "text": mail_text(m).strip()[:EMAIL_CHARS]}
+        return [{"from": m.get("sender"), "to": m.get("to"), "date": m.get("messageTimestamp"),
+                 "text": mail_text(m).strip()[:EMAIL_CHARS]}
                 for m in _listed(data, "messages")[:THREAD_MESSAGES]]
 
     async def calendar_events(self, days_ahead: int) -> list[dict] | None:
