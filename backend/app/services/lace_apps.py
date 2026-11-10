@@ -74,6 +74,10 @@ PAGES_NAMED = 6
 TEXT_CHARS = 300
 
 
+class PermissionMissing(AppError):
+    """The app refused because the connection lacks a permission."""
+
+
 @dataclass(frozen=True)
 class _Live:
     entity: str
@@ -201,7 +205,8 @@ class DbLaceApps:
             logger.exception("Composio %s failed for Lace %s", tool, self._lace_id)
             raise AppError(f"Couldn't reach {connection_service.label(platform)} ({type(exc).__name__})") from exc
         if result.get("error"):
-            raise AppError(connection_service.refusal(platform, result["error"]))
+            refused = PermissionMissing if connection_service.scope_missing(result["error"]) else AppError
+            raise refused(connection_service.refusal(platform, result["error"]))
         return result.get("data")
 
     async def x(self, record: XRecord, key: str) -> dict | None:
@@ -224,6 +229,11 @@ class DbLaceApps:
             data = await self._run(live, "googlesheets", _SHEET_SEARCH, {
                 "query": query, "search_type": "name", "max_results": SHEET_SEARCH_RESULTS,
                 "order_by": "modifiedTime desc"})
+        except PermissionMissing as exc:
+            # Searching by name needs Drive access, which a Sheets connection
+            # often lacks; reading and writing a sheet by its link don't.
+            raise AppError("This Google Sheets connection can't search Drive by name. Don't ask the founder to "
+                           "reconnect for this: ask for the sheet's link and read it with read_sheet.") from exc
         except AppError as exc:
             raise AppError(f"{exc} Until then, ask for the sheet's link.") from exc
         found = _listed(data, "spreadsheets") or _listed(data, "files")
