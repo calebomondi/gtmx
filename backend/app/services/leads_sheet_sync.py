@@ -1,6 +1,7 @@
 """Keeping each Lace's leads sheet (services.leads_sheet) up to date, once
-a day: the leads saved since its last sync that aren't in it yet are added
-at the end of its first tab, as the founder's standing approval."""
+a day: what the founder changed in it is read back onto the leads, and the
+leads saved since its last sync that aren't in it yet are added at the end of
+its first tab, as the founder's standing approval."""
 
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -64,6 +65,8 @@ async def sync_lace(lace_id: uuid.UUID, now: datetime | None = None) -> int | No
             logger.warning("Leads sheet of Lace %s has no %r column; nothing added", lace_id, leads_sheet.ID_COLUMN)
             await _synced(db, lace_id, now)
             return None
+        await leads_sheet.read_back(db, lace_id, sheet["rows"], now)
+        await db.commit()
         lace = await db.get(Lace, lace_id)
         missing = await leads_sheet.rows(db, lace_id, leaving_out=in_sheet) if lace else []
         added = 0

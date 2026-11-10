@@ -149,3 +149,38 @@ async def test_a_sheet_without_the_lead_id_column_is_left_alone(composio, monkey
     assert all(tool != "GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND" for tool, _ in composio["calls"])
     # Not read again until the next day.
     assert not await _due(lace)
+
+
+def _account(account_id) -> tuple:
+    return _sql("SELECT founder_notes, temperature, do_not_contact, sheet_status FROM lace_accounts WHERE id = %s",
+                account_id)
+
+
+async def _read_back(lace_id, rows) -> int:
+    async with AsyncSessionLocal() as db:
+        changed = await leads_sheet.read_back(db, lace_id, rows, NOW)
+        await db.commit()
+        return changed
+
+
+async def test_the_founders_notes_and_status_come_back_from_the_sheet():
+    lace = _lace()
+    acme, beta, gamma = _lead(lace, "Acme"), _lead(lace, "Beta"), _lead(lace, "Gamma")
+    header = ["Company", "Status", "Notes", "Lead id"]
+    assert await _read_back(lace, [header, ["Acme", "Customer", " Signed in Nov ", str(acme)],
+                                   ["Beta", "Not interested", "", str(beta)], ["Gamma", "Call Friday", "", str(gamma)],
+                                   ["Nobody", "Customer", "", "not-an-id"]]) == 2
+    assert _account(acme) == ("Signed in Nov", "customer", False, "Customer")
+    assert _account(beta) == (None, "cold", True, "Not interested")
+    # A status of the founder's own changes nothing but is remembered.
+    assert _account(gamma) == (None, "cold", False, "Call Friday")
+
+
+async def test_an_old_status_in_the_sheet_never_undoes_the_app():
+    lace = _lace()
+    acme = _lead(lace, "Acme")
+    rows = [["Status", "Lead id"], ["Customer", str(acme)]]
+    await _read_back(lace, rows)
+    # The founder takes "customer" back in the app; the sheet still says it.
+    _sql("UPDATE lace_accounts SET temperature = 'cold' WHERE id = %s RETURNING id", acme)
+    assert await _read_back(lace, rows) == 0 and _account(acme)[1] == "cold"

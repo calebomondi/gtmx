@@ -349,6 +349,12 @@ class LaceAccount(_Find, Base):
     status: Mapped[str] = mapped_column(String(12), nullable=False, default="target", server_default="target")
     # Someone there asked to stop: no more drafts or sends to it.
     do_not_contact: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+    # What the founder wrote about it in their leads sheet (services.leads_sheet):
+    # follow-ups and emails go by it.
+    founder_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Its Status in that sheet when last read: only a change there acts, so an
+    # old "Customer" in the sheet never undoes the founder's later word in the app.
+    sheet_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
     # person | organisation | none: whether someone named can be reached. Set
     # from discovery's own contacts, then by a contact search, which also sets
     # contacts_checked_at (NULL: the search never ran for it).
