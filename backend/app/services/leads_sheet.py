@@ -6,8 +6,9 @@ The Lace offers it once, as an approval card (lace_app_actions, action
 "leads_sheet"); approving makes the sheet and remembers it in the Lace's
 Google Sheets settings, declining stops the offer. Once a day each leads
 sheet gets the leads saved since that aren't in it yet, found by the Lead id
-column (leads_sheet_sync). Rows already in the sheet are the founder's: they
-are never rewritten.
+column, and what the founder changed there is read back onto the leads: their
+Notes, and a Status of Customer or Not interested (leads_sheet_sync). Rows
+already in the sheet are the founder's: they are never rewritten.
 """
 
 import uuid
@@ -19,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agents.lace.sheets import sheet_id
 from agents.schemas.lace import LEAD_SHEET_COLUMNS
 from backend.app.database.lace_models import LaceAccount, LaceApp, LaceAppAction, LaceContact, LaceOutreach
+from backend.app.services import lead_temperature
 from utils.log import logger
 
 APP, ACTION = "googlesheets", "leads_sheet"
@@ -118,6 +120,56 @@ async def keep(db: AsyncSession, lace_id: uuid.UUID, url: str | None) -> None:
         db.add(LaceApp(lace_id=lace_id, platform=APP, enabled=True, settings={SHEET_KEY: spreadsheet}))
     else:
         row.settings = {**(row.settings or {}), SHEET_KEY: spreadsheet}
+
+
+# What the founder's Status says, read back: only these change the lead.
+STATUS_CUSTOMER, STATUS_STOP = "customer", "not interested"
+NOTES_CHARS = 1_000
+STATUS_CHARS = 40
+
+
+def _column(header: list[str], name: str) -> int | None:
+    names = [cell.strip().lower() for cell in header]
+    return names.index(name.lower()) if name.lower() in names else None
+
+
+async def read_back(db: AsyncSession, lace_id: uuid.UUID, sheet_rows: list[list[str]],
+                    now: datetime | None = None) -> int:
+    """What the founder changed in their leads sheet, onto the leads: their
+    Notes, and a Status of Customer (it's a customer) or Not interested (no
+    more contact), when it changed since it was last read. Other statuses are
+    the founder's own and change nothing, nor does clearing one. Returns how
+    many leads changed; the caller commits."""
+    if not sheet_rows:
+        return 0
+    header = sheet_rows[0]
+    at_id, at_status, at_notes = (_column(header, name) for name in (ID_COLUMN, "Status", "Notes"))
+    if at_id is None:
+        return 0
+
+    def cell(row: list[str], at: int | None) -> str:
+        return row[at].strip() if at is not None and len(row) > at else ""
+    by_id = {cell(r, at_id): r for r in sheet_rows[1:] if _is_uuid(cell(r, at_id))}
+    if not by_id:
+        return 0
+    accounts = (await db.scalars(select(LaceAccount).where(
+        LaceAccount.lace_id == lace_id, LaceAccount.team(), LaceAccount.status == "target",
+        LaceAccount.id.in_([uuid.UUID(i) for i in by_id])))).all()
+    changed = 0
+    for account in accounts:
+        row = by_id[str(account.id)]
+        notes, status = cell(row, at_notes)[:NOTES_CHARS] or None, cell(row, at_status)[:STATUS_CHARS]
+        before = (account.founder_notes, account.temperature, account.do_not_contact)
+        if at_notes is not None:
+            account.founder_notes = notes
+        if at_status is not None and status != (account.sheet_status or ""):
+            if status.lower() == STATUS_CUSTOMER and account.temperature != "customer":
+                await lead_temperature.set_customer(db, account, True, now)
+            if status.lower() == STATUS_STOP:
+                account.do_not_contact = True
+            account.sheet_status = status or None
+        changed += before != (account.founder_notes, account.temperature, account.do_not_contact)
+    return changed
 
 
 def ids_in(sheet_rows: list[list[str]]) -> set[str] | None:
