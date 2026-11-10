@@ -75,7 +75,9 @@ async def test_writing_rows_appends_or_updates_a_range(composio):  # noqa: F811
     assert updated.result == "Updated Sheet1!C2 (1 rows)." and updated.url.endswith("/s3")
 
 
-async def test_a_missing_permission_says_to_reconnect(monkeypatch):
+async def test_search_without_drive_access_asks_for_the_link(monkeypatch):
+    """Searching needs Drive access; reading by link doesn't, so a refused
+    search asks for the link rather than a reconnect."""
     stub_accounts(monkeypatch, {"googlesheets"})
     answers = {"GOOGLESHEETS_SEARCH_SPREADSHEETS": {"data": {"spreadsheets": [
         {"id": "s1", "name": "Antler application", "modifiedTime": "2026-11-01"}]}, "error": None, "log_id": "l"}}
@@ -86,7 +88,10 @@ async def test_a_missing_permission_says_to_reconnect(monkeypatch):
                                                   "modified": "2026-11-01"}]
     answers["GOOGLESHEETS_SEARCH_SPREADSHEETS"] = {"data": None, "log_id": None,
                                                    "error": "403 ACCESS_TOKEN_SCOPE_INSUFFICIENT"}
-    with pytest.raises(lace_apps.AppError, match="without every permission it needs.*ask for the sheet's link"):
+    with pytest.raises(lace_apps.AppError, match="can't search Drive by name. Don't ask the founder to reconnect"):
+        await apps.sheet_search("Antler")
+    answers["GOOGLESHEETS_SEARCH_SPREADSHEETS"] = {"data": None, "log_id": None, "error": "500 backend error"}
+    with pytest.raises(lace_apps.AppError, match="refused it: 500 backend error Until then, ask for the sheet's link"):
         await apps.sheet_search("Antler")
 
 

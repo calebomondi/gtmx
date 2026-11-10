@@ -120,11 +120,16 @@ def label(platform: str) -> str:
 _SCOPE_MISSING = ("insufficient authentication scopes", "access_token_scope_insufficient", "insufficientpermissions")
 
 
+def scope_missing(error) -> bool:
+    """Whether an app refused because the connection lacks a permission."""
+    return any(marker in str(error).lower() for marker in _SCOPE_MISSING)
+
+
 def refusal(platform: str, error) -> str:
     """An app's refusal as the founder should hear it: what to do when the
     connection lacks a permission, else the app's own reason."""
     reason = str(error)
-    if any(marker in reason.lower() for marker in _SCOPE_MISSING):
+    if scope_missing(reason):
         return (f"{label(platform)} is connected without every permission it needs. Reconnect it in this Lace's "
                 f"settings (Apps & accounts) and tick every access box on the sign-in screen.")
     return f"{label(platform)} refused it: {reason[:200]}"
