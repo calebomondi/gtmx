@@ -160,6 +160,9 @@ class MemoryStore:
         self.proposed.append(action)
         return f"a{len(self.proposed)}"
 
+    async def lead_sheet_rows(self):
+        return list(getattr(self, "sheet_rows", []))
+
     async def contact_today(self, limit=10):
         return list(getattr(self, "today", []))[:limit]
 

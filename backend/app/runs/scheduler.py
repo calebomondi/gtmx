@@ -15,7 +15,7 @@ from backend.app.database.connect import AsyncSessionLocal
 from backend.app.database.lace_models import Lace, LaceBrief
 from backend.app.runs import manager
 from backend.app.services import inbox as inbox_service
-from backend.app.services import crm_sync, customer_learning, follow_ups, lace_activity, lead_search, lace_brief_email, lace_briefs, lace_competitors, lace_listening, lace_opportunities, lace_regulations, lead_temperature, social_inbox
+from backend.app.services import crm_sync, customer_learning, leads_sheet_sync, follow_ups, lace_activity, lead_search, lace_brief_email, lace_briefs, lace_competitors, lace_listening, lace_opportunities, lace_regulations, lead_temperature, social_inbox
 from backend.app.services.lace_activity import BRIEF_TITLE, BRIEF_WRITING
 from config import settings
 from data_sources.legislation import mzalendo
@@ -172,6 +172,15 @@ async def sync_crms(now: datetime | None = None) -> int:
     return synced
 
 
+async def sync_leads_sheets(now: datetime | None = None) -> int:
+    """Add the leads saved since to each leads sheet that is due, a batch
+    per sweep. Returns how many sheets were synced."""
+    now = now or datetime.now(UTC)
+    async with AsyncSessionLocal() as db:
+        due = await leads_sheet_sync.laces_due(db, now, settings.leads_sheet_sync_batch)
+    return sum([await leads_sheet_sync.sync_lace(lace_id, now) is not None for lace_id in due])
+
+
 async def _learn_new_customers(lace_id) -> None:
     """The CRM has customers the Lace hasn't learned about: learn them (and
     rework the ideal customer profile from them)."""
@@ -204,7 +213,7 @@ async def sweep_follow_ups(now: datetime | None = None) -> int:
 async def sweep() -> int:
     """Start each Lace's due monitoring, opportunity, lead and regulation searches,
     listen on its social accounts and brief, draft due follow-ups, read tracked bills' stages, cool
-    quiet leads, refresh copies of founders' CRMs, and email briefs held back.
+    quiet leads, refresh copies of founders' CRMs, add saved leads to leads sheets, and email briefs held back.
     Returns how many runs started."""
     started = (await sweep_laces() + await sweep_lace_opportunities() + await sweep_lace_leads()
                + await sweep_lace_regulations()
@@ -212,6 +221,7 @@ async def sweep() -> int:
     await check_bills()
     await cool_leads()
     await sync_crms()
+    await sync_leads_sheets()
     await lace_brief_email.email_waiting(datetime.now(UTC))
     return started
 

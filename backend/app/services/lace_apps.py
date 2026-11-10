@@ -13,7 +13,7 @@ from agents.lace.apps import AppError, AppStatus, CommentsOn, XRecord
 from agents.schemas.lace import CRM_APPS
 from backend.app.database.lace_models import Lace, LaceApp, LaceChannel
 from backend.app.services import connections as connection_service
-from backend.app.services import calendar, crm, lace_app_settings
+from backend.app.services import calendar, crm, lace_app_settings, leads_sheet
 from backend.app.services.errors import ConflictError
 from backend.app.services.inbox import mail_text
 from backend.app.services.lace_channels import items
@@ -172,12 +172,14 @@ class DbLaceApps:
                 if lace is None:
                     return []
                 listed = await lace_app_settings.list_for_lace(session, lace)
+                sheet_offer = await leads_sheet.offer(session, lace.id)
         except Exception as exc:  # noqa: BLE001 -- Composio raises many types; the prompt goes on without the list
             raise AppError(f"apps unavailable ({type(exc).__name__})") from exc
         return [AppStatus(platform=a["platform"], label=a["label"], connected=a["status"] is not None,
                           needs_attention=a["status"] is not None and not a["connected"], enabled=a["enabled"],
                           account=a["account"], account_name=a["account_name"],
-                          handle=(a["settings"] or {}).get("handle"), needs_link=a.get("needs_link", False))
+                          handle=(a["settings"] or {}).get("handle"), needs_link=a.get("needs_link", False),
+                          leads_sheet=sheet_offer if a["platform"] == leads_sheet.APP else None)
                 for a in listed if a["available"] or (a["settings"] or {}).get("handle")]
 
     async def _live(self, platform: str) -> _Live | None:
