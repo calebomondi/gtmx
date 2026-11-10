@@ -45,12 +45,12 @@ class AppStatus(BaseModel):
 class LaceApps(Protocol):
     async def email_search(self, query: str, days: int) -> list[dict] | None:
         """Mail in the founder's Gmail matching a Gmail search query, within the
-        last `days`, newest first, bounded: {thread_id, from, subject, date,
-        snippet}. None when no Gmail is on for this Lace. Raises AppError."""
+        last `days`, newest first, bounded: {thread_id, from, to, subject,
+        date, snippet}. None when no Gmail is on for this Lace. Raises AppError."""
         ...
 
     async def email_thread(self, thread_id: str) -> list[dict] | None:
-        """One Gmail thread's messages, oldest first: {from, date, text},
+        """One Gmail thread's messages, oldest first: {from, to, date, text},
         each bounded. None when no Gmail is on. Raises AppError."""
         ...
 
