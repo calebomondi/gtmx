@@ -9,7 +9,7 @@ from typing import Literal, Protocol
 
 from pydantic import BaseModel
 
-from agents.schemas.lace import CrmApp
+from agents.schemas.lace import CrmApp, LeadSheetOffer
 
 XRecord = Literal["profile", "post"]
 # The founder's public accounts a Lace reads by handle, with no app to connect.
@@ -38,6 +38,8 @@ class AppStatus(BaseModel):
     account_name: str | None = None
     # The founder's public handle saved for it (X, TikTok): read without connecting.
     handle: str | None = None
+    # Google Sheets only: where the offer of a leads sheet stands (None: never made).
+    leads_sheet: LeadSheetOffer | None = None
     # Connected, but the Page or business account this Lace speaks for isn't linked yet.
     needs_link: bool = False
 
@@ -45,12 +47,12 @@ class AppStatus(BaseModel):
 class LaceApps(Protocol):
     async def email_search(self, query: str, days: int) -> list[dict] | None:
         """Mail in the founder's Gmail matching a Gmail search query, within the
-        last `days`, newest first, bounded: {thread_id, from, subject, date,
-        snippet}. None when no Gmail is on for this Lace. Raises AppError."""
+        last `days`, newest first, bounded: {thread_id, from, to, subject,
+        date, snippet}. None when no Gmail is on for this Lace. Raises AppError."""
         ...
 
     async def email_thread(self, thread_id: str) -> list[dict] | None:
-        """One Gmail thread's messages, oldest first: {from, date, text},
+        """One Gmail thread's messages, oldest first: {from, to, date, text},
         each bounded. None when no Gmail is on. Raises AppError."""
         ...
 

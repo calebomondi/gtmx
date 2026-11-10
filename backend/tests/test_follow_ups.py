@@ -145,3 +145,16 @@ def test_the_sweep_starts_drafting_for_laces_with_follow_ups_due(client, lace, l
     [run] = client.portal.call(_runs, lace, "lace_follow_ups")
     client.portal.call(_wait_for_status, run.id, {"completed"})
     assert client.portal.call(scheduler.sweep_follow_ups) == 0  # nothing due any more
+
+
+def test_a_follow_up_goes_by_the_founders_notes_on_the_lead(client, lace, lace_runtime, user, monkeypatch):  # noqa: F811
+    briefs = _writer(monkeypatch)
+    lace_runtime.extend(AIMessage(content="A follow-up is ready.") for _ in range(2))
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        account = conn.execute(
+            "INSERT INTO lace_accounts (id, lace_id, key, name, account_type, record, status, founder_notes) VALUES"
+            " (%s, %s, 'acme.test', 'Acme Clinics', 'company', '{}', 'target', 'Met at iHub; wants pricing')"
+            " RETURNING id", (uuid.uuid4(), lace)).fetchone()[0]
+    _sent(lace, user.id, account=account)
+    _run_job(client, lace, user.id)
+    assert "About Acme Clinics, from the founder's leads sheet: Met at iHub; wants pricing" in briefs[0].note
