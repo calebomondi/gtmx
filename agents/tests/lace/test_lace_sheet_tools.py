@@ -125,3 +125,26 @@ async def test_writing_to_a_sheet_is_proposed(settings):
     assert action.preview.startswith("1 rows after the last row of Pipeline:")
     bad = await _run(tools["update_sheet"], sheet_url="https://example.com", rows=[["x"]])
     assert not bad["ok"] and "isn't a Google Sheets link" in bad["summary"]
+
+
+async def test_the_leads_sheet_is_offered_as_a_proposal(settings):
+    store = MemoryStore()
+    store.sheet_rows = [[f"Farm {i}", "", "Ada", "CEO", "ada@farm.test", "Warm", "Raised", "Emailed", "2026-11-01",
+                         "2026-11-04", "", f"id{i}"] for i in range(6)]
+    out = await _run(_tools(store, settings, Apps())["offer_leads_sheet"])
+    assert out["ok"]
+    [action] = store.proposed
+    assert (action.app, action.action, action.title) == ("googlesheets", "leads_sheet", "Keep your leads in a Google Sheet")
+    assert action.arguments["header"][-1] == "Lead id" and len(action.arguments["rows"]) == 6
+    assert action.arguments["spreadsheet_id"] is None and action.arguments["with_header"] is False
+    # The preview leaves out the Lead id, which means nothing to the founder.
+    assert action.preview.startswith("6 leads to a new spreadsheet, “Acme: leads”:\nCompany | Website")
+    assert "id0" not in action.preview and "…and 1 more" in action.preview
+    into = await _run(_tools(store, settings, Apps())["offer_leads_sheet"], sheet_url=URL)
+    assert into["ok"] and store.proposed[1].arguments["with_header"] is True
+
+
+async def test_no_saved_leads_means_no_offer(settings):
+    store = MemoryStore()
+    out = await _run(_tools(store, settings, Apps())["offer_leads_sheet"])
+    assert not out["ok"] and "no saved leads" in out["error"] and store.proposed == []

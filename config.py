@@ -161,6 +161,9 @@ class Settings(BaseSettings):
     # many Laces one scheduler sweep refreshes (the rest wait for the next).
     crm_sync_every_h: int = 24
     crm_sync_batch: int = 10
+    # How often each leads sheet gets the leads saved since, and how many Laces a sweep syncs.
+    leads_sheet_sync_every_h: int = 24
+    leads_sheet_sync_batch: int = 10
     # Before a first email, how far back the founder's mailbox is searched for
     # earlier mail with the lead's company (found: it starts warm, and the
     # draft is written as a follow-on).
@@ -174,6 +177,8 @@ class Settings(BaseSettings):
     follow_up_laces_per_sweep: int = 20
     # How many customers' websites one learning run reads (the rest wait for the next).
     customers_per_run: int = 8
+    # How often each Lace looks for new leads on its own (hours).
+    lead_search_every_h: int = 24
 
     # -- Waitlist (public landing page at thalace.com) --
     # Resend sends the signup confirmation. It only delivers to any address

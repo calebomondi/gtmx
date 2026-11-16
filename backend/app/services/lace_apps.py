@@ -13,7 +13,7 @@ from agents.lace.apps import AppError, AppStatus, CommentsOn, XRecord
 from agents.schemas.lace import CRM_APPS
 from backend.app.database.lace_models import Lace, LaceApp, LaceChannel
 from backend.app.services import connections as connection_service
-from backend.app.services import calendar, crm, lace_app_settings
+from backend.app.services import calendar, crm, lace_app_settings, leads_sheet
 from backend.app.services.errors import ConflictError
 from backend.app.services.inbox import mail_text
 from backend.app.services.lace_channels import items
@@ -74,6 +74,10 @@ PAGES_NAMED = 6
 TEXT_CHARS = 300
 
 
+class PermissionMissing(AppError):
+    """The app refused because the connection lacks a permission."""
+
+
 @dataclass(frozen=True)
 class _Live:
     entity: str
@@ -114,7 +118,7 @@ class DbLaceApps:
             return None
         data = await self._run(live, "gmail", _GMAIL_SEARCH, {
             "query": f"{query} newer_than:{days}d".strip(), "max_results": EMAIL_RESULTS, "include_payload": False})
-        return [{"thread_id": m.get("threadId"), "from": m.get("sender"), "subject": m.get("subject"),
+        return [{"thread_id": m.get("threadId"), "from": m.get("sender"), "to": m.get("to"), "subject": m.get("subject"),
                  "date": m.get("messageTimestamp"), "snippet": mail_text(m).strip()[:TEXT_CHARS]}
                 for m in _listed(data, "messages")[:EMAIL_RESULTS]]
 
@@ -123,7 +127,8 @@ class DbLaceApps:
         if live is None:
             return None
         data = await self._run(live, "gmail", _GMAIL_THREAD, {"thread_id": thread_id})
-        return [{"from": m.get("sender"), "date": m.get("messageTimestamp"), "text": mail_text(m).strip()[:EMAIL_CHARS]}
+        return [{"from": m.get("sender"), "to": m.get("to"), "date": m.get("messageTimestamp"),
+                 "text": mail_text(m).strip()[:EMAIL_CHARS]}
                 for m in _listed(data, "messages")[:THREAD_MESSAGES]]
 
     async def calendar_events(self, days_ahead: int) -> list[dict] | None:
@@ -172,12 +177,14 @@ class DbLaceApps:
                 if lace is None:
                     return []
                 listed = await lace_app_settings.list_for_lace(session, lace)
+                sheet_offer = await leads_sheet.offer(session, lace.id)
         except Exception as exc:  # noqa: BLE001 -- Composio raises many types; the prompt goes on without the list
             raise AppError(f"apps unavailable ({type(exc).__name__})") from exc
         return [AppStatus(platform=a["platform"], label=a["label"], connected=a["status"] is not None,
                           needs_attention=a["status"] is not None and not a["connected"], enabled=a["enabled"],
                           account=a["account"], account_name=a["account_name"],
-                          handle=(a["settings"] or {}).get("handle"), needs_link=a.get("needs_link", False))
+                          handle=(a["settings"] or {}).get("handle"), needs_link=a.get("needs_link", False),
+                          leads_sheet=sheet_offer if a["platform"] == leads_sheet.APP else None)
                 for a in listed if a["available"] or (a["settings"] or {}).get("handle")]
 
     async def _live(self, platform: str) -> _Live | None:
@@ -200,7 +207,8 @@ class DbLaceApps:
             logger.exception("Composio %s failed for Lace %s", tool, self._lace_id)
             raise AppError(f"Couldn't reach {connection_service.label(platform)} ({type(exc).__name__})") from exc
         if result.get("error"):
-            raise AppError(connection_service.refusal(platform, result["error"]))
+            refused = PermissionMissing if connection_service.scope_missing(result["error"]) else AppError
+            raise refused(connection_service.refusal(platform, result["error"]))
         return result.get("data")
 
     async def x(self, record: XRecord, key: str) -> dict | None:
@@ -223,6 +231,11 @@ class DbLaceApps:
             data = await self._run(live, "googlesheets", _SHEET_SEARCH, {
                 "query": query, "search_type": "name", "max_results": SHEET_SEARCH_RESULTS,
                 "order_by": "modifiedTime desc"})
+        except PermissionMissing as exc:
+            # Searching by name needs Drive access, which a Sheets connection
+            # often lacks; reading and writing a sheet by its link don't.
+            raise AppError("This Google Sheets connection can't search Drive by name. Don't ask the founder to "
+                           "reconnect for this: ask for the sheet's link and read it with read_sheet.") from exc
         except AppError as exc:
             raise AppError(f"{exc} Until then, ask for the sheet's link.") from exc
         found = _listed(data, "spreadsheets") or _listed(data, "files")

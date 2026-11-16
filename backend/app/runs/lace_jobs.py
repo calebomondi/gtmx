@@ -256,8 +256,10 @@ async def accounts_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) -> N
     found, weak = good_fits(found, lambda item: item[1].strength if item[1] else None)
     async with AsyncSessionLocal() as db, db.begin():
         new, refreshed = await lace_accounts.upsert_found(db, lace_id, run_id, found, private_to(params))
-        await job_update(db, lace_id, params, accounts_update(found, new, refreshed, params.get("countries") or [],
-                                                              [record.name for record, _ in weak]), run_id)
+        # A scheduled search with nothing new says nothing.
+        if new or not params.get("scheduled"):
+            await job_update(db, lace_id, params, accounts_update(found, new, refreshed, params.get("countries") or [],
+                                                                  [record.name for record, _ in weak]), run_id)
         if new:
             await job_activity(db, lace_id, params, "accounts_found", f"Found {plural(new, 'new lead')}",
                         names([record.name for record, _ in found]))

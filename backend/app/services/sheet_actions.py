@@ -13,9 +13,12 @@ _SHEET_URL = "https://docs.google.com/spreadsheets/d/{}"
 async def export(ctx: RunContext, arguments: dict) -> Outcome:
     header, rows = arguments["header"], arguments["rows"]
     if arguments.get("spreadsheet_id"):
+        # A leads sheet added to the founder's own sheet brings its header, so
+        # its columns (the Lead id above all) can be found by name later.
+        values = [header, *rows] if arguments.get("with_header") else rows
         done = await call(ctx, "GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND", {
             "spreadsheetId": arguments["spreadsheet_id"], "range": "A1", "valueInputOption": "RAW",
-            "insertDataOption": "INSERT_ROWS", "values": rows})
+            "insertDataOption": "INSERT_ROWS", "values": values})
         return Outcome(f"Added {len(rows)} rows to your sheet.", _SHEET_URL.format(arguments["spreadsheet_id"]),
                        done["log_id"])
     done = await call(ctx, "GOOGLESHEETS_SHEET_FROM_JSON", {
@@ -27,6 +30,14 @@ async def export(ctx: RunContext, arguments: dict) -> Outcome:
         raise ActionFailed("Google Sheets didn't say which spreadsheet it made; look for it in your Drive.")
     return Outcome(f"Made “{arguments['title']}” with {len(rows)} rows.",
                    created.get("spreadsheetUrl") or _SHEET_URL.format(spreadsheet), done["log_id"])
+
+
+@runs("googlesheets", "leads_sheet")
+async def leads_sheet(ctx: RunContext, arguments: dict) -> Outcome:
+    """The founder took up the leads sheet: made from the saved leads, or
+    added with its header to a sheet they linked. Remembered as the Lace's
+    leads sheet once done (lace_app_actions.approve)."""
+    return await export(ctx, arguments)
 
 
 @runs("googlesheets", "write")

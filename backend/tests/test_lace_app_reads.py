@@ -35,11 +35,13 @@ def _tools(monkeypatch, responses: dict) -> list:
 async def test_the_owner_searches_their_gmail(monkeypatch):
     stub_accounts(monkeypatch, {"gmail"})
     calls = _tools(monkeypatch, {"GMAIL_FETCH_EMAILS": {"messages": [
-        {"threadId": "t1", "sender": "Jane <jane@acme.test>", "subject": "Pilot", "messageTimestamp": "2026-11-03",
+        {"threadId": "t1", "sender": "Jane <jane@acme.test>", "to": "me@thalace.test", "subject": "Pilot",
+         "messageTimestamp": "2026-11-03",
          "messageText": "  We'd love to try it.  "}]}})
     lace, owner = _lace()
     found = await lace_apps.DbLaceApps(AsyncSessionLocal, lace, owner).email_search("from:jane@acme.test", 30)
-    assert found == [{"thread_id": "t1", "from": "Jane <jane@acme.test>", "subject": "Pilot", "date": "2026-11-03",
+    assert found == [{"thread_id": "t1", "from": "Jane <jane@acme.test>", "to": "me@thalace.test", "subject": "Pilot",
+                      "date": "2026-11-03",
                       "snippet": "We'd love to try it."}]
     assert calls[0][1]["query"] == "from:jane@acme.test newer_than:30d"
 
@@ -62,10 +64,12 @@ async def test_a_thread_reads_oldest_first_and_bounded(monkeypatch):
     stub_accounts(monkeypatch, {"gmail"})
     _tools(monkeypatch, {"GMAIL_FETCH_MESSAGE_BY_THREAD_ID": {"messages": [
         {"sender": "jane@acme.test", "messageTimestamp": "1", "messageText": "x" * 5000},
-        {"sender": "me", "messageTimestamp": "2", "preview": {"body": "Thanks!"}}]}})
+        {"sender": "me", "to": "Jane <jane@acme.test>", "messageTimestamp": "2", "preview": {"body": "Thanks!"}}]}})
     lace, owner = _lace()
     thread = await lace_apps.DbLaceApps(AsyncSessionLocal, lace, owner).email_thread("t1")
     assert [m["from"] for m in thread] == ["jane@acme.test", "me"]
+    # Mail the founder sent names who it went to.
+    assert thread[1]["to"] == "Jane <jane@acme.test>"
     assert len(thread[0]["text"]) == lace_apps.EMAIL_CHARS and thread[1]["text"] == "Thanks!"
 
 

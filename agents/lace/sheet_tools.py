@@ -12,7 +12,7 @@ from agents.lace.apps import AppError, LaceApps
 from agents.lace.sheets import sheet_id, summarise
 from agents.lace.store import LaceStore
 from agents.lace.tool_guard import guarded
-from agents.schemas.lace import ProposedAction, ToolResult
+from agents.schemas.lace import LEAD_SHEET_COLUMNS, ProposedAction, ToolResult
 
 # Rows of a sheet shown to the model (its summary covers every row read).
 ROWS_SHOWN = 50
@@ -144,4 +144,31 @@ def build_sheet_tools(store: LaceStore, apps: LaceApps) -> list[BaseTool]:
             app="googlesheets", action="write", title=f"Write {len(clean)} rows to a Google Sheet", preview=preview,
             arguments={"spreadsheet_id": spreadsheet, "rows": clean, "tab": tab, "range": cell_range}))
 
-    return [read_sheet, export_to_sheet, search_sheets, update_sheet]
+    @tool(parse_docstring=True)
+    @guarded
+    async def offer_leads_sheet(sheet_url: str | None = None) -> ToolResult:
+        """Propose keeping the saved leads in one Google Sheet the founder follows up from: who to reach, how warm, why now, when last contacted and when next. Once approved, leads they save later are added to it each day. Offer it once, when Google Sheets is on and there are saved leads; it runs only if they approve it.
+
+        Args:
+            sheet_url: One of the founder's sheets to add the leads to; a new spreadsheet when not given.
+        """
+        spreadsheet = sheet_id(sheet_url) if sheet_url else None
+        if sheet_url and spreadsheet is None:
+            return ToolResult.failure("That isn't a Google Sheets link (docs.google.com/spreadsheets/d/...).")
+        rows = await store.lead_sheet_rows()
+        if not rows:
+            return ToolResult.failure("There are no saved leads yet: offer the sheet once the founder has saved some.")
+        profile = await store.profile()
+        name = f"{profile.startup_name or profile.name}: leads"[:100]
+        where = "your sheet" if spreadsheet else f"a new spreadsheet, “{name}”"
+        preview = "\n".join([
+            f"{len(rows)} leads to {where}:", " | ".join(LEAD_SHEET_COLUMNS[:-1]),
+            *(" | ".join(r[:-1]) for r in rows[:PREVIEW_ROWS]),
+            *([f"…and {len(rows) - PREVIEW_ROWS} more"] if len(rows) > PREVIEW_ROWS else []),
+            "Leads you save later are added each day. Your edits in the sheet stay as you leave them."])
+        return await propose(store, ProposedAction(
+            app="googlesheets", action="leads_sheet", title="Keep your leads in a Google Sheet", preview=preview,
+            arguments={"spreadsheet_id": spreadsheet, "title": name, "header": LEAD_SHEET_COLUMNS, "rows": rows,
+                       "with_header": spreadsheet is not None}))
+
+    return [read_sheet, export_to_sheet, search_sheets, update_sheet, offer_leads_sheet]

@@ -190,6 +190,14 @@ class AccountSummary(BaseModel):
     crm_status: CrmStatus | None = Field(default=None, description="Where it stands in the founder's CRM: customer, open_deal, lead or known; none when not in it")
     crm_stage: str | None = Field(default=None, description="Its stage in the founder's CRM, e.g. Negotiation")
     resembles: str | None = Field(default=None, description="The founder's real customer it is most like, and why")
+    notes: str | None = Field(default=None, description="What the founder wrote about it in their leads sheet: go by it")
+
+# A leads sheet's columns (backend/app/services/leads_sheet.py): what the
+# founder follows up from. The Lead id ties a row back to its lead.
+LEAD_SHEET_COLUMNS = ["Company", "Website", "Contact", "Role", "Email", "Temperature", "Why now", "Status",
+                      "Last contacted", "Next follow-up", "Notes", "Lead id"]
+# Where the offer of a leads sheet stands for a Lace.
+LeadSheetOffer = Literal["kept", "offered", "declined"]
 
 # What to do with a lead today, most urgent first (backend/app/services/contact_today.py).
 TodayAction = Literal["send_reply", "hot", "warm", "send_follow_up", "first_email"]

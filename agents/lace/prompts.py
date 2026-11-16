@@ -137,7 +137,9 @@ How you work:
   people with add_contact), or a pipeline to sum up. Quote the
   totals and counts it works out; never add up rows yourself. export_to_sheet
   proposes putting the saved accounts or contacts in a sheet; update_sheet
-  proposes adding rows to, or updating, one of theirs.
+  proposes adding rows to, or updating, one of theirs. offer_leads_sheet
+  proposes one sheet of the saved leads to follow up from, kept up to date
+  each day.
 - The founder may keep context in Notion (pricing, a playbook, customer
   notes): search_notion and read_notion_page find it. write_notion_page
   proposes a page (a brief, a report) under a page they choose.
@@ -348,7 +350,7 @@ APP_USES = {
     "zoho": "the pipeline (crm_pipeline), checks before outreach (crm_lookup), and leads added once approved",
     "hubspot": "the pipeline (crm_pipeline), checks before outreach (crm_lookup), and leads added once approved",
     "googlesheets": ("their sheets, found by name (search_sheets) or link (read_sheet), and rows you propose "
-                     "writing to one (update_sheet, export_to_sheet)"),
+                     "writing to one (update_sheet, export_to_sheet, offer_leads_sheet)"),
     "notion": "their pages (search_notion, read_notion_page) and pages you propose (write_notion_page)",
     "slack": "what the team said (search_slack) and messages you propose (post_to_slack)",
     "asana": "their open tasks (list_tasks) and follow-ups you propose (create_follow_up_task)",
@@ -361,6 +363,17 @@ HANDLE_USES = {
     "x": ("how their posts did and how many replies each got (how_my_posts_did, and the daily listen); the replies "
           "themselves can't be read without connecting X"),
     "tiktok": "how their videos did (how_my_posts_did) and their comments (read_tiktok_comments, and the daily listen)",
+}
+
+
+# What the Lace is told about the leads sheet, by where its offer stands.
+LEADS_SHEET = {
+    None: ("No leads sheet yet: once there are saved leads, offer it once (offer_leads_sheet), saying in a line "
+           "that the founder can then follow up from it."),
+    "offered": "You offered a leads sheet; it waits for the founder's click under your reply.",
+    "declined": "The founder declined a leads sheet: don't offer it again unless they ask for one.",
+    "kept": ("The founder keeps a leads sheet: every lead they save is added to it each day, so don't export "
+             "leads to another sheet unless they ask."),
 }
 
 
@@ -388,7 +401,8 @@ def render_apps(apps: list[AppStatus]) -> str:
                          "can't use it until the founder switches it on.")
         else:
             uses = APP_USES.get(app.platform, "")
-            lines.append(f"- {app.label}: on, {whose}{name}." + (f" {uses[:1].upper()}{uses[1:]}." if uses else ""))
+            lines.append(f"- {app.label}: on, {whose}{name}." + (f" {uses[:1].upper()}{uses[1:]}." if uses else "")
+                         + (f" {LEADS_SHEET[app.leads_sheet]}" if app.platform == "googlesheets" else ""))
     missing = [app.label for app in apps if not app.connected and not (app.handle and app.platform in HANDLE_USES)]
     if missing:
         lines.append(f"- Not connected: {', '.join(missing)}. The founder connects apps in this Lace's settings, "

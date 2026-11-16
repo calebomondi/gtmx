@@ -57,6 +57,15 @@ async def follow_ups_job(run_id: uuid.UUID, lace_id: uuid.UUID, params: dict) ->
     await events.publish(run_id, "complete", {"drafted": len(drafted)})
 
 
+def _with_notes(note: str | None, account: LaceAccount | None) -> str | None:
+    """The run's note, with what the founder wrote about this lead in their
+    leads sheet."""
+    if account is None or not account.founder_notes:
+        return note
+    return "\n".join(filter(None, [note, f"About {account.name}, from the founder's leads sheet: "
+                                          f"{account.founder_notes}"]))
+
+
 async def _one(run_id: uuid.UUID, message_id: uuid.UUID, facts, sender: str, note: str | None,
                now: datetime) -> bool | None:
     """Draft the follow-up to one email, or record why it stops. True when
@@ -75,7 +84,7 @@ async def _one(run_id: uuid.UUID, message_id: uuid.UUID, facts, sender: str, not
         brief = FollowUpBrief(sender_name=sender, contact_name=message.recipient_name,
                               company=message.recipient_company or (account.name if account else ""),
                               offer=render_brief(facts), earlier=await follow_ups.earlier_bodies(db, message),
-                              step=message.sequence_step + 1, note=note)
+                              step=message.sequence_step + 1, note=_with_notes(note, account))
     try:
         written = await asyncio.to_thread(write_follow_up, brief)
     except Exception:  # noqa: BLE001 -- one email failing must not stop the others; retried next sweep

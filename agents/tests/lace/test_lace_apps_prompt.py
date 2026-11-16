@@ -74,3 +74,15 @@ def test_an_unlinked_page_account_says_to_ask_for_it():
     line = render_apps([fb]).splitlines()[1]
     assert line == ("- Facebook: connected, but no Page is linked to you yet, so you can't read or post there. "
                     "Ask the founder to pick one with ask_to_link.")
+
+
+def test_the_leads_sheet_offer_is_made_once():
+    from agents.lace.apps import AppStatus
+    from agents.lace.prompts import render_apps
+
+    def said(offer):
+        return render_apps([AppStatus(platform="googlesheets", label="Google Sheets", connected=True, enabled=True,
+                                      account="shared", leads_sheet=offer)])
+    assert "offer it once (offer_leads_sheet)" in said(None)
+    assert "don't offer it again unless they ask" in said("declined")
+    assert "every lead they save is added to it each day" in said("kept")

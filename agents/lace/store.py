@@ -140,6 +140,11 @@ class LaceStore(Protocol):
         once, with what to do and why. Computed from what is on file."""
         ...
 
+    async def lead_sheet_rows(self) -> list[list[str]]:
+        """The saved leads as rows for a leads sheet, in LEAD_SHEET_COLUMNS
+        order, strongest fit first, bounded."""
+        ...
+
     async def propose_action(self, action: ProposedAction) -> str:
         """Keep an action in one of the founder's apps for them to approve;
         its id. Nothing runs until they do."""
