@@ -61,16 +61,16 @@ class Settings(BaseSettings):
     # -- LLM providers --
     dashscope_api_key: str = ""
     dashscope_base_url: str = ""
-    openai_api_key: str = ""
+    openrouter_api_key: str = ""
     # Qwen models, tried in order (comma-separated in env). `llm_models` serves
     # reasoning calls; `llm_cheap_models` the bulk extraction/condensing calls.
     # qwen3.7-plus: the account's free quota on the 3.8 family (max, flash,
     # omni-flash) is exhausted (2026-10-10). Override via env.
-    llm_models: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["qwen-plus-2025-04-28", "qwen-plus-2025-07-14", "qwen-plus-latest", "qwen-max", ""])
-    llm_cheap_models: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["qwen-plus-2025-04-28", "qwen-plus-2025-07-14", "qwen-plus-latest", "qwen-max", ""])
-    # Second provider (OpenRouter, keyed by OPENAI_API_KEY), tried in order when
+    llm_models: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["qwen3.8-max"])
+    llm_cheap_models: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["qwen3.5-flash"])
+    # Second provider (OpenRouter, keyed by OPENROUTER_API_KEY), tried in order when
     # every Qwen model fails -- outage, quota, or a model retired mid-run.
-    llm_fallback_models: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["openai/gpt-4o-mini"])
+    llm_fallback_models: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["liquid/lfm-3-1.7b:free"])
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     # Per-call cap. Comfortably above the slowest call measured (~150s for a
     # ~8k-token structured output), far below the old 600s that let one hung

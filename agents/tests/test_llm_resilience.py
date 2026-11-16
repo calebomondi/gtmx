@@ -73,9 +73,9 @@ def test_run_id_survives_worker_threads(ladder):
 
 
 def test_default_ladder_includes_fallback_when_keyed(monkeypatch):
-    monkeypatch.setattr(llm.cfg, "openai_api_key", "k")
+    monkeypatch.setattr(llm.cfg, "openrouter_api_key", "k")
     assert [p for p, _ in llm.default_providers()] == ["qwen", "openrouter"]
-    monkeypatch.setattr(llm.cfg, "openai_api_key", "")
+    monkeypatch.setattr(llm.cfg, "openrouter_api_key", "")
     assert [p for p, _ in llm.default_providers()] == ["qwen"]
 
 

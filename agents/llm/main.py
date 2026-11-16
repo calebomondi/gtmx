@@ -66,7 +66,7 @@ FORCED_THINKING_BUDGET = 1_024
 def _with_fallback(primary: list[tuple[str, list[str]]]) -> list[tuple[str, list[str]]]:
     """Append the second provider when it is configured, so an outage or an
     exhausted quota on Qwen degrades to another model instead of failing runs."""
-    return primary + ([("openrouter", FALLBACK_MODELS)] if cfg.openai_api_key and FALLBACK_MODELS else [])
+    return primary + ([("openrouter", FALLBACK_MODELS)] if cfg.openrouter_api_key and FALLBACK_MODELS else [])
 
 
 def default_providers() -> list[tuple[str, list[str]]]:
@@ -475,7 +475,7 @@ def _llm(
         logger.info("Using OpenRouter fallback (%s)", m)
         return ChatOpenAI(
             model=m,
-            api_key=cfg.openai_api_key,
+            api_key=cfg.openrouter_api_key,
             base_url=cfg.openrouter_base_url,
             timeout=cfg.llm_call_timeout_s,
             max_retries=0,
